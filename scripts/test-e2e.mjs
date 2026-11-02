@@ -177,6 +177,7 @@ try {
     ["/admin/pools", "Distribution rules."],
     ["/admin/sets", "Curated releases and completion."],
     ["/admin/taxonomy", "The owner's vocabulary."],
+    ["/admin/topics", "Narrow the room, never the odds."],
     ["/admin/imports", "Provenance with a paper trail."],
     ["/play/rewards", "Earned, never bought."],
     ["/play/trades", "Move a card without losing the plot."],

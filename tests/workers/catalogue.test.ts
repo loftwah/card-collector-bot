@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createCard, getCard, listCards, listSets, publishCatalogue, publishSet, replaceSetMembership, setCardStatus } from "../../src/server/modules/catalogue";
+import { createCard, getCard, listCards, listSets, mergeCards, publishCatalogue, publishSet, replaceSetMembership, setCardStatus } from "../../src/server/modules/catalogue";
 import { commitImport } from "../../src/server/modules/imports";
-import { bootstrap, ctxFor, fixturePool, runtime } from "./helpers";
+import { bootstrap, ctxFor, fixturePool, makeInstance, runtime } from "./helpers";
 
 describe("catalogue lifecycle", () => {
   it("rejects invalid transitions and publishes an immutable release", async () => {
@@ -116,5 +116,28 @@ describe("set versioning", () => {
     const rows = await runtime.DB.prepare("SELECT set_version, COUNT(*) AS count FROM fb_set_memberships WHERE tenant_id = ? AND set_id = ? GROUP BY set_version ORDER BY set_version").bind(owner.tenant.id, set!.id).all<{ set_version: number; count: number }>();
     expect(rows.results.find((row) => row.set_version === 1)?.count).toBe(1);
     expect(rows.results.find((row) => row.set_version === 2)?.count).toBe(2);
+  });
+});
+
+describe("card merging", () => {
+  it("moves editions, variants, instances and aliases without losing history", async () => {
+    await bootstrap();
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const fixture = await fixturePool(owner);
+    const target = await createCard(owner, { slug: "merge-target", name: "Merge Target", description: "A target identity.", logicalId: "test:merge-target" });
+    const instance = await makeInstance(owner, owner.user!.id, fixture, "MERGE-KEEP-1");
+    const result = await mergeCards(owner, fixture.cardId, target.id);
+    expect(result.status).toBe("merged");
+    const moved = await runtime.DB.prepare("SELECT card_id FROM fb_card_instances WHERE id = ?").bind(instance).first<{ card_id: string }>();
+    expect(moved?.card_id).toBe(target.id);
+    const edition = await runtime.DB.prepare("SELECT card_id FROM fb_artwork_editions WHERE id = ?").bind(fixture.editionId).first<{ card_id: string }>();
+    expect(edition?.card_id).toBe(target.id);
+    const alias = await runtime.DB.prepare("SELECT target_card_id FROM fb_card_aliases WHERE tenant_id = ? AND source_card_id = ?").bind(owner.tenant.id, fixture.cardId).first<{ target_card_id: string }>();
+    expect(alias?.target_card_id).toBe(target.id);
+    const viaAlias = await getCard(owner, fixture.cardId);
+    expect(viaAlias.id).toBe(target.id);
+    const sourceStatus = await runtime.DB.prepare("SELECT status, archived_at FROM fb_card_definitions WHERE id = ?").bind(fixture.cardId).first<{ status: string; archived_at: string | null }>();
+    expect(sourceStatus?.status).toBe("retired");
+    expect(sourceStatus?.archived_at).toBeTruthy();
   });
 });

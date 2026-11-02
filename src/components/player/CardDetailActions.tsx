@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Heart, Lock, LockOpen, Recycle } from "lucide-react";
+import { Bookmark, Heart, Lock, LockOpen, Recycle } from "lucide-react";
 import { api, describeError, idempotencyKey } from "@/lib/client";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../ui/dialog";
@@ -16,17 +16,22 @@ interface Preview {
 
 export default function CardDetailActions({
   instanceId,
+  cardId,
   initialFavourite,
   initialLocked,
+  initialWishlist,
   reserved,
 }: {
   instanceId: string;
+  cardId: string;
   initialFavourite: boolean;
   initialLocked: boolean;
+  initialWishlist: boolean;
   reserved: boolean;
 }) {
   const [favourite, setFavourite] = useState(initialFavourite);
   const [locked, setLocked] = useState(initialLocked);
+  const [wishlist, setWishlist] = useState(initialWishlist);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -43,6 +48,22 @@ export default function CardDetailActions({
       setNotice(next ? "Marked as a favourite." : "Removed from favourites.");
     } catch (cause) {
       setFavourite(!next);
+      setError(describeError(cause));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function toggleWishlist() {
+    setBusy("wishlist");
+    setError("");
+    const next = !wishlist;
+    setWishlist(next);
+    try {
+      await api(`/api/v1/wishlist`, { method: "POST", body: { cardId, wanted: next } });
+      setNotice(next ? "Added to your wishlist." : "Removed from your wishlist.");
+    } catch (cause) {
+      setWishlist(!next);
       setError(describeError(cause));
     } finally {
       setBusy("");
@@ -104,6 +125,10 @@ export default function CardDetailActions({
         <Button variant="secondary" size="sm" onClick={toggleFavourite} disabled={Boolean(busy)} aria-pressed={favourite}>
           <Heart size={15} fill={favourite ? "currentColor" : "none"} className={cn(favourite && "text-[var(--brass)]")} />
           {favourite ? "Favourited" : "Favourite"}
+        </Button>
+        <Button variant="secondary" size="sm" onClick={toggleWishlist} disabled={Boolean(busy)} aria-pressed={wishlist}>
+          <Bookmark size={15} fill={wishlist ? "currentColor" : "none"} className={cn(wishlist && "text-[var(--brass)]")} />
+          {wishlist ? "Wishlisted" : "Wishlist"}
         </Button>
         <Button variant="secondary" size="sm" onClick={toggleLock} disabled={Boolean(busy)} aria-pressed={locked}>
           {locked ? <Lock size={15} /> : <LockOpen size={15} />}

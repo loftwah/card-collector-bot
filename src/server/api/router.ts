@@ -12,9 +12,11 @@ import {
   createTopicPolicy,
   getCard,
   getTaxonomy,
+  getTenantPublication,
   listCards,
   listSets,
   listTopicPolicies,
+  mergeCards,
   publishCatalogue,
   publishSet,
   replaceSetMembership,
@@ -22,6 +24,7 @@ import {
   setTopicPolicyActive,
   type TaxonomyKind,
   updateCard,
+  updateTenantPublication,
 } from "../modules/catalogue";
 import {
   createPool,
@@ -82,13 +85,13 @@ import {
   commitImport,
   completeRenderJob,
   createRenderJobs,
-  estimateGenerationPlan,
   failRenderJob,
   listRenderJobs,
   previewImport,
 } from "../modules/imports";
 import { getAsset, listAssets, uploadAsset, type AssetKind } from "../modules/assets";
 import { getWalletSummary } from "../modules/wallet";
+import { adoptGeneration, getGenerationJob, listGenerationJobs, planGeneration, reviewGeneration, submitGeneration } from "../modules/generation";
 import { publicCard, publicSet } from "./public";
 
 const idSchema = z.string().min(3).max(80);
@@ -456,6 +459,15 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     const body = await readJson(request, z.object({ status: z.enum(["draft", "published", "retired"]) }));
     return json({ card: await setCardStatus(ctx, segments[2], body.status) });
   }
+  if (segments[0] === "admin" && segments[1] === "tenant" && method === "GET") {
+    ensureContentRead(ctx);
+    return json(await getTenantPublication(ctx));
+  }
+  if (segments[0] === "admin" && segments[1] === "tenant" && method === "PATCH") {
+    ensureContentWrite(ctx);
+    const body = await readJson(request, z.object({ publicCatalogue: z.boolean().optional(), blockedTags: z.array(z.string().max(80)).max(50).optional() }));
+    return json(await updateTenantPublication(ctx, body));
+  }
   if (segments[0] === "admin" && segments[1] === "taxonomy" && method === "GET") {
     ensureContentRead(ctx);
     return json(await getTaxonomy(ctx));
@@ -714,8 +726,30 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
   if (segments[0] === "admin" && segments[1] === "generation" && segments[2] === "plan" && method === "POST") {
     ensureContentWrite(ctx);
-    const body = await readJson(request, z.object({ prompt: z.string().min(1).max(4000), model: z.string().min(1).max(100), count: z.number().int().min(1).max(10) }));
-    return json(await estimateGenerationPlan(ctx, body));
+    const body = await readJson(request, z.object({ prompt: z.string().min(1).max(4000), model: z.string().min(1).max(100).optional(), count: z.number().int().min(1).max(10).optional() }));
+    const idempotency = await idempotencyInput(request, body);
+    return json(await planGeneration(ctx, { ...body, idempotencyKey: idempotency.key }), 201);
+  }
+  if (segments[0] === "admin" && segments[1] === "generation" && segments[2] === "jobs" && segments.length === 3 && method === "GET") {
+    ensureContentRead(ctx);
+    return json({ items: await listGenerationJobs(ctx) });
+  }
+  if (segments[0] === "admin" && segments[1] === "generation" && segments[2] === "jobs" && segments[3] && segments.length === 4 && method === "GET") {
+    ensureContentRead(ctx);
+    return json(await getGenerationJob(ctx, segments[3]));
+  }
+  if (segments[0] === "admin" && segments[1] === "generation" && segments[2] === "jobs" && segments[3] && segments[4] === "submit" && method === "POST") {
+    ensureContentWrite(ctx);
+    return json(await submitGeneration(ctx, segments[3]));
+  }
+  if (segments[0] === "admin" && segments[1] === "generation" && segments[2] === "jobs" && segments[3] && segments[4] === "review" && method === "POST") {
+    ensureContentWrite(ctx);
+    const body = await readJson(request, z.object({ decision: z.enum(["approve", "reject"]) }));
+    return json(await reviewGeneration(ctx, segments[3], body.decision));
+  }
+  if (segments[0] === "admin" && segments[1] === "generation" && segments[2] === "jobs" && segments[3] && segments[4] === "adopt" && method === "POST") {
+    ensureContentWrite(ctx);
+    return json(await adoptGeneration(ctx, segments[3]));
   }
 
   // Topics and operations

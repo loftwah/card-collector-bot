@@ -30,7 +30,9 @@ Use `/login` and the credentials file for password login, or the explicit loopba
 pnpm foilbury status --json
 pnpm foilbury whoami
 pnpm foilbury catalogue list
+pnpm foilbury catalogue merge <duplicate-id> --into <target-id>
 pnpm foilbury pools show cabinet-draw
+pnpm foilbury generation plan --prompt "A restrained background plate" --count 1
 pnpm foilbury inventory --as player
 pnpm foilbury reward claim --as player
 pnpm foilbury draw execute cabinet-draw --revision 1 --as player
@@ -76,7 +78,7 @@ The MCP server is stdio-only. It does not expose an unauthenticated remote endpo
 }
 ```
 
-Tools include status, catalogue and taxonomy reads/writes, imports, render queue, pools, inventory, wallet, rewards, draws, trades, gifts, recycling, agent grants, catalogue publication, operations and local outbox processing.
+Tools include status, catalogue and taxonomy reads/writes, identity merging, imports, render queue, bounded generation planning, pools, inventory, wishlist, wallet, rewards, draws, trades, gifts, recycling, agent grants, catalogue publication, operations and local outbox processing. Generation submit deliberately refuses until a ceiling and verified adapter exist; no provider result is fabricated.
 
 ## Authority
 

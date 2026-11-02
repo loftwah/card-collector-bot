@@ -179,7 +179,7 @@ export async function toggleWishlist(ctx: Ctx, cardId: string, wanted: boolean) 
 
 export async function getWishlist(ctx: Ctx) {
   const user = ctx.user!;
-  return all(
+  return all<{ card_id: string; name: string; slug: string }>(
     ctx.db,
     `SELECT w.card_id, cd.name, cd.slug FROM fb_wishlists w JOIN fb_card_definitions cd ON cd.id = w.card_id
       WHERE w.tenant_id = ? AND w.user_id = ? ORDER BY w.created_at DESC`,

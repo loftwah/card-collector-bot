@@ -162,7 +162,16 @@ export async function getCard(ctx: Ctx, idOrSlug: string): Promise<CardView> {
     idOrSlug,
     idOrSlug,
   );
-  if (!row) throw new ApiError(404, "card_not_found", "That card does not exist in this cabinet.");
+  if (!row) {
+    const alias = await first<{ target_card_id: string }>(
+      ctx.db,
+      "SELECT target_card_id FROM fb_card_aliases WHERE tenant_id = ? AND source_card_id = ?",
+      ctx.tenant.id,
+      idOrSlug,
+    );
+    if (alias) return getCard(ctx, alias.target_card_id);
+    throw new ApiError(404, "card_not_found", "That card does not exist in this cabinet.");
+  }
   return (await hydrateCards(ctx, [row]))[0]!;
 }
 
@@ -943,4 +952,64 @@ export function normalizeSlug(value: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
+}
+
+export async function mergeCards(ctx: Ctx, sourceId: string, targetId: string) {
+  if (sourceId === targetId) throw new ApiError(422, "merge_self", "A card cannot be merged into itself.");
+  const source = await first<{ id: string; name: string; status: string }>(
+    ctx.db,
+    "SELECT id, name, status FROM fb_card_definitions WHERE id = ? AND tenant_id = ? AND archived_at IS NULL",
+    sourceId,
+    ctx.tenant.id,
+  );
+  const target = await first<{ id: string; name: string }>(
+    ctx.db,
+    "SELECT id, name FROM fb_card_definitions WHERE id = ? AND tenant_id = ? AND archived_at IS NULL",
+    targetId,
+    ctx.tenant.id,
+  );
+  if (!source || !target) throw new ApiError(404, "card_not_found", "Both merge endpoints must be active cards in this tenant.");
+  const now = nowIso();
+  await ctx.db.batch([
+    ctx.db.prepare("UPDATE fb_artwork_editions SET card_id = ? WHERE tenant_id = ? AND card_id = ?").bind(target.id, ctx.tenant.id, source.id),
+    ctx.db.prepare("UPDATE fb_variants SET card_id = ? WHERE tenant_id = ? AND card_id = ?").bind(target.id, ctx.tenant.id, source.id),
+    ctx.db.prepare("UPDATE fb_card_instances SET card_id = ? WHERE tenant_id = ? AND card_id = ?").bind(target.id, ctx.tenant.id, source.id),
+    ctx.db.prepare("DELETE FROM fb_set_memberships WHERE tenant_id = ? AND card_id = ? AND EXISTS (SELECT 1 FROM fb_set_memberships t WHERE t.tenant_id = fb_set_memberships.tenant_id AND t.set_id = fb_set_memberships.set_id AND t.set_version = fb_set_memberships.set_version AND t.card_id = ?)").bind(ctx.tenant.id, source.id, target.id),
+    ctx.db.prepare("UPDATE fb_set_memberships SET card_id = ? WHERE tenant_id = ? AND card_id = ?").bind(target.id, ctx.tenant.id, source.id),
+    ctx.db.prepare("INSERT OR IGNORE INTO fb_card_tags (tenant_id, card_id, tag_id) SELECT tenant_id, ?, tag_id FROM fb_card_tags WHERE tenant_id = ? AND card_id = ?").bind(target.id, ctx.tenant.id, source.id),
+    ctx.db.prepare("DELETE FROM fb_card_tags WHERE tenant_id = ? AND card_id = ?").bind(ctx.tenant.id, source.id),
+    ctx.db.prepare("INSERT OR IGNORE INTO fb_favourites (tenant_id, user_id, card_id, created_at) SELECT tenant_id, user_id, ?, created_at FROM fb_favourites WHERE tenant_id = ? AND card_id = ?").bind(target.id, ctx.tenant.id, source.id),
+    ctx.db.prepare("DELETE FROM fb_favourites WHERE tenant_id = ? AND card_id = ?").bind(ctx.tenant.id, source.id),
+    ctx.db.prepare("INSERT OR IGNORE INTO fb_wishlists (tenant_id, user_id, card_id, created_at) SELECT tenant_id, user_id, ?, created_at FROM fb_wishlists WHERE tenant_id = ? AND card_id = ?").bind(target.id, ctx.tenant.id, source.id),
+    ctx.db.prepare("DELETE FROM fb_wishlists WHERE tenant_id = ? AND card_id = ?").bind(ctx.tenant.id, source.id),
+    ctx.db.prepare("INSERT INTO fb_card_aliases (tenant_id, source_card_id, target_card_id, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(tenant_id, source_card_id) DO UPDATE SET target_card_id = excluded.target_card_id, created_at = excluded.created_at").bind(ctx.tenant.id, source.id, target.id, now),
+    ctx.db.prepare("UPDATE fb_card_definitions SET status = 'retired', archived_at = ?, updated_at = ?, version = version + 1 WHERE tenant_id = ? AND id = ?").bind(now, now, ctx.tenant.id, source.id),
+    auditStatement(ctx, "card.merged", "card", source.id, { target_card_id: target.id, source_name: source.name, target_name: target.name }),
+  ]);
+  return { source_id: source.id, target_id: target.id, status: "merged" };
+}
+
+export async function getTenantPublication(ctx: Ctx) {
+  const row = await first<{ publication_json: string; settings_json: string }>(
+    ctx.db,
+    "SELECT publication_json, settings_json FROM fb_tenants WHERE id = ?",
+    ctx.tenant.id,
+  );
+  const publication = row?.publication_json ? JSON.parse(row.publication_json) : {};
+  return { public_catalogue: publication.publicCatalogue !== false, blocked_tags: Array.isArray(publication.blockedTags) ? publication.blockedTags : [], active_release: publication.activeRelease ?? null, settings: row?.settings_json ? JSON.parse(row.settings_json) : {} };
+}
+
+export async function updateTenantPublication(ctx: Ctx, input: { publicCatalogue?: boolean; blockedTags?: string[] }) {
+  const current = await getTenantPublication(ctx);
+  const publication = {
+    ...(current.active_release ? { activeRelease: current.active_release } : {}),
+    publicCatalogue: input.publicCatalogue ?? current.public_catalogue,
+    blockedTags: input.blockedTags ?? current.blocked_tags,
+    updatedAt: nowIso(),
+  };
+  await ctx.db.batch([
+    ctx.db.prepare("UPDATE fb_tenants SET publication_json = ? WHERE id = ?").bind(JSON.stringify(publication), ctx.tenant.id),
+    auditStatement(ctx, "tenant.publication.updated", "tenant", ctx.tenant.id, { publicCatalogue: publication.publicCatalogue, blockedTags: publication.blockedTags }),
+  ]);
+  return getTenantPublication(ctx);
 }

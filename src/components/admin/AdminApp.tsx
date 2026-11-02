@@ -18,11 +18,13 @@ import { cn, formatDual, formatBytes, titleCase } from "@/lib/utils";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../ui/dialog";
 import { Field, Input, Select, Textarea } from "../ui/input";
+import { Switch } from "../ui/switch";
 
 export type AdminSection =
   | "overview"
   | "catalogue"
   | "taxonomy"
+  | "topics"
   | "sets"
   | "pools"
   | "economy"
@@ -859,11 +861,81 @@ function AdminDesign() {
   );
 }
 
+function AdminTopics() {
+  const [policies, setPolicies] = useState<Array<{ id: string; channel_key: string; name: string; exclude_tags: string[]; active: boolean }>>([]);
+  const [tenant, setTenant] = useState<{ public_catalogue: boolean; blocked_tags: string[]; active_release: number | null } | null>(null);
+  const [publicCatalogue, setPublicCatalogue] = useState(true);
+  const [blockedTags, setBlockedTags] = useState("");
+  const [form, setForm] = useState({ channelKey: "", name: "", excludeTags: "" });
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState("");
+
+  async function load() {
+    try {
+      const [p, t] = await Promise.all([api<{ items: Array<{ id: string; channel_key: string; name: string; exclude_tags: string[]; active: boolean }> }>("/api/v1/admin/topics"), api<{ public_catalogue: boolean; blocked_tags: string[]; active_release: number | null }>("/api/v1/admin/tenant")]);
+      setPolicies(p.items); setTenant(t); setPublicCatalogue(t.public_catalogue); setBlockedTags(t.blocked_tags.join(", "));
+    } catch (cause) { setError(describeError(cause)); }
+  }
+  useEffect(() => { void load(); }, []);
+  async function saveTenant() {
+    setBusy("tenant"); setError(""); setMessage("");
+    try {
+      await api("/api/v1/admin/tenant", { method: "PATCH", body: { publicCatalogue, blockedTags: blockedTags ? blockedTags.split(",").map((tag) => tag.trim()).filter(Boolean) : [] } });
+      setMessage("Tenant publication settings saved. Topic policies can only narrow availability, never override a tenant block.");
+      await load();
+    } catch (cause) { setError(describeError(cause)); } finally { setBusy(""); }
+  }
+  async function createPolicy() {
+    setBusy("create"); setError(""); setMessage("");
+    try {
+      await api("/api/v1/admin/topics", { method: "POST", body: { channelKey: form.channelKey, name: form.name, excludeTags: form.excludeTags ? form.excludeTags.split(",").map((tag) => tag.trim()).filter(Boolean) : [] } });
+      setForm({ channelKey: "", name: "", excludeTags: "" }); setMessage("Community policy created."); await load();
+    } catch (cause) { setError(describeError(cause)); } finally { setBusy(""); }
+  }
+  async function toggle(policy: { id: string; active: boolean }) {
+    setBusy(policy.id); setError(""); setMessage("");
+    try { await api(`/api/v1/admin/topics/${policy.id}`, { method: "PATCH", body: { active: !policy.active } }); await load(); } catch (cause) { setError(describeError(cause)); } finally { setBusy(""); }
+  }
+  return (
+    <div>
+      <SectionHead eyebrow="Topics & availability" title="Narrow the room, never the odds." description="Tenant-wide publication settings and community/entrypoint policies narrow the eligible pool. The preview always recalculates the actual odds; a player preference can narrow further but cannot re-enable a blocked topic." />
+      <Notice error={error} message={message} />
+      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_1fr]">
+        <section className="surface-flat p-5">
+          <p className="eyebrow">Tenant publication</p>
+          <p className="mt-1 text-xs text-[var(--muted)]">Active catalogue release: {tenant?.active_release ? `v${tenant.active_release}` : "none yet"}. The release remains immutable; these settings control future distribution and presentation.</p>
+          <label className="mt-4 flex items-center justify-between gap-4"><span className="text-sm font-semibold">Public catalogue</span><Switch checked={publicCatalogue} onCheckedChange={setPublicCatalogue} aria-label="Public catalogue" /></label>
+          <div className="mt-4"><Field label="Tenant blocked tags" hint="Comma separated tag slugs; applies to every entrypoint"><Input value={blockedTags} onChange={(event) => setBlockedTags(event.target.value)} placeholder="horror, strong-language" /></Field></div>
+          <div className="mt-4"><Button onClick={saveTenant} disabled={busy === "tenant"}>{busy === "tenant" ? "Saving…" : "Save tenant settings"}</Button></div>
+        </section>
+        <section className="surface-flat p-5">
+          <p className="eyebrow">Community / entrypoint policies</p>
+          <div className="mt-3 grid gap-3">
+            <Field label="Channel key"><Input value={form.channelKey} onChange={(event) => setForm({ ...form, channelKey: event.target.value })} placeholder="family-table" /></Field>
+            <Field label="Name"><Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Family table" /></Field>
+            <Field label="Exclude tags" hint="Comma separated tag slugs"><Input value={form.excludeTags} onChange={(event) => setForm({ ...form, excludeTags: event.target.value })} placeholder="horror" /></Field>
+            <Button onClick={createPolicy} disabled={busy === "create" || !form.channelKey || !form.name}>{busy === "create" ? "Creating…" : "Create policy"}</Button>
+          </div>
+        </section>
+      </div>
+      <div className="mt-6 overflow-auto border border-[var(--line)]">
+        <table className="table"><thead><tr><th>Channel</th><th>Name</th><th>Excluded tags</th><th>Status</th><th /></tr></thead><tbody>
+          {policies.map((policy) => (
+            <tr key={policy.id}><td className="font-mono text-xs">{policy.channel_key}</td><td>{policy.name}</td><td className="text-[var(--muted)]">{policy.exclude_tags.join(", ") || "—"}</td><td><Status value={policy.active ? "active" : "retired"} /></td><td><Button size="sm" variant="secondary" onClick={() => toggle(policy)} disabled={Boolean(busy)}>{policy.active ? "Disable" : "Enable"}</Button></td></tr>
+          ))}
+        </tbody></table>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminApp({ section }: { section: AdminSection }) {
   switch (section) {
     case "overview": return <AdminOverview />;
     case "catalogue": return <AdminCatalogue />;
     case "taxonomy": return <AdminTaxonomy />;
+    case "topics": return <AdminTopics />;
     case "sets": return <AdminSets />;
     case "pools": return <AdminPools />;
     case "economy": return <AdminEconomy />;

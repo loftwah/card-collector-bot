@@ -30,13 +30,14 @@
     "sources:preview": "node scripts/sources/preview.mjs",
     "sources:import": "node scripts/sources/import.mjs",
     "cards:render": "node scripts/render-cards.mjs",
-    "jobs:run": "node scripts/jobs-run.mjs",
+    "jobs:run": "node scripts/render-cards.mjs",
     "backup": "node scripts/backup.mjs",
     "restore": "node scripts/restore.mjs",
     "acceptance:local": "node scripts/acceptance-local.mjs",
     "foilbury": "node scripts/foilbury.mjs",
     "mcp": "node mcp/server.mjs",
-    "test:persistence": "node scripts/test-persistence.mjs"
+    "test:persistence": "node scripts/test-persistence.mjs",
+    "webhook:test": "node scripts/test-admin-webhook.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "14.4.3",

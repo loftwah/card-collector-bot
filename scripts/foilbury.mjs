@@ -47,6 +47,7 @@ Commands:
   catalogue create --slug --name --description [--class --category --rarity --tags]
   catalogue publish <id>         Publish a card identity
   catalogue archive <id>         Remove a draft or archive a collectible
+  catalogue merge <id> --into <id>  Merge a duplicate identity, preserving aliases
   taxonomy list                  List classes, categories, tags, rarities, materials, effects
   taxonomy create --kind --key --name
   sets list                      List sets and completion versions
@@ -73,6 +74,12 @@ Commands:
   imports apply --file <manifest.json>
   jobs list [--status pending]
   jobs drain                     Process local render jobs (same runner as pnpm jobs:run)
+  generation plan --prompt ... [--model ...] [--count n]
+  generation jobs                List generation plans/results
+  generation show <id>
+  generation submit <id>         Refuses without a recorded ceiling and verified adapter
+  generation review <id> --decision approve|reject
+  generation adopt <id>
   openapi                        Print the local OpenAPI path
   help
 
@@ -114,6 +121,11 @@ async function main() {
       const id = rest[0];
       if (!id) fail("catalogue archive needs a card id", 2);
       return out(await apiJson(`/api/v1/admin/cards/${id}`, { method: "DELETE", token }));
+    }
+    if (sub === "merge") {
+      const id = rest[0];
+      if (!id || !flags.get("into")) fail("catalogue merge needs a source id and --into <target-id>", 2);
+      return out(await apiJson(`/api/v1/admin/cards/${id}/merge`, { method: "POST", token, body: { targetId: flags.get("into") } }));
     }
     return fail("unknown catalogue command", 2);
   }
@@ -260,6 +272,32 @@ async function main() {
       process.exit(result.status ?? 1);
     }
     return fail("unknown jobs command", 2);
+  }
+
+  if (command === "generation") {
+    if (sub === "jobs" || !sub) return out(await apiJson("/api/v1/admin/generation/jobs", { token }));
+    if (sub === "show") {
+      const id = rest[0];
+      if (!id) fail("generation show needs a job id", 2);
+      return out(await apiJson(`/api/v1/admin/generation/jobs/${id}`, { token }));
+    }
+    if (sub === "plan") return out(await apiJson("/api/v1/admin/generation/plan", { method: "POST", token, body: { prompt: flags.get("prompt"), model: flags.get("model"), count: Number(flags.get("count") ?? 1) }, idempotencyKey: `cli-generation-${crypto.randomUUID()}` }));
+    if (sub === "submit") {
+      const id = rest[0];
+      if (!id) fail("generation submit needs a job id", 2);
+      return out(await apiJson(`/api/v1/admin/generation/jobs/${id}/submit`, { method: "POST", token, body: {} }));
+    }
+    if (sub === "review") {
+      const id = rest[0];
+      if (!id) fail("generation review needs a job id", 2);
+      return out(await apiJson(`/api/v1/admin/generation/jobs/${id}/review`, { method: "POST", token, body: { decision: flags.get("decision") } }));
+    }
+    if (sub === "adopt") {
+      const id = rest[0];
+      if (!id) fail("generation adopt needs a job id", 2);
+      return out(await apiJson(`/api/v1/admin/generation/jobs/${id}/adopt`, { method: "POST", token, body: {} }));
+    }
+    return fail("unknown generation command", 2);
   }
 
   fail(`unknown command: ${command}`, 2);

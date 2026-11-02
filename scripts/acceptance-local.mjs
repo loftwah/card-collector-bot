@@ -71,6 +71,8 @@ try {
   run("Browser end-to-end", "pnpm", ["test:e2e"]);
   run("CLI and real MCP client", "pnpm", ["test:agent"]);
   run("Persistence across server restart", process.execPath, ["scripts/test-persistence.mjs", "--json"]);
+  run("Production build", "pnpm", ["build"]);
+  run("Admin webhook test command (no send)", process.execPath, ["scripts/test-admin-webhook.mjs"]);
 
   const doctor = parseJson(run("Doctor (local, read-only)", process.execPath, ["scripts/doctor.mjs", "--json"]).stdout || "{}", "doctor");
   const discovery = parseJson(run("Source discovery", process.execPath, ["scripts/sources/discover.mjs", "--json"]).stdout || "{}", "source discovery");
@@ -118,7 +120,10 @@ try {
     ownerAgentAdmin: agent.checks.some((check) => check.name === "MCP owner write" && check.result === "draft"),
     playerSameInventory: agent.checks.some((check) => check.name === "MCP shared state" && check.result.includes("→")),
     rewardsAndDrawsPersist: (() => { try { const p = JSON.parse(fs.readFileSync(path.join(evidenceDir, "persistence.json"), "utf8")); return p.ok ? "inventory ids, balances, ledger counts and set progress matched across a full server stop/start" : "persistence comparison failed"; } catch { return "persistence evidence missing"; } })(),
-    concurrencyAndIdempotency: "workers/draws.test.ts: concurrent draws, replay, stale revision, empty pool",
+    concurrencyAndIdempotency: "workers/draws.test.ts: concurrent draws, replay, stale revision, empty pool; generation plan/submit refusal tested",
+    contentMerge: "workers/catalogue.test.ts: editions, variants, instances, aliases and set membership merge; source retired",
+    topicPolicies: "workers/draws.test.ts and browser route: community policy and player preference narrow actual odds; empty pool never charges",
+    productionBuild: "pnpm build succeeds (Astro + Workers bundle)",
     tradeGiftRecycle: "workers/social.test.ts: reservations, both acceptances, atomic swap, favourite/locked protection, gift history, recycle ledger",
     tenantIsolation: "workers/tenancy.test.ts: cross-tenant object references and wallets",
     failuresRecoverable: "workers/failures.test.ts: malformed upload, missing asset, job retry/terminal failure, archive with owned instances",
