@@ -1,10 +1,10 @@
 {
   "product": "Foilbury",
   "localUrl": "http://127.0.0.1:4321",
-  "startedAt": "2026-11-02T08:56:33.571Z",
-  "finishedAt": "2026-11-02T09:00:17.903Z",
+  "startedAt": "2026-11-02T09:17:15.534Z",
+  "finishedAt": "2026-11-02T09:20:59.813Z",
   "revision": {
-    "head": "92204c09eb3a520fa2c5fc2e5e14e3ca9b0d7a3e",
+    "head": "fc1cde80425bc8b51c4b7cb6e348dc0b5a27bfbf",
     "workingTree": "dirty",
     "changedFiles": 13,
     "codeWorkingTree": "clean",
@@ -23,31 +23,31 @@
       "command": "pnpm check",
       "result": "passed",
       "exitCode": 0,
-      "durationMs": 10168,
-      "evidence": "~~~\u001b[0m\n\n\u001b[96mscripts/setup-local.mjs\u001b[0m:\u001b[93m11\u001b[0m:\u001b[93m3\u001b[0m - \u001b[93mwarning\u001b[0m\u001b[90m ts(6133): \u001b[0m'statePath' is declared but its value is never read.\n\n\u001b[7m11\u001b[0m   statePath,\n\u001b[7m  \u001b[0m \u001b[93m  ~~~~~~~~~\u001b[0m\n\n\u001b[96mscripts/test-e2e.mjs\u001b[0m:\u001b[93m15\u001b[0m:\u001b[93m7\u001b[0m - \u001b[93mwarning\u001b[0m\u001b[90m ts(6133): \u001b[0m'fail' is declared but its value is never read.\n\n\u001b[7m15\u001b[0m const fail = (name, error) => {\n\u001b[7m  \u001b[0m \u001b[93m      ~~~~\u001b[0m\n\n\u001b[96mscripts/sources/discover.mjs\u001b[0m:\u001b[93m1\u001b[0m:\u001b[93m1\u001b[0m - \u001b[93mwarning\u001b[0m\u001b[90m ts(6133): \u001b[0m'fs' is declared but its value is never read.\n\n\u001b[7m1\u001b[0m import fs from \"node:fs\";\n\u001b[7m \u001b[0m \u001b[93m~~~~~~~~~~~~~~~~~~~~~~~~~\u001b[0m\n\n\u001b[96mscripts/sources/import.mjs\u001b[0m:\u001b[93m60\u001b[0m:\u001b[93m34\u001b[0m - \u001b[93mwarning\u001b[0m\u001b[90m ts(6133): \u001b[0m'discovered' is declared but its value is never read.\n\n\u001b[7m60\u001b[0m async function publishEverything(discovered) {\n\u001b[7m  \u001b[0m \u001b[93m                                 ~~~~~~~~~~\u001b[0m\n\nResult (113 files): \n- 0 errors\n- 0 warnings\n- 48 hints\n\n\n> foilbury@0.1.0 test /Users/deanlofts/gits/card-collector-bot\n> vitest run --config vitest.config.ts && vitest run --config vitest.workers.config.ts\n\n\n RUN  v4.1.12 /Users/deanlofts/gits/card-collector-bot\n\n\n Test Files  2 passed (2)\n      Tests  8 passed (8)\n   Start at  19:56:40\n   Duration  186ms (transform 32ms, setup 0ms, import 55ms, tests 95ms, environment 0ms)\n\n\n RUN  v4.1.12 /Users/deanlofts/gits/card-collector-bot\n\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\n\n Test Files  6 passed (6)\n      Tests  21 passed (21)\n   Start at  19:56:41\n   Duration  2.60s (transform 1.66s, setup 241ms, import 6.30s, tests 3.05s, environment 0ms)"
+      "durationMs": 9463,
+      "evidence": "js\u001b[0m:\u001b[93m11\u001b[0m:\u001b[93m3\u001b[0m - \u001b[93mwarning\u001b[0m\u001b[90m ts(6133): \u001b[0m'statePath' is declared but its value is never read.\n\n\u001b[7m11\u001b[0m   statePath,\n\u001b[7m  \u001b[0m \u001b[93m  ~~~~~~~~~\u001b[0m\n\n\u001b[96mscripts/test-e2e.mjs\u001b[0m:\u001b[93m15\u001b[0m:\u001b[93m7\u001b[0m - \u001b[93mwarning\u001b[0m\u001b[90m ts(6133): \u001b[0m'fail' is declared but its value is never read.\n\n\u001b[7m15\u001b[0m const fail = (name, error) => {\n\u001b[7m  \u001b[0m \u001b[93m      ~~~~\u001b[0m\n\n\u001b[96mscripts/sources/discover.mjs\u001b[0m:\u001b[93m1\u001b[0m:\u001b[93m1\u001b[0m - \u001b[93mwarning\u001b[0m\u001b[90m ts(6133): \u001b[0m'fs' is declared but its value is never read.\n\n\u001b[7m1\u001b[0m import fs from \"node:fs\";\n\u001b[7m \u001b[0m \u001b[93m~~~~~~~~~~~~~~~~~~~~~~~~~\u001b[0m\n\n\u001b[96mscripts/sources/import.mjs\u001b[0m:\u001b[93m60\u001b[0m:\u001b[93m34\u001b[0m - \u001b[93mwarning\u001b[0m\u001b[90m ts(6133): \u001b[0m'discovered' is declared but its value is never read.\n\n\u001b[7m60\u001b[0m async function publishEverything(discovered) {\n\u001b[7m  \u001b[0m \u001b[93m                                 ~~~~~~~~~~\u001b[0m\n\nResult (116 files): \n- 0 errors\n- 0 warnings\n- 49 hints\n\n\n> foilbury@0.1.0 test /Users/deanlofts/gits/card-collector-bot\n> vitest run --config vitest.config.ts && vitest run --config vitest.workers.config.ts\n\n\n RUN  v4.1.12 /Users/deanlofts/gits/card-collector-bot\n\n\n Test Files  2 passed (2)\n      Tests  8 passed (8)\n   Start at  20:17:21\n   Duration  177ms (transform 31ms, setup 0ms, import 53ms, tests 93ms, environment 0ms)\n\n\n RUN  v4.1.12 /Users/deanlofts/gits/card-collector-bot\n\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\n\n Test Files  7 passed (7)\n      Tests  23 passed (23)\n   Start at  20:17:22\n   Duration  2.17s (transform 2.03s, setup 314ms, import 4.68s, tests 3.29s, environment 0ms)"
     },
     {
       "name": "Unit and Workers integration tests",
       "command": "pnpm test",
       "result": "passed",
       "exitCode": 0,
-      "durationMs": 3937,
-      "evidence": "> foilbury@0.1.0 test /Users/deanlofts/gits/card-collector-bot\n> vitest run --config vitest.config.ts && vitest run --config vitest.workers.config.ts\n\n\n RUN  v4.1.12 /Users/deanlofts/gits/card-collector-bot\n\n\n Test Files  2 passed (2)\n      Tests  8 passed (8)\n   Start at  19:56:44\n   Duration  184ms (transform 33ms, setup 0ms, import 57ms, tests 102ms, environment 0ms)\n\n\n RUN  v4.1.12 /Users/deanlofts/gits/card-collector-bot\n\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\n\n Test Files  6 passed (6)\n      Tests  21 passed (21)\n   Start at  19:56:45\n   Duration  2.63s (transform 1.61s, setup 254ms, import 6.47s, tests 2.97s, environment 0ms)"
+      "durationMs": 3196,
+      "evidence": "> foilbury@0.1.0 test /Users/deanlofts/gits/card-collector-bot\n> vitest run --config vitest.config.ts && vitest run --config vitest.workers.config.ts\n\n\n RUN  v4.1.12 /Users/deanlofts/gits/card-collector-bot\n\n\n Test Files  2 passed (2)\n      Tests  8 passed (8)\n   Start at  20:17:25\n   Duration  175ms (transform 32ms, setup 0ms, import 54ms, tests 94ms, environment 0ms)\n\n\n RUN  v4.1.12 /Users/deanlofts/gits/card-collector-bot\n\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\n\n Test Files  7 passed (7)\n      Tests  23 passed (23)\n   Start at  20:17:26\n   Duration  1.97s (transform 1.57s, setup 308ms, import 3.99s, tests 3.02s, environment 1ms)"
     },
     {
       "name": "Browser end-to-end",
       "command": "pnpm test:e2e",
       "result": "passed",
       "exitCode": 0,
-      "durationMs": 23092,
-      "evidence": "> foilbury@0.1.0 test:e2e /Users/deanlofts/gits/card-collector-bot\n> node scripts/test-e2e.mjs\n\n{\n  \"ok\": true,\n  \"checks\": 37,\n  \"screenshots\": 9,\n  \"evidence\": \"docs/evidence/e2e.json\"\n}"
+      "durationMs": 23930,
+      "evidence": "> foilbury@0.1.0 test:e2e /Users/deanlofts/gits/card-collector-bot\n> node scripts/test-e2e.mjs\n\n{\n  \"ok\": true,\n  \"checks\": 38,\n  \"screenshots\": 9,\n  \"evidence\": \"docs/evidence/e2e.json\"\n}"
     },
     {
       "name": "CLI and real MCP client",
       "command": "pnpm test:agent",
       "result": "passed",
       "exitCode": 0,
-      "durationMs": 3561,
+      "durationMs": 3556,
       "evidence": "> foilbury@0.1.0 test:agent /Users/deanlofts/gits/card-collector-bot\n> node scripts/test-agent.mjs\n\n{\n  \"ok\": true,\n  \"checks\": 17,\n  \"evidence\": \"docs/evidence/agent-interface.json\"\n}"
     },
     {
@@ -55,15 +55,31 @@
       "command": "/Users/deanlofts/.local/share/mise/installs/node/22.23.4/bin/node scripts/test-persistence.mjs --json",
       "result": "passed",
       "exitCode": 0,
-      "durationMs": 15927,
-      "evidence": "z0tu8ra3981k1vrdn1yb4w\",\n        \"ins_mvz0z2jhjph1bvfv4waz89ps\"\n      ],\n      \"ledgerCount\": 20,\n      \"setProgress\": [\n        {\n          \"slug\": \"fighter-night\",\n          \"version\": 1,\n          \"owned\": 2,\n          \"claimed\": false\n        },\n        {\n          \"slug\": \"first-cabinet\",\n          \"version\": 1,\n          \"owned\": 4,\n          \"claimed\": false\n        },\n        {\n          \"slug\": \"protocol-table\",\n          \"version\": 1,\n          \"owned\": 4,\n          \"claimed\": false\n        },\n        {\n          \"slug\": \"shared-table\",\n          \"version\": 1,\n          \"owned\": 2,\n          \"claimed\": false\n        }\n      ]\n    },\n    \"player\": {\n      \"email\": \"player@foilbury.local\",\n      \"balance\": 330,\n      \"instanceIds\": [\n        \"ins_mvyy5gg53k0q9z010ekrh188\",\n        \"ins_mvyz4c0wyb5k4j4qeccj0y56\",\n        \"ins_mvyzq879s7znabhcpj87fkea\",\n        \"ins_mvyzro6u903rqqfn2mw4qsjc\",\n        \"ins_mvz0a8c0wqqpry7pxc1v21dz\",\n        \"ins_mvz0nkget6ncj881wkk1yyme\",\n        \"ins_mvz0u8pb2vffht19x8ht6g4q\",\n        \"ins_mvz0zh3ghfvxsw29300ye18g\"\n      ],\n      \"ledgerCount\": 11,\n      \"setProgress\": [\n        {\n          \"slug\": \"fighter-night\",\n          \"version\": 1,\n          \"owned\": 3,\n          \"claimed\": false\n        },\n        {\n          \"slug\": \"first-cabinet\",\n          \"version\": 1,\n          \"owned\": 3,\n          \"claimed\": false\n        },\n        {\n          \"slug\": \"protocol-table\",\n          \"version\": 1,\n          \"owned\": 2,\n          \"claimed\": false\n        },\n        {\n          \"slug\": \"shared-table\",\n          \"version\": 1,\n          \"owned\": 3,\n          \"claimed\": false\n        }\n      ]\n    }\n  },\n  \"note\": \"Compared inventory instance IDs, Foil balances, recent ledger counts and set progress across a full local server stop/start.\"\n}"
+      "durationMs": 13150,
+      "evidence": "ght\",\n          \"version\": 1,\n          \"owned\": 2,\n          \"claimed\": false\n        },\n        {\n          \"slug\": \"first-cabinet\",\n          \"version\": 1,\n          \"owned\": 5,\n          \"claimed\": false\n        },\n        {\n          \"slug\": \"protocol-table\",\n          \"version\": 1,\n          \"owned\": 4,\n          \"claimed\": false\n        },\n        {\n          \"slug\": \"shared-table\",\n          \"version\": 1,\n          \"owned\": 2,\n          \"claimed\": false\n        }\n      ]\n    },\n    \"player\": {\n      \"email\": \"player@foilbury.local\",\n      \"balance\": 510,\n      \"instanceIds\": [\n        \"ins_mvyy5gg53k0q9z010ekrh188\",\n        \"ins_mvyz4c0wyb5k4j4qeccj0y56\",\n        \"ins_mvyzq879s7znabhcpj87fkea\",\n        \"ins_mvyzro6u903rqqfn2mw4qsjc\",\n        \"ins_mvz0a8c0wqqpry7pxc1v21dz\",\n        \"ins_mvz0nkget6ncj881wkk1yyme\",\n        \"ins_mvz0u8pb2vffht19x8ht6g4q\",\n        \"ins_mvz0zh3ghfvxsw29300ye18g\",\n        \"ins_mvz1cmva2zv5qjtzgpnt65ew\",\n        \"ins_mvz1fp2kkxvdt79s3ngcvg8a\",\n        \"ins_mvz1j21czzyehg1e8nv85d95\",\n        \"ins_mvz1q2xyknjfzzpx3b8e7k5x\"\n      ],\n      \"ledgerCount\": 16,\n      \"setProgress\": [\n        {\n          \"slug\": \"fighter-night\",\n          \"version\": 1,\n          \"owned\": 3,\n          \"claimed\": false\n        },\n        {\n          \"slug\": \"first-cabinet\",\n          \"version\": 1,\n          \"owned\": 3,\n          \"claimed\": false\n        },\n        {\n          \"slug\": \"protocol-table\",\n          \"version\": 1,\n          \"owned\": 4,\n          \"claimed\": false\n        },\n        {\n          \"slug\": \"shared-table\",\n          \"version\": 1,\n          \"owned\": 3,\n          \"claimed\": false\n        }\n      ]\n    }\n  },\n  \"note\": \"Compared inventory instance IDs, Foil balances, recent ledger counts and set progress across a full local server stop/start.\"\n}"
+    },
+    {
+      "name": "Production build",
+      "command": "pnpm build",
+      "result": "passed",
+      "exitCode": 0,
+      "durationMs": 11436,
+      "evidence": "ble CSP if Shiki is required.\n20:18:16 [@astrojs/cloudflare] Enabling sessions with Cloudflare KV with the \"SESSION\" KV binding.\n\n\n  \u001b[1m\u001b[36m— E M D A S H —\u001b[39m\u001b[22m  \u001b[2mv1.4.0\u001b[22m\n   \n20:18:16 [types] Generated 62ms\n20:18:16 [build] output: \"server\"\n20:18:16 [build] mode: \"server\"\n20:18:16 [build] directory: /Users/deanlofts/gits/card-collector-bot/dist/\n20:18:16 [build] adapter: @astrojs/cloudflare\n20:18:16 [build] Collecting build info...\n20:18:16 [build] ✓ Completed in 168ms.\n20:18:16 [build] Building server entrypoints...\n20:18:16 [assets] Copying fonts (16 files)...\nUsing secrets defined in .dev.vars\n20:18:17 [vite] ✓ built in 722ms\nUsing secrets defined in .dev.vars\n20:18:18 [WARN] [vite] [plugin @tailwindcss/vite:generate:build] \u001b[33m[SOURCEMAP_BROKEN] \u001b[0mSourcemap is likely to be incorrect: a plugin (@tailwindcss/vite:generate:build) was used to transform files, but didn't generate a sourcemap for the transformation. Consult the plugin documentation for help: https://rolldown.rs/guide/troubleshooting#warning-sourcemap-is-likely-to-be-incorrect\n\n20:18:18 [vite] ✓ built in 1.84s\n20:18:20 [WARN] [vite] [plugin builtin:vite-reporter] \n(!) Some chunks are larger than 500 kB after minification. Consider:\n- Using dynamic import() to code-split the application\n- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting\n- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.\n20:18:20 [vite] ✓ built in 1.28s\n20:18:20 [build] Rearranging server assets...\n20:18:20 [build] ✓ Completed in 3.93s.\n20:18:20 [@astrojs/cloudflare] Injected immutable Cache-Control for /_astro/* into _headers.\n20:18:20 [emdash] Build complete\n20:18:20 [build] Server built in 4.18s\n20:18:20 [build] Complete!"
+    },
+    {
+      "name": "Admin webhook test command (no send)",
+      "command": "/Users/deanlofts/.local/share/mise/installs/node/22.23.4/bin/node scripts/test-admin-webhook.mjs",
+      "result": "passed",
+      "exitCode": 0,
+      "durationMs": 27,
+      "evidence": "Admin webhook test: destination is configured (URL redacted).\nNo request was sent. This labelled command is prepared for the owner-authorised integration phase; it is not a bot token, login or incoming command endpoint.\nTo review the future delivery plan, read docs/DISCORD_HANDOFF.md."
     },
     {
       "name": "Doctor (local, read-only)",
       "command": "/Users/deanlofts/.local/share/mise/installs/node/22.23.4/bin/node scripts/doctor.mjs --json",
       "result": "passed",
       "exitCode": 0,
-      "durationMs": 3334,
+      "durationMs": 2948,
       "evidence": "Session secret\",\n        \"detail\": \"present, value not printed\"\n      },\n      {\n        \"name\": \"Agent token pepper\",\n        \"detail\": \"present, value not printed\"\n      },\n      {\n        \"name\": \"EmDash encryption key\",\n        \"detail\": \"valid-format key present, value not printed\"\n      },\n      {\n        \"name\": \"Ignore .env\",\n        \"detail\": \"present in .gitignore\"\n      },\n      {\n        \"name\": \"Ignore .dev.vars\",\n        \"detail\": \"present in .gitignore\"\n      },\n      {\n        \"name\": \"Ignore .foilbury\",\n        \"detail\": \"present in .gitignore\"\n      },\n      {\n        \"name\": \"Ignore public/cards\",\n        \"detail\": \"present in .gitignore\"\n      },\n      {\n        \"name\": \"Ignore node_modules\",\n        \"detail\": \"present in .gitignore\"\n      },\n      {\n        \"name\": \"D1 domain schema\",\n        \"detail\": \"version 1\"\n      },\n      {\n        \"name\": \"Local tenant bootstrap\",\n        \"detail\": \"3 tenants\"\n      },\n      {\n        \"name\": \"Catalogue release\",\n        \"detail\": \"v1 ab67356ca44e…\"\n      },\n      {\n        \"name\": \"EmDash owner\",\n        \"detail\": \"1 local CMS user(s)\"\n      },\n      {\n        \"name\": \"Local server\",\n        \"detail\": \"http://127.0.0.1:4321 · HTTP 200 · configured=true\"\n      }\n    ],\n    \"liveVerified\": [],\n    \"unverified\": [\n      {\n        \"name\": \"Discord delivery\",\n        \"detail\": \"not connected; no live check\"\n      },\n      {\n        \"name\": \"Email delivery\",\n        \"detail\": \"local outbox only; no send performed\"\n      },\n      {\n        \"name\": \"Image generation\",\n        \"detail\": \"no recorded ceiling; no billed job submitted\"\n      }\n    ]\n  },\n  \"note\": \"Default checks are local and read-only. No Cloudflare, Discord, email or generation request was made. Provider presence does not imply live verification.\"\n}"
     },
     {
@@ -71,7 +87,7 @@
       "command": "/Users/deanlofts/.local/share/mise/installs/node/22.23.4/bin/node scripts/sources/discover.mjs --json",
       "result": "passed",
       "exitCode": 0,
-      "durationMs": 185,
+      "durationMs": 183,
       "evidence": "{\n  \"ok\": true,\n  \"file\": \"/Users/deanlofts/gits/card-collector-bot/.foilbury/sources/discovered.json\",\n  \"counts\": {\n    \"sources\": 3,\n    \"backgrounds\": 4,\n    \"cards\": 19,\n    \"editions\": 19,\n    \"variants\": 80,\n    \"sharedIdentities\": 3\n  },\n  \"sources\": {\n    \"bubbles\": {\n      \"root\": \"/Users/deanlofts/gits/bubbles\",\n      \"remote\": \"git@github.com:loftwah/bubbles.git\",\n      \"commit\": \"98608579813a47879815bc8eaee0e0058095e009\",\n      \"branch\": \"main\"\n    },\n    \"fighter\": {\n      \"root\": \"/Users/deanlofts/gits/fighter\",\n      \"remote\": \"git@github.com:loftwah/fighter.git\",\n      \"commit\": \"66e4333f7a0acf8b72ec55eab21a027863368f60\",\n      \"branch\": \"main\"\n    },\n    \"protocol-11\": {\n      \"root\": \"/Users/deanlofts/gits/phase-11\",\n      \"remote\": \"https://github.com/loftwah/protocol-11.git\",\n      \"commit\": \"5b940059a52741dd84d5c2f04de9152d1ca03c8a\",\n      \"branch\": \"main\"\n    }\n  },\n  \"backgrounds\": [\n    {\n      \"key\": \"orbit-moonpool\",\n      \"sourceHash\": \"76d97668595869abfe3519e2bfe6551ce3cb4fcd11770ee8d46ef04cc8471a90\",\n      \"sourcePath\": \"public/assets/backgrounds/worlds-v1/orbit-moonpool-v1.webp\"\n    },\n    {\n      \"key\": \"lantern-grove\",\n      \"sourceHash\": \"fb674cea766b7909c6295f93c2a41cf0dfe18f0cfb65ae100da1ccffdb78e74b\",\n      \"sourcePath\": \"public/assets/backgrounds/worlds-v1/bubblecap-lantern-grove-v1.webp\"\n    },\n    {\n      \"key\": \"arena\",\n      \"sourceHash\": \"136d7fd883d12782889682a299db3e524a61d676e0f0e84f77ee9b5f315edef1\",\n      \"sourcePath\": \"public/assets/generated/launch-roster/environments/arena.png\"\n    },\n    {\n      \"key\": \"table-night\",\n      \"sourceHash\": \"23bb902d315e1a7186fdf943488239edad801a4f0e95042328cab7b9fffd7d57\",\n      \"sourcePath\": \"public/runtime/table-night/crews/classic-v1.webp\"\n    }\n  ]\n}"
     },
     {
@@ -79,7 +95,7 @@
       "command": "/Users/deanlofts/.local/share/mise/installs/node/22.23.4/bin/node scripts/sources/preview.mjs --json",
       "result": "passed",
       "exitCode": 0,
-      "durationMs": 287,
+      "durationMs": 272,
       "evidence": "   \"slug\": \"humpty\",\n      \"action\": \"unchanged\",\n      \"sets\": [\n        \"fighter-night\"\n      ],\n      \"variants\": 4\n    },\n    {\n      \"slug\": \"ned-kelly\",\n      \"action\": \"unchanged\",\n      \"sets\": [\n        \"fighter-night\"\n      ],\n      \"variants\": 4\n    },\n    {\n      \"slug\": \"grim-reaper\",\n      \"action\": \"unchanged\",\n      \"sets\": [\n        \"fighter-night\"\n      ],\n      \"variants\": 4\n    },\n    {\n      \"slug\": \"drop-bear\",\n      \"action\": \"unchanged\",\n      \"sets\": [\n        \"fighter-night\"\n      ],\n      \"variants\": 4\n    },\n    {\n      \"slug\": \"loftwah-fighter\",\n      \"action\": \"unchanged\",\n      \"sets\": [\n        \"fighter-night\",\n        \"shared-table\"\n      ],\n      \"variants\": 4\n    },\n    {\n      \"slug\": \"pippa-fighter\",\n      \"action\": \"unchanged\",\n      \"sets\": [\n        \"fighter-night\",\n        \"shared-table\"\n      ],\n      \"variants\": 4\n    },\n    {\n      \"slug\": \"pepe-fighter\",\n      \"action\": \"unchanged\",\n      \"sets\": [\n        \"fighter-night\",\n        \"shared-table\"\n      ],\n      \"variants\": 4\n    },\n    {\n      \"slug\": \"gabe\",\n      \"action\": \"unchanged\",\n      \"sets\": [\n        \"protocol-table\"\n      ],\n      \"variants\": 4\n    },\n    {\n      \"slug\": \"rhea\",\n      \"action\": \"unchanged\",\n      \"sets\": [\n        \"protocol-table\"\n      ],\n      \"variants\": 4\n    },\n    {\n      \"slug\": \"june\",\n      \"action\": \"unchanged\",\n      \"sets\": [\n        \"protocol-table\"\n      ],\n      \"variants\": 4\n    },\n    {\n      \"slug\": \"nora\",\n      \"action\": \"unchanged\",\n      \"sets\": [\n        \"protocol-table\"\n      ],\n      \"variants\": 4\n    },\n    {\n      \"slug\": \"knox\",\n      \"action\": \"unchanged\",\n      \"sets\": [\n        \"protocol-table\"\n      ],\n      \"variants\": 4\n    }\n  ],\n  \"file\": \"/Users/deanlofts/gits/card-collector-bot/.foilbury/sources/preview.json\"\n}"
     },
     {
@@ -87,23 +103,23 @@
       "command": "/Users/deanlofts/.local/share/mise/installs/node/22.23.4/bin/node scripts/backup.mjs --json",
       "result": "passed",
       "exitCode": 0,
-      "durationMs": 5197,
-      "evidence": "{\n  \"ok\": true,\n  \"directory\": \".foilbury/backups/2026-11-02T085734138Z\",\n  \"databaseBytes\": 1166431,\n  \"assets\": 103,\n  \"assetBytes\": 36476575,\n  \"counts\": {\n    \"cards\": 16,\n    \"variants\": 80,\n    \"instances\": 24,\n    \"ledger\": 31,\n    \"wallets\": 2,\n    \"assets\": 103,\n    \"assetBytes\": 36476575\n  },\n  \"release\": 1\n}"
+      "durationMs": 4909,
+      "evidence": "{\n  \"ok\": true,\n  \"directory\": \".foilbury/backups/2026-11-02T091823745Z\",\n  \"databaseBytes\": 1348935,\n  \"assets\": 103,\n  \"assetBytes\": 36476575,\n  \"counts\": {\n    \"cards\": 16,\n    \"variants\": 80,\n    \"instances\": 32,\n    \"ledger\": 41,\n    \"wallets\": 2,\n    \"assets\": 103,\n    \"assetBytes\": 36476575\n  },\n  \"release\": 1\n}"
     },
     {
       "name": "Isolated restore",
-      "command": "/Users/deanlofts/.local/share/mise/installs/node/22.23.4/bin/node scripts/restore.mjs --json --backup /Users/deanlofts/gits/card-collector-bot/.foilbury/backups/2026-11-02T085734138Z",
+      "command": "/Users/deanlofts/.local/share/mise/installs/node/22.23.4/bin/node scripts/restore.mjs --json --backup /Users/deanlofts/gits/card-collector-bot/.foilbury/backups/2026-11-02T091823745Z",
       "result": "passed",
       "exitCode": 0,
-      "durationMs": 154655,
-      "evidence": "{\n  \"ok\": true,\n  \"restoredAt\": \"2026-11-02T09:00:13.955Z\",\n  \"target\": \".foilbury/restore/2026-11-02T085739332Z\",\n  \"backup\": \".foilbury/backups/2026-11-02T085734138Z\",\n  \"checks\": {\n    \"databaseChecksum\": \"matched\",\n    \"assetsChecksummed\": 103,\n    \"counts\": {\n      \"tenants\": 3,\n      \"cards\": 16,\n      \"instances\": 24,\n      \"ledger\": 31,\n      \"wallet_total\": 520,\n      \"assets\": 103\n    },\n    \"expectedCounts\": {\n      \"cards\": 16,\n      \"variants\": 80,\n      \"instances\": 24,\n      \"ledger\": 31,\n      \"wallets\": 2,\n      \"assets\": 103,\n      \"assetBytes\": 36476575\n    },\n    \"walletTotal\": 520,\n    \"release\": 1,\n    \"sourceCommits\": {\n      \"bubbles\": \"98608579813a47879815bc8eaee0e0058095e009\",\n      \"fighter\": \"66e4333f7a0acf8b72ec55eab21a027863368f60\",\n      \"protocol-11\": \"5b940059a52741dd84d5c2f04de9152d1ca03c8a\"\n    }\n  },\n  \"note\": \"Isolated local target. No remote D1/R2 binding, no deployment and no secrets were restored.\"\n}"
+      "durationMs": 147336,
+      "evidence": "{\n  \"ok\": true,\n  \"restoredAt\": \"2026-11-02T09:20:55.960Z\",\n  \"target\": \".foilbury/restore/2026-11-02T091828654Z\",\n  \"backup\": \".foilbury/backups/2026-11-02T091823745Z\",\n  \"checks\": {\n    \"databaseChecksum\": \"matched\",\n    \"assetsChecksummed\": 103,\n    \"counts\": {\n      \"tenants\": 3,\n      \"cards\": 16,\n      \"instances\": 32,\n      \"ledger\": 41,\n      \"wallet_total\": 880,\n      \"assets\": 103\n    },\n    \"expectedCounts\": {\n      \"cards\": 16,\n      \"variants\": 80,\n      \"instances\": 32,\n      \"ledger\": 41,\n      \"wallets\": 2,\n      \"assets\": 103,\n      \"assetBytes\": 36476575\n    },\n    \"walletTotal\": 880,\n    \"release\": 1,\n    \"sourceCommits\": {\n      \"bubbles\": \"98608579813a47879815bc8eaee0e0058095e009\",\n      \"fighter\": \"66e4333f7a0acf8b72ec55eab21a027863368f60\",\n      \"protocol-11\": \"5b940059a52741dd84d5c2f04de9152d1ca03c8a\"\n    }\n  },\n  \"note\": \"Isolated local target. No remote D1/R2 binding, no deployment and no secrets were restored.\"\n}"
     },
     {
       "name": "Secret scan",
       "command": "tracked file scan",
       "result": "passed",
       "evidence": {
-        "scanned": 221,
+        "scanned": 226,
         "filesWithSecretPatterns": [],
         "trackedSecretFiles": []
       }
@@ -202,11 +218,14 @@
     "ownerAgentAdmin": true,
     "playerSameInventory": true,
     "rewardsAndDrawsPersist": "inventory ids, balances, ledger counts and set progress matched across a full server stop/start",
-    "concurrencyAndIdempotency": "workers/draws.test.ts: concurrent draws, replay, stale revision, empty pool",
+    "concurrencyAndIdempotency": "workers/draws.test.ts: concurrent draws, replay, stale revision, empty pool; generation plan/submit refusal tested",
+    "contentMerge": "workers/catalogue.test.ts: editions, variants, instances, aliases and set membership merge; source retired",
+    "topicPolicies": "workers/draws.test.ts and browser route: community policy and player preference narrow actual odds; empty pool never charges",
+    "productionBuild": "pnpm build succeeds (Astro + Workers bundle)",
     "tradeGiftRecycle": "workers/social.test.ts: reservations, both acceptances, atomic swap, favourite/locked protection, gift history, recycle ledger",
     "tenantIsolation": "workers/tenancy.test.ts: cross-tenant object references and wallets",
     "failuresRecoverable": "workers/failures.test.ts: malformed upload, missing asset, job retry/terminal failure, archive with owned instances",
-    "backupRestore": "isolated target .foilbury/restore/2026-11-02T085739332Z; 103 assets checksummed; counts match",
+    "backupRestore": "isolated target .foilbury/restore/2026-11-02T091828654Z; 103 assets checksummed; counts match",
     "phoneDesktopKeyboardReducedMotion": [
       "Keyboard focus: passed",
       "Light presentation: passed",
@@ -221,8 +240,8 @@
   "evidence": {
     "e2e": "docs/evidence/e2e.json",
     "agent": "docs/evidence/agent-interface.json",
-    "backups": ".foilbury/backups/2026-11-02T085734138Z",
-    "restoreTarget": ".foilbury/restore/2026-11-02T085739332Z",
+    "backups": ".foilbury/backups/2026-11-02T091823745Z",
+    "restoreTarget": ".foilbury/restore/2026-11-02T091828654Z",
     "screenshots": [
       "docs/evidence/home-desktop.png",
       "docs/evidence/play-overview.png",
@@ -235,7 +254,7 @@
       "docs/evidence/card-reduced-motion.png"
     ],
     "doctor": {
-      "generatedAt": "2026-11-02T08:57:33.627Z",
+      "generatedAt": "2026-11-02T09:18:23.263Z",
       "url": "http://127.0.0.1:4321",
       "toolchain": {
         "node": "22.23.4",
@@ -1354,15 +1373,15 @@
     },
     "backup": {
       "ok": true,
-      "directory": ".foilbury/backups/2026-11-02T085734138Z",
-      "databaseBytes": 1166431,
+      "directory": ".foilbury/backups/2026-11-02T091823745Z",
+      "databaseBytes": 1348935,
       "assets": 103,
       "assetBytes": 36476575,
       "counts": {
         "cards": 16,
         "variants": 80,
-        "instances": 24,
-        "ledger": 31,
+        "instances": 32,
+        "ledger": 41,
         "wallets": 2,
         "assets": 103,
         "assetBytes": 36476575
@@ -1371,30 +1390,30 @@
     },
     "restore": {
       "ok": true,
-      "restoredAt": "2026-11-02T09:00:13.955Z",
-      "target": ".foilbury/restore/2026-11-02T085739332Z",
-      "backup": ".foilbury/backups/2026-11-02T085734138Z",
+      "restoredAt": "2026-11-02T09:20:55.960Z",
+      "target": ".foilbury/restore/2026-11-02T091828654Z",
+      "backup": ".foilbury/backups/2026-11-02T091823745Z",
       "checks": {
         "databaseChecksum": "matched",
         "assetsChecksummed": 103,
         "counts": {
           "tenants": 3,
           "cards": 16,
-          "instances": 24,
-          "ledger": 31,
-          "wallet_total": 520,
+          "instances": 32,
+          "ledger": 41,
+          "wallet_total": 880,
           "assets": 103
         },
         "expectedCounts": {
           "cards": 16,
           "variants": 80,
-          "instances": 24,
-          "ledger": 31,
+          "instances": 32,
+          "ledger": 41,
           "wallets": 2,
           "assets": 103,
           "assetBytes": 36476575
         },
-        "walletTotal": 520,
+        "walletTotal": 880,
         "release": 1,
         "sourceCommits": {
           "bubbles": "98608579813a47879815bc8eaee0e0058095e009",
@@ -1414,11 +1433,11 @@
     "secretScan": {
       "findings": [],
       "trackedSecrets": [],
-      "scanned": 221
+      "scanned": 226
     },
     "freshSetup": {
-      "generatedAt": "2026-11-02T08:46:37.848Z",
-      "freshDirectory": "/private/var/folders/qm/ltm8shgs7tv9k8qfqgfpjxq80000gn/T/foilbury-fresh2.nNJXR8",
+      "generatedAt": "2026-11-02T09:16:57.520Z",
+      "freshDirectory": "/private/var/folders/qm/ltm8shgs7tv9k8qfqgfpjxq80000gn/T/foilbury-fresh3.bWlTUO",
       "result": "passed",
       "setupExit": 0,
       "localUrl": "http://127.0.0.1:4321",

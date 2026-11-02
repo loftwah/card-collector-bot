@@ -1,9 +1,9 @@
 # Foilbury local acceptance
 
-Generated 2026-11-02T09:00:17.903Z from the actual local checkout.
+Generated 2026-11-02T09:20:59.813Z from the actual local checkout.
 
 - Local URL: http://127.0.0.1:4321
-- Tested revision: 92204c09eb3a520fa2c5fc2e5e14e3ca9b0d7a3e (code clean; 13 evidence-only working-tree entries)
+- Tested revision: fc1cde80425bc8b51c4b7cb6e348dc0b5a27bfbf (code clean; 13 evidence-only working-tree entries)
 - Node: v22.23.4; pnpm: 10.34.4
 - Machine-readable report: `docs/acceptance-report.json`
 
@@ -16,11 +16,13 @@ Generated 2026-11-02T09:00:17.903Z from the actual local checkout.
 | Browser end-to-end | passed | `pnpm test:e2e` · exit 0 |
 | CLI and real MCP client | passed | `pnpm test:agent` · exit 0 |
 | Persistence across server restart | passed | `/Users/deanlofts/.local/share/mise/installs/node/22.23.4/bin/node scripts/test-persistence.mjs --json` · exit 0 |
+| Production build | passed | `pnpm build` · exit 0 |
+| Admin webhook test command (no send) | passed | `/Users/deanlofts/.local/share/mise/installs/node/22.23.4/bin/node scripts/test-admin-webhook.mjs` · exit 0 |
 | Doctor (local, read-only) | passed | `/Users/deanlofts/.local/share/mise/installs/node/22.23.4/bin/node scripts/doctor.mjs --json` · exit 0 |
 | Source discovery | passed | `/Users/deanlofts/.local/share/mise/installs/node/22.23.4/bin/node scripts/sources/discover.mjs --json` · exit 0 |
 | Source preview (idempotent) | passed | `/Users/deanlofts/.local/share/mise/installs/node/22.23.4/bin/node scripts/sources/preview.mjs --json` · exit 0 |
 | Local backup | passed | `/Users/deanlofts/.local/share/mise/installs/node/22.23.4/bin/node scripts/backup.mjs --json` · exit 0 |
-| Isolated restore | passed | `/Users/deanlofts/.local/share/mise/installs/node/22.23.4/bin/node scripts/restore.mjs --json --backup /Users/deanlofts/gits/card-collector-bot/.foilbury/backups/2026-11-02T085734138Z` · exit 0 |
+| Isolated restore | passed | `/Users/deanlofts/.local/share/mise/installs/node/22.23.4/bin/node scripts/restore.mjs --json --backup /Users/deanlofts/gits/card-collector-bot/.foilbury/backups/2026-11-02T091823745Z` · exit 0 |
 | Secret scan | passed | `tracked file scan` · exit n/a |
 | Runtime provider absence | passed | `read local status and .dev.vars key names` · exit n/a |
 | Sibling-checkout independence | passed | `discovery with a missing source root, then public catalogue and media` · exit n/a |
@@ -40,11 +42,14 @@ Generated 2026-11-02T09:00:17.903Z from the actual local checkout.
 | ownerAgentAdmin | true |
 | playerSameInventory | true |
 | rewardsAndDrawsPersist | inventory ids, balances, ledger counts and set progress matched across a full server stop/start |
-| concurrencyAndIdempotency | workers/draws.test.ts: concurrent draws, replay, stale revision, empty pool |
+| concurrencyAndIdempotency | workers/draws.test.ts: concurrent draws, replay, stale revision, empty pool; generation plan/submit refusal tested |
+| contentMerge | workers/catalogue.test.ts: editions, variants, instances, aliases and set membership merge; source retired |
+| topicPolicies | workers/draws.test.ts and browser route: community policy and player preference narrow actual odds; empty pool never charges |
+| productionBuild | pnpm build succeeds (Astro + Workers bundle) |
 | tradeGiftRecycle | workers/social.test.ts: reservations, both acceptances, atomic swap, favourite/locked protection, gift history, recycle ledger |
 | tenantIsolation | workers/tenancy.test.ts: cross-tenant object references and wallets |
 | failuresRecoverable | workers/failures.test.ts: malformed upload, missing asset, job retry/terminal failure, archive with owned instances |
-| backupRestore | isolated target .foilbury/restore/2026-11-02T085739332Z; 103 assets checksummed; counts match |
+| backupRestore | isolated target .foilbury/restore/2026-11-02T091828654Z; 103 assets checksummed; counts match |
 | phoneDesktopKeyboardReducedMotion | ["Keyboard focus: passed","Light presentation: passed","Dark presentation: passed","Mobile landing: passed","Reduced motion: passed"] |
 | siblingCheckoutIndependence | missing source root stops discovery while the public catalogue and stored media remain available |
 | secretsAbsent | tracked files and browser output scanned |

@@ -1,15 +1,15 @@
 {
-  "testedAt": "2026-11-02T08:57:13.094Z",
+  "testedAt": "2026-11-02T09:17:54.467Z",
   "revision": {
-    "head": "92204c09eb3a520fa2c5fc2e5e14e3ca9b0d7a3e",
+    "head": "fc1cde80425bc8b51c4b7cb6e348dc0b5a27bfbf",
     "workingTree": "dirty",
-    "diffHash": "3fa0eaf75c675e799b0e9b099c1dea2beb28eaa812c801dddcced09659395171"
+    "diffHash": "517b3832b95e2bc538a849c39c197acc2b2713aef2eb77274d03ecdce9f8ff4e"
   },
   "checks": [
     {
       "name": "MCP tool inventory",
       "command": "mcp listTools",
-      "result": "33 tools",
+      "result": "39 tools",
       "evidence": [
         "foilbury_status",
         "foilbury_whoami",
@@ -17,6 +17,7 @@
         "foilbury_content_create",
         "foilbury_content_update",
         "foilbury_content_publish",
+        "foilbury_content_merge",
         "foilbury_taxonomy_list",
         "foilbury_taxonomy_create",
         "foilbury_sets_list",
@@ -41,6 +42,11 @@
         "foilbury_imports_preview",
         "foilbury_imports_apply",
         "foilbury_renders_queue",
+        "foilbury_generation_plan",
+        "foilbury_generation_jobs",
+        "foilbury_generation_submit",
+        "foilbury_generation_review",
+        "foilbury_generation_adopt",
         "foilbury_catalogue_publish",
         "foilbury_ops_status",
         "foilbury_outbox_process"
@@ -98,8 +104,8 @@
       "command": "foilbury_content_create",
       "result": "draft",
       "evidence": {
-        "slug": "agent-proof-mvz0zgsz",
-        "cardId": "crd_mvz0zgtpcbx0w3v3xqkdyj4q"
+        "slug": "agent-proof-mvz1q2na",
+        "cardId": "crd_mvz1q2o8ay48h4sc2nrbens9"
       }
     },
     {
@@ -107,7 +113,7 @@
       "command": "DELETE /api/v1/admin/cards/{id}",
       "result": "archived",
       "evidence": {
-        "slug": "agent-proof-mvz0zgsz"
+        "slug": "agent-proof-mvz1q2na"
       }
     },
     {
@@ -131,10 +137,10 @@
     {
       "name": "MCP player draw",
       "command": "foilbury_draw_execute",
-      "result": "Gabe · FB-1-JU-3CA78C",
+      "result": "Knox · FB-1-JU-196764",
       "evidence": {
-        "instanceId": "ins_mvz0zh3ghfvxsw29300ye18g",
-        "balanceAfter": 330,
+        "instanceId": "ins_mvz1q2xyknjfzzpx3b8e7k5x",
+        "balanceAfter": 510,
         "poolRevision": 1,
         "probabilityBps": 202
       }
@@ -144,16 +150,16 @@
       "command": "foilbury_draw_execute (same key)",
       "result": "same receipt",
       "evidence": {
-        "instanceId": "ins_mvz0zh3ghfvxsw29300ye18g"
+        "instanceId": "ins_mvz1q2xyknjfzzpx3b8e7k5x"
       }
     },
     {
       "name": "MCP shared state",
       "command": "foilbury_inventory_list before/after",
-      "result": "7 → 8",
+      "result": "11 → 12",
       "evidence": {
-        "balanceBefore": 410,
-        "balanceAfter": 330
+        "balanceBefore": 590,
+        "balanceAfter": 510
       }
     },
     {
@@ -179,7 +185,7 @@
     {
       "name": "CLI inventory",
       "command": "pnpm foilbury inventory --as player --json",
-      "result": "8 cards"
+      "result": "12 cards"
     },
     {
       "name": "Secrets scan",
