@@ -1,6 +1,6 @@
 # Foilbury follow-on acceptance: deployed Discord pilot
 
-Generated from the working tree on 2026-11-02. Follow-on code revision: `80b851d` (Discord pilot plus daily-boundary fix), building on `531756f`. Deployed Worker version: `dfb77cf4-8539-4676-971b-9e4017131e4b`. This is the follow-on report; the original local-first acceptance record remains in `docs/LOCAL_ACCEPTANCE.md`.
+Generated from the working tree on 2026-11-02. Follow-on code revision: `ff581de` (Discord OAuth sign-in), building on `80b851d` and `531756f`. Deployed Worker version: `dfb77cf4-8539-4676-971b-9e4017131e4b`. This is the follow-on report; the original local-first acceptance record remains in `docs/LOCAL_ACCEPTANCE.md`.
 
 ## Baseline preserved
 
