@@ -2,8 +2,14 @@ import tailwindcss from "@tailwindcss/vite";
 import cloudflare from "@astrojs/cloudflare";
 import react from "@astrojs/react";
 import emdash from "emdash/astro";
-import { d1, r2 } from "@emdash-cms/cloudflare";
+import { access as cloudflareAccess, d1, r2 } from "@emdash-cms/cloudflare";
 import { defineConfig } from "astro/config";
+import { loadEnv } from "vite";
+
+const fileEnv = loadEnv(process.env.NODE_ENV || "development", process.cwd(), "");
+
+const emdashAccessAudience = (process.env.EMDASH_ACCESS_AUD || fileEnv.EMDASH_ACCESS_AUD || "").trim();
+const emdashAccessTeamDomain = (process.env.EMDASH_ACCESS_TEAM_DOMAIN || fileEnv.EMDASH_ACCESS_TEAM_DOMAIN || "jolly-cake-2b85.cloudflareaccess.com").trim();
 
 export default defineConfig({
   site: "https://foilbury.loftwah.com",
@@ -32,7 +38,25 @@ export default defineConfig({
     emdash({
       database: d1({ binding: "DB", session: "disabled" }),
       storage: r2({ binding: "MEDIA" }),
-      admin: { locales: ["en"] },
+      admin: {
+        locales: ["en"],
+        siteName: "Foilbury Editorial",
+        logo: "/brand/wordmark.png",
+        favicon: "/brand/favicon-32.png",
+        footerLabel: "Foilbury · editorial operator console",
+      },
+      ...(emdashAccessAudience
+        ? {
+            auth: cloudflareAccess({
+              teamDomain: emdashAccessTeamDomain,
+              audience: emdashAccessAudience,
+              autoProvision: false,
+              syncRoles: false,
+              syncName: true,
+              defaultRole: 50,
+            }),
+          }
+        : {}),
       maxUploadSize: 8 * 1024 * 1024,
       toolbar: false,
     }),

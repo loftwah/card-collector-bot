@@ -19,8 +19,8 @@ export const GET: APIRoute = async ({ request, params }) => {
         await first<{ present: number }>(
           ctx.db,
           `SELECT 1 AS present FROM fb_card_instances ci
-             JOIN fb_variants v ON v.id = ci.variant_id AND v.tenant_id = ci.tenant_id
-             JOIN fb_artwork_editions e ON e.id = v.edition_id AND e.tenant_id = ci.tenant_id
+             JOIN fb_variants v ON v.id = ci.variant_id
+             JOIN fb_artwork_editions e ON e.id = v.edition_id
             WHERE ci.tenant_id = ? AND ci.user_id = ? AND ci.status IN ('owned','reserved')
               AND (e.subject_asset_id = ? OR e.background_asset_id = ?) LIMIT 1`,
           ctx.tenant.id,

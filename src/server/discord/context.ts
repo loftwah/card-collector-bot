@@ -304,6 +304,10 @@ export function buildDiscordContext(
     scopes: null,
     sessionId: null,
     csrfToken: "",
+    sessionAssurance: null,
+    sessionAuthTime: null,
+    accessIdentity: null,
+    accessStatus: null,
   };
 }
 

@@ -10,13 +10,14 @@ const links = [
   { href: "/play/draw", label: "Draw" },
 ];
 if (user) links.push({ href: "/play", label: "My Collection" });
-if (user && ["owner", "editor", "economy_admin"].includes(user.role)) links.push({ href: "/admin", label: "Administration" });
+if (user && ["owner", "editor", "economy_admin"].includes(user.role)) links.push({ href: "/admin", label: "Bot admin" });
+if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform" });
 ---
 <header class="site-header">
   <div class="container flex min-h-[68px] items-center justify-between gap-4 py-3">
     <a href="/" class="flex items-center gap-2.5 no-underline" aria-label="Foilbury home">
       <img src="/brand/mark.png" alt="" width="30" height="30" class="h-[30px] w-[30px] rounded-[6px]" />
-      <span class="display-sm text-[1.35rem] tracking-[-0.03em]">Foilbury</span>
+      <span class="font-display text-[1.35rem] tracking-[-0.03em]">Foilbury</span>
     </a>
 
     <nav class="hidden items-center gap-1 md:flex" aria-label="Primary">
@@ -24,7 +25,7 @@ if (user && ["owner", "editor", "economy_admin"].includes(user.role)) links.push
         <a
           href={link.href}
           class:list={[
-            "border-b-2 px-3 py-2 font-mono text-[0.68rem] uppercase tracking-[0.1em] no-underline transition-colors",
+            "border-b-2 px-3 py-2 font-mono text-[0.66rem] uppercase tracking-[0.1em] no-underline transition-colors",
             (link.href === "/play/draw"
               ? path.startsWith("/play/draw")
               : link.href === "/play"
@@ -42,11 +43,12 @@ if (user && ["owner", "editor", "economy_admin"].includes(user.role)) links.push
     <div class="flex items-center gap-1.5">
       {user ? (
         <>
-          <a href="/play" class="hidden items-center gap-2 border border-[var(--line)] px-2.5 py-1.5 font-mono text-[0.66rem] uppercase tracking-[0.08em] no-underline sm:flex" title="Your Foil balance">
+          <a href="/play" class="hidden items-center gap-2 border border-[var(--line)] px-2.5 py-1.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] no-underline sm:flex" title="Your Foil balance">
             <span class="text-[var(--brass)]">✦</span>
             <span data-foil-balance>{session?.wallet ?? 0} Foil</span>
           </a>
-          <span class="hidden text-xs text-[var(--muted)] lg:inline">{user.displayName}</span>
+          <a href="/account/security" class="hidden max-w-32 truncate text-xs text-[var(--muted)] hover:text-[var(--ink)] lg:inline">{user.displayName}</a>
+          {!["owner", "editor", "economy_admin"].includes(user.role) ? <a class="btn btn-secondary btn-sm hidden sm:inline-flex" href="/create-bot">Create a Bot</a> : null}
           <LogoutButton client:load />
         </>
       ) : (
@@ -55,10 +57,12 @@ if (user && ["owner", "editor", "economy_admin"].includes(user.role)) links.push
       <ThemeToggle client:load />
       <details class="relative md:hidden">
         <summary class="btn btn-ghost btn-sm cursor-pointer list-none" aria-label="Open menu">Menu</summary>
-        <div class="absolute right-0 top-11 z-30 min-w-48 border border-[var(--line-strong)] bg-[var(--paper)] p-2 shadow-xl">
+        <div class="absolute right-0 top-11 z-30 min-w-52 border border-[var(--line-strong)] bg-[var(--paper)] p-2 shadow-xl">
           {links.map((link) => (
-            <a class="block px-3 py-2 font-mono text-[0.7rem] uppercase tracking-[0.08em] text-[var(--muted)] no-underline hover:bg-[var(--ink)]/5 hover:text-[var(--ink)]" href={link.href}>{link.label}</a>
+            <a class="block px-3 py-2 font-mono text-[0.68rem] uppercase tracking-[0.08em] text-[var(--muted)] no-underline hover:bg-[var(--ink)]/5 hover:text-[var(--ink)]" href={link.href}>{link.label}</a>
           ))}
+          {user ? <a class="block px-3 py-2 font-mono text-[0.68rem] uppercase tracking-[0.08em] text-[var(--muted)] no-underline hover:bg-[var(--ink)]/5 hover:text-[var(--ink)]" href="/account/security">Account security</a> : null}
+          {!user ? <a class="block px-3 py-2 font-mono text-[0.68rem] uppercase tracking-[0.08em] text-[var(--muted)] no-underline hover:bg-[var(--ink)]/5 hover:text-[var(--ink)]" href="/create-bot">Create a Bot</a> : null}
         </div>
       </details>
     </div>

@@ -141,7 +141,7 @@ export default function DrawStudio({ pools, initialBalance }: { pools: PoolSumma
                 aria-pressed={pool.slug === slug}
                 className={cn(
                   "border p-3 text-left transition-colors",
-                  pool.slug === slug ? "border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)]" : "border-[var(--line)] hover:border-[var(--brass)]",
+                  pool.slug === slug ? "surface-selected border-ink" : "border-[var(--line)] hover:border-[var(--brass)]",
                 )}
               >
                 <span className="flex items-center justify-between gap-2">

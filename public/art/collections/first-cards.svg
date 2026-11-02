@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="First cards collection mark">
+  <rect width="128" height="128" rx="64" fill="#c69a58"/>
+  <rect x="35" y="28" width="44" height="66" rx="4" fill="#f4f0e6" transform="rotate(-8 57 61)"/>
+  <rect x="50" y="34" width="44" height="66" rx="4" fill="#141512" transform="rotate(7 72 67)"/>
+  <path d="M62 62h22M62 72h16" stroke="#c69a58" stroke-width="4" stroke-linecap="round" transform="rotate(7 72 67)"/>
+</svg>

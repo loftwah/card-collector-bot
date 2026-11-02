@@ -1,0 +1,82 @@
+# Identity, passwordless authentication and administration acceptance
+
+Pass run: 2026-11-02. Production Worker: `7db995e3-21d3-4c3b-a997-d6c4dc831701`. Repository base: `0077fb3` plus this working tree. Test baseline before the pass: 44 passing tests. Current: 64 passing tests (19 unit + 45 Workers).
+
+## Preserved production identity
+
+| Before | After |
+|---|---|
+| `usr_prod_owner` | `usr_prod_owner` (stable internal ID retained) |
+| `owner@foilbury.loftwah.com` | `dean@deanlofts.xyz` (verified) |
+| Display name `Dean` | Display name `Dean` |
+| Discord `707281352818425929` → `usr_prod_owner` | Unchanged |
+| Discord guild `997734945206313041`, channel `1566700752385081355` | Unchanged |
+| 7 owned cards / 120 Foil / 10 ledger rows at pass baseline | 8 owned / 40 Foil / 11 ledger rows after a real Discord draw at `2026-11-02T11:37:20.751Z` (`discord:1566778217401024603:open`) |
+| No Super Admin | Sole explicitly provisioned Super Admin |
+| 0 global collections in the new model | 4 global collections, 16 collection-card memberships |
+| No Access identity link | Real Access identity linked: `dean@deanlofts.xyz`, subject `cc245d5e-fe7f-58c3-aa0b-3dc7efcca6cc`, first linked `2026-11-02T12:21:41Z`, last seen `2026-11-02T12:26:08Z` |
+
+The extra card and 80 Foil spend are a recorded live Discord draw, not a migration side effect. Card serials and ownership for all seven earlier copies are unchanged.
+
+## Migration and provisioning
+
+- Pre-change backup: `.foilbury/backups/prod-pre-auth-2026-11-02.json` (60 tables, 621 rows, SHA-256 `c0cc31dcb898b3cd1b932670313eac01012863ff1d6b754d9b25a0871c652447`). It is git-ignored and mode 600.
+- Schema migration `0006_identity_auth_bots_collections.sql` is additive; `0007_card_editorial.sql` only fills `bio`/`quote` fields.
+- `scripts/provision-owner.mjs --apply --email dean@deanlofts.xyz` verified:
+  - the account was exactly `usr_prod_owner`;
+  - Discord `707281352818425929` resolved to that account and was not revoked;
+  - the Cloudflare Access user `dean@deanlofts.xyz` existed and was allowed by all five Access policies;
+  - no other account used the email;
+  - no other Super Admin existed.
+- It then changed the primary email, marked it verified, allowlisted the Access email, set `platform_admin=1`, inserted `fb_platform_admins`, and wrote `identity.primary_email.migrated` and `super_admin.provisioned` audit events.
+- Rollback: restore the JSON backup or set the account email back to `owner@foilbury.loftwah.com`, remove the `fb_access_emails` row and `fb_platform_admins` row, and set `platform_admin=0`. The schema is additive; no inventory/ledger rollback is needed for identity changes.
+
+## Cloudflare Access configuration
+
+| Application | Path | IdP | Policy | MFA |
+|---|---|---|---|---|
+| Foilbury Administration | `/admin` | Cloudflare + one-time PIN | Dean email; creator group; creator email entry (authentication only) | App-level TOTP/passkey for sensitive Foilbury actions |
+| Foilbury Admin API | `/api/v1/admin` | Cloudflare + one-time PIN | Same | Same |
+| Foilbury Platform Administration | `/platform-admin` | Cloudflare only | Dean email only | Independent Access MFA: TOTP/biometrics/security key, 8h |
+| Foilbury Platform Admin API | `/api/v1/platform` | Cloudflare only | Dean email only | Same |
+| Foilbury Editorial | `/_emdash` | Cloudflare only | Dean email only | Same |
+
+The `/admin` one-time-PIN entry is authentication, not authorization: the Worker still requires an active Bot membership and the applicable capability. Platform Administration does not have the OTP entry. No policy uses `Include Everyone`, an email suffix or all valid emails.
+
+The Worker validates the Access JWT itself (`src/server/access.ts`): signature through the team JWKS, issuer, audience and expiry. It resolves a subject only through `fb_access_emails` plus a verified matching account email, and records the subject in `fb_access_identities`. A valid Access identity does not create a Foilbury role.
+
+## Test evidence
+
+| ID | Result | Evidence |
+|---|---|---|
+| ID-01 | PASS | Production D1: Discord `707281352818425929` → `usr_prod_owner`; same account owns all 8 cards; 11 ledger rows. |
+| ID-02 | PASS | Pre/post counts and serials above; email migration audit events. |
+| ID-03 | PASS (real Access link) | `fb_access_identities` row for `dean@deanlofts.xyz` after a real Access-authenticated production request; `last_seen_at` 12:26Z. |
+| ID-04 | PASS (automated) / human UI BLOCKED | Forged header → 302 at Access edge. Expired/wrong audience/wrong issuer/missing email tests reject in `tests/unit/access.test.ts`. Application cookie alone is not the boundary. A human Cloudflare MFA prompt is still required for a fresh browser login. |
+| ID-05 | PASS | `fb_platform_admins` has exactly one active row: `usr_prod_owner`. Unique partial index prevents a second `platform_admin=1`. |
+| ID-06 | PASS | Access email allowlist requires a verified exact email match; a different received email returns `email_mismatch`; no automatic merge. |
+| AUTH-01 | PASS | Live Resend accepted a magic link to `dean@deanlofts.xyz`; local Chromium redeemed it, rejected replay, and rejected expiry. |
+| AUTH-02 | PASS | Virtual passkey registration/sign-in, TOTP confirmation, recovery code step-up, session listing/revocation in `scripts/test-auth-e2e.mjs`. |
+| AUTH-03 | PARTIAL | Production callback exact; local registered callback now `http://localhost:5173/auth/discord/callback` and dev origin matches. A completed local Discord consent needs a human Discord session. |
+| AUTH-04 | PASS with retained fallback | Replacement access and recovery proven locally; production Access identity linked. The bootstrap password remains available as a documented emergency fallback until Dean completes a fresh Access/MFA login. |
+| ADMIN-01 | PASS local | Independent creator creates an account by magic link, adds a passkey, creates a Bot and enters only that Bot. |
+| ADMIN-02 | PASS | Worker tests cover invitation binding, email mismatch, capability grant and revocation. |
+| ADMIN-03 | PASS | Sensitive routes require `access`, `passkey` or `mfa`; tests cover password rejection and stale MFA. |
+
+## Sign-in journeys
+
+- **Dean / platform administration:** open `/platform-admin` → Cloudflare Access → Cloudflare account → independent Access MFA if not already satisfied → Worker validates JWT → linked `usr_prod_owner` → Platform Administration. No Foilbury password form.
+- **Dean / Bot administration:** open `/admin` → choose Cloudflare Access (or a creator email code for a Bot Admin) → Worker validates JWT → Bot membership/capability → Bot administration.
+- **Player:** Continue with Discord or email magic link; passkey is available after first sign-in. A magic link is 15 minutes, single-use, and requires a confirmation POST.
+- **Creator:** magic link → verify email → add passkey/TOTP → create Bot → invite a Bot Admin. The invite is single-use, expiring, bound to the invitee email, and acceptance requires a protected account.
+- **Account switch:** `/logout` clears the Foilbury application session. The security page links to Cloudflare Access logout; application session revocation is separate from Access SSO.
+- **Emergency access:** the legacy password form is hidden under “Legacy password fallback”; it is not the primary journey. It can be retired after a fresh Dean Access login and a successful recovery test.
+
+## What still needs human action
+
+1. Dean (or the owner of the Access account) should open `/platform-admin` and complete the Cloudflare Access MFA prompt. The Access identity is already linked and the Worker has seen it; a fresh authenticated screenshot is the remaining evidence.
+2. Open `/_emdash/admin` through the same Access session to exercise the native EmDash console and verify the existing Dean CMS account/passkey is not stranded.
+3. Complete one local Discord OAuth consent at `http://localhost:5173` with the registered callback.
+4. A second human creator/invitee is needed for the two-person acceptance matrix; do not create or act as Kaylee without permission.
+
+These are human consent/MFA steps, not missing implementation.

@@ -1,0 +1,43 @@
+{
+  "generated_at": "2026-11-02T12:21:36.367Z",
+  "base_url": "http://localhost:5173",
+  "creator_email": "creator+1793622092022@example.com",
+  "collaborator_email": "collaborator+1793622092022@example.com",
+  "results": [
+    {
+      "name": "independent creator creates an account through a one-use email link",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "creator adds a passkey before creating a Bot",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "creator creates and enters only their new Bot",
+      "status": "PASS",
+      "detail": "tenant switched after creation"
+    },
+    {
+      "name": "Bot Owner sends a scoped invitation bound to the collaborator email",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "ordinary creator is denied Platform Administration",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "creator sees global collections read-only and their own Bot scope",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "no browser console errors during the creator journey",
+      "status": "PASS",
+      "detail": ""
+    }
+  ]
+}

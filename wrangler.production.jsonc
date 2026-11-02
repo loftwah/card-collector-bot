@@ -41,7 +41,14 @@
     "FOILBURY_ENV": "production",
     "FOILBURY_PUBLIC_ORIGIN": "https://foilbury.loftwah.com",
     "FOILBURY_TENANT_SLUG": "cabinet",
-    "EMDASH_SITE_URL": "https://foilbury.loftwah.com"
+    "EMDASH_SITE_URL": "https://foilbury.loftwah.com",
+    "RESEND_FROM_ADDRESS": "foilbury@loftwah.com",
+    "FOILBURY_ACCESS_TEAM_DOMAIN": "jolly-cake-2b85.cloudflareaccess.com",
+    "FOILBURY_ACCESS_AUD": "c2529a1b72e9ed9d1dcd9d1efc4f30b36175d1a061b78ef0c723262c7e14be16",
+    "FOILBURY_ACCESS_API_AUD": "ecc6e454b7fe9d1251e79274e73ccd8645c1510031f0b1bb81804e9947cbe8aa",
+    "FOILBURY_ACCESS_PLATFORM_AUD": "89a773fff17de2bdbb1097a98c78aed35155114d7bd22433f7140609f0c37733",
+    "FOILBURY_ACCESS_PLATFORM_API_AUD": "df35f87f5433d07579bf48b66f75c9de352ee290750edb7f2465451f5e33b6e9",
+    "FOILBURY_ACCESS_EDITORIAL_AUD": "d012a3aa003ab8e15683cedf50c1c9cc29e16fcca2a8183dcd213f18b3a46639"
   },
   "routes": [
     {

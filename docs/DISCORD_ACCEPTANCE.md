@@ -74,7 +74,7 @@ fb_ledger_entries:     +350 welcome, +120 daily, -80 draw
 | Production media | PASS | 103 R2 objects uploaded to `foilbury-media`; public render URLs return `image/webp` (e.g. 750×1050). |
 | Production owner login | PASS | Password login returns 200 after the PBKDF2 100k Workers fix; admin wallet adjustment returned 200 and wrote a ledger row. |
 | Cloudflare Access | PASS at the edge | `/admin`, `/admin/catalogue` and `/api/v1/admin/status` return 302 to the Access login; `/`, `/api/v1/status` and the Discord endpoint remain public. Apps: `Foilbury Administration` (`foilbury.loftwah.com/admin`) and `Foilbury Admin API` (`foilbury.loftwah.com/api/v1/admin`); IdP: Cloudflare one-time PIN; policy allows the account owner's Cloudflare email. |
-| Access JWT validation in the Worker | NOT IMPLEMENTED | The edge enforces Access; the Worker does not independently verify the Access JWT. No alternate hostname or preview URL is enabled. |
+| Access JWT validation in the Worker | PASS | The Worker verifies signature/JWKS, issuer, audience and expiry on every protected request. A real Access identity is linked to `usr_prod_owner`; forged headers are rejected at the edge. See `docs/AUTH_ACCEPTANCE.md`. |
 | Discord endpoint after Access | PASS | `/foilbury profile` still worked after Access was enabled. |
 
 ## Testing
@@ -93,26 +93,26 @@ The original local acceptance gate was not re-run as a replacement for this evid
 | Area | Status | Why |
 |---|---|---|
 | Website “Continue with Discord” | PASS | Real production browser OAuth signed into the production owner and showed the same 7 cards and 120 Foil. Screenshot: `docs/evidence/production-discord-oauth-collection.png`. |
-| Magic links, passkey registration/login, authenticator MFA, recovery codes, session review | NOT IMPLEMENTED | The production bootstrap login is password-only. |
-| Administrative strong-authentication policy | NOT IMPLEMENTED | Access protects the edge; the app does not enforce recent strong auth for sensitive mutations. |
-| Super Admin bootstrap | NOT IMPLEMENTED | The production owner is a Bot Owner with `platform_admin=0`. No Super Admin was provisioned. |
-| Creator self-service Bot creation / second-guild installation | NOT IMPLEMENTED | The domain is still effectively single-Bot for this deployment; `cbots`/multi-tenant website flows are absent. |
+| Magic links, passkey registration/login, authenticator MFA, recovery codes, session review | PASS locally / human production Access step | Implemented and exercised in Chromium; live Resend accepted delivery. The bootstrap password is retained only as a documented emergency fallback. |
+| Administrative strong-authentication policy | PASS | Sensitive mutations require Access, passkey or recent MFA. Platform/editorial Access apps require independent MFA. |
+| Super Admin bootstrap | PASS | `usr_prod_owner` is the sole explicitly provisioned Super Admin; `fb_platform_admins` and the unique partial index enforce it. |
+| Creator self-service Bot creation / second-guild installation | PASS local / second guild BLOCKED | Bot creation, scoped collections, invitations and revocation are implemented and browser-tested. A real second guild requires an authorised installer. |
 | Kaylee two-person acceptance / second server | BLOCKED | Requires the real person's consent and an authorised second guild. |
 | Live `/foilbury card` submission | NOT VERIFIED live; unit PASS | Discord's composer did not submit the slash command during automation and posted plain text instead. The handler lookup by display name is covered by a passing Workers test. |
 | Live admin grant confirmation | NOT VERIFIED live; unit PASS | The grant command requires the Discord option form; the confirmation, idempotency and audit path are covered by a passing Workers test. |
-| EmDash production editorial flow | NOT VERIFIED | EmDash migrations are applied in production, but no production CMS owner/site and no create/publish/disable journey were exercised. Local EmDash remains the tested integration. |
-| Email / Resend delivery | NOT IMPLEMENTED / NOT VERIFIED | No message was sent. |
+| EmDash production editorial flow | PARTIAL / human console step | Access protection, branding and `autoProvision:false` are deployed; the existing Dean CMS account is preserved. Native console verification needs the human Access session. The card draft→publish→draw→disable journey is proven locally. |
+| Email / Resend delivery | PASS | Live Resend accepted a one-use link to `dean@deanlofts.xyz`; local Chromium redeemed it and rejected replay/expiry. |
 | Paid FAL / ElevenLabs generation | NOT VERIFIED | No billed job was submitted. |
 | AI agent headless parity with Discord | PARTIAL | Existing scoped REST/CLI/MCP works locally; no live agent run was made against the production Bot. |
-| shadcn/ui official skill and `components.json` | NOT USED | The incumbent UI uses hand-built Radix/Tailwind primitives; `components.json` is absent. |
-| Cloudflare official skills | NOT INSTALLED | Wrangler and the live API were used directly. |
-| Impeccable | LOADED, DETECTOR CLEAN | Context loaded for `src/pages/index.astro`; detector returned no findings for the changed UI files. No live hook was active. |
+| shadcn/ui official skill and `components.json` | PASS | Skill installed, `components.json` created, official components added and mapped to the Foilbury token palette. See `docs/SKILLS.md`. |
+| Cloudflare official skills | PASS | `cloudflare-one`, `wrangler`, `workers-best-practices` and `cloudflare-email-service` installed and used. |
+| Impeccable | PASS | Context, craft-floor and operate references used; rendered critique, implementation, polish and axe/browser audit completed. Detector clean is not treated as acceptance. |
 | Playwright | USED | Real Discord browser journeys and screenshots retained in `docs/evidence/`. |
 
 ## Human prerequisites
 
 1. **Cloudflare Access OTP** — open `https://foilbury.loftwah.com/admin` and complete the one-time PIN sent to the account owner's Cloudflare email. This is required for the admin browser journey; the Worker remains closed to unauthenticated admin requests.
-2. **Local Discord OAuth callback** — the portal has `http://localhost:5173/auth/discord/callback`, but the local dev server runs at `http://127.0.0.1:4321`. Production OAuth is verified. For local OAuth, either add `http://127.0.0.1:4321/auth/discord/callback` in Discord or run the dev server on port 5173 and set the local origin/redirect consistently.
+2. **Local Discord OAuth callback** — the canonical local origin is now `http://localhost:5173`; the registered callback, dev server, environment and OAuth redirect all match. Production OAuth is preserved. A completed local consent still needs a human Discord session.
 3. **Super Admin** — explicitly confirm the immutable Discord/account identity to receive platform-wide authority. The current pilot intentionally does not infer it from guild ownership.
 4. **Kaylee / second guild** — obtain her consent and an authorised second server before running the two-person acceptance matrix.
 5. **EmDash production** — configure the production CMS owner/site if editorial publishing must be proven in this deployment.

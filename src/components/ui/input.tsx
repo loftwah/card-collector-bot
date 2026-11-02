@@ -23,10 +23,10 @@ export function Label({ className, ...props }: React.LabelHTMLAttributes<HTMLLab
 
 export function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className="field">
+    <label className="field">
       <span className="label">{label}</span>
       {children}
       {hint ? <span className="text-xs text-[var(--muted)]">{hint}</span> : null}
-    </div>
+    </label>
   );
 }

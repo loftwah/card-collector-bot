@@ -9,6 +9,7 @@ export default defineConfig({
     hookTimeout: 20000,
     alias: {
       "@": path.resolve(process.cwd(), "src"),
+      "cloudflare:workers": path.resolve(process.cwd(), "tests/unit/stubs/cloudflare-workers.ts"),
     },
   },
 });

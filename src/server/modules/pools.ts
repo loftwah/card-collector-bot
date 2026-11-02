@@ -119,14 +119,30 @@ export async function getPoolPreview(
             m.key AS material_key, fx.key AS effect_key, r.public_url AS render_url, pe.weight,
             COALESCE((SELECT json_group_array(t.slug) FROM fb_card_tags ct JOIN fb_tags t ON t.id = ct.tag_id WHERE ct.card_id = cd.id), '[]') AS tags_json
        FROM fb_pool_entries pe
-       JOIN fb_variants v ON v.id = pe.variant_id AND v.tenant_id = pe.tenant_id
-       JOIN fb_card_definitions cd ON cd.id = v.card_id AND cd.tenant_id = pe.tenant_id
+       JOIN fb_variants v ON v.id = pe.variant_id
+       JOIN fb_card_definitions cd ON cd.id = v.card_id
        JOIN fb_materials m ON m.id = v.material_id
        LEFT JOIN fb_effects fx ON fx.id = v.effect_id
        LEFT JOIN fb_variant_renders r ON r.variant_id = v.id AND r.tenant_id = v.tenant_id AND r.status = 'published'
       WHERE pe.tenant_id = ? AND pe.pool_id = ? AND pe.pool_revision = ? AND pe.enabled = 1
         AND v.status = 'published' AND v.archived_at IS NULL AND cd.status = 'published' AND cd.archived_at IS NULL
-        AND r.id IS NOT NULL`,
+        AND r.id IS NOT NULL
+        AND (
+          (v.tenant_id = pe.tenant_id AND cd.tenant_id = pe.tenant_id)
+          OR EXISTS (
+            SELECT 1 FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id
+             WHERE cc.card_id = cd.id AND c.scope = 'global' AND c.status = 'published' AND c.owner_tenant_id = v.tenant_id
+          )
+        )
+        AND (
+          NOT EXISTS (SELECT 1 FROM fb_collection_cards cc2 WHERE cc2.card_id = cd.id)
+          OR EXISTS (
+            SELECT 1 FROM fb_collection_cards cc3
+            JOIN fb_bot_collections bc ON bc.collection_id = cc3.collection_id AND bc.enabled = 1
+            JOIN fb_bots b ON b.id = bc.bot_id AND b.tenant_id = pe.tenant_id
+            WHERE cc3.card_id = cd.id
+          )
+        )`,
     ctx.tenant.id,
     pool.id,
     pool.revision,
@@ -306,6 +322,9 @@ export async function executeDraw(
     if (message.includes("variant_unavailable")) {
       throw new ApiError(409, "pool_changed", "A pool entry became unavailable. You were not charged.");
     }
+    if (message.includes("collection_disabled")) {
+      throw new ApiError(409, "collection_disabled", "That card's collection is turned off for this Bot. You were not charged.");
+    }
     if (message.includes("UNIQUE") && message.includes("fb_card_instances")) {
       throw new ApiError(409, "serial_collision", "The cabinet could not assign a serial. Try the draw again.");
     }
@@ -352,12 +371,18 @@ export async function createPool(
   if (!input.entries.length) throw new ApiError(422, "pool_empty", "Add at least one pool entry.");
   const variants = await all<{ id: string }>(
     ctx.db,
-    `SELECT id FROM fb_variants WHERE tenant_id = ? AND id IN (${input.entries.map(() => "?").join(",")}) AND status = 'published'`,
-    ctx.tenant.id,
+    `SELECT v.id FROM fb_variants v
+       JOIN fb_card_definitions cd ON cd.id = v.card_id
+      WHERE v.id IN (${input.entries.map(() => "?").join(",")}) AND v.status = 'published' AND cd.status = 'published'
+        AND (v.tenant_id = ? OR EXISTS (
+          SELECT 1 FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id
+           WHERE cc.card_id = cd.id AND c.scope = 'global' AND c.status = 'published' AND c.owner_tenant_id = v.tenant_id
+        ))`,
     ...input.entries.map((entry) => entry.variantId),
+    ctx.tenant.id,
   );
   if (variants.length !== new Set(input.entries.map((entry) => entry.variantId)).size) {
-    throw new ApiError(422, "pool_entry_invalid", "Every pool entry must be a published variant in this tenant.");
+    throw new ApiError(422, "pool_entry_invalid", "Every pool entry must be a published variant in this Bot or an enabled global collection.");
   }
   await ctx.db.batch([
     ctx.db
@@ -430,11 +455,17 @@ export async function updatePool(
     const ids = [...new Set(input.entries.map((entry) => entry.variantId))];
     const valid = await all<{ id: string }>(
       ctx.db,
-      `SELECT id FROM fb_variants WHERE tenant_id = ? AND status = 'published' AND id IN (${ids.map(() => "?").join(",")})`,
-      ctx.tenant.id,
+      `SELECT v.id FROM fb_variants v
+         JOIN fb_card_definitions cd ON cd.id = v.card_id
+        WHERE v.status = 'published' AND cd.status = 'published' AND v.id IN (${ids.map(() => "?").join(",")})
+          AND (v.tenant_id = ? OR EXISTS (
+            SELECT 1 FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id
+             WHERE cc.card_id = cd.id AND c.scope = 'global' AND c.status = 'published' AND c.owner_tenant_id = v.tenant_id
+          ))`,
       ...ids,
+      ctx.tenant.id,
     );
-    if (valid.length !== ids.length) throw new ApiError(422, "pool_entry_invalid", "Every pool entry must be a published variant in this tenant.");
+    if (valid.length !== ids.length) throw new ApiError(422, "pool_entry_invalid", "Every pool entry must be a published variant in this Bot or an enabled global collection.");
     statements.push(
       ctx.db.prepare("DELETE FROM fb_pool_entries WHERE tenant_id = ? AND pool_id = ? AND pool_revision = ?").bind(ctx.tenant.id, pool.id, revision),
     );
@@ -484,8 +515,8 @@ export async function getPoolDetail(ctx: Ctx, id: string) {
     ctx.db,
     `SELECT pe.id, pe.variant_id, pe.weight, pe.enabled, cd.name AS card_name, v.name AS variant_name,
             m.key AS material_key, fx.key AS effect_key
-       FROM fb_pool_entries pe JOIN fb_variants v ON v.id = pe.variant_id AND v.tenant_id = pe.tenant_id
-       JOIN fb_card_definitions cd ON cd.id = v.card_id AND cd.tenant_id = pe.tenant_id
+       FROM fb_pool_entries pe JOIN fb_variants v ON v.id = pe.variant_id
+       JOIN fb_card_definitions cd ON cd.id = v.card_id
        JOIN fb_materials m ON m.id = v.material_id
        LEFT JOIN fb_effects fx ON fx.id = v.effect_id
       WHERE pe.tenant_id = ? AND pe.pool_id = ? AND pe.pool_revision = ? ORDER BY cd.name, v.name`,

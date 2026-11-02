@@ -1,0 +1,51 @@
+{
+  "captured_at": "2026-11-02T12:32:00Z",
+  "worker_version": "7db995e3-21d3-4c3b-a997-d6c4dc831701",
+  "account": {
+    "id": "usr_prod_owner",
+    "email": "dean@deanlofts.xyz",
+    "display_name": "Dean",
+    "platform_admin": true,
+    "email_verified_at": "2026-11-02T11:30:45.170Z"
+  },
+  "discord": {
+    "user_id": "707281352818425929",
+    "guild_id": "997734945206313041",
+    "channel_id": "1566700752385081355",
+    "linked_user_id": "usr_prod_owner"
+  },
+  "cloudflare_access": {
+    "team_domain": "jolly-cake-2b85.cloudflareaccess.com",
+    "email": "dean@deanlofts.xyz",
+    "subject": "cc245d5e-fe7f-58c3-aa0b-3dc7efcca6cc",
+    "linked_at": "2026-11-02T12:21:41.202Z",
+    "last_seen_at": "2026-11-02T12:26:08.878Z"
+  },
+  "ownership": {
+    "owned_cards": 8,
+    "foil_balance": 40,
+    "ledger_rows": 11,
+    "baseline_owned_cards": 7,
+    "baseline_foil_balance": 120,
+    "baseline_ledger_rows": 10,
+    "intentional_test_transaction": "Real Discord draw at 2026-11-02T11:37:20.751Z, idempotency key discord:1566778217401024603:open, 80 Foil"
+  },
+  "roles": {
+    "active_super_admins": 1,
+    "super_admin_user_id": "usr_prod_owner"
+  },
+  "catalogue": {
+    "collections": 4,
+    "bots": 1,
+    "collection_slugs": ["bubbles", "fighter", "protocol-11", "shared"]
+  },
+  "access_checks": {
+    "admin": "302 to Cloudflare Access login",
+    "admin_api": "302 to Cloudflare Access login",
+    "platform_admin": "302 to Cloudflare Access login",
+    "platform_api": "302 to Cloudflare Access login",
+    "emdash_admin": "302 to Cloudflare Access login",
+    "emdash_setup": "302 to Cloudflare Access login",
+    "forged_jwt_header": "302 at the edge, no privileged response"
+  }
+}

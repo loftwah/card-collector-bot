@@ -10,6 +10,12 @@ export interface InventoryRow {
   card_name: string;
   card_slug: string;
   subtitle: string | null;
+  description: string;
+  bio: string | null;
+  quote: string | null;
+  collection_name: string | null;
+  collection_logo: string | null;
+  collection_description: string | null;
   variant_name: string;
   material_key: string;
   effect_key: string | null;
@@ -33,10 +39,14 @@ export interface InventoryRow {
 }
 
 const INVENTORY_SELECT = `SELECT ci.id, ci.card_id, ci.variant_id, cd.name AS card_name, cd.slug AS card_slug,
-  cd.subtitle, v.name AS variant_name, m.key AS material_key, fx.key AS effect_key,
+  cd.subtitle, cd.description, cd.bio, cd.quote,
+  (SELECT c.name FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id WHERE cc.card_id = cd.id ORDER BY CASE c.scope WHEN 'global' THEN 0 ELSE 1 END LIMIT 1) AS collection_name,
+  (SELECT c.logo_url FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id WHERE cc.card_id = cd.id ORDER BY CASE c.scope WHEN 'global' THEN 0 ELSE 1 END LIMIT 1) AS collection_logo,
+  (SELECT c.description FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id WHERE cc.card_id = cd.id ORDER BY CASE c.scope WHEN 'global' THEN 0 ELSE 1 END LIMIT 1) AS collection_description,
+  v.name AS variant_name, m.key AS material_key, fx.key AS effect_key,
   rar.key AS rarity_key, rar.name AS rarity_name, rar.tone AS rarity_tone,
   cls.name AS class_name, cat.name AS category_name, ci.serial, ci.status, ci.favourite, ci.locked,
-  ci.acquired_via, ci.acquired_at, cd.description, cd.status AS card_status, vr.public_url AS render_url,
+  ci.acquired_via, ci.acquired_at, cd.status AS card_status, vr.public_url AS render_url,
   v.edition_id, e.subject_asset_id, e.background_asset_id, sa.width AS subject_width, sa.height AS subject_height
   FROM fb_card_instances ci
   JOIN fb_card_definitions cd ON cd.id = ci.card_id
@@ -49,11 +59,11 @@ const INVENTORY_SELECT = `SELECT ci.id, ci.card_id, ci.variant_id, cd.name AS ca
   LEFT JOIN fb_rarities rar ON rar.id = cd.rarity_id
   LEFT JOIN fb_classes cls ON cls.id = cd.class_id
   LEFT JOIN fb_categories cat ON cat.id = cd.category_id
-  LEFT JOIN fb_variant_renders vr ON vr.variant_id = v.id AND vr.tenant_id = ci.tenant_id AND vr.status = 'published'`;
+  LEFT JOIN fb_variant_renders vr ON vr.variant_id = v.id AND vr.tenant_id = v.tenant_id AND vr.status = 'published'`;
 
 export async function getInventory(
   ctx: Ctx,
-  options: { status?: string; search?: string; favourite?: boolean; setSlug?: string; limit?: number } = {},
+  options: { status?: string; search?: string; favourite?: boolean; setSlug?: string; collection?: string; limit?: number } = {},
 ): Promise<InventoryRow[]> {
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in to see your collection.");
@@ -74,6 +84,12 @@ export async function getInventory(
       "EXISTS (SELECT 1 FROM fb_set_memberships sm JOIN fb_sets s ON s.id = sm.set_id WHERE sm.card_id = ci.card_id AND s.slug = ? AND sm.set_version = s.version)",
     );
     params.push(options.setSlug);
+  }
+  if (options.collection) {
+    where.push(
+      "EXISTS (SELECT 1 FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id WHERE cc.card_id = ci.card_id AND c.slug = ? AND c.archived_at IS NULL)",
+    );
+    params.push(options.collection);
   }
   return all<InventoryRow>(
     ctx.db,

@@ -1,5 +1,8 @@
 # Foilbury — implementation plan and acceptance checklist
 
+> Historical plan. The current identity, Access, collections, EmDash and design acceptance record is `docs/PASS_HANDOFF.md` and `docs/AUTH_ACCEPTANCE.md`. Where this plan says email/OAuth/passkeys are future work, the follow-up pass supersedes it.
+
+
 Status: local plan preserved; follow-on deployment and Discord evidence are in `docs/DISCORD_ACCEPTANCE.md`. The table below describes the original local build unless a later report supersedes it.
 
 ## Product decisions recorded for this build

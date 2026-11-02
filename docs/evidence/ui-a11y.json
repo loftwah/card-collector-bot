@@ -1,0 +1,156 @@
+{
+  "generated_at": "2026-11-02T12:14:12.866Z",
+  "base_url": "http://localhost:5173",
+  "results": [
+    {
+      "name": "light public home: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light public catalogue: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light sign-in: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark public home: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark public catalogue: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark sign-in: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light authenticated player home: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light collection: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light card detail: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light Bot administration: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light collections admin: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light team admin: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light platform administration: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light account security: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light mobile player home: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light mobile collections: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light 200% zoom-equivalent has no horizontal overflow",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "light reduced-motion preference is active",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "dark authenticated player home: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark collection: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark card detail: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark Bot administration: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark collections admin: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark team admin: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark platform administration: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark account security: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark mobile player home: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark mobile collections: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark 200% zoom-equivalent has no horizontal overflow",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "dark reduced-motion preference is active",
+      "status": "PASS",
+      "detail": ""
+    }
+  ]
+}

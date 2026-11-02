@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Sparkles } from "lucide-react";
+import { RotateCcw, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Variant {
@@ -16,30 +16,48 @@ export default function PublicVariantViewer({
   name,
   subtitle,
   description,
+  bio,
+  quote,
   rarity,
   setName,
   tags,
   variants,
+  collection,
+  cardBackUrl,
 }: {
   name: string;
   subtitle: string | null;
   description: string;
+  bio?: string | null;
+  quote?: string | null;
   rarity: string | null;
   setName: string | null;
   tags: string[];
   variants: Variant[];
+  collection?: { name: string; logo_url: string | null; description: string } | null;
+  cardBackUrl?: string | null;
 }) {
   const [selected, setSelected] = useState(0);
+  const [showBack, setShowBack] = useState(false);
   const variant = variants[selected] ?? variants[0];
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-start">
       <div>
         <div className="card-rail p-3">
           <div className="card-face">
-            {variant?.render_url ? <img src={variant.render_url} alt={`${name} card in ${variant.name} finish`} /> : <div className="card-face-fallback">{name.charAt(0)}</div>}
+            {showBack ? (
+              <div className="relative h-full w-full bg-[var(--ink)]">
+                <img src={cardBackUrl || "/brand/card-back.webp"} alt={`Back of ${name}`} className="h-full w-full object-cover opacity-80" />
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#141512] via-[#141512]/80 to-transparent p-5 text-[#f4f0e6]">
+                  {collection?.logo_url ? <img src={collection.logo_url} alt="" className="mb-2 h-10 w-10 object-contain" /> : null}
+                  <p className="font-mono text-[0.56rem] uppercase tracking-[0.14em] text-[#d9bf8b]">{collection?.name ?? "Foilbury cabinet"}</p>
+                  <p className="mt-1 font-display text-2xl leading-tight">{name}</p>
+                </div>
+              </div>
+            ) : variant?.render_url ? <img src={variant.render_url} alt={`${name} card in ${variant.name} finish`} /> : <div className="card-face-fallback">{name.charAt(0)}</div>}
           </div>
         </div>
-        <p className="mt-3 text-center font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[var(--muted)]">Published render · {variant?.name ?? "Awaiting render"}</p>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><p className="font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[var(--muted)]">{showBack ? "Card back" : `Published render · ${variant?.name ?? "Awaiting render"}`}</p><button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowBack((value) => !value)}><RotateCcw size={13} /> {showBack ? "Show front" : "Show back"}</button></div>
       </div>
       <div>
         <div className="flex flex-wrap items-center gap-2">
@@ -49,7 +67,8 @@ export default function PublicVariantViewer({
         </div>
         <h1 className="display mt-5 text-[clamp(2.8rem,7vw,5.5rem)]">{name}</h1>
         {subtitle ? <p className="mt-2 text-lg text-[var(--brass)]">{subtitle}</p> : null}
-        <p className="prose mt-6 text-[var(--muted)]">{description}</p>
+        <p className="prose mt-6 text-[var(--muted)]">{bio || description}</p>
+        {quote ? <blockquote className="mt-5 border-l-2 border-[var(--brass)] pl-4 font-display text-2xl leading-snug text-[var(--ink)]">“{quote}”</blockquote> : null}
 
         <div className="mt-8">
           <p className="eyebrow mb-3">Published finishes</p>
@@ -63,7 +82,7 @@ export default function PublicVariantViewer({
                 className={cn(
                   "border px-3 py-2 text-left transition-colors",
                   index === selected
-                    ? "border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)]"
+                    ? "surface-selected border-ink"
                     : "border-[var(--line)] text-[var(--muted)] hover:border-[var(--brass)] hover:text-[var(--ink)]",
                 )}
               >

@@ -29,7 +29,7 @@ try {
   const before = { owner: await snapshot("owner"), player: await snapshot("player") };
   const stop = spawnSync(path.join(process.cwd(), "node_modules/.bin/astro"), ["dev", "stop"], { cwd: process.cwd(), encoding: "utf8" });
   if (stop.status !== 0) throw new Error("Could not stop the local dev server for the persistence check.");
-  const started = await startDevServer(4321);
+  const started = await startDevServer(5173);
   await ensureServer();
   const after = { owner: await snapshot("owner"), player: await snapshot("player") };
   const report = {

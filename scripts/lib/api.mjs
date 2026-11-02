@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { readSecretFile, startDevServer } from "./local.mjs";
 
-export const BASE_URL = process.env.FOILBURY_URL ?? "http://127.0.0.1:4321";
+export const BASE_URL = process.env.FOILBURY_URL ?? "http://localhost:5173";
 
 export function agentToken(kind = process.env.FOILBURY_AGENT ?? "owner") {
   if (process.env.FOILBURY_AGENT_TOKEN) return process.env.FOILBURY_AGENT_TOKEN;
@@ -17,7 +17,7 @@ export function agentToken(kind = process.env.FOILBURY_AGENT ?? "owner") {
 }
 
 export async function ensureServer() {
-  await startDevServer(4321);
+  await startDevServer(5173);
 }
 
 /** A dev server can briefly reload after a build or file change. Retry only transport failures. */

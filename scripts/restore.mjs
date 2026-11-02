@@ -71,7 +71,7 @@ try {
     preview_urls: false,
     d1_databases: [{ binding: "DB", database_name: "foilbury-restore" }],
     r2_buckets: [{ binding: "MEDIA", bucket_name: "foilbury-restore-media" }],
-    vars: { FOILBURY_ENV: "test", FOILBURY_LOCAL_MODE: "false", FOILBURY_PUBLIC_ORIGIN: "http://127.0.0.1:4321", FOILBURY_TENANT_SLUG: "cabinet" },
+    vars: { FOILBURY_ENV: "test", FOILBURY_LOCAL_MODE: "false", FOILBURY_PUBLIC_ORIGIN: "http://localhost:5173", FOILBURY_TENANT_SLUG: "cabinet" },
   };
   const configPath = path.join(target, "wrangler.restore.jsonc");
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });

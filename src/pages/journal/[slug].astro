@@ -22,7 +22,7 @@ const description = error ? "The EmDash journal could not be read. The cabinet r
     <nav class="mb-8 font-mono text-[0.62rem] uppercase tracking-[0.12em] text-[var(--muted)]" aria-label="Breadcrumb"><a href="/journal">Journal</a> <span aria-hidden="true">/</span> <span>{title}</span></nav>
     {error ? (
       <div class="notice">
-        <p class="eyebrow text-[var(--brass)]">Editorial desk unavailable</p>
+        <p class="eyebrow eyebrow-brass">Editorial desk unavailable</p>
         <p class="mt-2 text-sm">The published entry could not be read. Nothing has been substituted in its place. <a class="underline" href="/journal">Try the journal index</a>.</p>
       </div>
     ) : !entry ? (

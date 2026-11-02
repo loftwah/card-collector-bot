@@ -19,12 +19,12 @@ try {
   <div class="border-b border-[var(--line)] pb-5">
     <p class="eyebrow">Editorial desk</p>
     <h2 class="display-sm mt-1 text-4xl">Publishing, kept separate.</h2>
-    <p class="mt-2 max-w-2xl text-sm text-[var(--muted)]">EmDash owns editorial drafts, media, taxonomy and journal entries. Foilbury owns collectible publication and never lets the CMS issue cards or mutate a wallet directly.</p>
+    <p class="mt-2 max-w-2xl text-sm text-[var(--muted)]">EmDash owns journal drafts, editorial media and publishing workflow. Foilbury owns card identity, artwork editions, pools, awards and inventory. The CMS never issues cards or mutates a wallet directly.</p>
   </div>
   <div class="mt-6 grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
     <section class="surface-flat p-5">
       <div class="flex flex-wrap items-center justify-between gap-3">
-        <div><p class="eyebrow">Recent journal entries</p><p class="mt-1 text-sm text-[var(--muted)]">Read from EmDash on the same local D1 database.</p></div>
+        <div><p class="eyebrow">Recent journal entries</p><p class="mt-1 text-sm text-[var(--muted)]">Read from EmDash on the same D1 database.</p></div>
         <a class="btn btn-primary btn-sm" href="/_emdash/admin" target="_blank" rel="noreferrer">Open EmDash admin ↗</a>
       </div>
       {offline ? <div class="empty mt-4"><p>The editorial database is not available yet. Core gameplay is unaffected. Finish EmDash setup or use the local dev bypass.</p></div> : null}
@@ -42,7 +42,7 @@ try {
     <aside class="grid gap-4">
       <div class="surface-flat p-5">
         <p class="eyebrow">Source of truth</p>
-        <p class="mt-2 text-sm text-[var(--muted)]">EmDash is the editable source for journal titles, bodies and media. The collectible catalogue stays in Foilbury's typed commands. There is no two-way catalogue sync loop.</p>
+        <p class="mt-2 text-sm text-[var(--muted)]">EmDash is the editable source for journal titles, bodies and media. Foilbury is the source of truth for card identity, artwork editions, categories, tags, pools, awards and inventory. There is no two-way catalogue sync loop or second editable card catalogue.</p>
       </div>
       <div class="surface-flat p-5">
         <p class="eyebrow">Release sequence</p>
@@ -54,7 +54,7 @@ try {
         </ol>
       </div>
       <div class="notice">
-        <p class="text-xs leading-relaxed">EmDash protection: owner access is via a passkey or the local development bypass. A generic CMS Editor role is not assumed to be tenant-scoped; this build does not create shared unrestricted CMS accounts.</p>
+        <p class="text-xs leading-relaxed">EmDash operator access is protected by Cloudflare Access for Dean at the edge and by EmDash's supported Access adapter in production. Auto-provisioning is disabled: only the explicitly mapped operator account can enter. Native passkey login remains available only in local development.</p>
       </div>
       <a class="btn btn-secondary" href="/journal">View public journal</a>
     </aside>

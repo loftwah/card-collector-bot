@@ -1,0 +1,233 @@
+import type { D1Database } from "@cloudflare/workers-types";
+import { ApiError, checkRateLimit, type Ctx, type CurrentUser } from "../context";
+import { first, nowIso } from "../db";
+import { newId, sha256Hex, token } from "../ids";
+import { magicLinkEmail, sendEmail } from "../email";
+import { addMembership, createEmailUser, createSession, findUserByEmail, markEmailVerified } from "./identity";
+import { ensureWallet } from "./identity";
+
+const TTL_MINUTES = 15;
+
+export interface MagicLinkRequestResult {
+  ok: true;
+  /** Local/test only. Never returned by the production API. */
+  devToken?: string;
+}
+
+function safeRedirect(value: string | null | undefined): string {
+  return value && value.startsWith("/") && !value.startsWith("//") ? value : "/play";
+}
+
+export async function requestMagicLink(
+  ctx: Ctx,
+  input: { email: string; purpose: "signin" | "verify_email" | "link_email"; redirectPath?: string | null; userId?: string | null },
+): Promise<MagicLinkRequestResult> {
+  const email = input.email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ApiError(422, "email_invalid", "Enter a valid email address.");
+  await checkRateLimit(ctx.db, `magic:email:${await sha256Hex(email)}`, 5, 900);
+  await checkRateLimit(ctx.db, `magic:ip:${ctx.requestId.slice(0, 32)}`, 20, 900);
+
+  const account = await findUserByEmail(ctx.db, email);
+  if (account?.disabled_at) return { ok: true };
+
+  const raw = token("fbm");
+  const id = newId("ml");
+  const now = nowIso();
+  const expiresAt = new Date(Date.now() + TTL_MINUTES * 60_000).toISOString();
+  await ctx.db
+    .prepare(
+      `INSERT INTO fb_magic_links
+        (id, user_id, email, purpose, token_hash, redirect_path, created_at, expires_at, request_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      id,
+      input.purpose === "signin" ? account?.id ?? null : input.userId ?? account?.id ?? null,
+      email,
+      input.purpose,
+      await sha256Hex(raw),
+      safeRedirect(input.redirectPath),
+      now,
+      expiresAt,
+      ctx.requestId,
+    )
+    .run();
+
+  const link = `${ctx.config.publicOrigin}/auth/email/verify?token=${encodeURIComponent(raw)}`;
+  const mail = magicLinkEmail({
+    displayName: account?.display_name ?? email.split("@")[0] ?? "Collector",
+    link,
+    expiresMinutes: TTL_MINUTES,
+    purpose: input.purpose,
+  });
+  const delivered = await sendEmail(ctx.config, {
+    to: email,
+    subject: mail.subject,
+    html: mail.html,
+    text: mail.text,
+    idempotencyKey: `magic-${id}`,
+  });
+  if (!delivered.ok && ctx.config.providers.resend && ctx.config.environment === "production") {
+    await ctx.db
+      .prepare("UPDATE fb_magic_links SET used_at = ? WHERE id = ?")
+      .bind(nowIso(), id)
+      .run()
+      .catch(() => undefined);
+    throw new ApiError(503, "email_delivery_failed", "The sign-in email could not be sent. Try again shortly.");
+  }
+  await ctx.db
+    .prepare(
+      `INSERT INTO fb_audit_events
+        (id, tenant_id, actor_type, actor_id, represented_user_id, action, object_type, object_id, metadata_json, request_id, created_at)
+       VALUES (?, ?, 'system', 'magic-link', ?, 'auth.magic_link.requested', 'email', ?, ?, ?, ?)`,
+    )
+    .bind(
+      newId("aud"),
+      ctx.tenant.id,
+      account?.id ?? null,
+      await sha256Hex(email),
+      JSON.stringify({ purpose: input.purpose, delivered: delivered.ok, provider: delivered.ok ? "resend" : "local_outbox" }),
+      ctx.requestId,
+      now,
+    )
+    .run()
+    .catch(() => undefined);
+
+  return {
+    ok: true,
+    ...(ctx.config.environment === "local" || ctx.config.environment === "test" ? { devToken: raw } : {}),
+  };
+}
+
+export async function findMagicLink(ctx: Ctx, rawToken: string) {
+  const tokenHash = await sha256Hex(rawToken);
+  return first<{
+    id: string;
+    user_id: string | null;
+    email: string;
+    purpose: "signin" | "verify_email" | "link_email";
+    redirect_path: string | null;
+    expires_at: string;
+    used_at: string | null;
+  }>(
+    ctx.db,
+    `SELECT id, user_id, email, purpose, redirect_path, expires_at, used_at
+       FROM fb_magic_links WHERE token_hash = ?`,
+    tokenHash,
+  );
+}
+
+export async function redeemMagicLink(
+  ctx: Ctx,
+  rawToken: string,
+  options?: { userAgent?: string | null; ipHash?: string | null },
+): Promise<{ token: string; csrf: string; expiresAt: string; redirectPath: string; user: { id: string; email: string; displayName: string } }> {
+  const tokenHash = await sha256Hex(rawToken);
+  const now = nowIso();
+  const row = await first<{
+    id: string;
+    user_id: string | null;
+    email: string;
+    purpose: "signin" | "verify_email" | "link_email";
+    redirect_path: string | null;
+    expires_at: string;
+    used_at: string | null;
+  }>(
+    ctx.db,
+    `SELECT id, user_id, email, purpose, redirect_path, expires_at, used_at
+       FROM fb_magic_links WHERE token_hash = ?`,
+    tokenHash,
+  );
+  if (!row || row.used_at || new Date(row.expires_at) <= new Date()) {
+    throw new ApiError(401, "magic_link_invalid", "This sign-in link is invalid or has expired. Request a new one.");
+  }
+  const consumed = await ctx.db
+    .prepare("UPDATE fb_magic_links SET used_at = ? WHERE id = ? AND used_at IS NULL AND expires_at > ?")
+    .bind(now, row.id, now)
+    .run();
+  if ((consumed.meta?.changes ?? 0) !== 1) {
+    throw new ApiError(401, "magic_link_invalid", "This sign-in link has already been used. Request a new one.");
+  }
+
+  const account = await findUserByEmail(ctx.db, row.email);
+  if (account?.disabled_at) throw new ApiError(403, "account_disabled", "This account is disabled.");
+  const user = account
+    ? { id: account.id, email: account.email, displayName: account.display_name }
+    : await createEmailUser(ctx.db, { email: row.email });
+  await markEmailVerified(ctx.db, user.id);
+
+  const membership = await first<{ role: string }>(
+    ctx.db,
+    "SELECT role FROM fb_memberships WHERE user_id = ? AND tenant_id = ? AND status = 'active'",
+    user.id,
+    ctx.tenant.id,
+  );
+  if (!membership) {
+    await addMembership(ctx.db, ctx.tenant.id, user.id, "player");
+    await ensureWallet(ctx.db, ctx.tenant.id, user.id);
+  }
+
+  const sessionUser: CurrentUser = {
+    id: user.id,
+    email: user.email,
+    displayName: user.displayName,
+    role: "player",
+    platformAdmin: false,
+    emailVerified: true,
+    capabilities: [],
+  };
+  const role = await first<{ role: "owner" | "editor" | "economy_admin" | "player"; capabilities_json: string; platform_admin: number }>(
+    ctx.db,
+    `SELECT m.role, m.capabilities_json, u.platform_admin
+       FROM fb_memberships m JOIN fb_users u ON u.id = m.user_id
+      WHERE m.user_id = ? AND m.tenant_id = ? AND m.status = 'active'`,
+    user.id,
+    ctx.tenant.id,
+  );
+  if (role) {
+    sessionUser.role = role.role;
+    sessionUser.platformAdmin = Boolean(role.platform_admin);
+    try {
+      const capabilities = JSON.parse(role.capabilities_json) as unknown;
+      if (Array.isArray(capabilities)) sessionUser.capabilities = capabilities.filter((item): item is string => typeof item === "string");
+    } catch {
+      sessionUser.capabilities = [];
+    }
+  }
+  const session = await createSession(ctx.db, ctx.tenant, sessionUser, {
+    authMethod: "magic_link",
+    assurance: "email",
+    userAgent: options?.userAgent,
+    ipHash: options?.ipHash,
+  });
+  await ctx.db
+    .prepare(
+      `INSERT INTO fb_audit_events
+        (id, tenant_id, actor_type, actor_id, represented_user_id, action, object_type, object_id, metadata_json, request_id, created_at)
+       VALUES (?, ?, 'user', ?, ?, 'auth.magic_link.redeemed', 'user', ?, ?, ?, ?)`,
+    )
+    .bind(
+      newId("aud"),
+      ctx.tenant.id,
+      user.id,
+      user.id,
+      user.id,
+      JSON.stringify({ purpose: row.purpose }),
+      ctx.requestId,
+      now,
+    )
+    .run()
+    .catch(() => undefined);
+  return {
+    token: session.token,
+    csrf: session.csrf,
+    expiresAt: session.expiresAt,
+    redirectPath: safeRedirect(row.redirect_path),
+    user,
+  };
+}
+
+export async function pruneMagicLinks(db: D1Database): Promise<void> {
+  await db.prepare("DELETE FROM fb_magic_links WHERE expires_at < ? OR used_at < ?").bind(nowIso(), new Date(Date.now() - 86400_000).toISOString()).run();
+}
+

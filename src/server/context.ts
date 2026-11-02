@@ -7,6 +7,15 @@ export { assertTrustedLocal } from "./config";
 import { first, nowIso } from "./db";
 import { hmacHex, sha256Hex } from "./ids";
 import { newId } from "./ids";
+import {
+  audienceForPath,
+  getAccessAssertion,
+  isAccessProtectedPath,
+  findAccessTenantForIdentity,
+  resolveAccessIdentity,
+  verifyAccessToken,
+  type AccessIdentity,
+} from "./access";
 
 export interface Tenant {
   id: string;
@@ -20,6 +29,8 @@ export interface CurrentUser {
   displayName: string;
   role: Role;
   platformAdmin: boolean;
+  emailVerified?: boolean;
+  capabilities?: string[];
 }
 
 export interface Actor {
@@ -40,6 +51,10 @@ export interface Ctx {
   scopes: string[] | null;
   sessionId: string | null;
   csrfToken: string;
+  sessionAssurance: string | null;
+  sessionAuthTime: string | null;
+  accessIdentity: AccessIdentity | null;
+  accessStatus: "linked" | "unlinked" | "email_mismatch" | "disabled" | "not_member" | "not_required" | null;
 }
 
 export class ApiError extends Error {
@@ -71,28 +86,37 @@ export async function buildContext(request: Request, options?: { requireTenant?:
   const raw = runtimeEnv();
   const config = readConfig(raw);
   const db = raw.DB;
-  const tenant = await loadTenant(db, config.tenantSlug);
   const requestId = request.headers.get("cf-ray") ?? newId("req");
   const cookie = parseCookies(request.headers.get("cookie"));
   const sessionToken = cookie.fb_session;
+  const path = new URL(request.url).pathname;
+  let tenant = await loadTenant(db, config.tenantSlug);
   let user: CurrentUser | null = null;
   let actor: Actor = { type: "system", id: "anonymous", representedUserId: null, label: "Anonymous" };
   let scopes: string[] | null = null;
   let sessionId: string | null = null;
   let csrfToken = cookie.fb_csrf ?? "";
+  let sessionAssurance: string | null = null;
+  let sessionAuthTime: string | null = null;
+  let accessIdentity: AccessIdentity | null = null;
+  let accessStatus: Ctx["accessStatus"] = null;
 
   const bearer = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (bearer?.startsWith("fba_")) {
-    const resolved = await resolveAgent(db, config, bearer, tenant);
+    const resolved = await resolveAgent(db, config, bearer);
+    tenant = resolved.tenant;
     user = resolved.user;
     actor = resolved.actor;
     scopes = resolved.scopes;
   } else if (sessionToken) {
-    const resolved = await resolveSession(db, sessionToken, tenant);
+    const resolved = await resolveSession(db, sessionToken);
     if (resolved) {
+      tenant = resolved.tenant;
       user = resolved.user;
       sessionId = resolved.sessionId;
       csrfToken = resolved.csrfToken;
+      sessionAssurance = resolved.assurance;
+      sessionAuthTime = resolved.authTime;
       actor = {
         type: "user",
         id: resolved.user.id,
@@ -102,18 +126,87 @@ export async function buildContext(request: Request, options?: { requireTenant?:
     }
   }
 
-  if (!user && options?.requireTenant !== false) {
-    // Anonymous context is valid for the public site and login handshake.
+  // Administrative routes are re-verified against Cloudflare Access on every
+  // request. An old application cookie alone never retains authority.
+  if (isAccessProtectedPath(path)) {
+    if (config.environment === "production" && !config.access.enabled) {
+      throw new ApiError(503, "access_not_configured", "Administrative access is not configured.");
+    }
+    if (config.access.enabled) {
+      const assertion = getAccessAssertion(request);
+      const audience = audienceForPath(config, path);
+      if (!assertion) throw new ApiError(401, "access_required", "Sign in through Cloudflare Access to continue.");
+      accessIdentity = await verifyAccessToken(assertion, config, audience ?? "");
+      let resolved = await resolveAccessIdentity(db, config, tenant, accessIdentity, requestId);
+      if (resolved.status === "not_member") {
+        const alternate = await findAccessTenantForIdentity(db, config, accessIdentity, tenant.id);
+        if (alternate) {
+          tenant = alternate;
+          resolved = await resolveAccessIdentity(db, config, tenant, accessIdentity, requestId);
+        }
+      }
+      accessStatus = resolved.status;
+      if (resolved.status === "linked" && resolved.user) {
+        const accessUser = resolved.user;
+        if (user && user.id !== accessUser.id) {
+          // A browser session for a different person must never be silently
+          // attached to the verified Access identity.
+          user = null;
+          sessionId = null;
+          sessionAssurance = null;
+          sessionAuthTime = null;
+          accessStatus = "email_mismatch";
+        } else {
+          user = accessUser;
+          actor = {
+            type: "user",
+            id: accessUser.id,
+            representedUserId: accessUser.id,
+            label: accessUser.displayName,
+          };
+          // Reuse a matching app session only if it is still active.
+          accessStatus = "linked";
+        }
+      } else {
+        user = null;
+        sessionId = null;
+        sessionAssurance = null;
+        sessionAuthTime = null;
+      }
+    } else if (config.environment !== "local") {
+      throw new ApiError(403, "access_required", "Administrative access requires Cloudflare Access.");
+    }
   }
 
-  return { db, media: raw.MEDIA, config, requestId, tenant, user, actor, scopes, sessionId, csrfToken };
+  return {
+    db,
+    media: raw.MEDIA,
+    config,
+    requestId,
+    tenant,
+    user,
+    actor,
+    scopes,
+    sessionId,
+    csrfToken,
+    sessionAssurance,
+    sessionAuthTime,
+    accessIdentity,
+    accessStatus,
+  };
 }
 
 export async function resolveSession(
   db: D1Database,
   token: string,
-  tenant: Tenant,
-): Promise<{ user: CurrentUser; sessionId: string; csrfToken: string } | null> {
+): Promise<{
+  user: CurrentUser;
+  sessionId: string;
+  csrfToken: string;
+  assurance: string;
+  authTime: string | null;
+  tenant: Tenant;
+} | null> {
   const tokenHash = await sha256Hex(token);
   const row = await first<{
     id: string;
@@ -121,21 +214,29 @@ export async function resolveSession(
     csrf_token: string;
     expires_at: string;
     revoked_at: string | null;
+    assurance: string;
+    auth_time: string | null;
     email: string;
     display_name: string;
     platform_admin: number;
+    email_verified_at: string | null;
+    capabilities_json: string;
     role: Role;
     disabled_at: string | null;
+    tenant_id: string;
+    tenant_slug: string;
+    tenant_name: string;
   }>(
     db,
-    `SELECT s.id, s.user_id, s.csrf_token, s.expires_at, s.revoked_at,
-            u.email, u.display_name, u.platform_admin, u.disabled_at, m.role
+    `SELECT s.id, s.user_id, s.csrf_token, s.expires_at, s.revoked_at, s.assurance, s.auth_time,
+            u.email, u.display_name, u.platform_admin, u.email_verified_at, u.disabled_at,
+            m.role, m.capabilities_json, t.id AS tenant_id, t.slug AS tenant_slug, t.name AS tenant_name
        FROM fb_sessions s
        JOIN fb_users u ON u.id = s.user_id
-       JOIN fb_memberships m ON m.user_id = u.id AND m.tenant_id = s.tenant_id
-      WHERE s.token_hash = ? AND s.tenant_id = ?`,
+       JOIN fb_memberships m ON m.user_id = u.id AND m.tenant_id = s.tenant_id AND m.status = 'active'
+       JOIN fb_tenants t ON t.id = s.tenant_id
+      WHERE s.token_hash = ?`,
     tokenHash,
-    tenant.id,
   );
   if (!row || row.revoked_at || row.disabled_at || new Date(row.expires_at) <= new Date()) return null;
   await db
@@ -143,15 +244,27 @@ export async function resolveSession(
     .bind(nowIso(), row.id)
     .run()
     .catch(() => undefined);
+  let capabilities: string[] = [];
+  try {
+    const parsed = JSON.parse(row.capabilities_json ?? "[]") as unknown;
+    if (Array.isArray(parsed)) capabilities = parsed.filter((item): item is string => typeof item === "string");
+  } catch {
+    capabilities = [];
+  }
   return {
     sessionId: row.id,
     csrfToken: row.csrf_token,
+    assurance: row.assurance,
+    authTime: row.auth_time,
+    tenant: { id: row.tenant_id, slug: row.tenant_slug, name: row.tenant_name },
     user: {
       id: row.user_id,
       email: row.email,
       displayName: row.display_name,
       role: row.role,
       platformAdmin: Boolean(row.platform_admin),
+      emailVerified: Boolean(row.email_verified_at),
+      capabilities,
     },
   };
 }
@@ -160,8 +273,8 @@ export async function resolveAgent(
   db: D1Database,
   config: RuntimeConfig,
   token: string,
-  tenant: Tenant,
-): Promise<{ user: CurrentUser; actor: Actor; scopes: string[] }> {
+  tenantFilter?: Tenant,
+): Promise<{ user: CurrentUser; actor: Actor; scopes: string[]; tenant: Tenant }> {
   const tokenHash = await hmacHex(config.agentPepper || config.sessionSecret || "local", token);
   const row = await first<{
     id: string;
@@ -176,20 +289,29 @@ export async function resolveAgent(
     email: string;
     display_name: string;
     platform_admin: number;
+    email_verified_at: string | null;
+    capabilities_json: string;
     role: Role;
     disabled_at: string | null;
+    tenant_id: string;
+    tenant_slug: string;
+    tenant_name: string;
   }>(
     db,
     `SELECT t.id, t.grant_id, g.agent_name, g.agent_id, g.represented_user_id,
             g.scopes_json, g.status, g.expires_at, g.revoked_at,
-            u.email, u.display_name, u.platform_admin, u.disabled_at, m.role
+            u.email, u.display_name, u.platform_admin, u.email_verified_at, u.disabled_at,
+            m.role, m.capabilities_json, t2.id AS tenant_id, t2.slug AS tenant_slug, t2.name AS tenant_name
        FROM fb_agent_tokens t
        JOIN fb_agent_grants g ON g.id = t.grant_id
        JOIN fb_users u ON u.id = g.represented_user_id
-       JOIN fb_memberships m ON m.user_id = u.id AND m.tenant_id = g.tenant_id
-      WHERE t.token_hash = ? AND t.revoked_at IS NULL AND g.tenant_id = ?`,
+       JOIN fb_memberships m ON m.user_id = u.id AND m.tenant_id = g.tenant_id AND m.status = 'active'
+       JOIN fb_tenants t2 ON t2.id = g.tenant_id
+      WHERE t.token_hash = ? AND t.revoked_at IS NULL
+        AND (? IS NULL OR g.tenant_id = ?)`,
     tokenHash,
-    tenant.id,
+    tenantFilter?.id ?? null,
+    tenantFilter?.id ?? null,
   );
   if (
     !row ||
@@ -200,6 +322,13 @@ export async function resolveAgent(
   ) {
     throw new ApiError(401, "agent_unauthorised", "This agent credential is expired or revoked.");
   }
+  let capabilities: string[] = [];
+  try {
+    const parsed = JSON.parse(row.capabilities_json ?? "[]") as unknown;
+    if (Array.isArray(parsed)) capabilities = parsed.filter((item): item is string => typeof item === "string");
+  } catch {
+    capabilities = [];
+  }
   const scopes = JSON.parse(row.scopes_json) as string[];
   await db
     .prepare("UPDATE fb_agent_tokens SET last_used_at = ? WHERE id = ?")
@@ -208,12 +337,15 @@ export async function resolveAgent(
     .catch(() => undefined);
   return {
     scopes,
+    tenant: { id: row.tenant_id, slug: row.tenant_slug, name: row.tenant_name },
     user: {
       id: row.represented_user_id,
       email: row.email,
       displayName: row.display_name,
       role: row.role,
       platformAdmin: Boolean(row.platform_admin),
+      emailVerified: Boolean(row.email_verified_at),
+      capabilities,
     },
     actor: {
       type: "agent",
@@ -288,6 +420,65 @@ export function parseCookies(header: string | null): Record<string, string> {
     if (key) out[key] = decodeURIComponent(value);
   }
   return out;
+}
+
+export function hasCapability(user: CurrentUser | null, capability: string): boolean {
+  if (!user) return false;
+  if (user.role === "owner") return true;
+  return Array.isArray(user.capabilities) && user.capabilities.includes(capability);
+}
+
+export function requireSuperAdmin(ctx: Ctx): CurrentUser {
+  const user = requireUser(ctx);
+  if (ctx.actor.type !== "user" || !user.platformAdmin) {
+    throw new ApiError(403, "super_admin_required", "Platform administration is restricted to the provisioned Super Admin.");
+  }
+  return user;
+}
+
+export function roleLabel(user: (Pick<CurrentUser, "role"> & { platformAdmin?: boolean }) | null): string {
+  if (!user) return "Guest";
+  if (user.platformAdmin) return "Super Admin";
+  if (user.role === "owner") return "Bot Owner";
+  if (user.role === "editor" || user.role === "economy_admin") return "Bot Admin";
+  return "User";
+}
+
+export function requireRecentStrongAuth(ctx: Ctx, maxAgeMinutes = 20): void {
+  if (ctx.actor.type !== "user") {
+    throw new ApiError(403, "human_strong_auth_required", "This action requires a signed-in human with recent strong authentication.");
+  }
+  const method = ctx.sessionAssurance ?? "";
+  if (!["access", "passkey", "mfa"].includes(method)) {
+    throw new ApiError(403, "strong_auth_required", "Confirm with a passkey, authenticator code or Cloudflare Access to continue.");
+  }
+  if (method !== "access") {
+    const age = ctx.sessionAuthTime ? Date.now() - new Date(ctx.sessionAuthTime).getTime() : Number.POSITIVE_INFINITY;
+    if (!Number.isFinite(age) || age > maxAgeMinutes * 60_000) {
+      throw new ApiError(403, "strong_auth_stale", "Your strong authentication is stale. Confirm again to continue.");
+    }
+  }
+}
+
+export async function requireProtectedAccount(ctx: Ctx): Promise<CurrentUser> {
+  const user = requireUser(ctx);
+  if (!user.emailVerified) {
+    throw new ApiError(403, "email_verification_required", "Verify your email address before creating or administering a Bot.");
+  }
+  const row = await first<{ passkeys: number; totp: number; access: number }>(
+    ctx.db,
+    `SELECT
+       (SELECT COUNT(*) FROM fb_webauthn_credentials WHERE user_id = ?) AS passkeys,
+       (SELECT COUNT(*) FROM fb_totp_secrets WHERE user_id = ? AND confirmed_at IS NOT NULL) AS totp,
+       (SELECT COUNT(*) FROM fb_access_identities WHERE user_id = ? AND revoked_at IS NULL) AS access`,
+    user.id,
+    user.id,
+    user.id,
+  );
+  if (!row || (row.passkeys === 0 && row.totp === 0 && row.access === 0)) {
+    throw new ApiError(403, "protected_account_required", "Set up a passkey or authenticator before creating or administering a Bot.");
+  }
+  return user;
 }
 
 export async function checkRateLimit(

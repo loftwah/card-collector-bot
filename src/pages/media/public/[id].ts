@@ -14,8 +14,7 @@ export const GET: APIRoute = async ({ params }) => {
   const row = await first<{ r2_key: string; mime: string }>(
     raw.DB,
     `SELECT a.r2_key, a.mime FROM fb_variant_renders r JOIN fb_assets a ON a.id = r.asset_id
-      WHERE r.tenant_id = ? AND a.id = ? AND r.status = 'published' AND a.visibility = 'public_export'`,
-    tenant.id,
+      WHERE a.id = ? AND r.status = 'published' AND a.visibility = 'public_export'`,
     id,
   );
   if (!row) return new Response("Not found", { status: 404, headers: { "cache-control": "no-store" } });

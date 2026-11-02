@@ -1,0 +1,56 @@
+{
+  "generated_at": "2026-11-02T12:18:32.356Z",
+  "base_url": "http://localhost:5173",
+  "results": [
+    {
+      "name": "strong passkey session established for editorial work",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "draft card created with category, tags, bio and quote",
+      "status": "PASS",
+      "detail": "crd_mvz86boz687c1d9c2vbd6b73"
+    },
+    {
+      "name": "artwork edition and published variant attached",
+      "status": "PASS",
+      "detail": "var_mvz86bqqn7w7trr4c1kx8r89"
+    },
+    {
+      "name": "durable render queue produced the public card image",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "card published to the playable catalogue",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "authorised Bot pool includes the new card",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "draw through the shared command awarded the new card",
+      "status": "PASS",
+      "detail": "ins_mvz86civ2qs2b7k9gk646zen"
+    },
+    {
+      "name": "retired card cannot drop again, and the attempt is not charged",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "previously awarded copy remains owned after retirement",
+      "status": "PASS",
+      "detail": "FB-1-RO-9D8A5E"
+    },
+    {
+      "name": "owned card detail renders the editorial proof without console errors",
+      "status": "PASS",
+      "detail": ""
+    }
+  ]
+}

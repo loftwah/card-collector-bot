@@ -5,10 +5,12 @@ import { pageContext } from "../../server/page";
 import { getInventory } from "../../server/modules/collection";
 import { listSets } from "../../server/modules/catalogue";
 import { getWalletSummary } from "../../server/modules/wallet";
+import { listCollections } from "../../server/modules/collections";
 
 const ctx = await pageContext(Astro.request);
 const user = ctx.user!;
-const [items, sets, wallet] = await Promise.all([getInventory(ctx, { limit: 300 }), listSets(ctx, user.id), getWalletSummary(ctx.db, ctx.tenant.id, user.id, 1)]);
+const [items, sets, wallet, collections] = await Promise.all([getInventory(ctx, { limit: 300 }), listSets(ctx, user.id), getWalletSummary(ctx.db, ctx.tenant.id, user.id, 1), listCollections(ctx)]);
+const initialCollection = Astro.url.searchParams.get("collection") ?? "";
 const publishedSets = sets.filter((set) => set.status === "published");
 ---
 <PlayerLayout title="Collection · Foilbury">
@@ -24,6 +26,6 @@ const publishedSets = sets.filter((set) => set.status === "published");
     </div>
   </div>
   <div class="mt-7">
-    <CollectionBrowser client:load initialItems={items} sets={publishedSets.map((set) => ({ slug: set.slug, name: set.name }))} />
+    <CollectionBrowser client:load initialItems={items} sets={publishedSets.map((set) => ({ slug: set.slug, name: set.name }))} collections={collections.filter((collection) => collection.enabled).map((collection) => ({ slug: collection.slug, name: collection.name, logo_url: collection.logo_url }))} initialCollection={initialCollection} />
   </div>
 </PlayerLayout>

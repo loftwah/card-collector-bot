@@ -83,7 +83,11 @@ export const GET: APIRoute = async ({ request, cookies }) => {
       const player = await ensureDiscordPlayer(raw, ctx.tenant, discordUser);
       user = player.user;
     }
-    const session = await createSession(ctx.db, ctx.tenant, user);
+    const session = await createSession(ctx.db, ctx.tenant, user, {
+      authMethod: "discord",
+      assurance: "discord",
+      userAgent: request.headers.get("user-agent"),
+    });
     const headers = new Headers({ location: next, "cache-control": "no-store" });
     for (const cookie of [...cookiesForClear(secure), ...sessionCookies(session.token, session.csrf, session.expiresAt, secure)]) {
       headers.append("set-cookie", cookie);

@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { chromium } from "@playwright/test";
 import { ensureServer, apiJson, agentToken } from "./lib/api.mjs";
 
-const baseURL = process.env.FOILBURY_URL ?? "http://127.0.0.1:4321";
+const baseURL = process.env.FOILBURY_URL ?? "http://localhost:5173";
 const evidence = path.join(process.cwd(), "docs/evidence");
 fs.mkdirSync(evidence, { recursive: true });
 await ensureServer();

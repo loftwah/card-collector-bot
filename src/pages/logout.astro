@@ -1,0 +1,21 @@
+---
+import { buildContext } from "../server/context";
+import { revokeSession } from "../server/modules/identity";
+
+export const prerender = false;
+
+const nextParam = Astro.url.searchParams.get("next") ?? "/";
+const next = nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "/";
+try {
+  const ctx = await buildContext(Astro.request);
+  if (ctx.sessionId) await revokeSession(ctx.db, ctx.sessionId);
+} catch {
+  // The application session may already be gone; clearing the cookie is enough.
+}
+const secure = Astro.url.protocol === "https:";
+Astro.cookies.delete("fb_session", { path: "/" });
+Astro.cookies.delete("fb_csrf", { path: "/" });
+Astro.cookies.set("fb_session", "", { path: "/", httpOnly: true, sameSite: "lax", secure, maxAge: 0 });
+Astro.cookies.set("fb_csrf", "", { path: "/", httpOnly: false, sameSite: "lax", secure, maxAge: 0 });
+return Astro.redirect(next);
+---

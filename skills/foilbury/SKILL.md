@@ -1,3 +1,8 @@
+---
+name: foilbury
+description: Work on the Foilbury collectible-card cabinet, its Discord adapter, identity, collections and creator administration.
+---
+
 # Foilbury skill
 
 Use this skill when working with the Foilbury collectible-card cabinet.

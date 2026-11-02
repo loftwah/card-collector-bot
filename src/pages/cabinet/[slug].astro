@@ -29,6 +29,10 @@ const setName = clean.sets[0]?.name ?? null;
       name={clean.name}
       subtitle={clean.subtitle}
       description={clean.description}
+      bio={clean.bio}
+      quote={clean.quote}
+      collection={clean.collections[0] ? { name: clean.collections[0].name, logo_url: clean.collections[0].logo_url, description: clean.collections[0].name } : null}
+      cardBackUrl={clean.card_back_url}
       rarity={clean.rarity?.name ?? null}
       setName={setName}
       tags={clean.tags.map((tag) => tag.name)}

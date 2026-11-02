@@ -7,7 +7,7 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: "bg-[var(--ink)] text-[var(--paper)] hover:bg-[var(--green)]",
+        primary: "button-primary",
         secondary: "border border-[var(--line-strong)] bg-transparent text-[var(--ink)] hover:border-[var(--brass)] hover:bg-[var(--brass)]/5",
         ghost: "text-[var(--muted)] hover:bg-[var(--ink)]/5 hover:text-[var(--ink)]",
         danger: "border border-[var(--oxblood)]/40 text-[var(--oxblood)] hover:bg-[var(--oxblood)]/8",

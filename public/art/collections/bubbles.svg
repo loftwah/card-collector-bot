@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Bubbles collection mark">
+  <rect width="128" height="128" rx="64" fill="#245c4b"/>
+  <circle cx="48" cy="54" r="22" fill="#f4f0e6"/>
+  <circle cx="79" cy="45" r="14" fill="#c69a58"/>
+  <circle cx="76" cy="79" r="25" fill="none" stroke="#f4f0e6" stroke-width="4"/>
+  <circle cx="43" cy="87" r="9" fill="#9ed8bd"/>
+  <path d="M48 44c4-6 11-9 18-8" stroke="#245c4b" stroke-width="3" stroke-linecap="round"/>
+</svg>

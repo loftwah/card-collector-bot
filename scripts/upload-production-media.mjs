@@ -20,7 +20,7 @@ if (!localDb) throw new Error("Local D1 database not found.");
 const credentials = readSecretFile("local-credentials.json");
 const owner = credentials?.accounts?.find((account) => account.role === "owner");
 if (!owner) throw new Error("Local owner credentials not found.");
-const login = await fetch("http://127.0.0.1:4321/api/v1/auth/login", {
+const login = await fetch("http://localhost:5173/api/v1/auth/login", {
   method: "POST",
   headers: { "content-type": "application/json" },
   body: JSON.stringify({ email: owner.email, password: owner.password }),
@@ -46,7 +46,7 @@ async function worker() {
     const row = rows[index];
     try {
       const endpoint = row.visibility === "private" ? `/media/asset/${row.id}` : `/media/public/${row.id}`;
-      const response = await fetch(`http://127.0.0.1:4321${endpoint}`, { headers: { cookie } });
+      const response = await fetch(`http://localhost:5173${endpoint}`, { headers: { cookie } });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const bytes = Buffer.from(await response.arrayBuffer());
       const file = path.join(temp, `${index}.bin`);

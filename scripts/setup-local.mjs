@@ -35,7 +35,7 @@ const migrate = spawnSync(
 if (migrate.status !== 0) fail("Local D1 migrations failed. No remote database was contacted.");
 
 await stopDevServer();
-const server = await startDevServer(4321);
+const server = await startDevServer(5173);
 const url = `http://127.0.0.1:${server.port}`;
 
 let response;

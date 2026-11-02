@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Shared Characters collection mark">
+  <rect width="128" height="128" rx="64" fill="#7e8a91"/>
+  <circle cx="48" cy="64" r="24" fill="none" stroke="#f4f0e6" stroke-width="5"/>
+  <circle cx="78" cy="64" r="24" fill="none" stroke="#141512" stroke-width="5"/>
+  <circle cx="63" cy="64" r="5" fill="#c69a58"/>
+</svg>

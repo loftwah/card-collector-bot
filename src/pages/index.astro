@@ -2,16 +2,19 @@
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { pageContext, publicStats, pickVariant } from "../server/page";
 import { listCards, listSets } from "../server/modules/catalogue";
+import { listCollections } from "../server/modules/collections";
 import { formatDual } from "../lib/utils";
 
 const ctx = await pageContext(Astro.request);
 const session = Astro.locals.foilbury;
 const user = session?.user ?? null;
-const [allCards, allSets, stats] = await Promise.all([
+const [allCards, allSets, stats, collections] = await Promise.all([
   listCards(ctx, { publicOnly: true, limit: 60 }),
   listSets(ctx),
   publicStats(ctx),
+  listCollections(ctx),
 ]);
+const publicCollections = collections.filter((collection) => collection.scope === "global" && collection.status === "published");
 const publishedSets = allSets.filter((set) => set.status === "published");
 const bySlug = new Map(allCards.map((card) => [card.slug, card]));
 const heroSpecs = [
@@ -84,11 +87,34 @@ const primaryHref = user ? "/play" : "/login?next=%2Fplay";
     </div>
   </section>
 
+  <section class="border-b border-[var(--line)] bg-[var(--paper-2)]/45">
+    <div class="container py-14 md:py-20">
+      <div class="grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-end">
+        <div>
+          <h2 class="display-sm text-4xl md:text-5xl">Worlds with a front door.</h2>
+          <p class="mt-4 max-w-md text-[var(--muted)]">A collection is a named world with its own mark, description and card membership. Foilbury's global worlds are curated once; a Bot Owner can turn them on or off for their own cabinet.</p>
+          <a class="btn btn-secondary mt-6" href="/cabinet">Browse every world</a>
+        </div>
+        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {publicCollections.map((collection) => (
+            <article class="surface-flat p-4">
+              <div class="flex items-center gap-3">
+                {collection.logo_url ? <img src={collection.logo_url} alt="" class="h-12 w-12 object-contain" /> : <span class="grid h-12 w-12 place-items-center border border-[var(--line)] font-display text-xl">{collection.name.charAt(0)}</span>}
+                <div><h3 class="font-display text-xl leading-tight">{collection.name}</h3><p class="font-mono text-[0.56rem] uppercase tracking-[0.1em] text-[var(--brass)]">Global · {collection.card_count} cards</p></div>
+              </div>
+              <p class="mt-3 line-clamp-3 text-sm leading-relaxed text-[var(--muted)]">{collection.description}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section class="container py-16 md:py-24">
     <div class="flex flex-wrap items-end justify-between gap-5">
       <div>
-        <p class="eyebrow">The starter cabinet</p>
-        <h2 class="display-sm mt-2 text-4xl md:text-5xl">A small collection, properly made.</h2>
+        <h2 class="display-sm text-4xl md:text-5xl">A small collection, properly made.</h2>
+        <p class="mt-3 max-w-xl text-[var(--muted)]">Sixteen identities, explicit finishes and artwork that stays credited to its source. The starter cabinet is a curated room, not an infinite grid.</p>
       </div>
       <a class="btn btn-secondary btn-sm" href="/cabinet">See all {allCards.length} cards</a>
     </div>
@@ -174,10 +200,10 @@ const primaryHref = user ? "/play" : "/login?next=%2Fplay";
     </div>
   </section>
 
-  <section class="border-y border-[var(--line)] bg-[var(--ink)] text-[var(--paper)]">
+  <section class="border-y border-[var(--line)] ink-panel">
     <div class="container grid gap-10 py-16 md:grid-cols-[1.1fr_0.9fr] md:py-20">
       <div>
-        <p class="eyebrow text-[var(--brass-bright)]">For agents and owners</p>
+        <p class="eyebrow eyebrow-bright">For agents and owners</p>
         <h2 class="display-sm mt-2 max-w-[14ch] text-4xl md:text-5xl">The whole cabinet is addressable.</h2>
         <p class="mt-5 max-w-xl text-sm leading-relaxed text-[#cfc8b9]">
           Every supported owner action has a REST endpoint, CLI command and MCP tool over the same

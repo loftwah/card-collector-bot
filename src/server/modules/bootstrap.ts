@@ -174,6 +174,13 @@ export async function bootstrapInstallation(): Promise<BootstrapResult> {
   ] as const) {
     await ensureWallet(db, tenantId, userId);
   }
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO fb_platform_admins (user_id, provisioned_by, provisioned_at, reason, status)
+       VALUES (?, 'bootstrap', ?, 'Local bootstrap owner for development and automated tests.', 'active')`,
+    )
+    .bind(owner.id, nowIso())
+    .run();
   await grantStarter(db, cabinet.id, owner.id, 350);
   await grantStarter(db, cabinet.id, player.id, 350);
   await grantStarter(db, harbour.id, harbourOwner.id, 200);
@@ -226,6 +233,46 @@ export async function bootstrapInstallation(): Promise<BootstrapResult> {
         .run();
     }
   }
+
+  // A Bot is the tenant-facing administration unit. The local fixtures get
+  // Bot rows too, so tenant-scoped tests and administration exercises are not
+  // secretly relying on production backfill data.
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO fb_bots (id, tenant_id, owner_user_id, slug, name, description, status, created_at, updated_at)
+       SELECT 'bot_' || substr(hex(randomblob(8)), 1, 16), t.id, m.user_id, 'bot-' || lower(replace(t.slug, '_', '-')), t.name, t.tagline, 'active', t.created_at, ?
+         FROM fb_tenants t JOIN fb_memberships m ON m.tenant_id = t.id AND m.role = 'owner'
+        WHERE NOT EXISTS (SELECT 1 FROM fb_bots b WHERE b.tenant_id = t.id)`,
+    )
+    .bind(nowIso())
+    .run();
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO fb_bot_admins (id, bot_id, user_id, role, capabilities_json, status, created_at, accepted_at)
+       SELECT 'badm_' || substr(hex(randomblob(8)), 1, 16), b.id, b.owner_user_id, 'owner',
+              '["content","publish","economy","members","settings","inventory","grants"]', 'active', b.created_at, b.created_at
+         FROM fb_bots b`,
+    )
+    .run();
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO fb_collections
+        (id, slug, name, description, scope, owner_tenant_id, logo_url, accent, status, sort, created_by, created_at, updated_at)
+       SELECT 'col_' || c.id, c.slug, c.name, COALESCE(c.description, ''), 'global', c.tenant_id,
+              '/art/collections/' || c.slug || '.svg',
+              CASE c.slug WHEN 'bubbles' THEN 'green' WHEN 'fighter' THEN 'oxblood' WHEN 'protocol-11' THEN 'brass' ELSE 'silver' END,
+              'published', c.sort,
+              COALESCE((SELECT m.user_id FROM fb_memberships m WHERE m.tenant_id = c.tenant_id AND m.role = 'owner' ORDER BY m.created_at LIMIT 1), 'system'),
+              datetime('now'), datetime('now')
+         FROM fb_categories c WHERE c.archived_at IS NULL`,
+    )
+    .run();
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO fb_bot_collections (bot_id, collection_id, enabled, updated_at)
+       SELECT b.id, c.id, 1, datetime('now') FROM fb_bots b CROSS JOIN fb_collections c WHERE c.scope = 'global'`,
+    )
+    .run();
 
   const ownerAgent = await issueAgentGrant(db, config, cabinet, {
     agentName: "foilbury-local-owner",

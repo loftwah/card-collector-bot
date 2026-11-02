@@ -8,10 +8,14 @@ export function publicCard(card: CardView) {
     name: card.name,
     subtitle: card.subtitle,
     description: card.description,
+    bio: card.bio,
+    quote: card.quote,
     class: card.class ? { key: card.class.key, name: card.class.name } : null,
     category: card.category ? { slug: card.category.slug, name: card.category.name } : null,
     rarity: card.rarity ? { key: card.rarity.key, name: card.rarity.name, tone: card.rarity.tone } : null,
     tags: card.tags.map((tag) => ({ slug: tag.slug, name: tag.name })),
+    collections: card.collections.map(({ slug, name, scope, logo_url, accent }) => ({ slug, name, scope, logo_url, accent })),
+    card_back_url: card.card_back_url,
     editions: card.editions
       .filter((edition) => edition.status === "published")
       .map((edition) => ({

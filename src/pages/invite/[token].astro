@@ -1,0 +1,81 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { pageContext } from "../../server/page";
+import { acceptBotInvitation, previewBotInvitation } from "../../server/modules/bots";
+import { createSession } from "../../server/modules/identity";
+import { ApiError } from "../../server/context";
+
+export const prerender = false;
+
+const token = Astro.params.token ?? "";
+const ctx = await pageContext(Astro.request);
+if (!ctx.user) {
+  return Astro.redirect(`/login?next=${encodeURIComponent(`/invite/${token}`)}`);
+}
+const invitation = await previewBotInvitation(ctx, token);
+let error = "";
+let accepted = false;
+const user = ctx.user;
+const emailMatches = Boolean(invitation && invitation.email.toLowerCase() === user.email.toLowerCase());
+
+if (Astro.request.method === "POST") {
+  try {
+    const result = await acceptBotInvitation(ctx, token);
+    const session = await createSession(ctx.db, { id: result.bot.tenant_id, slug: invitation?.tenant_slug ?? "bot", name: result.bot.name }, {
+      ...user,
+      role: "editor",
+      capabilities: result.capabilities,
+    }, {
+      authMethod: "session_switch",
+      assurance: (ctx.sessionAssurance as "password" | "email" | "discord" | "access" | "passkey" | "mfa" | null) ?? "password",
+      userAgent: Astro.request.headers.get("user-agent"),
+    });
+    Astro.cookies.set("fb_session", session.token, { path: "/", httpOnly: true, sameSite: "lax", secure: Astro.url.protocol === "https:", expires: new Date(session.expiresAt) });
+    Astro.cookies.set("fb_csrf", session.csrf, { path: "/", httpOnly: false, sameSite: "lax", secure: Astro.url.protocol === "https:", expires: new Date(session.expiresAt) });
+    return Astro.redirect("/admin");
+  } catch (cause) {
+    error = cause instanceof ApiError ? cause.message : "The invitation could not be accepted.";
+  }
+}
+---
+<BaseLayout title="Bot invitation · Foilbury" description="Accept a scoped Foilbury Bot administration invitation." noIndex>
+  <section class="container grid min-h-[calc(100vh-68px)] place-items-center py-12">
+    <div class="surface w-full max-w-2xl p-7 sm:p-10">
+      <p class="eyebrow">Bot invitation</p>
+      <h1 class="display mt-3 text-[clamp(2.6rem,7vw,4.6rem)]">A share of the cabinet.</h1>
+      {error ? <div class="error-box mt-5" role="alert">{error}</div> : null}
+      {!invitation ? (
+        <p class="mt-5 text-[var(--muted)]">This invitation link is not valid. Ask the Bot Owner for a fresh invitation.</p>
+      ) : invitation.status !== "pending" ? (
+        <p class="mt-5 text-[var(--muted)]">This invitation is already {invitation.status}. Ask the Bot Owner for a fresh one.</p>
+      ) : new Date(invitation.expires_at) <= new Date() ? (
+        <p class="mt-5 text-[var(--muted)]">This invitation expired on {new Date(invitation.expires_at).toLocaleDateString("en-AU")}. Ask the Bot Owner for a fresh one.</p>
+      ) : (
+        <>
+          <p class="mt-5 text-[var(--muted)]">You are invited to administer <strong class="text-[var(--ink)]">{invitation.bot_name}</strong> as a <strong class="text-[var(--ink)]">Bot Admin</strong>. The invitation expires {new Date(invitation.expires_at).toLocaleString("en-AU", { dateStyle: "medium", timeStyle: "short", timeZone: "Australia/Melbourne" })}.</p>
+          <dl class="mt-5 grid gap-3 border-y border-[var(--line)] py-4 text-sm sm:grid-cols-2">
+            <div><dt class="eyebrow">Bound to</dt><dd class="mt-1 break-all">{invitation.email}</dd></div>
+            <div><dt class="eyebrow">Signed in as</dt><dd class="mt-1 break-all">{user.email}</dd></div>
+            <div><dt class="eyebrow">Capabilities</dt><dd class="mt-1">{(JSON.parse(invitation.capabilities_json) as string[]).join(", ")}</dd></div>
+            <div><dt class="eyebrow">Scope</dt><dd class="mt-1">This Bot only</dd></div>
+          </dl>
+          {!emailMatches ? (
+            <div class="notice mt-5">
+              <p class="text-sm">This invitation belongs to {invitation.email}. You are signed in as {user.email}. Sign out and sign in with the invited address; the invitation will not attach to the wrong account.</p>
+              <a class="btn btn-secondary btn-sm mt-3" href={`/logout?next=${encodeURIComponent(`/invite/${token}`)}`}>Switch account</a>
+            </div>
+          ) : (
+            <form method="POST" class="mt-6">
+              <p class="text-xs leading-relaxed text-[var(--muted)]">Accepting adds only the listed capabilities for this Bot. It does not make you a Super Admin, grant access to another Bot, or create a Cloudflare account.</p>
+              <button class="btn btn-primary mt-4" type="submit">Accept Bot Admin access</button>
+            </form>
+          )}
+        </>
+      )}
+      <div class="mt-6 flex flex-wrap gap-3 border-t border-[var(--line)] pt-4">
+        <a class="btn btn-secondary btn-sm" href="/account/security">Account security</a>
+        <a class="btn btn-ghost btn-sm" href="/create-bot">Create your own Bot</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>

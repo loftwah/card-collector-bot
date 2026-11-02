@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Heart, Lock, Search } from "lucide-react";
 import { api, describeError } from "@/lib/client";
 import { cn } from "@/lib/utils";
@@ -21,15 +21,16 @@ interface Item {
   acquired_at: string;
 }
 
-export default function CollectionBrowser({ initialItems, sets }: { initialItems: Item[]; sets: Array<{ slug: string; name: string }> }) {
+export default function CollectionBrowser({ initialItems, sets, collections = [], initialCollection = "" }: { initialItems: Item[]; sets: Array<{ slug: string; name: string }>; collections?: Array<{ slug: string; name: string; logo_url: string | null }>; initialCollection?: string }) {
   const [items, setItems] = useState(initialItems);
   const [search, setSearch] = useState("");
   const [favouriteOnly, setFavouriteOnly] = useState(false);
   const [setSlug, setSetSlug] = useState("");
+  const [collectionSlug, setCollectionSlug] = useState(initialCollection);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  async function load(next?: { search?: string; favourite?: boolean; set?: string }) {
+  async function load(next?: { search?: string; favourite?: boolean; set?: string; collection?: string }) {
     setLoading(true);
     setError("");
     try {
@@ -37,9 +38,11 @@ export default function CollectionBrowser({ initialItems, sets }: { initialItems
       const q = next?.search ?? search;
       const f = next?.favourite ?? favouriteOnly;
       const s = next?.set ?? setSlug;
+      const collection = next?.collection ?? collectionSlug;
       if (q) params.set("search", q);
       if (f) params.set("favourite", "true");
       if (s) params.set("set", s);
+      if (collection) params.set("collection", collection);
       params.set("limit", "300");
       const result = await api<{ items: Item[] }>(`/api/v1/inventory?${params.toString()}`);
       setItems(result.items);
@@ -64,7 +67,7 @@ export default function CollectionBrowser({ initialItems, sets }: { initialItems
   return (
     <div>
       <form
-        className="grid gap-3 border-b border-[var(--line)] pb-5 md:grid-cols-[1fr_auto_auto]"
+        className="grid gap-3 border-b border-[var(--line)] pb-5 md:grid-cols-[1fr_auto_auto_auto]"
         onSubmit={(event) => {
           event.preventDefault();
           void load();
@@ -76,6 +79,13 @@ export default function CollectionBrowser({ initialItems, sets }: { initialItems
             <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]" aria-hidden="true" />
             <input className="input pl-9" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Card name, finish or description" />
           </div>
+        </label>
+        <label className="field">
+          <span className="label">Collection</span>
+          <select className="select" value={collectionSlug} onChange={(event) => { setCollectionSlug(event.target.value); void load({ collection: event.target.value }); }}>
+            <option value="">All collections</option>
+            {collections.map((collection) => <option key={collection.slug} value={collection.slug}>{collection.name}</option>)}
+          </select>
         </label>
         <label className="field">
           <span className="label">Set</span>

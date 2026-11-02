@@ -49,6 +49,10 @@ const eventLabel: Record<string, string> = {
         serial={instance.serial}
         subjectWidth={instance.subject_width}
         subjectHeight={instance.subject_height}
+        cardBackUrl="/brand/card-back.webp"
+        collectionName={instance.collection_name}
+        collectionLogo={instance.collection_logo}
+        collectionDescription={instance.collection_description}
       />
       <div class="mt-4 flex flex-wrap items-center justify-between gap-2">
         <p class="font-mono text-[0.58rem] uppercase tracking-[0.12em] text-[var(--muted)]">Live layered composition · {instance.material_key}{instance.effect_key ? ` · ${instance.effect_key}` : ""}</p>
@@ -66,7 +70,8 @@ const eventLabel: Record<string, string> = {
       </div>
       <h1 class="display mt-4 text-[clamp(2.8rem,7vw,5.5rem)]">{instance.card_name}</h1>
       <p class="mt-2 text-lg text-[var(--brass)]">{instance.subtitle}</p>
-      <p class="prose mt-5 text-[var(--muted)]">{instance.description}</p>
+      <p class="prose mt-5 text-[var(--muted)]">{instance.bio || instance.description}</p>
+      {instance.quote ? <blockquote class="mt-5 border-l-2 border-[var(--brass)] pl-4 text-xl italic text-[var(--ink)]">“{instance.quote}”</blockquote> : null}
 
       <div class="mt-7">
         <CardDetailActions client:load instanceId={instance.id} cardId={instance.card_id} initialFavourite={Boolean(instance.favourite)} initialLocked={Boolean(instance.locked)} initialWishlist={wished} reserved={instance.status === "reserved"} />
@@ -79,6 +84,7 @@ const eventLabel: Record<string, string> = {
         <div><dt class="eyebrow">Via</dt><dd class="mt-1">{instance.acquired_via}</dd></div>
         <div><dt class="eyebrow">Set</dt><dd class="mt-1">{set ? `${set.name} · v${set.version}` : "No published set"}</dd></div>
         <div><dt class="eyebrow">Category</dt><dd class="mt-1">{instance.category_name ?? "—"}</dd></div>
+        <div><dt class="eyebrow">Collection</dt><dd class="mt-1">{instance.collection_name ?? "Uncollected"}</dd></div>
       </dl>
 
       {set?.progress ? (

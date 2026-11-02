@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface LayeredCardProps {
@@ -16,6 +18,10 @@ export interface LayeredCardProps {
   subjectWidth?: number | null;
   subjectHeight?: number | null;
   classNameOverride?: string;
+  cardBackUrl?: string | null;
+  collectionName?: string | null;
+  collectionLogo?: string | null;
+  collectionDescription?: string | null;
 }
 
 export default function LayeredCard({
@@ -32,13 +38,19 @@ export default function LayeredCard({
   subjectWidth,
   subjectHeight,
   classNameOverride,
+  cardBackUrl,
+  collectionName,
+  collectionLogo,
+  collectionDescription,
 }: LayeredCardProps) {
+  const [flipped, setFlipped] = useState(false);
   const ratio = subjectWidth && subjectHeight ? subjectWidth / subjectHeight : 1;
   const shape = subjectWidth && subjectHeight && subjectWidth === subjectHeight ? "medallion" : ratio < 0.75 ? "cutout" : "portrait";
   const materialUrl = `/art/layers/material-${material}.png`;
   const frameUrl = `/art/layers/frame-${material}.png`;
   return (
-    <div className={cn("layered-card", classNameOverride)}>
+    <div className={cn("layered-card-shell", classNameOverride)}>
+      <div className={cn("layered-card", flipped && "is-flipped")} data-flipped={flipped ? "true" : "false"}>
       {backgroundUrl ? <img className="layered-card__bg" src={backgroundUrl} alt="" aria-hidden="true" /> : null}
       <div className={cn("layered-card__subject-wrap", shape)}>
         <img
@@ -57,6 +69,16 @@ export default function LayeredCard({
       <img className="layered-card__texture" src={materialUrl} alt="" aria-hidden="true" />
       <img className="layered-card__frame" src={frameUrl} alt="" aria-hidden="true" />
       {effect && effect !== "none" ? <img className="layered-card__effect" src={`/art/layers/effect-${effect}.png`} alt="" aria-hidden="true" /> : null}
+      <div className="layered-card__back" aria-hidden={!flipped}>
+        <img className="layered-card__back-image" src={cardBackUrl || "/brand/card-back.webp"} alt="" />
+        <div className="layered-card__back-copy">
+          {collectionLogo ? <img src={collectionLogo} alt="" className="layered-card__back-logo" /> : null}
+          <p className="font-mono text-[0.55rem] uppercase tracking-[0.18em] text-[#d9bf8b]">{collectionName ?? "Foilbury cabinet"}</p>
+          <h3>{name}</h3>
+          <p>{collectionDescription ?? "A card worth keeping."}</p>
+          <p className="font-mono text-[0.55rem] uppercase tracking-[0.14em]">{serial ?? "FOILBURY"}</p>
+        </div>
+      </div>
       <div className="layered-card__text">
         <p className="font-mono text-[0.55rem] uppercase tracking-[0.16em] text-[#d9bf8b]">{setName ?? "Cabinet"}</p>
         <h3>{name}</h3>
@@ -66,6 +88,10 @@ export default function LayeredCard({
           <span>{serial ?? material.toUpperCase()}</span>
         </div>
       </div>
+      </div>
+      <button type="button" className="layered-card__flip" onClick={() => setFlipped((value) => !value)} aria-label={flipped ? "Show card front" : "Show card back"} aria-pressed={flipped}>
+        <RotateCcw size={14} /> {flipped ? "Front" : "Back"}
+      </button>
     </div>
   );
 }

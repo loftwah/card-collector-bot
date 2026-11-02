@@ -62,17 +62,85 @@ export async function createUser(
   return { id, email };
 }
 
+export async function findUserByEmail(
+  db: D1Database,
+  email: string,
+): Promise<{ id: string; email: string; display_name: string; email_verified_at: string | null; disabled_at: string | null } | null> {
+  return first(
+    db,
+    "SELECT id, email, display_name, email_verified_at, disabled_at FROM fb_users WHERE email = ?",
+    email.trim().toLowerCase(),
+  );
+}
+
+export async function createEmailUser(
+  db: D1Database,
+  input: { email: string; displayName?: string },
+): Promise<{ id: string; email: string; displayName: string }> {
+  const email = input.email.trim().toLowerCase();
+  const existing = await findUserByEmail(db, email);
+  if (existing) {
+    if (existing.disabled_at) throw new ApiError(403, "account_disabled", "This account is disabled.");
+    if (!existing.email_verified_at) {
+      await db.prepare("UPDATE fb_users SET email_verified_at = ? WHERE id = ?").bind(nowIso(), existing.id).run();
+    }
+    return { id: existing.id, email: existing.email, displayName: existing.display_name };
+  }
+  const id = newId("usr");
+  const displayName = (input.displayName?.trim() || email.split("@")[0] || "Collector").slice(0, 80);
+  await db
+    .prepare(
+      "INSERT INTO fb_users (id, email, display_name, password_hash, platform_admin, created_at, email_verified_at) VALUES (?, ?, ?, 'passwordless$no_password', 0, ?, ?)",
+    )
+    .bind(id, email, displayName, nowIso(), nowIso())
+    .run();
+  return { id, email, displayName };
+}
+
+export async function markEmailVerified(db: D1Database, userId: string): Promise<void> {
+  await db.prepare("UPDATE fb_users SET email_verified_at = COALESCE(email_verified_at, ?) WHERE id = ?").bind(nowIso(), userId).run();
+}
+
+const DEFAULT_CAPABILITIES: Record<Role, string[]> = {
+  owner: ["content", "publish", "economy", "members", "settings", "inventory", "grants"],
+  editor: ["content", "publish", "members"],
+  economy_admin: ["economy", "inventory", "grants"],
+  player: [],
+};
+
 export async function addMembership(
   db: D1Database,
   tenantId: string,
   userId: string,
   role: Role,
+  options?: { capabilities?: string[]; status?: "active" | "invited" | "revoked"; invitedBy?: string | null; acceptedAt?: string | null },
 ): Promise<void> {
+  const capabilities = options?.capabilities ?? DEFAULT_CAPABILITIES[role];
+  const now = nowIso();
   await db
     .prepare(
-      "INSERT INTO fb_memberships (tenant_id, user_id, role, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(tenant_id, user_id) DO UPDATE SET role = excluded.role",
+      `INSERT INTO fb_memberships
+        (tenant_id, user_id, role, created_at, capabilities_json, status, invited_by, accepted_at, revoked_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(tenant_id, user_id) DO UPDATE SET
+         role = excluded.role,
+         capabilities_json = excluded.capabilities_json,
+         status = excluded.status,
+         invited_by = excluded.invited_by,
+         accepted_at = excluded.accepted_at,
+         revoked_at = excluded.revoked_at`,
     )
-    .bind(tenantId, userId, role, nowIso())
+    .bind(
+      tenantId,
+      userId,
+      role,
+      now,
+      JSON.stringify(capabilities),
+      options?.status ?? "active",
+      options?.invitedBy ?? null,
+      options?.acceptedAt ?? (options?.status === "invited" ? null : now),
+      options?.status === "revoked" ? now : null,
+    )
     .run();
 }
 
@@ -97,11 +165,13 @@ export async function login(
     display_name: string;
     password_hash: string;
     platform_admin: number;
+    email_verified_at: string | null;
+    capabilities_json: string | null;
     role: Role;
     disabled_at: string | null;
   }>(
     db,
-    `SELECT u.id, u.email, u.display_name, u.password_hash, u.platform_admin, u.disabled_at, m.role
+    `SELECT u.id, u.email, u.display_name, u.password_hash, u.platform_admin, u.email_verified_at, u.disabled_at, m.role, m.capabilities_json
        FROM fb_users u JOIN fb_memberships m ON m.user_id = u.id
       WHERE u.email = ? AND m.tenant_id = ?`,
     email.trim().toLowerCase(),
@@ -116,6 +186,8 @@ export async function login(
     displayName: row.display_name,
     role: row.role,
     platformAdmin: Boolean(row.platform_admin),
+    emailVerified: Boolean(row.email_verified_at),
+    capabilities: row.capabilities_json ? (JSON.parse(row.capabilities_json) as string[]) : [],
   });
 }
 
@@ -123,21 +195,94 @@ export async function createSession(
   db: D1Database,
   tenant: Tenant,
   user: CurrentUser,
-): Promise<{ token: string; csrf: string; expiresAt: string; user: CurrentUser }> {
+  options?: {
+    authMethod?: "password" | "discord" | "magic_link" | "passkey" | "mfa" | "cloudflare_access" | "session_switch";
+    assurance?: "password" | "email" | "discord" | "access" | "passkey" | "mfa";
+    accessSubject?: string | null;
+    userAgent?: string | null;
+    ipHash?: string | null;
+    ttlSeconds?: number;
+  },
+): Promise<{ token: string; csrf: string; expiresAt: string; user: CurrentUser; assurance: string }> {
   const raw = token("fbs");
   const csrf = token("fbc");
   const id = newId("ses");
   const createdAt = nowIso();
-  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString();
+  const expiresAt = new Date(Date.now() + 1000 * (options?.ttlSeconds ?? 60 * 60 * 24 * 14)).toISOString();
+  const authMethod = options?.authMethod ?? "password";
+  const assurance = options?.assurance ?? "password";
   await db
     .prepare(
       `INSERT INTO fb_sessions
-        (id, token_hash, user_id, tenant_id, csrf_token, created_at, expires_at, last_seen_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, token_hash, user_id, tenant_id, csrf_token, created_at, expires_at, last_seen_at,
+         auth_method, assurance, auth_time, user_agent, ip_hash, access_subject)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .bind(id, await sha256Hex(raw), user.id, tenant.id, csrf, createdAt, expiresAt, createdAt)
+    .bind(
+      id,
+      await sha256Hex(raw),
+      user.id,
+      tenant.id,
+      csrf,
+      createdAt,
+      expiresAt,
+      createdAt,
+      authMethod,
+      assurance,
+      createdAt,
+      options?.userAgent ?? null,
+      options?.ipHash ?? null,
+      options?.accessSubject ?? null,
+    )
     .run();
-  return { token: raw, csrf, expiresAt, user };
+  return { token: raw, csrf, expiresAt, user, assurance };
+}
+
+export async function upgradeSessionAssurance(
+  db: D1Database,
+  sessionId: string,
+  assurance: "passkey" | "mfa" | "access",
+): Promise<void> {
+  await db
+    .prepare("UPDATE fb_sessions SET assurance = ?, auth_time = ?, last_seen_at = ? WHERE id = ? AND revoked_at IS NULL")
+    .bind(assurance, nowIso(), nowIso(), sessionId)
+    .run();
+}
+
+export async function listSessions(db: D1Database, userId: string, currentSessionId?: string | null) {
+  return all<{
+    id: string;
+    auth_method: string;
+    assurance: string;
+    created_at: string;
+    last_seen_at: string;
+    expires_at: string;
+    revoked_at: string | null;
+    user_agent: string | null;
+    current: number;
+  }>(
+    db,
+    `SELECT id, auth_method, assurance, created_at, last_seen_at, expires_at, revoked_at, user_agent,
+            CASE WHEN id = ? THEN 1 ELSE 0 END AS current
+       FROM fb_sessions WHERE user_id = ? ORDER BY last_seen_at DESC LIMIT 50`,
+    currentSessionId ?? "",
+    userId,
+  );
+}
+
+export async function revokeSessionById(db: D1Database, userId: string, sessionId: string): Promise<boolean> {
+  const result = await db
+    .prepare("UPDATE fb_sessions SET revoked_at = ?, revoked_reason = 'user_revoked' WHERE id = ? AND user_id = ? AND revoked_at IS NULL")
+    .bind(nowIso(), sessionId, userId)
+    .run();
+  return (result.meta?.changes ?? 0) > 0;
+}
+
+export async function revokeOtherSessions(db: D1Database, userId: string, keepSessionId: string): Promise<void> {
+  await db
+    .prepare("UPDATE fb_sessions SET revoked_at = ?, revoked_reason = 'user_revoked_others' WHERE user_id = ? AND id <> ? AND revoked_at IS NULL")
+    .bind(nowIso(), userId, keepSessionId)
+    .run();
 }
 
 export async function revokeSession(db: D1Database, sessionId: string): Promise<void> {
@@ -409,11 +554,13 @@ export async function devLogin(db: D1Database, tenant: Tenant, email: string) {
     email: string;
     display_name: string;
     platform_admin: number;
+    email_verified_at: string | null;
+    capabilities_json: string | null;
     role: Role;
     disabled_at: string | null;
   }>(
     db,
-    `SELECT u.id, u.email, u.display_name, u.platform_admin, u.disabled_at, m.role
+    `SELECT u.id, u.email, u.display_name, u.platform_admin, u.email_verified_at, u.disabled_at, m.role, m.capabilities_json
        FROM fb_users u JOIN fb_memberships m ON m.user_id = u.id
       WHERE u.email = ? AND m.tenant_id = ?`,
     email.trim().toLowerCase(),
@@ -426,5 +573,7 @@ export async function devLogin(db: D1Database, tenant: Tenant, email: string) {
     displayName: row.display_name,
     role: row.role,
     platformAdmin: Boolean(row.platform_admin),
+    emailVerified: Boolean(row.email_verified_at),
+    capabilities: row.capabilities_json ? (JSON.parse(row.capabilities_json) as string[]) : [],
   });
 }

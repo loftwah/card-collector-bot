@@ -1,0 +1,29 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import SecurityPanel from "../../components/account/SecurityPanel";
+import { pageContext } from "../../server/page";
+import { roleLabel } from "../../server/context";
+
+const ctx = await pageContext(Astro.request);
+if (!ctx.user) return Astro.redirect(`/login?next=${encodeURIComponent("/account/security")}`);
+const user = ctx.user;
+---
+<BaseLayout title="Account security · Foilbury" description="Passkeys, authenticator, recovery codes and sessions for your Foilbury account." noIndex>
+  <section class="border-b border-[var(--line)] bg-[var(--paper-2)]/60">
+    <div class="container py-10 md:py-14">
+      <p class="eyebrow">Account · {roleLabel(user)}</p>
+      <div class="mt-2 flex flex-wrap items-end justify-between gap-4">
+        <h1 class="display text-[clamp(2.8rem,7vw,5.5rem)]">Security that fits the cabinet.</h1>
+        <div class="flex flex-wrap gap-2">
+          <a class="btn btn-secondary btn-sm" href="/play">Back to collection</a>
+          {user.platformAdmin ? <a class="btn btn-brass btn-sm" href="/platform-admin">Platform administration</a> : null}
+          {["owner", "editor", "economy_admin"].includes(user.role) ? <a class="btn btn-secondary btn-sm" href="/admin">Bot administration</a> : null}
+        </div>
+      </div>
+      <p class="mt-4 max-w-2xl text-[var(--muted)]">One Foilbury identity, several ways in. Discord and email get you to your collection; passkeys and an authenticator protect the actions that touch a Bot, its catalogue or its economy.</p>
+    </div>
+  </section>
+  <section class="container py-8 md:py-12">
+    <SecurityPanel client:load />
+  </section>
+</BaseLayout>

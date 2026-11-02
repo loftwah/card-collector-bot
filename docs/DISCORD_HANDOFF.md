@@ -1,5 +1,7 @@
 # Foilbury Discord handoff
 
+> Historical handoff. Current identity/administration evidence is in `docs/AUTH_ACCEPTANCE.md`; collections are documented in `docs/COLLECTIONS.md`.
+
 Status: **connected for the Loftwah pilot**. The original plan below is retained as history; the live implementation and evidence are in `docs/DISCORD_ACCEPTANCE.md`.
 
 The existing Discord application (`1566702936615026769`) is installed in Loftwah (`997734945206313041`). Discord sends signed HTTP interactions to `https://foilbury.loftwah.com/api/discord/interactions`; guild commands are registered for `/foilbury`. No Gateway connection or privileged intent is used. Gameplay is restricted to `#card-collector-test` (`1566700752385081355`) by the server-side installation allowlist.

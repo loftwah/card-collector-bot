@@ -4,35 +4,45 @@ Foilbury is a collectible-card cabinet. A player claims a free allowance, opens 
 
 ## Actors
 
-- **Account** — one persistent Foilbury identity.
+- **Account** — one persistent Foilbury identity, resolved by Discord, a one-use email link, a passkey, or a verified Cloudflare Access identity for administration.
 - **User** — an ordinary player. A verified Discord interaction creates a lightweight player without a website registration step.
 - **Bot Owner** — the account that owns a Foilbury Bot. This is not platform administration.
-- **Bot Admin** — an account explicitly authorised for part of that Bot.
-- **Super Admin** — platform-wide authority. It is not granted by a Discord guild role, email match or first sign-up. The current pilot has not provisioned a Super Admin.
+- **Bot Admin** — an account explicitly authorised for a named Bot, with a capability set, expiring invitation and revocation path.
+- **Super Admin** — platform-wide authority. Only the explicitly provisioned Dean account has it; it is not inferred from guild ownership, email suffix, first sign-up or Cloudflare membership.
 - **Installation** — a server-to-Bot binding. A guild is resolved on the server; a tenant or guild ID in an interaction payload is not authority.
 
 ## Current product surface
 
-- Public landing page, catalogue, journal and card pages.
-- Password sign-in for the production bootstrap owner.
-- Player cabinet: collection, draw studio, rewards, trades, preferences and share links.
-- Bot management at `/admin/*`, protected at the Cloudflare edge by Access and at the application layer by membership role.
+- Public landing page, catalogue with collection marks, journal and public card pages with front/back viewing.
+- Passwordless player sign-in: Discord OAuth, one-use email magic links, passkeys; authenticator TOTP and recovery codes for step-up.
+- Account security: passkeys, authenticator, recovery codes, session review and revocation.
+- Player cabinet: collection filtered by collection and set, draw studio, rewards, trades, preferences and share links.
+- Bot administration at `/admin/*`: catalogue, artwork editions, collections, team invitations, sets, pools, economy, availability, imports, render studio and audit.
+- Platform Administration at `/platform-admin`: accounts, Access links, Bots, installations, global collections, explicit Super Admin record and audit.
 - Discord HTTP interactions at `/api/discord/interactions`: `/foilbury open`, `daily`, `collection`, `card`, `packs`, `profile`, `help` and guarded `admin` subcommands.
 - Headless REST API, CLI and stdio MCP server using scoped agent grants.
+- EmDash is the editorial CMS for journal drafts and media; Foilbury remains the source of truth for card identity, artwork editions, categories, tags, pools, awards and inventory.
+
+## Collections
+
+- **Global collection** — curated by the Super Admin, visible to every Bot, enabled or disabled per Bot. The Bot reads it; it does not edit or clone it.
+- **Bot collection** — private to one Bot, managed by its Bot Owner or a Bot Admin with content capability.
+- Both have a logo, description, status and explicit card membership. Disabling a collection prevents its cards from dropping in that Bot without deleting or changing already-owned copies.
 
 ## Trust boundaries
 
 - Bot A permissions do not grant Bot B authority.
 - Discord server moderator status is not Foilbury platform authority.
+- Cloudflare Access admission is an authentication boundary, not a Foilbury role. The Worker validates the Access JWT signature, issuer, audience and expiry on every administrative request.
 - Inventory, quotas and awards are authoritative in D1. Editorial/CMS publication cannot mint cards or mutate a wallet.
 - Every draw is one D1 batch: entitlement debit, selected outcome, inventory insert, ledger row and idempotency receipt.
 - Interaction retries use the interaction ID as an idempotency key. A replayed interaction returns the recorded outcome and cannot re-roll or double-award.
 - Private media is authorised by ownership or membership, not by a secret URL.
 
-## Known product gaps
+## Known gaps
 
-- Magic-link, passkey and authenticator MFA flows are not implemented in this pass. Website Discord OAuth is implemented and production-verified.
-- Creator self-service Bot creation, second-guild installation and Kaylee's independent acceptance are not implemented.
-- The CMS editorial flow is integrated locally but has not been exercised on the production deployment.
-- Cloudflare Access protects `/admin` and `/api/v1/admin` at the edge; the Worker does not yet validate the Access JWT itself.
-- Paid generation, email delivery and scheduled announcements remain unverified.
+- Dean's human Cloudflare Access MFA enrollment and first authenticated `/admin` visit remain a human step; the policy, JWT verification and application session path are implemented and unit-tested.
+- The production EmDash operator console is protected by Access and configured for the existing Dean account; a human authenticated editorial session is still required to exercise the native console.
+- A local Discord OAuth callback is registered at `http://localhost:5173/auth/discord/callback`; a completed local Discord consent is a human step. Production OAuth remains preserved.
+- A real second Discord guild installation and a second-person acceptance matrix require an authorised human participant.
+- Paid generation, FAL, ElevenLabs and other billed providers remain intentionally unrun.

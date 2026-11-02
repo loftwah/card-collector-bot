@@ -1,0 +1,106 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import { buildContext } from "../../../server/context";
+import { findMagicLink, redeemMagicLink } from "../../../server/modules/magic-links";
+import { ApiError } from "../../../server/context";
+
+export const prerender = false;
+
+const secure = Astro.url.protocol === "https:";
+const rawToken = Astro.url.searchParams.get("token") ?? "";
+let error = "";
+let email = "";
+let ready = false;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const postedToken = String(form.get("token") ?? "");
+  const postedCsrf = String(form.get("csrf") ?? "");
+  const cookieCsrf = Astro.cookies.get("fb_magic_csrf")?.value ?? "";
+  if (!cookieCsrf || postedCsrf !== cookieCsrf) {
+    error = "That confirmation expired. Open the link from your email again.";
+  } else if (!postedToken) {
+    error = "This sign-in link is incomplete.";
+  } else {
+    try {
+      const ctx = await buildContext(Astro.request);
+      const result = await redeemMagicLink(ctx, postedToken, {
+        userAgent: Astro.request.headers.get("user-agent"),
+      });
+      Astro.cookies.delete("fb_magic_csrf", { path: "/auth/email" });
+      Astro.cookies.set("fb_session", result.token, {
+        path: "/",
+        httpOnly: true,
+        sameSite: "lax",
+        secure,
+        expires: new Date(result.expiresAt),
+      });
+      Astro.cookies.set("fb_csrf", result.csrf, {
+        path: "/",
+        httpOnly: false,
+        sameSite: "lax",
+        secure,
+        expires: new Date(result.expiresAt),
+      });
+      return Astro.redirect(result.redirectPath);
+    } catch (cause) {
+      error = cause instanceof ApiError ? cause.message : "This sign-in link could not be used.";
+    }
+  }
+}
+
+if (Astro.request.method === "GET" && rawToken) {
+  try {
+    const ctx = await buildContext(Astro.request);
+    const link = await findMagicLink(ctx, rawToken);
+    if (!link || link.used_at || new Date(link.expires_at) <= new Date()) {
+      error = "This sign-in link is invalid, used or expired. Request a fresh one.";
+    } else {
+      email = link.email;
+      ready = true;
+    }
+  } catch {
+    error = "This sign-in link could not be checked. Request a fresh one.";
+  }
+} else if (Astro.request.method === "GET") {
+  error = "This page needs a sign-in link from your email.";
+}
+
+const csrf = crypto.randomUUID();
+if (ready) {
+  Astro.cookies.set("fb_magic_csrf", csrf, {
+    path: "/auth/email",
+    httpOnly: true,
+    sameSite: "lax",
+    secure,
+    maxAge: 900,
+  });
+}
+---
+<BaseLayout title="Confirm sign-in · Foilbury" description="Confirm your Foilbury sign-in link." noIndex>
+  <section class="container grid min-h-[calc(100vh-68px)] place-items-center py-16">
+    <div class="surface w-full max-w-lg p-7 sm:p-10">
+      <p class="eyebrow">One-use confirmation</p>
+      <h1 class="display mt-3 text-[clamp(2.6rem,7vw,4.6rem)]">{ready ? "Confirm it’s you." : "That link didn’t work."}</h1>
+      {ready ? (
+        <>
+          <p class="mt-5 text-[var(--muted)]">Continue as <strong class="text-[var(--ink)]">{email}</strong>. This link can be used once and expires shortly.</p>
+          <form method="POST" class="mt-7">
+            <input type="hidden" name="token" value={rawToken} />
+            <input type="hidden" name="csrf" value={csrf} />
+            <button class="btn btn-primary w-full" type="submit">Sign in to Foilbury</button>
+          </form>
+          <p class="mt-4 text-xs leading-relaxed text-[var(--muted)]">If you did not request this email, close this page. No account changes have been made.</p>
+        </>
+      ) : (
+        <>
+          <p class="error-box mt-5" role="alert">{error}</p>
+          <div class="mt-6 flex flex-wrap gap-3">
+            <a class="btn btn-primary" href="/login">Request a new link</a>
+            <a class="btn btn-secondary" href="/login?method=discord">Continue with Discord</a>
+          </div>
+        </>
+      )}
+    </div>
+  </section>
+</BaseLayout>

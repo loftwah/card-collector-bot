@@ -51,10 +51,12 @@ export async function ctxFor(slug: string, email: string): Promise<Ctx> {
     email: string;
     display_name: string;
     platform_admin: number;
+    email_verified_at: string | null;
+    capabilities_json: string | null;
     role: "owner" | "editor" | "economy_admin" | "player";
   }>(
     runtime.DB,
-    `SELECT u.id, u.email, u.display_name, u.platform_admin, m.role
+    `SELECT u.id, u.email, u.display_name, u.platform_admin, u.email_verified_at, m.capabilities_json, m.role
        FROM fb_users u JOIN fb_memberships m ON m.user_id = u.id
       WHERE u.email = ? AND m.tenant_id = ?`,
     email,
@@ -67,11 +69,23 @@ export async function ctxFor(slug: string, email: string): Promise<Ctx> {
     config: readConfig(runtime),
     requestId: newId("test"),
     tenant: tenantRow,
-    user: { id: row.id, email: row.email, displayName: row.display_name, role: row.role, platformAdmin: Boolean(row.platform_admin) },
+    user: {
+      id: row.id,
+      email: row.email,
+      displayName: row.display_name,
+      role: row.role,
+      platformAdmin: Boolean(row.platform_admin),
+      emailVerified: Boolean(row.email_verified_at),
+      capabilities: row.capabilities_json ? (JSON.parse(row.capabilities_json) as string[]) : [],
+    },
     actor: { type: "user", id: row.id, representedUserId: row.id, label: row.display_name },
     scopes: null,
     sessionId: null,
     csrfToken: "test",
+    sessionAssurance: null,
+    sessionAuthTime: null,
+    accessIdentity: null,
+    accessStatus: null,
   };
 }
 

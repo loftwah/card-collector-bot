@@ -11,7 +11,7 @@ pnpm doctor
 pnpm dev
 ```
 
-The local URL is the one printed by `pnpm setup:local` and confirmed by `pnpm doctor`; do not assume a port. The default local URL is `http://127.0.0.1:4321`. The Worker binds to loopback and uses local D1/R2 simulation. No deployment or provider call is made by setup.
+The local URL is the one printed by `pnpm setup:local` and confirmed by `pnpm doctor`; do not assume a port. The canonical local URL is `http://localhost:5173`. The Worker binds to loopback and uses local D1/R2 simulation. No deployment or provider call is made by setup.
 
 Setup writes `.dev.vars`, `.foilbury/local-credentials.json` and `.foilbury/agents.json` with mode 600. The credentials file contains two local users:
 
@@ -22,7 +22,7 @@ Two agent grants are created: an owner grant with all scopes and a player grant 
 
 ## Browser
 
-Use `/login` and the credentials file for password login, or the explicit loopback-only development sign-in. The development sign-in is enabled only by `FOILBURY_LOCAL_MODE=true` and `FOILBURY_DEV_LOGIN=true`, and rejects non-loopback requests. Set `FOILBURY_DEV_LOGIN=false` to revoke it.
+Use `/login` for Discord, a one-use email link, a passkey, or the explicit loopback-only development sign-in. The bootstrap password is a legacy fallback, not the normal journey. The development sign-in is enabled only by `FOILBURY_LOCAL_MODE=true` and `FOILBURY_DEV_LOGIN=true`, and rejects non-loopback requests. Set `FOILBURY_DEV_LOGIN=false` to revoke it.
 
 ## CLI
 
@@ -46,8 +46,8 @@ Every command accepts `--json`. Player commands use `--as player`. The CLI never
 Use `Authorization: Bearer <agent token>` for headless calls. Cookie-authenticated mutations require `x-foilbury-csrf`. Money-like commands require `Idempotency-Key`.
 
 ```sh
-curl -s http://127.0.0.1:4321/api/v1/status | jq
-curl -s http://127.0.0.1:4321/api/v1/pools/cabinet-draw | jq
+curl -s http://localhost:5173/api/v1/status | jq
+curl -s http://localhost:5173/api/v1/pools/cabinet-draw | jq
 curl -s -X POST http://127.0.0.1:4321/api/v1/draws \
   -H "authorization: Bearer $FOILBURY_AGENT_TOKEN" \
   -H "content-type: application/json" \
@@ -83,6 +83,13 @@ Tools include status, catalogue and taxonomy reads/writes, identity merging, imp
 ## Discord adapter
 
 Discord uses the signed HTTP interaction endpoint at `/api/discord/interactions`. It is not a Gateway bot and does not use privileged intents. The guild installation, channel allowlist, Bot tenant and player identity are resolved server-side. Commands are `/foilbury open|daily|collection|card|packs|profile|help` plus guarded `admin` subcommands. Register the guild command with `pnpm discord:register`. See `docs/DISCORD_ACCEPTANCE.md` for live evidence.
+
+## Administration and collections
+
+- `/admin` is Bot-scoped administration. Cloudflare Access authenticates; Foilbury membership and capabilities authorise.
+- `/platform-admin` is the explicitly provisioned Super Admin area. It is never granted by Access membership or a Discord guild role.
+- Global collections are curated by the Super Admin and enabled per Bot. Bot collections are private to their Bot.
+- `/_emdash` is the EmDash editorial operator console, protected by Access in production. It owns journal content/media; Foilbury owns the card catalogue.
 
 ## Authority
 

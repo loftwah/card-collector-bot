@@ -378,7 +378,11 @@ export async function operationsStatus(ctx: Ctx) {
         ? "Signed HTTP interactions are implemented; guild installations and channel allowlists are authoritative."
         : "The Discord application ID and public key are not configured.",
     },
-    email: { status: "outbox_only", sends: 0 },
+    email: {
+      status: ctx.config.providers.resend ? "live_configured" : "outbox_only",
+      sends: (await first<{ count: number }>(ctx.db, "SELECT COUNT(*) AS count FROM fb_magic_links"))?.count ?? 0,
+    },
+    access: { status: ctx.config.providers.cloudflareAccess ? "edge_and_jwt" : "not_configured" },
     generation: { status: "not_run", billed_cost_micros: 0, reason: "No recorded generation ceiling; supplied and designed assets only." },
     time: { now_utc: nowIso() },
   };

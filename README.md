@@ -1,10 +1,10 @@
 # Foilbury
 
-Foilbury is a standalone, local-first collectible-card cabinet: a curated collection game, an owner-managed content library and a headless service for agents. It is built with TypeScript, Astro, React, Cloudflare Workers simulation, D1 and R2.
+Foilbury is a collectible-card cabinet: a curated collection game, a creator/Bot administration product and a headless service for agents. It is built with TypeScript, Astro, React, Cloudflare Workers, D1 and R2.
 
-The intended production hostname is **foilbury.loftwah.com**, but this build is **not deployed**. The working local URL is the one printed by `pnpm setup:local` and confirmed by `pnpm doctor` — normally `http://127.0.0.1:4321`. The server binds to loopback.
+Production is **https://foilbury.loftwah.com**. The canonical local origin is **http://localhost:5173**; the server binds to loopback. Discord HTTP interactions, website Discord OAuth, Resend magic links and Cloudflare Access administration are configured in production.
 
-Discord is a future entrypoint, not the product's authority. It is disabled and unconnected. Email is a local outbox; image generation is not called.
+Foilbury is the identity and game authority. EmDash is the editorial CMS for journal content and media. Cloudflare Access is the administrative authentication boundary; it is never a Foilbury role.
 
 ## Start locally
 

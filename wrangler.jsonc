@@ -21,9 +21,9 @@
   ],
   "vars": {
     "FOILBURY_ENV": "local",
-    "FOILBURY_PUBLIC_ORIGIN": "http://127.0.0.1:4321",
+    "FOILBURY_PUBLIC_ORIGIN": "http://localhost:5173",
     "FOILBURY_TENANT_SLUG": "cabinet",
-    "EMDASH_SITE_URL": "http://127.0.0.1:4321"
+    "EMDASH_SITE_URL": "http://localhost:5173"
   },
   "triggers": {
     "crons": ["*/5 * * * *"]

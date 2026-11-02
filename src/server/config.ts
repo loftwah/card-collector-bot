@@ -1,5 +1,15 @@
 export type Role = "owner" | "editor" | "economy_admin" | "player";
 
+export interface AccessConfig {
+  enabled: boolean;
+  teamDomain: string;
+  adminAudience: string;
+  apiAudience: string;
+  platformAudience: string;
+  platformApiAudience: string;
+  editorialAudience: string;
+}
+
 export interface RuntimeConfig {
   appName: string;
   environment: "local" | "production" | "test";
@@ -11,6 +21,8 @@ export interface RuntimeConfig {
   csrfSecret: string;
   agentPepper: string;
   emdashSiteUrl: string;
+  resendFrom: string;
+  access: AccessConfig;
   providers: {
     fal: boolean;
     elevenlabs: boolean;
@@ -19,6 +31,7 @@ export interface RuntimeConfig {
     discordApplication: boolean;
     discordBot: boolean;
     discordOAuth: boolean;
+    cloudflareAccess: boolean;
   };
 }
 
@@ -36,6 +49,14 @@ export interface RawEnv {
   FAL_AI_API_KEY?: string;
   ELEVENLABS_API_KEY?: string;
   RESEND_API_KEY?: string;
+  RESEND_FROM_ADDRESS?: string;
+  RESEND_REPLY_TO?: string;
+  FOILBURY_ACCESS_TEAM_DOMAIN?: string;
+  FOILBURY_ACCESS_AUD?: string;
+  FOILBURY_ACCESS_API_AUD?: string;
+  FOILBURY_ACCESS_PLATFORM_AUD?: string;
+  FOILBURY_ACCESS_PLATFORM_API_AUD?: string;
+  FOILBURY_ACCESS_EDITORIAL_AUD?: string;
   ADMIN_DISCORD_WEBHOOK_URL?: string;
   DISCORD_WEBHOOK_URL?: string;
   DISCORD_APPLICATION_ID?: string;
@@ -68,6 +89,17 @@ export function readConfig(raw: RawEnv): RuntimeConfig {
     }
   }
 
+  const accessTeamDomain = raw.FOILBURY_ACCESS_TEAM_DOMAIN?.trim() ?? "";
+  const access = {
+    enabled: environment === "production" && Boolean(accessTeamDomain),
+    teamDomain: accessTeamDomain.replace(/^https?:\/\//, "").replace(/\/$/, ""),
+    adminAudience: raw.FOILBURY_ACCESS_AUD?.trim() ?? "",
+    apiAudience: raw.FOILBURY_ACCESS_API_AUD?.trim() ?? "",
+    platformAudience: raw.FOILBURY_ACCESS_PLATFORM_AUD?.trim() ?? "",
+    platformApiAudience: raw.FOILBURY_ACCESS_PLATFORM_API_AUD?.trim() ?? "",
+    editorialAudience: raw.FOILBURY_ACCESS_EDITORIAL_AUD?.trim() ?? "",
+  };
+
   return {
     appName: "Foilbury",
     environment,
@@ -79,6 +111,8 @@ export function readConfig(raw: RawEnv): RuntimeConfig {
     csrfSecret,
     agentPepper,
     emdashSiteUrl: raw.EMDASH_SITE_URL ?? raw.FOILBURY_PUBLIC_ORIGIN ?? "http://127.0.0.1:4321",
+    resendFrom: raw.RESEND_FROM_ADDRESS?.trim() || "foilbury@loftwah.com",
+    access,
     providers: {
       fal: Boolean(raw.FAL_AI_API_KEY?.trim()),
       elevenlabs: Boolean(raw.ELEVENLABS_API_KEY?.trim()),
@@ -90,6 +124,7 @@ export function readConfig(raw: RawEnv): RuntimeConfig {
         raw.DISCORD_CLIENT_SECRET?.trim() &&
           (raw.DISCORD_CLIENT_ID?.trim() || raw.DISCORD_APPLICATION_ID?.trim()),
       ),
+      cloudflareAccess: access.enabled,
     },
   };
 }

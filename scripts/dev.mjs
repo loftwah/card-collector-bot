@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const port = process.env.PORT ?? "4321";
+const port = process.env.PORT ?? "5173";
 
 const child = spawn(
   path.join(root, "node_modules/.bin/astro"),

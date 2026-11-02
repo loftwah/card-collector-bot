@@ -42,7 +42,7 @@ export function ensureDevVars() {
   const next = new Map(ALLOWED_DEV_VARS.map((key) => [key, existing.get(key) ?? ""]));
   next.set("FOILBURY_LOCAL_MODE", "true");
   next.set("FOILBURY_DEV_LOGIN", existing.get("FOILBURY_DEV_LOGIN") ?? "true");
-  next.set("EMDASH_SITE_URL", next.get("EMDASH_SITE_URL") || "http://127.0.0.1:4321");
+  next.set("EMDASH_SITE_URL", next.get("EMDASH_SITE_URL") || "http://localhost:5173");
   for (const key of ["FOILBURY_SESSION_SECRET", "FOILBURY_CSRF_SECRET", "FOILBURY_AGENT_TOKEN_PEPPER", "FOILBURY_BOOTSTRAP_TOKEN"]) {
     if (!next.get(key) || next.get(key).length < 32) next.set(key, crypto.randomBytes(32).toString("base64url"));
   }
@@ -112,7 +112,7 @@ export async function waitForServer(url, timeoutMs = 45000) {
   return false;
 }
 
-export async function startDevServer(port = 4321) {
+export async function startDevServer(port = 5173) {
   const statusUrl = `http://127.0.0.1:${port}/api/v1/status`;
   if (await waitForServer(statusUrl, 1000)) return { started: false, port };
   spawn(path.join(ROOT, "node_modules/.bin/astro"), ["dev", "--host", "127.0.0.1", "--port", String(port)], {

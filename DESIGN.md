@@ -6,27 +6,34 @@ A collector's cabinet, not a generic dashboard. Paper, ink, brass, oxblood and b
 
 ## Type
 
-- Display: **Fraunces Variable** — headlines, card names, editorial titles.
-- UI: **Manrope Variable** — body, controls, labels.
-- Data: **IBM Plex Mono** — serials, IDs, odds, ledger and API examples.
+- Display: **Geist Serif** — prominent display headings, card names and collection moments. Self-hosted variable WOFF2 with Georgia/Times fallback; no synthetic bold.
+- UI: **Geist Sans** — body, controls and labels.
+- Data: **Geist Mono** — serials, IDs, odds and ledger rows.
 
 ## Colour and surfaces
 
-Use the CSS tokens in `src/styles/global.css`; do not add a competing palette.
+Use the CSS tokens in `src/styles/global.css`; do not add a competing palette. The light brass text token is deliberately darker than the decorative foil so small labels meet WCAG AA on paper.
 
-- Paper `#f4f0e6`, ink `#141512`, brass `#9b7238`, green `#245c4b`, oxblood `#6d2b2b`.
+- Paper `#f4f0e6`, ink `#141512`, brass `#7d5a26` (text) / `#c69a58` (bright), green `#245c4b`, oxblood `#6d2b2b`.
 - Dark mode swaps to ink paper, warm type and brighter brass/green.
 - Rarity is conveyed by text **and** colour. Do not rely on colour alone.
 - Cards are the visual anchor: layered artwork, generous image area, restrained chrome.
 
+## Collections and cards
+
+- A collection has a mark/logo, name, description, status and explicit card membership. Global and Bot-owned collections share the same visual language.
+- Card details show a bio, optional quote, collection mark, provenance and a real card-back view. The web can flip the card; Discord receives the published single-image render.
+- Layered artwork is authored from background → subject → material → frame → effect → text. A published render is the Discord-safe single image; the private source layers stay on the web.
+
 ## Components and motion
 
-- Existing UI primitives in `src/components/ui/` and the project's `btn`, `badge`, `surface-flat`, `table` and `eyebrow` classes.
+- shadcn/ui primitives are configured through `components.json` and `src/components/ui/`; Tailwind tokens map to the Foilbury palette.
+- Existing project classes `btn`, `badge`, `surface-flat`, `table`, `field`, `input` and `eyebrow` remain compatible.
 - Capsule reveal is satisfying but short; skip is always available. Respect `prefers-reduced-motion`.
 - Focus is visible (`--focus`); icon-only controls need an accessible name.
 - Empty, loading, error and disabled states are designed, not left blank.
-- Admin screens distinguish **Bot administration** from **platform administration** in copy and navigation.
+- Admin screens distinguish **Bot administration** from **Platform Administration** in copy and navigation.
 
 ## Verification
 
-Rendered checks use Playwright at desktop and mobile widths, keyboard focus, light/dark presentation and reduced motion. Impeccable's mechanical detector is run over changed UI files. A screenshot or design document alone is not acceptance.
+Rendered checks use Playwright at desktop, tablet and mobile widths, keyboard focus, light/dark presentation, 200% zoom-equivalent and reduced motion. axe WCAG 2 AA checks must have no serious/critical findings. Impeccable's mechanical detector is run over changed UI files; a zero detector result is not design acceptance.

@@ -26,7 +26,7 @@ function hrefFor(block: Block, mark: string) {
   if (block._type === "image") {
     const src = block.url ?? block.asset?.url ?? "";
     if (!src || (!src.startsWith("/") && !src.startsWith("http://") && !src.startsWith("https://"))) return null;
-    return <figure class="my-6"><img src={src} alt={block.alt ?? "Editorial image"} loading="lazy" class="w-full border border-[var(--line)]" /><figcaption class="mt-2 text-xs text-muted">{block.alt}</figcaption></figure>;
+    return <figure class="my-6"><img src={src} alt={block.alt ?? "Editorial image"} loading="lazy" class="w-full border border-[var(--line)]" /><figcaption class="mt-2 text-xs text-[var(--muted)]">{block.alt}</figcaption></figure>;
   }
   if (block._type !== "block") return null;
   const children = childrenFor(block).map((child) => {
@@ -47,7 +47,7 @@ function hrefFor(block: Block, mark: string) {
     case "h1": return <h1 class="display mt-10 text-4xl">{children}</h1>;
     case "h2": return <h2 class="display-sm mt-9 text-3xl">{children}</h2>;
     case "h3": return <h3 class="display-sm mt-7 text-2xl">{children}</h3>;
-    case "blockquote": return <blockquote class="my-6 border-l-2 border-[var(--brass)] pl-5 text-muted">{children}</blockquote>;
+    case "blockquote": return <blockquote class="my-6 border-l-2 border-[var(--brass)] pl-5 text-[var(--muted)]">{children}</blockquote>;
     default: return <p>{children}</p>;
   }
 })}

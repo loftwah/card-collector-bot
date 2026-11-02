@@ -1,0 +1,7 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import AdminApp from "../../components/admin/AdminApp";
+---
+<AdminLayout>
+  <AdminApp client:load section="collections" platformAdmin={Boolean(Astro.locals.foilbury?.user?.platformAdmin)} />
+</AdminLayout>

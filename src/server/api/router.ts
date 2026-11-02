@@ -1,5 +1,7 @@
 import { z } from "zod";
-import { ApiError, assertCsrf, canManageContent, canManageEconomy, requireRole, requireScope, requireUser, type Ctx, type Role } from "../context";
+import { all, first, nowIso } from "../db";
+import { newId } from "../ids";
+import { ApiError, assertCsrf, canManageContent, canManageEconomy, hasCapability, requireRecentStrongAuth, requireRole, requireScope, requireSuperAdmin, requireUser, type Ctx, type Role } from "../context";
 import { apiErrorResponse, audit, json, pagination, readJson, idempotencyInput } from "../http";
 import {
   archiveCard,
@@ -7,6 +9,7 @@ import {
   bulkSetStatus,
   claimSetCompletion,
   createCard,
+  createEditionForCard,
   createSet,
   createTaxonomyItem,
   createTopicPolicy,
@@ -93,6 +96,25 @@ import { getAsset, listAssets, uploadAsset, type AssetKind } from "../modules/as
 import { getWalletSummary } from "../modules/wallet";
 import { adoptGeneration, getGenerationJob, listGenerationJobs, planGeneration, reviewGeneration, submitGeneration } from "../modules/generation";
 import { publicCard, publicSet } from "./public";
+import {
+  acceptBotInvitation,
+  createBot,
+  createBotInvitation,
+  listBotAdmins,
+  listBotInvitations,
+  listBotsForUser,
+  revokeBotAdmin,
+} from "../modules/bots";
+import {
+  addCollectionCards,
+  createCollection,
+  enableCollection,
+  getCollection,
+  listCollectionCards,
+  listCollections,
+  removeCollectionCard,
+  updateCollection,
+} from "../modules/collections";
 
 const idSchema = z.string().min(3).max(80);
 const cardBody = z.object({
@@ -100,6 +122,8 @@ const cardBody = z.object({
   name: z.string().min(1).max(160),
   subtitle: z.string().max(200).optional(),
   description: z.string().min(1).max(4000),
+  bio: z.string().max(2000).optional(),
+  quote: z.string().max(300).optional(),
   logicalId: z.string().max(200).optional(),
   classKey: z.string().max(80).optional(),
   categorySlug: z.string().max(80).optional(),
@@ -111,6 +135,8 @@ const cardPatch = z.object({
   name: z.string().min(1).max(160).optional(),
   subtitle: z.string().max(200).nullable().optional(),
   description: z.string().min(1).max(4000).optional(),
+  bio: z.string().max(2000).nullable().optional(),
+  quote: z.string().max(300).nullable().optional(),
   classKey: z.string().max(80).nullable().optional(),
   categorySlug: z.string().max(80).nullable().optional(),
   rarityKey: z.string().max(80).nullable().optional(),
@@ -151,7 +177,8 @@ function ensureContentRead(ctx: Ctx) {
     if (!["owner", "editor"].includes(ctx.user?.role ?? "")) throw new ApiError(403, "insufficient_role", "The represented member cannot read editorial data.");
     return;
   }
-  requireRole(ctx, ["owner", "editor"]);
+  const user = requireUser(ctx);
+  if (user.role !== "owner" && !hasCapability(user, "content")) throw new ApiError(403, "insufficient_role", "Your Bot role cannot read editorial data.");
 }
 
 function ensureContentWrite(ctx: Ctx) {
@@ -160,7 +187,8 @@ function ensureContentWrite(ctx: Ctx) {
     if (!["owner", "editor"].includes(ctx.user?.role ?? "")) throw new ApiError(403, "insufficient_role", "The represented member cannot edit content.");
     return;
   }
-  requireRole(ctx, ["owner", "editor"]);
+  const user = requireUser(ctx);
+  if (user.role !== "owner" && !hasCapability(user, "content")) throw new ApiError(403, "insufficient_role", "Your Bot role cannot edit content.");
 }
 
 function ensureEconomyRead(ctx: Ctx) {
@@ -169,7 +197,10 @@ function ensureEconomyRead(ctx: Ctx) {
     if (!["owner", "economy_admin"].includes(ctx.user?.role ?? "")) throw new ApiError(403, "insufficient_role", "The represented member cannot read the economy.");
     return;
   }
-  requireRole(ctx, ["owner", "economy_admin"]);
+  const user = requireUser(ctx);
+  if (user.role !== "owner" && !hasCapability(user, "economy") && !hasCapability(user, "inventory")) {
+    throw new ApiError(403, "insufficient_role", "Your Bot role cannot read the economy.");
+  }
 }
 
 function ensureEconomyWrite(ctx: Ctx) {
@@ -178,12 +209,14 @@ function ensureEconomyWrite(ctx: Ctx) {
     if (!["owner", "economy_admin"].includes(ctx.user?.role ?? "")) throw new ApiError(403, "insufficient_role", "The represented member cannot edit the economy.");
     return;
   }
-  requireRole(ctx, ["owner", "economy_admin"]);
+  const user = requireUser(ctx);
+  if (user.role !== "owner" && !hasCapability(user, "economy")) throw new ApiError(403, "insufficient_role", "Your Bot role cannot edit the economy.");
 }
 
 function ensureOwner(ctx: Ctx) {
   if (ctx.actor.type === "agent") throw new ApiError(403, "owner_human_required", "This action requires a signed-in human owner.");
-  requireRole(ctx, ["owner"]);
+  const user = requireUser(ctx);
+  if (user.role !== "owner") throw new ApiError(403, "owner_required", "Only the Bot Owner can do that.");
 }
 
 function ensureOps(ctx: Ctx) {
@@ -192,7 +225,14 @@ function ensureOps(ctx: Ctx) {
     if (!["owner", "editor", "economy_admin"].includes(ctx.user?.role ?? "")) throw new ApiError(403, "insufficient_role", "The represented member cannot read operations.");
     return;
   }
-  requireRole(ctx, ["owner", "editor", "economy_admin"]);
+  const user = requireUser(ctx);
+  if (user.role !== "owner" && !hasCapability(user, "content") && !hasCapability(user, "economy")) {
+    throw new ApiError(403, "insufficient_role", "Your Bot role cannot read operations.");
+  }
+}
+
+function ensureStepUp(ctx: Ctx): void {
+  requireRecentStrongAuth(ctx, 30);
 }
 
 function playerWrite(ctx: Ctx) {
@@ -272,6 +312,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
         search: url.searchParams.get("search") ?? undefined,
         favourite: url.searchParams.get("favourite") === "true",
         setSlug: url.searchParams.get("set") ?? undefined,
+        collection: url.searchParams.get("collection") ?? undefined,
         limit: Number(url.searchParams.get("limit") ?? 200),
       }),
     });
@@ -436,6 +477,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
   if (segments[0] === "admin" && segments[1] === "cards" && segments[2] === "bulk" && method === "POST") {
     ensureContentWrite(ctx);
+    ensureStepUp(ctx);
     const body = await readJson(
       request,
       z.object({ ids: z.array(idSchema).max(100), status: z.enum(["draft", "published", "retired"]) }),
@@ -454,8 +496,27 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       return json({ ok: true });
     }
   }
+  if (segments[0] === "admin" && segments[1] === "cards" && segments[2] && segments[3] === "editions" && method === "POST") {
+    ensureContentWrite(ctx);
+    ensureStepUp(ctx);
+    const body = await readJson(request, z.object({
+      name: z.string().min(1).max(160),
+      subjectAssetId: idSchema,
+      backgroundAssetId: idSchema.nullable().optional(),
+      recipeId: idSchema.nullable().optional(),
+      materials: z.array(z.string().max(40)).min(1).max(8),
+      effects: z.array(z.string().max(40)).max(8).optional(),
+      status: z.enum(["draft", "published"]).optional(),
+    }));
+    return json({ card: await createEditionForCard(ctx, segments[2], body) }, 201);
+  }
+  if (segments[0] === "admin" && segments[1] === "recipes" && method === "GET") {
+    ensureContentRead(ctx);
+    return json({ items: await all(ctx.db, "SELECT id, name, version, status, published_at FROM fb_recipes WHERE tenant_id = ? AND status = 'published' ORDER BY version DESC", ctx.tenant.id) });
+  }
   if (segments[0] === "admin" && segments[1] === "cards" && segments[2] && segments[3] === "status" && method === "POST") {
     ensureContentWrite(ctx);
+    ensureStepUp(ctx);
     const body = await readJson(request, z.object({ status: z.enum(["draft", "published", "retired"]) }));
     return json({ card: await setCardStatus(ctx, segments[2], body.status) });
   }
@@ -515,6 +576,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
   if (segments[0] === "admin" && segments[1] === "catalogue" && segments[2] === "publish" && method === "POST") {
     ensureContentWrite(ctx);
+    ensureStepUp(ctx);
     requireScope(ctx, "catalogue:publish");
     return json(await publishCatalogue(ctx));
   }
@@ -578,6 +640,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
   if (segments[0] === "admin" && segments[1] === "economy" && method === "PATCH") {
     ensureEconomyWrite(ctx);
+    ensureStepUp(ctx);
     const body = await readJson(
       request,
       z.object({
@@ -597,6 +660,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
   if (segments[0] === "admin" && segments[1] === "wallets" && segments[2] && segments[3] === "adjust" && method === "POST") {
     ensureEconomyWrite(ctx);
+    ensureStepUp(ctx);
     const body = await readJson(
       request,
       z.object({ amount: z.number().int().refine((value) => value !== 0), reason: z.string().min(3).max(500) }),
@@ -648,6 +712,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
   if (segments[0] === "admin" && segments[1] === "assets" && segments.length === 2 && method === "POST") {
     ensureContentWrite(ctx);
+    ensureStepUp(ctx);
     requireScope(ctx, "import:write");
     const form = await request.formData();
     const file = form.get("file");
@@ -782,6 +847,209 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   if ((segments[0] === "ops" || segments[0] === "admin") && segments[1] === "status" && method === "GET") {
     ensureOps(ctx);
     return json(await operationsStatus(ctx));
+  }
+
+  // Bots and delegated administration
+  if (segments[0] === "bots" && segments.length === 1 && method === "GET") {
+    const user = requireUser(ctx);
+    return json({ items: await listBotsForUser(ctx.db, user.id) });
+  }
+  if (segments[0] === "bots" && segments.length === 1 && method === "POST") {
+    ensureStepUp(ctx);
+    const body = await readJson(request, z.object({
+      name: z.string().min(2).max(80),
+      slug: z.string().min(2).max(60).optional(),
+      description: z.string().max(500).optional(),
+    }));
+    const result = await createBot(ctx, body);
+    return json(result, result.created ? 201 : 200);
+  }
+  if (segments[0] === "invitations" && segments[1] === "accept" && method === "POST") {
+    const body = await readJson(request, z.object({ token: z.string().min(20).max(300) }));
+    return json(await acceptBotInvitation(ctx, body.token));
+  }
+  if (segments[0] === "admin" && segments[1] === "bot" && segments.length === 2 && method === "GET") {
+    ensureOps(ctx);
+    const { botForTenant } = await import("../modules/bots");
+    const bot = await botForTenant(ctx.db, ctx.tenant.id);
+    if (!bot) throw new ApiError(404, "bot_not_found", "No Bot is attached to this administration area.");
+    return json({
+      bot,
+      admins: await listBotAdmins(ctx, bot.id),
+      invitations: await listBotInvitations(ctx, bot.id),
+      current_role: ctx.user?.platformAdmin ? "Super Admin" : ctx.user?.role === "owner" ? "Bot Owner" : "Bot Admin",
+    });
+  }
+  if (segments[0] === "admin" && segments[1] === "bot" && segments[2] === "invitations" && method === "POST") {
+    ensureStepUp(ctx);
+    const { botForTenant } = await import("../modules/bots");
+    const bot = await botForTenant(ctx.db, ctx.tenant.id);
+    if (!bot) throw new ApiError(404, "bot_not_found", "No Bot is attached to this administration area.");
+    const body = await readJson(request, z.object({
+      email: z.string().email().max(320),
+      capabilities: z.array(z.string().max(40)).min(1).max(10),
+      expiresInDays: z.number().int().min(1).max(30).optional(),
+    }));
+    return json(await createBotInvitation(ctx, { botId: bot.id, ...body }), 201);
+  }
+  if (segments[0] === "admin" && segments[1] === "bot" && segments[2] === "admins" && segments[3] && segments[4] === "revoke" && method === "POST") {
+    ensureStepUp(ctx);
+    const { botForTenant } = await import("../modules/bots");
+    const bot = await botForTenant(ctx.db, ctx.tenant.id);
+    if (!bot) throw new ApiError(404, "bot_not_found", "No Bot is attached to this administration area.");
+    await revokeBotAdmin(ctx, bot.id, segments[3]!);
+    return json({ ok: true });
+  }
+
+  // Collections (global and Bot-scoped)
+  if (segments[0] === "admin" && segments[1] === "collections" && segments.length === 2 && method === "GET") {
+    ensureContentRead(ctx);
+    return json({ items: await listCollections(ctx) });
+  }
+  if (segments[0] === "admin" && segments[1] === "collections" && segments.length === 2 && method === "POST") {
+    ensureContentWrite(ctx);
+    ensureStepUp(ctx);
+    const body = await readJson(request, z.object({
+      name: z.string().min(2).max(120),
+      slug: z.string().min(2).max(60).optional(),
+      description: z.string().max(1000).optional(),
+      scope: z.enum(["global", "bot"]).default("bot"),
+      logoUrl: z.string().max(500).optional(),
+      bannerUrl: z.string().max(500).optional(),
+      accent: z.string().max(30).optional(),
+      status: z.enum(["draft", "published"]).optional(),
+    }));
+    return json({ collection: await createCollection(ctx, body) }, 201);
+  }
+  if (segments[0] === "admin" && segments[1] === "collections" && segments[2] && segments.length === 3 && method === "GET") {
+    ensureContentRead(ctx);
+    return json({ collection: await getCollection(ctx, segments[2]), cards: await listCollectionCards(ctx, segments[2]) });
+  }
+  if (segments[0] === "admin" && segments[1] === "collections" && segments[2] && segments.length === 3 && method === "PATCH") {
+    ensureContentWrite(ctx);
+    ensureStepUp(ctx);
+    const body = await readJson(request, z.object({
+      name: z.string().min(2).max(120).optional(),
+      description: z.string().max(1000).optional(),
+      logoUrl: z.string().max(500).nullable().optional(),
+      bannerUrl: z.string().max(500).nullable().optional(),
+      accent: z.string().max(30).optional(),
+      status: z.enum(["draft", "published", "archived"]).optional(),
+      sort: z.number().int().min(0).max(10000).optional(),
+    }));
+    return json({ collection: await updateCollection(ctx, segments[2], body) });
+  }
+  if (segments[0] === "admin" && segments[1] === "collections" && segments[2] && segments[3] === "cards" && method === "POST") {
+    ensureContentWrite(ctx);
+    ensureStepUp(ctx);
+    const body = await readJson(request, z.object({ cardIds: z.array(idSchema).min(1).max(300) }));
+    return json(await addCollectionCards(ctx, segments[2], body.cardIds));
+  }
+  if (segments[0] === "admin" && segments[1] === "collections" && segments[2] && segments[3] === "cards" && segments[4] && method === "DELETE") {
+    ensureContentWrite(ctx);
+    ensureStepUp(ctx);
+    await removeCollectionCard(ctx, segments[2], segments[4]);
+    return json({ ok: true });
+  }
+  if (segments[0] === "admin" && segments[1] === "collections" && segments[2] && segments[3] === "enable" && method === "POST") {
+    ensureContentWrite(ctx);
+    ensureStepUp(ctx);
+    const body = await readJson(request, z.object({ enabled: z.boolean() }));
+    await enableCollection(ctx, segments[2], body.enabled);
+    return json({ ok: true });
+  }
+
+  // Platform Administration. Access admission is never treated as a role.
+  if (segments[0] === "platform" && segments[1] === "overview" && method === "GET") {
+    requireSuperAdmin(ctx);
+    const counts = await first<Record<string, number>>(ctx.db, `SELECT
+      (SELECT COUNT(*) FROM fb_users) AS users,
+      (SELECT COUNT(*) FROM fb_bots WHERE status <> 'archived') AS bots,
+      (SELECT COUNT(*) FROM fb_tenants) AS tenants,
+      (SELECT COUNT(*) FROM fb_discord_installations WHERE active = 1) AS installations,
+      (SELECT COUNT(*) FROM fb_card_definitions WHERE archived_at IS NULL) AS cards,
+      (SELECT COUNT(*) FROM fb_card_instances WHERE status = 'owned') AS owned_instances,
+      (SELECT COUNT(*) FROM fb_ledger_entries) AS ledger_entries,
+      (SELECT COUNT(*) FROM fb_platform_admins WHERE status = 'active') AS super_admins,
+      (SELECT COUNT(*) FROM fb_bot_invitations WHERE status = 'pending' AND expires_at > datetime('now')) AS pending_invitations`);
+    const bots = await all<Record<string, unknown>>(ctx.db,
+      `SELECT b.id, b.name, b.slug, b.status, b.created_at, t.id AS tenant_id, t.slug AS tenant_slug,
+              u.email AS owner_email, u.display_name AS owner_name,
+              (SELECT COUNT(*) FROM fb_discord_installations i WHERE i.bot_id = b.id AND i.active = 1) AS installations,
+              (SELECT COUNT(*) FROM fb_card_definitions cd WHERE cd.tenant_id = b.tenant_id AND cd.archived_at IS NULL) AS cards
+         FROM fb_bots b JOIN fb_tenants t ON t.id = b.tenant_id JOIN fb_users u ON u.id = b.owner_user_id
+        ORDER BY b.created_at`);
+    const installations = await all<Record<string, unknown>>(ctx.db,
+      `SELECT i.*, b.name AS bot_name, t.slug AS tenant_slug FROM fb_discord_installations i
+         JOIN fb_bots b ON b.id = i.bot_id JOIN fb_tenants t ON t.id = i.tenant_id ORDER BY i.created_at DESC`);
+    const access = await all<Record<string, unknown>>(ctx.db,
+      `SELECT ai.id, ai.email, ai.team_domain, ai.subject, ai.linked_at, ai.last_seen_at, u.id AS user_id, u.display_name
+         FROM fb_access_identities ai JOIN fb_users u ON u.id = ai.user_id WHERE ai.revoked_at IS NULL ORDER BY ai.linked_at DESC`);
+    const admins = await all<Record<string, unknown>>(ctx.db,
+      `SELECT pa.user_id, pa.provisioned_at, pa.reason, pa.status, u.email, u.display_name
+         FROM fb_platform_admins pa JOIN fb_users u ON u.id = pa.user_id WHERE pa.status = 'active'`);
+    const audit = await all<Record<string, unknown>>(ctx.db,
+      `SELECT id, action, object_type, object_id, actor_type, actor_id, metadata_json, created_at
+         FROM fb_audit_events ORDER BY created_at DESC LIMIT 50`);
+    return json({ counts, bots, installations, access, admins, audit, current_user: ctx.user });
+  }
+  if (segments[0] === "platform" && segments[1] === "accounts" && method === "GET") {
+    requireSuperAdmin(ctx);
+    const accounts = await all<Record<string, unknown>>(ctx.db,
+      `SELECT u.id, u.email, u.display_name, u.platform_admin, u.email_verified_at, u.created_at, u.disabled_at,
+              (SELECT COUNT(*) FROM fb_memberships m WHERE m.user_id = u.id AND m.status = 'active') AS memberships,
+              (SELECT COUNT(*) FROM fb_discord_identities d WHERE d.user_id = u.id AND d.revoked_at IS NULL) AS discord_links,
+              (SELECT COUNT(*) FROM fb_webauthn_credentials p WHERE p.user_id = u.id) AS passkeys,
+              (SELECT COUNT(*) FROM fb_access_identities a WHERE a.user_id = u.id AND a.revoked_at IS NULL) AS access_links
+         FROM fb_users u ORDER BY u.created_at`);
+    return json({ items: accounts });
+  }
+  if (segments[0] === "platform" && segments[1] === "installations" && segments[2] && method === "PATCH") {
+    requireSuperAdmin(ctx);
+    ensureStepUp(ctx);
+    const body = await readJson(request, z.object({
+      channelAllowlist: z.array(z.string().regex(/^\d{15,22}$/)).max(20).optional(),
+      gameEnabled: z.boolean().optional(),
+      websiteEnabled: z.boolean().optional(),
+      apiEnabled: z.boolean().optional(),
+      publicCatalogueEnabled: z.boolean().optional(),
+      adminGuiEnabled: z.boolean().optional(),
+      active: z.boolean().optional(),
+    }));
+    const installation = await first<{ id: string }>(ctx.db, "SELECT id FROM fb_discord_installations WHERE id = ?", segments[2]);
+    if (!installation) throw new ApiError(404, "installation_not_found", "That installation does not exist.");
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    if (body.channelAllowlist !== undefined) { fields.push("channel_allowlist_json = ?"); values.push(JSON.stringify(body.channelAllowlist)); }
+    for (const key of ["gameEnabled", "websiteEnabled", "apiEnabled", "publicCatalogueEnabled", "adminGuiEnabled", "active"] as const) {
+      if (body[key] !== undefined) { fields.push(`${key.replace(/[A-Z]/g, (c) => "_" + c.toLowerCase())} = ?`); values.push(body[key] ? 1 : 0); }
+    }
+    if (!fields.length) return json({ ok: true });
+    fields.push("updated_at = ?"); values.push(nowIso(), installation.id);
+    await ctx.db.prepare(`UPDATE fb_discord_installations SET ${fields.join(", ")} WHERE id = ?`).bind(...values).run();
+    await ctx.db.prepare(
+      `INSERT INTO fb_audit_events (id, tenant_id, actor_type, actor_id, represented_user_id, action, object_type, object_id, metadata_json, request_id, created_at)
+       VALUES (?, ?, 'user', ?, ?, 'platform.installation.updated', 'discord_installation', ?, ?, ?, ?)`,
+    ).bind(newId("aud"), ctx.tenant.id, ctx.user!.id, ctx.user!.id, installation.id, JSON.stringify(body), ctx.requestId, nowIso()).run();
+    return json({ ok: true });
+  }
+  if (segments[0] === "platform" && segments[1] === "bots" && segments[2] && segments[3] === "status" && method === "POST") {
+    requireSuperAdmin(ctx);
+    ensureStepUp(ctx);
+    const body = await readJson(request, z.object({ status: z.enum(["active", "paused", "archived"]) }));
+    const bot = await first<{ id: string; tenant_id: string }>(ctx.db, "SELECT id, tenant_id FROM fb_bots WHERE id = ?", segments[2]);
+    if (!bot) throw new ApiError(404, "bot_not_found", "That Bot does not exist.");
+    await ctx.db.prepare("UPDATE fb_bots SET status = ?, updated_at = ? WHERE id = ?").bind(body.status, nowIso(), bot.id).run();
+    await ctx.db.prepare(
+      `INSERT INTO fb_audit_events (id, tenant_id, actor_type, actor_id, represented_user_id, action, object_type, object_id, metadata_json, request_id, created_at)
+       VALUES (?, ?, 'user', ?, ?, 'platform.bot.status', 'bot', ?, ?, ?, ?)`,
+    ).bind(newId("aud"), bot.tenant_id, ctx.user!.id, ctx.user!.id, bot.id, JSON.stringify({ status: body.status }), ctx.requestId, nowIso()).run();
+    return json({ ok: true, status: body.status });
+  }
+  if (segments[0] === "platform" && segments[1] === "collections" && segments.length === 2 && method === "GET") {
+    requireSuperAdmin(ctx);
+    const items = (await listCollections(ctx, { includeArchived: true })).filter((collection) => collection.scope === "global");
+    return json({ items });
   }
 
   throw new ApiError(404, "not_found", "No matching API route.");

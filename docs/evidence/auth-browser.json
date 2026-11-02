@@ -1,0 +1,56 @@
+{
+  "generated_at": "2026-11-02T12:32:44.074Z",
+  "base_url": "http://localhost:5173",
+  "results": [
+    {
+      "name": "dev account enters the security surface",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "passkey registration and session upgrade",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "passkey appears in account security",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "TOTP authenticator confirmation",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "single-use recovery code upgrades assurance to MFA",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "other sessions revoked",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "magic-link delivery accepted, link redeemed to /play",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "magic-link replay rejected",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "passkey sign-in returns to the cabinet",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "no browser console errors during the journey",
+      "status": "PASS",
+      "detail": ""
+    }
+  ]
+}

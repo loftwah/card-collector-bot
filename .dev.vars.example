@@ -7,8 +7,12 @@ FOILBURY_CSRF_SECRET=
 FOILBURY_BOOTSTRAP_TOKEN=
 FOILBURY_AGENT_TOKEN_PEPPER=
 EMDASH_ENCRYPTION_KEY=
-EMDASH_SITE_URL=http://127.0.0.1:4321
+EMDASH_SITE_URL=http://localhost:5173
 # Public Discord identifiers are safe to bind locally; the bot token is not needed
 # by the HTTP interactions endpoint and must never be placed here.
 DISCORD_APPLICATION_ID=
 DISCORD_PUBLIC_KEY=
+# Local OAuth only. The canonical local origin is http://localhost:5173.
+DISCORD_CLIENT_ID=
+DISCORD_CLIENT_SECRET=
+DISCORD_REDIRECT_URI=http://localhost:5173/auth/discord/callback

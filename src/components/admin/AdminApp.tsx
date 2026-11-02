@@ -19,10 +19,14 @@ import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "../ui/dialog";
 import { Field, Input, Select, Textarea } from "../ui/input";
 import { Switch } from "../ui/switch";
+import AdminCollections from "./AdminCollections";
+import AdminTeam from "./AdminTeam";
 
 export type AdminSection =
   | "overview"
   | "catalogue"
+  | "collections"
+  | "team"
   | "taxonomy"
   | "topics"
   | "sets"
@@ -58,12 +62,15 @@ interface Card {
   name: string;
   subtitle: string | null;
   description: string;
+  bio: string | null;
+  quote: string | null;
   status: string;
   version: number;
   class: { key: string; name: string } | null;
   category: { slug: string; name: string } | null;
   rarity: { key: string; name: string; tone: string } | null;
   tags: Array<{ slug: string; name: string }>;
+  collections: Array<{ id: string; slug: string; name: string; scope: string }>;
   editions: Array<{ id: string; name: string; status: string; variants: Variant[] }>;
   sets: Array<{ slug: string; name: string }>;
 }
@@ -73,6 +80,8 @@ interface SetRow {
   slug: string;
   name: string;
   description: string;
+  bio: string | null;
+  quote: string | null;
   status: string;
   version: number;
   reward_amount: number;
@@ -85,6 +94,8 @@ interface PoolRow {
   slug: string;
   name: string;
   description: string;
+  bio: string | null;
+  quote: string | null;
   status: string;
   revision: number;
   price: number;
@@ -96,6 +107,21 @@ interface Member {
   email: string;
   display_name: string;
   role: string;
+}
+
+interface AssetRow {
+  id: string;
+  name: string;
+  kind: string;
+  mime: string;
+  width: number | null;
+  height: number | null;
+}
+
+interface RecipeRow {
+  id: string;
+  name: string;
+  version: number;
 }
 
 interface AgentRow {
@@ -200,11 +226,11 @@ function AdminOverview() {
               <p className="eyebrow">External capabilities</p>
               <dl className="mt-3 grid gap-2 text-sm">
                 <div className="flex justify-between gap-3"><dt>Discord</dt><dd className="text-[var(--muted)]">{providers.discordApplication ? "interactions ready · guild-bound" : "disabled"}</dd></div>
-                <div className="flex justify-between gap-3"><dt>Email</dt><dd className="text-[var(--muted)]">local outbox only</dd></div>
+                <div className="flex justify-between gap-3"><dt>Email</dt><dd className="text-[var(--muted)]">{providers.resend ? "Resend configured · live" : "local outbox only"}</dd></div>
                 <div className="flex justify-between gap-3"><dt>Generation</dt><dd className="text-[var(--muted)]">not run · no ceiling recorded</dd></div>
                 <div className="flex justify-between gap-3"><dt>Admin webhook</dt><dd className="text-[var(--muted)]">{providers.adminWebhook ? "configured · not called" : "missing"}</dd></div>
                 <div className="flex justify-between gap-3"><dt>FAL</dt><dd className="text-[var(--muted)]">{providers.fal ? "configured · unbilled" : "missing"}</dd></div>
-                <div className="flex justify-between gap-3"><dt>Resend</dt><dd className="text-[var(--muted)]">{providers.resend ? "configured · not sent" : "missing"}</dd></div>
+                <div className="flex justify-between gap-3"><dt>Resend</dt><dd className="text-[var(--muted)]">{providers.resend ? "configured · live delivery" : "missing"}</dd></div>
               </dl>
             </div>
           </div>
@@ -226,31 +252,44 @@ function AdminOverview() {
 function AdminCatalogue() {
   const [cards, setCards] = useState<Card[]>([]);
   const [taxonomy, setTaxonomy] = useState<Taxonomy | null>(null);
+  const [assets, setAssets] = useState<AssetRow[]>([]);
+  const [backgrounds, setBackgrounds] = useState<AssetRow[]>([]);
+  const [recipes, setRecipes] = useState<RecipeRow[]>([]);
+  const [artworkFor, setArtworkFor] = useState<Card | null>(null);
+  const [artwork, setArtwork] = useState({ name: "", subjectAssetId: "", backgroundAssetId: "", recipeId: "", materials: ["plain"] as string[] });
+  const [uploading, setUploading] = useState("");
+  const [uploadKind, setUploadKind] = useState<"subject" | "background">("subject");
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Card | null>(null);
-  const [form, setForm] = useState({ slug: "", name: "", subtitle: "", description: "", classKey: "", categorySlug: "", rarityKey: "", tags: "" });
+  const [form, setForm] = useState({ slug: "", name: "", subtitle: "", description: "", bio: "", quote: "", classKey: "", categorySlug: "", rarityKey: "", tags: "" });
 
   async function load() {
     try {
-      const [c, t] = await Promise.all([api<{ items: Card[] }>("/api/v1/admin/cards?limit=200"), api<Taxonomy>("/api/v1/admin/taxonomy")]);
-      setCards(c.items); setTaxonomy(t);
+      const [c, t, subjects, backs, recipeResult] = await Promise.all([
+        api<{ items: Card[] }>("/api/v1/admin/cards?limit=200"),
+        api<Taxonomy>("/api/v1/admin/taxonomy"),
+        api<{ items: AssetRow[] }>("/api/v1/admin/assets?kind=subject"),
+        api<{ items: AssetRow[] }>("/api/v1/admin/assets?kind=background"),
+        api<{ items: RecipeRow[] }>("/api/v1/admin/recipes"),
+      ]);
+      setCards(c.items); setTaxonomy(t); setAssets(subjects.items); setBackgrounds(backs.items); setRecipes(recipeResult.items);
     } catch (cause) { setError(describeError(cause)); }
   }
   useEffect(() => { void load(); }, []);
 
-  function resetForm() { setForm({ slug: "", name: "", subtitle: "", description: "", classKey: "", categorySlug: "", rarityKey: "", tags: "" }); }
+  function resetForm() { setForm({ slug: "", name: "", subtitle: "", description: "", bio: "", quote: "", classKey: "", categorySlug: "", rarityKey: "", tags: "" }); }
   function editForm(card: Card) {
     setEditing(card);
-    setForm({ slug: card.slug, name: card.name, subtitle: card.subtitle ?? "", description: card.description, classKey: card.class?.key ?? "", categorySlug: card.category?.slug ?? "", rarityKey: card.rarity?.key ?? "", tags: card.tags.map((tag) => tag.slug).join(", ") });
+    setForm({ slug: card.slug, name: card.name, subtitle: card.subtitle ?? "", description: card.description, bio: card.bio ?? "", quote: card.quote ?? "", classKey: card.class?.key ?? "", categorySlug: card.category?.slug ?? "", rarityKey: card.rarity?.key ?? "", tags: card.tags.map((tag) => tag.slug).join(", ") });
   }
   async function create() {
     setBusy("create"); setError(""); setMessage("");
     try {
-      await api("/api/v1/admin/cards", { method: "POST", body: { slug: form.slug, name: form.name, subtitle: form.subtitle || undefined, description: form.description, classKey: form.classKey || undefined, categorySlug: form.categorySlug || undefined, rarityKey: form.rarityKey || undefined, tags: form.tags ? form.tags.split(",").map((tag) => tag.trim()).filter(Boolean) : undefined } });
+      await api("/api/v1/admin/cards", { method: "POST", body: { slug: form.slug, name: form.name, subtitle: form.subtitle || undefined, description: form.description, bio: form.bio || undefined, quote: form.quote || undefined, classKey: form.classKey || undefined, categorySlug: form.categorySlug || undefined, rarityKey: form.rarityKey || undefined, tags: form.tags ? form.tags.split(",").map((tag) => tag.trim()).filter(Boolean) : undefined } });
       setCreateOpen(false); resetForm(); setMessage("Draft card created. Add an artwork edition through import before publishing."); await load();
     } catch (cause) { setError(describeError(cause)); } finally { setBusy(""); }
   }
@@ -258,9 +297,48 @@ function AdminCatalogue() {
     if (!editing) return;
     setBusy("save"); setError(""); setMessage("");
     try {
-      await api(`/api/v1/admin/cards/${editing.id}`, { method: "PATCH", body: { expectedVersion: editing.version, name: form.name, subtitle: form.subtitle || null, description: form.description, classKey: form.classKey || null, categorySlug: form.categorySlug || null, rarityKey: form.rarityKey || null, tags: form.tags ? form.tags.split(",").map((tag) => tag.trim()).filter(Boolean) : [] } });
+      await api(`/api/v1/admin/cards/${editing.id}`, { method: "PATCH", body: { expectedVersion: editing.version, name: form.name, subtitle: form.subtitle || null, description: form.description, bio: form.bio || null, quote: form.quote || null, classKey: form.classKey || null, categorySlug: form.categorySlug || null, rarityKey: form.rarityKey || null, tags: form.tags ? form.tags.split(",").map((tag) => tag.trim()).filter(Boolean) : [] } });
       setEditing(null); setMessage("Card saved with optimistic concurrency."); await load();
     } catch (cause) { setError(describeError(cause)); } finally { setBusy(""); }
+  }
+  async function addArtwork() {
+    if (!artworkFor) return;
+    setBusy("artwork"); setError(""); setMessage("");
+    try {
+      await api(`/api/v1/admin/cards/${artworkFor.id}/editions`, {
+        method: "POST",
+        body: {
+          name: artwork.name || `${artworkFor.name} edition`,
+          subjectAssetId: artwork.subjectAssetId,
+          backgroundAssetId: artwork.backgroundAssetId || null,
+          recipeId: artwork.recipeId || null,
+          materials: artwork.materials,
+          effects: ["none"],
+          status: "published",
+        },
+      });
+      setArtworkFor(null);
+      setArtwork({ name: "", subjectAssetId: "", backgroundAssetId: "", recipeId: "", materials: ["plain"] });
+      setMessage("Artwork edition created. Queue missing renders, then publish the card.");
+      await load();
+    } catch (cause) { setError(describeError(cause)); } finally { setBusy(""); }
+  }
+  async function uploadArtwork(file: File | null) {
+    if (!file) return;
+    setUploading("file"); setError(""); setMessage("");
+    try {
+      const form = new FormData();
+      form.set("file", file);
+      form.set("kind", uploadKind);
+      form.set("name", file.name.replace(/\.[^.]+$/, ""));
+      const csrf = document.querySelector<HTMLMetaElement>('meta[name="foilbury-csrf"]')?.content ?? "";
+      const response = await fetch("/api/v1/admin/assets", { method: "POST", body: form, headers: { "x-foilbury-csrf": csrf } });
+      const payload = await response.json().catch(() => null) as { error?: { message?: string }; asset?: { id: string } } | null;
+      if (!response.ok) throw new Error(payload?.error?.message ?? "Upload failed");
+      setMessage(`${uploadKind === "subject" ? "Subject" : "Background"} uploaded.`);
+      await load();
+      if (payload?.asset?.id) setArtwork((current) => uploadKind === "subject" ? { ...current, subjectAssetId: payload.asset!.id } : { ...current, backgroundAssetId: payload.asset!.id });
+    } catch (cause) { setError(describeError(cause)); } finally { setUploading(""); }
   }
   async function setStatus(card: Card, status: string) {
     setBusy(`${card.id}-${status}`); setError(""); setMessage("");
@@ -291,7 +369,7 @@ function AdminCatalogue() {
                   <td className="text-[var(--muted)]">{card.rarity?.name ?? "—"}</td>
                   <td><span className="font-mono text-xs">{variants.length}</span><span className="ml-1 text-[0.62rem] text-[var(--muted)]">({renders} rendered)</span></td>
                   <td className="text-[0.68rem] text-[var(--muted)]">{card.sets.map((set) => set.name).join(", ") || "—"}</td>
-                  <td className="text-right"><div className="flex justify-end gap-1"><Button size="sm" variant="secondary" onClick={() => editForm(card)}>Edit</Button>{card.status !== "published" ? <Button size="sm" onClick={() => setStatus(card, "published")} disabled={Boolean(busy)}>Publish</Button> : <Button size="sm" variant="danger" onClick={() => setStatus(card, "retired")} disabled={Boolean(busy)}>Retire</Button>}</div></td>
+                  <td className="text-right"><div className="flex justify-end gap-1"><Button size="sm" variant="secondary" onClick={() => editForm(card)}>Edit</Button><Button size="sm" variant="secondary" onClick={() => { setArtworkFor(card); setArtwork({ name: `${card.name} edition`, subjectAssetId: "", backgroundAssetId: "", recipeId: "", materials: ["plain"] }); }}>Artwork</Button>{card.status !== "published" ? <Button size="sm" onClick={() => setStatus(card, "published")} disabled={Boolean(busy)}>Publish</Button> : <Button size="sm" variant="danger" onClick={() => setStatus(card, "retired")} disabled={Boolean(busy)}>Retire</Button>}</div></td>
                 </tr>
               );
             })}
@@ -310,6 +388,10 @@ function AdminCatalogue() {
             <Field label="Name"><Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field>
             <Field label="Subtitle"><Input value={form.subtitle} onChange={(event) => setForm({ ...form, subtitle: event.target.value })} /></Field>
             <Field label="Description"><Textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></Field>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Bio" hint="The character story shown on the card detail page."><Textarea value={form.bio} onChange={(event) => setForm({ ...form, bio: event.target.value })} /></Field>
+              <Field label="Quote"><Input value={form.quote} onChange={(event) => setForm({ ...form, quote: event.target.value })} placeholder="A line worth keeping." /></Field>
+            </div>
             <div className="grid gap-3 sm:grid-cols-3">
               <Field label="Class"><Select value={form.classKey} onChange={(event) => setForm({ ...form, classKey: event.target.value })}><option value="">None</option>{taxonomy?.classes.map((item) => <option key={item.key} value={item.key}>{item.name}</option>)}</Select></Field>
               <Field label="Category"><Select value={form.categorySlug} onChange={(event) => setForm({ ...form, categorySlug: event.target.value })}><option value="">None</option>{taxonomy?.categories.map((item) => <option key={item.slug} value={item.slug}>{item.name}</option>)}</Select></Field>
@@ -329,6 +411,10 @@ function AdminCatalogue() {
             <Field label="Name"><Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field>
             <Field label="Subtitle"><Input value={form.subtitle} onChange={(event) => setForm({ ...form, subtitle: event.target.value })} /></Field>
             <Field label="Description"><Textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></Field>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Bio" hint="The character story shown on the card detail page."><Textarea value={form.bio} onChange={(event) => setForm({ ...form, bio: event.target.value })} /></Field>
+              <Field label="Quote"><Input value={form.quote} onChange={(event) => setForm({ ...form, quote: event.target.value })} placeholder="A line worth keeping." /></Field>
+            </div>
             <div className="grid gap-3 sm:grid-cols-3">
               <Field label="Class"><Select value={form.classKey} onChange={(event) => setForm({ ...form, classKey: event.target.value })}><option value="">None</option>{taxonomy?.classes.map((item) => <option key={item.key} value={item.key}>{item.name}</option>)}</Select></Field>
               <Field label="Category"><Select value={form.categorySlug} onChange={(event) => setForm({ ...form, categorySlug: event.target.value })}><option value="">None</option>{taxonomy?.categories.map((item) => <option key={item.slug} value={item.slug}>{item.name}</option>)}</Select></Field>
@@ -336,6 +422,35 @@ function AdminCatalogue() {
             </div>
             <Field label="Tags" hint="Comma separated tag slugs"><Input value={form.tags} onChange={(event) => setForm({ ...form, tags: event.target.value })} /></Field>
             <div className="flex gap-2"><Button onClick={save} disabled={busy === "save"}>{busy === "save" ? "Saving…" : "Save card"}</Button><Button variant="secondary" onClick={() => setEditing(null)}>Cancel</Button></div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(artworkFor)} onOpenChange={(open) => { if (!open) setArtworkFor(null); }}>
+        <DialogContent>
+          <DialogTitle>Add artwork to {artworkFor?.name}</DialogTitle>
+          <DialogDescription>Choose an uploaded subject and optional background, then create explicit finish variants. The render queue composes the public image.</DialogDescription>
+          <div className="mt-5 grid gap-3">
+            <Field label="Edition name"><Input value={artwork.name} onChange={(event) => setArtwork({ ...artwork, name: event.target.value })} /></Field>
+            <div className="border border-[var(--line)] p-3">
+              <p className="label">Upload private source art</p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Select value={uploadKind} onChange={(event) => setUploadKind(event.target.value as "subject" | "background")}><option value="subject">Subject</option><option value="background">Background</option></Select>
+                <input type="file" accept="image/*" onChange={(event) => void uploadArtwork(event.target.files?.[0] ?? null)} disabled={Boolean(uploading)} className="text-xs" />
+                {uploading ? <span className="text-xs text-[var(--muted)]">Uploading…</span> : null}
+              </div>
+              <p className="mt-1 text-xs text-[var(--muted)]">PNG, WebP or JPEG. Stored privately in the Bot's media bucket; only published renders are public.</p>
+            </div>
+            <Field label="Subject asset" hint="Choose the uploaded subject or an existing private asset.">
+              <Select value={artwork.subjectAssetId} onChange={(event) => setArtwork({ ...artwork, subjectAssetId: event.target.value })}>
+                <option value="">Choose subject</option>
+                {assets.map((asset) => <option key={asset.id} value={asset.id}>{asset.name} · {asset.width ?? "?"}×{asset.height ?? "?"}</option>)}
+              </Select>
+            </Field>
+            <Field label="Background asset"><Select value={artwork.backgroundAssetId} onChange={(event) => setArtwork({ ...artwork, backgroundAssetId: event.target.value })}><option value="">None</option>{backgrounds.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</Select></Field>
+            <Field label="Render recipe"><Select value={artwork.recipeId} onChange={(event) => setArtwork({ ...artwork, recipeId: event.target.value })}><option value="">Latest published</option>{recipes.map((recipe) => <option key={recipe.id} value={recipe.id}>{recipe.name} · v{recipe.version}</option>)}</Select></Field>
+            <div><p className="label">Finishes</p><div className="grid grid-cols-2 gap-2">{["plain", "silver", "gold", "diamond"].map((material) => <label key={material} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={artwork.materials.includes(material)} onChange={(event) => setArtwork({ ...artwork, materials: event.target.checked ? [...artwork.materials, material] : artwork.materials.filter((item) => item !== material) })} />{material}</label>)}</div></div>
+            <div className="flex gap-2"><Button onClick={addArtwork} disabled={busy === "artwork" || !artwork.subjectAssetId || artwork.materials.length === 0}>{busy === "artwork" ? "Adding…" : "Add artwork edition"}</Button><Button variant="secondary" onClick={() => setArtworkFor(null)}>Cancel</Button></div>
           </div>
         </DialogContent>
       </Dialog>
@@ -687,7 +802,7 @@ function AdminAgents() {
     <div>
       <SectionHead eyebrow="Agents" title="Scoped, revocable authority." description="An agent acts for one represented member within explicit scopes. Agents cannot create, expand or revoke grants, and the grant records both the agent and the member." />
       <Notice error={error} message={message} />
-      {token ? <div className="notice mt-4"><p className="eyebrow text-[var(--brass)]">One-time token · {createdName}</p><p className="mt-2 break-all font-mono text-xs">{token}</p><p className="mt-2 text-xs text-[var(--muted)]">Store it in a secret manager, not a tracked file. This value will not be shown again.</p></div> : null}
+      {token ? <div className="notice mt-4"><p className="eyebrow eyebrow-brass">One-time token · {createdName}</p><p className="mt-2 break-all font-mono text-xs">{token}</p><p className="mt-2 text-xs text-[var(--muted)]">Store it in a secret manager, not a tracked file. This value will not be shown again.</p></div> : null}
       <div className="mt-6 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <div className="overflow-auto border border-[var(--line)]">
           <table className="table"><thead><tr><th>Agent</th><th>Represents</th><th>Scopes</th><th>Status</th><th>Last used</th><th /></tr></thead><tbody>
@@ -742,7 +857,7 @@ function AdminImports() {
         {runs.length === 0 ? <div className="empty"><p>No import runs yet. Use <code className="font-mono">pnpm sources:discover</code> and <code className="font-mono">pnpm sources:preview</code> first.</p></div> : null}
       </div>
       <div className="notice mt-5">
-        <p className="eyebrow text-[var(--brass)]">Repeatable source commands</p>
+        <p className="eyebrow eyebrow-brass">Repeatable source commands</p>
         <pre className="mt-2 overflow-auto font-mono text-[0.68rem] leading-relaxed text-[var(--muted)]">pnpm sources:discover
 pnpm sources:preview
 pnpm sources:import --apply
@@ -854,7 +969,7 @@ function AdminDesign() {
         </div>
       ) : null}
       <div className="notice mt-6">
-        <p className="eyebrow text-[var(--brass)]">Layer contract</p>
+        <p className="eyebrow eyebrow-brass">Layer contract</p>
         <p className="mt-2 text-sm">background → subject artwork → material → frame → effect → exact application text. Recipe and asset versions are pinned at publication. The static render is composed locally; no image provider is called.</p>
       </div>
     </div>
@@ -930,10 +1045,12 @@ function AdminTopics() {
   );
 }
 
-export default function AdminApp({ section }: { section: AdminSection }) {
+export default function AdminApp({ section, platformAdmin = false }: { section: AdminSection; platformAdmin?: boolean }) {
   switch (section) {
     case "overview": return <AdminOverview />;
     case "catalogue": return <AdminCatalogue />;
+    case "collections": return <AdminCollections platformAdmin={platformAdmin} />;
+    case "team": return <AdminTeam />;
     case "taxonomy": return <AdminTaxonomy />;
     case "topics": return <AdminTopics />;
     case "sets": return <AdminSets />;
