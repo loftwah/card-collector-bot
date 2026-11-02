@@ -41,7 +41,7 @@ The extra card and 80 Foil spend are a recorded live Discord draw, not a migrati
 | Foilbury Platform Admin API | `/api/v1/platform` | Cloudflare only | Dean email only | Same |
 | Foilbury Editorial | `/_emdash` | Cloudflare only | Dean email only | Same |
 
-The `/admin` one-time-PIN entry is authentication, not authorization: the Worker still requires an active Bot membership and the applicable capability. Platform Administration does not have the OTP entry. No policy uses `Include Everyone`, an email suffix or all valid emails.
+The `/admin` one-time-PIN entry is authentication, not authorization: the Worker still requires an active Bot membership and the applicable capability. A verified creator email is added to `fb_access_emails` when the Bot is created or an invitation is accepted, so the same person can link their Access identity to the same Foilbury account without SQL. Platform Administration does not have the OTP entry. No policy uses `Include Everyone`, an email suffix or all valid emails.
 
 The Worker validates the Access JWT itself (`src/server/access.ts`): signature through the team JWKS, issuer, audience and expiry. It resolves a subject only through `fb_access_emails` plus a verified matching account email, and records the subject in `fb_access_identities`. A valid Access identity does not create a Foilbury role.
 
