@@ -1,6 +1,6 @@
 # Foilbury follow-on acceptance: deployed Discord pilot
 
-Generated from the working tree on 2026-11-02. This is the follow-on report; the original local-first acceptance record remains in `docs/LOCAL_ACCEPTANCE.md`.
+Generated from the working tree on 2026-11-02. Follow-on code revision: `531756f` (`feat: deploy signed Discord interactions and production pilot`). Deployed Worker version: `8de45ff7-0ef9-46b9-8542-36f98d93597b`. This is the follow-on report; the original local-first acceptance record remains in `docs/LOCAL_ACCEPTANCE.md`.
 
 ## Baseline preserved
 
@@ -72,20 +72,20 @@ fb_ledger_entries:     +350 welcome, +120 daily, -80 draw
 | Production data | PASS | D1 `foilbury` contains 16 cards, 80 published renders, 4 pools, 7 owned instances and the test installation. |
 | Production media | PASS | 103 R2 objects uploaded to `foilbury-media`; public render URLs return `image/webp` (e.g. 750×1050). |
 | Production owner login | PASS | Password login returns 200 after the PBKDF2 100k Workers fix; admin wallet adjustment returned 200 and wrote a ledger row. |
-| Cloudflare Access | PASS at the edge | `/admin`, `/admin/catalogue` and `/api/v1/admin/status` return 302 to the Access login; `/`, `/api/v1/status` and the Discord endpoint remain public. Policies allow the account owner's Cloudflare email. |
+| Cloudflare Access | PASS at the edge | `/admin`, `/admin/catalogue` and `/api/v1/admin/status` return 302 to the Access login; `/`, `/api/v1/status` and the Discord endpoint remain public. Apps: `Foilbury Administration` (`foilbury.loftwah.com/admin`) and `Foilbury Admin API` (`foilbury.loftwah.com/api/v1/admin`); IdP: Cloudflare one-time PIN; policy allows the account owner's Cloudflare email. |
 | Access JWT validation in the Worker | NOT IMPLEMENTED | The edge enforces Access; the Worker does not independently verify the Access JWT. No alternate hostname or preview URL is enabled. |
 | Discord endpoint after Access | PASS | `/foilbury profile` still worked after Access was enabled. |
 
 ## Testing
 
 ```sh
-pnpm check          # 0 type errors; 8 unit + 34 Workers tests
+pnpm check          # 0 type errors; 8 unit + 35 Workers tests (43 total)
 pnpm exec vitest run --config vitest.workers.config.ts tests/workers/discord.test.ts
 pnpm discord:register
 pnpm deploy:production
 ```
 
-The original local acceptance gate was not re-run as a replacement for this evidence. Its recorded local result remains historical; the current follow-on suite is the 42-test result above.
+The original local acceptance gate was not re-run as a replacement for this evidence. Its recorded local result remains historical; the current follow-on suite is the 43-test result above.
 
 ## What remains incomplete
 
