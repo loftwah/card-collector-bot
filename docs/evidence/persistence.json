@@ -1,11 +1,11 @@
 {
   "ok": true,
-  "checkedAt": "2026-11-02T08:48:10.333Z",
+  "checkedAt": "2026-11-02T08:57:30.295Z",
   "restarted": true,
   "before": {
     "owner": {
       "email": "owner@foilbury.local",
-      "balance": 350,
+      "balance": 190,
       "instanceIds": [
         "ins_mvyyozrdedj6wyqjp5khzas2",
         "ins_mvyz5btkmmkhw9asrnx3dxcz",
@@ -20,9 +20,11 @@
         "ins_mvz09tx2knsgw3de260aey67",
         "ins_mvz0iuy4hb9d23tawpkyq9bp",
         "ins_mvz0jmg0g2a6hmcskae4pnqt",
-        "ins_mvz0n6o6a584mke1k8xd98xf"
+        "ins_mvz0n6o6a584mke1k8xd98xf",
+        "ins_mvz0tu8ra3981k1vrdn1yb4w",
+        "ins_mvz0z2jhjph1bvfv4waz89ps"
       ],
-      "ledgerCount": 18,
+      "ledgerCount": 20,
       "setProgress": [
         {
           "slug": "fighter-night",
@@ -52,16 +54,18 @@
     },
     "player": {
       "email": "player@foilbury.local",
-      "balance": 490,
+      "balance": 330,
       "instanceIds": [
         "ins_mvyy5gg53k0q9z010ekrh188",
         "ins_mvyz4c0wyb5k4j4qeccj0y56",
         "ins_mvyzq879s7znabhcpj87fkea",
         "ins_mvyzro6u903rqqfn2mw4qsjc",
         "ins_mvz0a8c0wqqpry7pxc1v21dz",
-        "ins_mvz0nkget6ncj881wkk1yyme"
+        "ins_mvz0nkget6ncj881wkk1yyme",
+        "ins_mvz0u8pb2vffht19x8ht6g4q",
+        "ins_mvz0zh3ghfvxsw29300ye18g"
       ],
-      "ledgerCount": 9,
+      "ledgerCount": 11,
       "setProgress": [
         {
           "slug": "fighter-night",
@@ -78,7 +82,7 @@
         {
           "slug": "protocol-table",
           "version": 1,
-          "owned": 0,
+          "owned": 2,
           "claimed": false
         },
         {
@@ -93,7 +97,7 @@
   "after": {
     "owner": {
       "email": "owner@foilbury.local",
-      "balance": 350,
+      "balance": 190,
       "instanceIds": [
         "ins_mvyyozrdedj6wyqjp5khzas2",
         "ins_mvyz5btkmmkhw9asrnx3dxcz",
@@ -108,9 +112,11 @@
         "ins_mvz09tx2knsgw3de260aey67",
         "ins_mvz0iuy4hb9d23tawpkyq9bp",
         "ins_mvz0jmg0g2a6hmcskae4pnqt",
-        "ins_mvz0n6o6a584mke1k8xd98xf"
+        "ins_mvz0n6o6a584mke1k8xd98xf",
+        "ins_mvz0tu8ra3981k1vrdn1yb4w",
+        "ins_mvz0z2jhjph1bvfv4waz89ps"
       ],
-      "ledgerCount": 18,
+      "ledgerCount": 20,
       "setProgress": [
         {
           "slug": "fighter-night",
@@ -140,16 +146,18 @@
     },
     "player": {
       "email": "player@foilbury.local",
-      "balance": 490,
+      "balance": 330,
       "instanceIds": [
         "ins_mvyy5gg53k0q9z010ekrh188",
         "ins_mvyz4c0wyb5k4j4qeccj0y56",
         "ins_mvyzq879s7znabhcpj87fkea",
         "ins_mvyzro6u903rqqfn2mw4qsjc",
         "ins_mvz0a8c0wqqpry7pxc1v21dz",
-        "ins_mvz0nkget6ncj881wkk1yyme"
+        "ins_mvz0nkget6ncj881wkk1yyme",
+        "ins_mvz0u8pb2vffht19x8ht6g4q",
+        "ins_mvz0zh3ghfvxsw29300ye18g"
       ],
-      "ledgerCount": 9,
+      "ledgerCount": 11,
       "setProgress": [
         {
           "slug": "fighter-night",
@@ -166,7 +174,7 @@
         {
           "slug": "protocol-table",
           "version": 1,
-          "owned": 0,
+          "owned": 2,
           "claimed": false
         },
         {

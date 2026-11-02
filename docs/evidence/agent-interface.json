@@ -1,9 +1,9 @@
 {
-  "testedAt": "2026-11-02T08:47:57.725Z",
+  "testedAt": "2026-11-02T08:57:13.094Z",
   "revision": {
-    "head": "e5fce768bce11861bc29b32cee89581f83d5936c",
+    "head": "92204c09eb3a520fa2c5fc2e5e14e3ca9b0d7a3e",
     "workingTree": "dirty",
-    "diffHash": "744fa64c6ab6511861fbaa300d04738bd0e6af06c54e18741c3ccdebf4ff6253"
+    "diffHash": "3fa0eaf75c675e799b0e9b099c1dea2beb28eaa812c801dddcced09659395171"
   },
   "checks": [
     {
@@ -98,8 +98,8 @@
       "command": "foilbury_content_create",
       "result": "draft",
       "evidence": {
-        "slug": "agent-proof-mvz0nk88",
-        "cardId": "crd_mvz0nk8wrzejvdrrccdt20d0"
+        "slug": "agent-proof-mvz0zgsz",
+        "cardId": "crd_mvz0zgtpcbx0w3v3xqkdyj4q"
       }
     },
     {
@@ -107,7 +107,7 @@
       "command": "DELETE /api/v1/admin/cards/{id}",
       "result": "archived",
       "evidence": {
-        "slug": "agent-proof-mvz0nk88"
+        "slug": "agent-proof-mvz0zgsz"
       }
     },
     {
@@ -131,12 +131,12 @@
     {
       "name": "MCP player draw",
       "command": "foilbury_draw_execute",
-      "result": "Pepe · FB-1-JU-820F1B",
+      "result": "Gabe · FB-1-JU-3CA78C",
       "evidence": {
-        "instanceId": "ins_mvz0nkget6ncj881wkk1yyme",
-        "balanceAfter": 490,
+        "instanceId": "ins_mvz0zh3ghfvxsw29300ye18g",
+        "balanceAfter": 330,
         "poolRevision": 1,
-        "probabilityBps": 367
+        "probabilityBps": 202
       }
     },
     {
@@ -144,16 +144,16 @@
       "command": "foilbury_draw_execute (same key)",
       "result": "same receipt",
       "evidence": {
-        "instanceId": "ins_mvz0nkget6ncj881wkk1yyme"
+        "instanceId": "ins_mvz0zh3ghfvxsw29300ye18g"
       }
     },
     {
       "name": "MCP shared state",
       "command": "foilbury_inventory_list before/after",
-      "result": "5 → 6",
+      "result": "7 → 8",
       "evidence": {
-        "balanceBefore": 570,
-        "balanceAfter": 490
+        "balanceBefore": 410,
+        "balanceAfter": 330
       }
     },
     {
@@ -179,7 +179,7 @@
     {
       "name": "CLI inventory",
       "command": "pnpm foilbury inventory --as player --json",
-      "result": "6 cards"
+      "result": "8 cards"
     },
     {
       "name": "Secrets scan",

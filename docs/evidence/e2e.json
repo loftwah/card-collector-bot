@@ -1,5 +1,5 @@
 {
-  "testedAt": "2026-11-02T08:47:33.766Z",
+  "testedAt": "2026-11-02T08:56:48.393Z",
   "baseURL": "http://127.0.0.1:4321",
   "checks": [
     {
@@ -20,12 +20,12 @@
     {
       "name": "Browser/headless owner parity",
       "result": "passed",
-      "evidence": "13 instance ids and wallet-backed collection matched"
+      "evidence": "15 instance ids and wallet-backed collection matched"
     },
     {
       "name": "Explicit share + revoke",
       "result": "passed",
-      "evidence": "13 public renders shown; revoked link returns 404; no private source assets"
+      "evidence": "15 public renders shown; revoked link returns 404; no private source assets"
     },
     {
       "name": "Keyboard focus",
@@ -35,7 +35,7 @@
     {
       "name": "Browser/headless player parity",
       "result": "passed",
-      "evidence": "5 instance ids matched for the player"
+      "evidence": "7 instance ids matched for the player"
     },
     {
       "name": "Private media authorisation",
@@ -50,7 +50,7 @@
     {
       "name": "Draw journey",
       "result": "passed",
-      "evidence": "skippable reveal; balance before draw ✦ 430"
+      "evidence": "skippable reveal; balance before draw ✦ 270"
     },
     {
       "name": "Owner catalogue browser",
