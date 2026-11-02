@@ -4,6 +4,7 @@ import { newId, token } from "../ids";
 import { auditStatement, findIdempotent, idempotencyStatement, type IdempotencyInput } from "../http";
 import { getWalletSummary, correctWallet } from "./wallet";
 import { checkRateLimit } from "../context";
+import { nextDailyEligibleAt } from "./daily-time";
 
 export interface EconomySettings {
   currency_name: string;
@@ -146,7 +147,7 @@ export async function claimDailyReward(ctx: Ctx, idempotency: IdempotencyInput) 
       );
       const next =
         last && settings.daily_cooldown_seconds > 0
-          ? new Date(new Date(last.created_at).getTime() + settings.daily_cooldown_seconds * 1000).toISOString()
+          ? nextDailyEligibleAt(now, settings.daily_cooldown_seconds, last.created_at)
           : null;
       throw new ApiError(409, "reward_cooldown", "Your next allowance is not ready yet.", {
         next_eligible_at: next,
@@ -156,7 +157,12 @@ export async function claimDailyReward(ctx: Ctx, idempotency: IdempotencyInput) 
     throw error;
   }
   const wallet = await getWalletSummary(ctx.db, ctx.tenant.id, user.id, 1);
-  return { ...response, balance_after: wallet.balance, next_eligible_at: new Date(now.getTime() + settings.daily_cooldown_seconds * 1000).toISOString(), replayed: false };
+  return {
+    ...response,
+    balance_after: wallet.balance,
+    next_eligible_at: nextDailyEligibleAt(now, settings.daily_cooldown_seconds),
+    replayed: false,
+  };
 }
 
 export async function adjustWallet(

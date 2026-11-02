@@ -1,6 +1,6 @@
 # Foilbury follow-on acceptance: deployed Discord pilot
 
-Generated from the working tree on 2026-11-02. Follow-on code revision: `531756f` (`feat: deploy signed Discord interactions and production pilot`). Deployed Worker version: `8de45ff7-0ef9-46b9-8542-36f98d93597b`. This is the follow-on report; the original local-first acceptance record remains in `docs/LOCAL_ACCEPTANCE.md`.
+Generated from the working tree on 2026-11-02. Follow-on code revision: `531756f` (`feat: deploy signed Discord interactions and production pilot`). Deployed Worker version: `cd58bc6f-2b7f-4b72-af18-7d7e0d19ff26`. This is the follow-on report; the original local-first acceptance record remains in `docs/LOCAL_ACCEPTANCE.md`.
 
 ## Baseline preserved
 
@@ -42,7 +42,7 @@ All commands below were sent as the authenticated **Loftwah** account in `#card-
 |---|---|---|
 | Endpoint receives Discord's endpoint verification | PASS | Discord accepted the endpoint URL. The Worker answers PING with `{type:1}`; signature verification is tested with real Ed25519 keys in `tests/workers/discord.test.ts`. |
 | First interaction creates one Player | PASS | D1 `fb_discord_identities` has one row for Discord user `707281352818425929`; repeated commands reuse it. |
-| `/foilbury daily` entitlement | PASS with recorded ack incident | The first live call predated deferred acknowledgement and Discord showed “The application did not respond”, but D1 recorded one 120 Foil claim and ledger entry. A later daily call returned “Allowance not ready … in 20 hours” with no second claim. |
+| `/foilbury daily` entitlement | PASS with recorded ack incident | The first live call predated deferred acknowledgement and Discord showed “The application did not respond”, but D1 recorded one 120 Foil claim and ledger entry. A later daily call returned “Allowance not ready … in 20 hours” with no second claim. The reported next-eligible boundary is now the later of the cooldown and the next UTC midnight. |
 | `/foilbury open` real gachapon pull | PASS | Live message: **Nora — Plain**, serial `FB-1-DE-705527`, balance 390 ✦. D1: draw `drw_mvz3ly6d8wce39151k2f9se3`, instance `ins_mvz3ly6dwajwem2pe5hb11ge`, owned by `usr_prod_owner`, spend ledger −80. |
 | Card artwork visible in Discord | PASS | Live **Pippa — Plain** message embeds `attachment://foilbury-card.webp`; Discord reports image `750×1050`, serial `FB-1-DE-513D6B`. Screenshot: `docs/evidence/discord-live-card-attachment.png`. |
 | Persistent collection | PASS | `/foilbury collection` showed Nora, Rhea and Loftwah copies with the same serials; later profile reported 7 owned cards. D1 inventory rows are `owned`. |
@@ -79,13 +79,13 @@ fb_ledger_entries:     +350 welcome, +120 daily, -80 draw
 ## Testing
 
 ```sh
-pnpm check          # 0 type errors; 8 unit + 35 Workers tests (43 total)
+pnpm check          # 0 type errors; 9 unit + 35 Workers tests (44 total)
 pnpm exec vitest run --config vitest.workers.config.ts tests/workers/discord.test.ts
 pnpm discord:register
 pnpm deploy:production
 ```
 
-The original local acceptance gate was not re-run as a replacement for this evidence. Its recorded local result remains historical; the current follow-on suite is the 43-test result above.
+The original local acceptance gate was not re-run as a replacement for this evidence. Its recorded local result remains historical; the current follow-on suite is the 44-test result above.
 
 ## What remains incomplete
 
