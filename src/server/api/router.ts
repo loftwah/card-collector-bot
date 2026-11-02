@@ -1145,7 +1145,9 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   if (segments[0] === "admin" && segments[1] === "achievements" && segments[2] === "backfill" && method === "POST") {
     ensureContentWrite(ctx);
     ensureStepUp(ctx);
-    return json(await backfillAchievements(ctx));
+    const limit = Math.min(2000, Math.max(1, Number(url.searchParams.get("limit") ?? 500) || 500));
+    const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0) || 0);
+    return json(await backfillAchievements(ctx, limit, offset));
   }
   if (segments[0] === "admin" && segments[1] === "achievements" && segments.length === 2 && method === "POST") {
     ensureContentWrite(ctx);

@@ -101,6 +101,20 @@ export async function creditWallet(
   if (!Number.isInteger(input.amount) || input.amount <= 0) {
     throw new ApiError(422, "amount_invalid", "Credit amount must be a positive integer.");
   }
+  // A retry after an uncertain commit must reconcile against the authoritative
+  // ledger, not add a second credit. The unique idempotency index is the final
+  // guard; this read makes the common retry path quiet and deterministic.
+  const previous = await first<{ id: string }>(
+    db,
+    "SELECT id FROM fb_ledger_entries WHERE tenant_id = ? AND user_id = ? AND idempotency_key = ?",
+    input.tenantId,
+    input.userId,
+    input.idempotencyKey,
+  );
+  if (previous) {
+    const current = await getWallet(db, input.tenantId, input.userId);
+    return { balance: current.balance, ledgerId: previous.id };
+  }
   const wallet = await getWallet(db, input.tenantId, input.userId);
   const ledgerId = newId("led");
   const now = nowIso();

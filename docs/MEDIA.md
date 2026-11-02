@@ -4,8 +4,8 @@
 
 The established card geometry is 5:7. Delivery renders are **750×1050**;
 masters and source layers are authored larger where the source supports it
-(the deterministic launch art is generated at 1200×1600 subject and 1600×2000
-background, then composed down).
+(subject layers are prepared at 1200×1600 and backgrounds at 1600×2000, then
+composed down).
 
 | Use | Size | Format | Target |
 |---|---|---|---|
@@ -30,10 +30,32 @@ A card is composed from retained source layers:
 5. effect
 6. exact text, labels, serial
 
-The deterministic compositor is `art/compose.mjs`; the launch art generator is
-`art/collection-art.mjs`. A flattened render is a delivery artefact, not the
+The deterministic compositor is `art/compose.mjs`; the collection frame/back
+generator is `art/collection-art.mjs`; the sourced-subject resolver is
+`scripts/content/source-art.mjs` with the curated source list in
+`art/subject-sources.mjs`. A flattened render is a delivery artefact, not the
 only source of truth. Text, serials, labels and facts are always composed in
 code, never generated as pixels.
+
+## Subject image sourcing
+
+Launch cards use real, publicly published character/player images rather than
+generated monograms. Each source record carries the wiki/page/file, original
+image URL, retrieval time, licence metadata, artist where published, and a
+credit. The resolver downloads through an image proxy where the wiki blocks
+direct fetches, validates dimensions and format, prepares an editable subject
+layer and derives a toned collection background. The source list is explicit so
+the same card can be re-fetched and reviewed.
+
+The wiki's current page image is not always the right one. The source list pins
+specific files for the Total Drama 2007 season (not the 2023 reboot), clean
+Simpsons character renders, individual Rin/Len voicebank renders, and context
+cards. A missing or unsuitable source produces a neutral "art pending" layer;
+it never falls back to oversized initials.
+
+These are third-party images used in a private, non-commercial member album.
+They are not official Foilbury artwork, licensed character art or a claim of
+affiliation. The public showcase remains Loftwah-owned original work.
 
 ## Access classification
 
@@ -70,8 +92,9 @@ authorised by its source card's current effective audience on every request.
 
 ## Visual approach
 
-The launch franchise cards use original, clearly labelled Foilbury
-interpretations generated from deterministic briefs. They are **not** official
-logos, licensed character art or likenesses, and the provenance is retained. No
-paid generation provider was run because no bounded ceiling exists in this
-build. The chargeable generation step remains blocked pending a reviewed budget.
+The launch franchise cards use sourced subject images with recorded provenance,
+set inside original Foilbury collection framing. They are **not** official
+logos, licensed character art or a claim of affiliation. The card design,
+background treatment, typography, backs and finishes are Foilbury work. No paid
+generation provider was run; the sourced-image path does not require a
+generation budget. Third-party permission review remains a separate open item.

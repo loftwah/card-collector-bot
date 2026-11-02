@@ -52,7 +52,7 @@ Foilbury is a collectible-card cabinet. A player claims a free allowance, opens 
 - The launch catalogue is members-only. Approved Loftwah originals remain the public showcase.
 - Achievements: 11 platform definitions plus collection milestones, versioned criteria, idempotent unlocks and separated reward/notification delivery.
 - Gifts: Foil, opening and card, scoped to the Bot, capped by role, previewed and idempotent.
-- No paid generation was run. Franchise art is an original, clearly labelled Foilbury interpretation pending reviewed licensed assets.
+- No paid generation was run. Franchise cards use publicly published reference images with recorded provenance; the card design and finishes remain Foilbury originals. They are third-party images in a private, non-commercial member album, not official or licensed artwork.
 
 ## Known gaps
 

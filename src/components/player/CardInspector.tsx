@@ -58,13 +58,15 @@ export default function CardInspector({ frontUrl, backUrl, name, subtitle, finis
   }, []);
 
   const canTilt = enabled && !reduced && active;
-  const style = useMemo(() => {
-    if (!canTilt) return undefined;
-    return {
-      transform: `rotateX(${tilt.x}deg) rotateY(${tilt.y + (flipped ? 180 : 0)}deg)`,
-      transition: dragging.current ? "none" : "transform 420ms cubic-bezier(0.16,1,0.3,1)",
-    };
-  }, [canTilt, flipped, tilt]);
+  // The selected side is independent of the presentation mode. Flat, reduced
+  // motion and temporarily inactive views still rotate to the chosen face;
+  // only the pointer/keyboard tilt is suppressed when interaction is off.
+  const style = useMemo(
+    () => ({
+      transform: `rotateX(${canTilt ? tilt.x : 0}deg) rotateY(${(canTilt ? tilt.y : 0) + (flipped ? 180 : 0)}deg)`,
+    }),
+    [canTilt, flipped, tilt],
+  );
 
   function clamp(value: number, min: number, max: number) {
     return Math.min(max, Math.max(min, value));
@@ -145,6 +147,8 @@ export default function CardInspector({ frontUrl, backUrl, name, subtitle, finis
         role="group"
         aria-label={`${name} card inspector. Use left and right arrows to tilt, F to flip, Escape to reset.`}
         data-active={active ? "true" : "false"}
+        data-flipped={flipped ? "true" : "false"}
+        data-mode={enabled ? (canTilt ? "interactive" : "static") : "flat"}
       >
         <div className="card-inspector__object" style={style}>
           <div className="card-inspector__face card-inspector__front" aria-hidden={flipped}>
@@ -173,9 +177,10 @@ export default function CardInspector({ frontUrl, backUrl, name, subtitle, finis
       <p className="mt-2 font-mono text-[0.56rem] uppercase tracking-[0.1em] text-[var(--muted)]">
         {reduced ? "Static inspection · reduced motion is on" : enabled ? "Drag or use arrow keys · F flips · Escape resets" : `Flat view · ${collection ?? "Cabinet"}${serial ? ` · ${serial}` : ""}`}
       </p>
-      {enabled && !reduced ? (
-        <p className="sr-only" aria-live="polite">{flipped ? "Showing card back" : "Showing card front"}. Tilt {Math.round(tilt.y)} degrees horizontally, {Math.round(tilt.x)} degrees vertically.</p>
-      ) : null}
+      <p className="sr-only" aria-live="polite">
+        {flipped ? "Showing card back" : "Showing card front"}.
+        {canTilt ? ` Tilt ${Math.round(tilt.y)} degrees horizontally, ${Math.round(tilt.x)} degrees vertically.` : ""}
+      </p>
     </div>
   );
 }

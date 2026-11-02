@@ -33,6 +33,7 @@ const jsonOut = args.has("--json");
 const root = process.cwd();
 const contentDir = path.join(root, ".foilbury/content");
 const artDir = path.join(root, ".foilbury/generated");
+const sourcedDir = path.join(root, ".foilbury/sourced");
 const tmpDir = path.join(root, ".foilbury/tmp");
 fs.mkdirSync(tmpDir, { recursive: true });
 
@@ -201,11 +202,19 @@ async function createAchievements(manifest, collection) {
   if (!manifest.achievements?.length) return [];
   const existing = await apiJson("/api/v1/admin/achievements");
   const keys = new Set(existing.items.map((item) => item.key));
+  const allCards = await apiJson("/api/v1/admin/cards?limit=2000");
+  const rosterCardIds = allCards.items
+    .filter((card) => card.collections.some((entry) => entry.slug === manifest.collection.slug))
+    .map((card) => card.id);
   const created = [];
   for (const achievement of manifest.achievements) {
     if (keys.has(achievement.key)) continue;
     const criteria = { ...achievement.criteria };
     if (criteria.collection_id === "@collection") criteria.collection_id = collection.id;
+    if (criteria.type === "collection_complete" && rosterCardIds.length) {
+      criteria.roster_card_ids = rosterCardIds;
+      criteria.target = rosterCardIds.length;
+    }
     const result = await apiJson("/api/v1/admin/achievements", {
       method: "POST",
       body: {
@@ -408,7 +417,7 @@ async function main() {
     log(`\n${manifest.collection.name} (${manifest.collection.slug})`);
     const outDir = path.join(artDir, manifest.collection.slug);
     fs.mkdirSync(outDir, { recursive: true });
-    const generated = await generateCollectionArt({ collection: manifest.collection, cards: manifest.cards, outputDir: outDir });
+    const generated = await generateCollectionArt({ collection: manifest.collection, cards: manifest.cards, outputDir: outDir, sourcedDir });
     const generatedCards = new Map(generated.cards.map((entry) => [entry.card.slug, entry]));
     generatedByCollection.set(manifest.collection.slug, generatedCards);
     if (dryRun) {
@@ -465,13 +474,17 @@ async function main() {
 
     const assets = new Map();
     for (const entry of generated.cards) {
+      const sourced = entry.card.art?.source;
+      const subjectProvenance = sourced?.image_url
+        ? `Sourced subject image (${sourced.wiki_label ?? sourced.provider}); ${sourced.credit}`
+        : "Original Foilbury interpretation created from a deterministic brief. Not official character art or a licensed likeness.";
       const subject = await upload(entry.subject, {
         kind: "subject",
         name: `${entry.card.name} subject layer`,
         role: "subject",
         access: "private",
         reviewStatus: entry.card.review_status ?? "draft",
-        provenance: "Original Foilbury interpretation created from a deterministic brief. Not official character art or a licensed likeness.",
+        provenance: subjectProvenance,
         sourceRepo: manifest.source_repo,
         sourceCommit: manifest.source_commit,
         sourcePath: `content/${manifest.collection.slug}/${entry.card.slug}.json`,
@@ -484,11 +497,13 @@ async function main() {
         role: "background",
         access: "private",
         reviewStatus: "approved",
-        provenance: "Original deterministic Foilbury texture.",
+        provenance: sourced?.image_url
+          ? `Collection background derived from the sourced subject image; card design and framing are Foilbury originals. ${sourced.credit}`
+          : "Original deterministic Foilbury texture.",
         sourceRepo: manifest.source_repo,
         sourceCommit: manifest.source_commit,
         sourceLogicalId: `${manifest.collection.slug}:${entry.card.slug}:background`,
-        credit: "Original Foilbury interpretation.",
+        credit: sourced?.image_url ? sourced.credit : "Original Foilbury interpretation.",
       });
       assets.set(entry.card.slug, { subject, background });
     }

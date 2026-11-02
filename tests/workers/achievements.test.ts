@@ -41,6 +41,55 @@ describe("achievements", () => {
     expect(ledger?.count).toBe(1);
   });
 
+  it("recovers an interrupted reward once and reconciles a committed ledger row", async () => {
+    await bootstrap();
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const fixture = await fixturePool(player);
+    await makeInstance(player, player.user!.id, fixture, "ACH-RECOVER-1");
+    const definition = await runtime.DB.prepare(
+      "SELECT id, version, reward_json FROM fb_achievement_definitions WHERE key = 'first-card'",
+    ).first<{ id: string; version: number; reward_json: string }>();
+    expect(definition).toBeTruthy();
+    const before = await walletBalance(player, player.user!.id);
+    await runtime.DB.prepare(
+      `INSERT INTO fb_achievement_unlocks
+        (id, tenant_id, user_id, achievement_id, achievement_version, earned_at, reward_state, reward_amount, notification_state, created_at)
+       VALUES ('unl_recovery_pending', ?, ?, ?, ?, ?, 'pending', 160, 'pending', ?)`,
+    ).bind(player.tenant.id, player.user!.id, definition!.id, definition!.version, nowIso(), nowIso()).run();
+    await evaluateAchievements(player, { userId: player.user!.id });
+    expect(await walletBalance(player, player.user!.id)).toBe(before + 160);
+    const unlock = await runtime.DB.prepare(
+      "SELECT reward_state, reward_ledger_id, notification_state FROM fb_achievement_unlocks WHERE id = 'unl_recovery_pending'",
+    ).first<{ reward_state: string; reward_ledger_id: string | null; notification_state: string }>();
+    expect(unlock?.reward_state).toBe("granted");
+    expect(unlock?.reward_ledger_id).toBeTruthy();
+    const ledger = await runtime.DB.prepare(
+      "SELECT COUNT(*) AS count FROM fb_ledger_entries WHERE tenant_id = ? AND user_id = ? AND reference_type = 'achievement'",
+    ).bind(player.tenant.id, player.user!.id).first<{ count: number }>();
+    expect(ledger?.count).toBe(1);
+    const outbox = await runtime.DB.prepare(
+      "SELECT COUNT(*) AS count FROM fb_outbox WHERE tenant_id = ? AND topic = 'achievement.earned' AND json_extract(payload_json, '$.unlock_id') = 'unl_recovery_pending'",
+    ).bind(player.tenant.id).first<{ count: number }>();
+    expect(outbox?.count).toBe(1);
+
+    // Simulate a crash after the ledger commit but before the unlock state was
+    // updated. The retry must reconcile to the existing ledger row, not pay again.
+    await runtime.DB.prepare(
+      "UPDATE fb_achievement_unlocks SET reward_state = 'pending', reward_ledger_id = NULL WHERE id = 'unl_recovery_pending'",
+    ).run();
+    await evaluateAchievements(player, { userId: player.user!.id });
+    expect(await walletBalance(player, player.user!.id)).toBe(before + 160);
+    const reconciled = await runtime.DB.prepare(
+      "SELECT reward_state, reward_ledger_id FROM fb_achievement_unlocks WHERE id = 'unl_recovery_pending'",
+    ).first<{ reward_state: string; reward_ledger_id: string | null }>();
+    expect(reconciled?.reward_state).toBe("granted");
+    expect(reconciled?.reward_ledger_id).toBeTruthy();
+    const ledgerAgain = await runtime.DB.prepare(
+      "SELECT COUNT(*) AS count FROM fb_ledger_entries WHERE tenant_id = ? AND user_id = ? AND reference_type = 'achievement'",
+    ).bind(player.tenant.id, player.user!.id).first<{ count: number }>();
+    expect(ledgerAgain?.count).toBe(1);
+  });
+
   it("completes the four core finishes for one subject", async () => {
     await bootstrap();
     const player = await ctxFor("cabinet", "player@foilbury.local");

@@ -39,6 +39,119 @@ export interface AchievementView extends AchievementDefinition {
   reward: Record<string, unknown>;
 }
 
+interface UnlockRewardRow {
+  id: string;
+  user_id: string;
+  achievement_id: string;
+  achievement_version: number;
+  reward_state: string;
+  reward_amount: number;
+  reward_ledger_id: string | null;
+  notification_state: string;
+}
+
+/**
+ * Durable reward/notification fulfilment for one unlock. Safe to call on every
+ * evaluation: the ledger idempotency key is the authority for an uncertain
+ * credit, and the outbox lookup prevents a second notification. A failure is
+ * recorded and retried by the next evaluation or backfill.
+ */
+async function fulfilAchievementReward(
+  ctx: Ctx,
+  unlock: UnlockRewardRow,
+  definition: AchievementDefinition,
+): Promise<{ rewardState: string; notificationState: string }> {
+  let rewardState = unlock.reward_state;
+  let rewardLedgerId = unlock.reward_ledger_id;
+  const idempotencyKey = `achievement:${unlock.achievement_id}:${unlock.achievement_version}:${unlock.user_id}`;
+  if (unlock.reward_amount > 0 && rewardState !== "granted") {
+    const previous = await first<{ id: string }>(
+      ctx.db,
+      "SELECT id FROM fb_ledger_entries WHERE tenant_id = ? AND user_id = ? AND idempotency_key = ?",
+      ctx.tenant.id,
+      unlock.user_id,
+      idempotencyKey,
+    );
+    if (previous) {
+      rewardState = "granted";
+      rewardLedgerId = previous.id;
+    } else {
+      try {
+        const credit = await creditWallet(ctx.db, {
+          tenantId: ctx.tenant.id,
+          userId: unlock.user_id,
+          amount: unlock.reward_amount,
+          kind: "issue",
+          description: `Achievement: ${definition.name}`,
+          idempotencyKey,
+          referenceType: "achievement",
+          referenceId: unlock.id,
+          metadata: { achievement_key: definition.key, achievement_version: definition.version },
+          actorType: "system",
+          actorId: "achievements",
+        });
+        rewardState = "granted";
+        rewardLedgerId = credit.ledgerId;
+      } catch (error) {
+        await ctx.db
+          .prepare("UPDATE fb_achievement_unlocks SET reward_state = 'failed', reward_ledger_id = NULL WHERE id = ? AND tenant_id = ?")
+          .bind(unlock.id, ctx.tenant.id)
+          .run()
+          .catch(() => undefined);
+        console.error(
+          JSON.stringify({ level: "error", message: "achievement reward failed", achievement: definition.key, unlock: unlock.id, error: String(error) }),
+        );
+        return { rewardState: "failed", notificationState: unlock.notification_state };
+      }
+    }
+  } else if (unlock.reward_amount <= 0) {
+    rewardState = "none";
+  }
+
+  let notificationState = unlock.notification_state;
+  if (notificationState === "pending") {
+    const outbox = await first<{ id: string; status: string }>(
+      ctx.db,
+      `SELECT id, status FROM fb_outbox
+        WHERE tenant_id = ? AND topic = 'achievement.earned'
+          AND json_extract(payload_json, '$.unlock_id') = ?
+        ORDER BY created_at DESC LIMIT 1`,
+      ctx.tenant.id,
+      unlock.id,
+    );
+    if (!outbox) {
+      await ctx.db
+        .prepare(
+          `INSERT INTO fb_outbox (id, tenant_id, topic, payload_json, status, attempts, available_at, created_at)
+           VALUES (?, ?, 'achievement.earned', ?, 'pending', 0, ?, ?)`,
+        )
+        .bind(
+          newId("obx"),
+          ctx.tenant.id,
+          JSON.stringify({ unlock_id: unlock.id, user_id: unlock.user_id, achievement_id: unlock.achievement_id }),
+          nowIso(),
+          nowIso(),
+        )
+        .run();
+    } else if (outbox.status === "failed") {
+      await ctx.db
+        .prepare("UPDATE fb_outbox SET status = 'pending', attempts = 0, available_at = ?, last_error = NULL WHERE id = ? AND tenant_id = ?")
+        .bind(nowIso(), outbox.id, ctx.tenant.id)
+        .run();
+    } else if (outbox.status === "delivered") {
+      notificationState = "sent";
+    }
+  }
+
+  await ctx.db
+    .prepare(
+      "UPDATE fb_achievement_unlocks SET reward_state = ?, reward_ledger_id = ?, notification_state = ? WHERE id = ? AND tenant_id = ?",
+    )
+    .bind(rewardState, rewardLedgerId, notificationState, unlock.id, ctx.tenant.id)
+    .run();
+  return { rewardState, notificationState };
+}
+
 export function finishKey(material: string, effect: string | null | undefined): "plain" | "silver" | "gold" | "holographic" | "other" {
   if (effect === "holographic" || material === "diamond") return "holographic";
   if (material === "silver") return "silver";
@@ -171,12 +284,31 @@ export async function evaluateAchievements(
       target = 1;
     } else if (type === "collection_complete") {
       const collectionId = String(criteria.collection_id ?? "");
-      const recordedTarget = Number(criteria.target ?? 0);
-      target = recordedTarget > 0 ? recordedTarget : criteriaTarget(criteria);
-      progress = collectionCounts.get(collectionId) ?? 0;
+      const roster = Array.isArray(criteria.roster_card_ids)
+        ? criteria.roster_card_ids.map((id) => String(id)).filter(Boolean)
+        : [];
+      if (roster.length) {
+        // The definition carries the release roster snapshot. Adding or removing
+        // a card in the live collection cannot move this version's boundary.
+        const ownedCards = new Set(owned.map((row) => row.card_id));
+        progress = roster.filter((id) => ownedCards.has(id)).length;
+        target = roster.length;
+      } else {
+        const recordedTarget = Number(criteria.target ?? 0);
+        target = recordedTarget > 0 ? recordedTarget : criteriaTarget(criteria);
+        progress = collectionCounts.get(collectionId) ?? 0;
+      }
     } else if (type === "collection_unique") {
       const collectionId = String(criteria.collection_id ?? "");
-      progress = collectionCounts.get(collectionId) ?? 0;
+      const roster = Array.isArray(criteria.roster_card_ids)
+        ? criteria.roster_card_ids.map((id) => String(id)).filter(Boolean)
+        : [];
+      if (roster.length) {
+        const ownedCards = new Set(owned.map((row) => row.card_id));
+        progress = roster.filter((id) => ownedCards.has(id)).length;
+      } else {
+        progress = collectionCounts.get(collectionId) ?? 0;
+      }
     } else if (type === "explore_collections") {
       progress = explored?.count ?? 0;
     } else if (type === "gift_received") {
@@ -209,16 +341,38 @@ export async function evaluateAchievements(
 
     if (state !== "earned") continue;
 
-    const existing = await first<{ id: string; earned_at: string; reward_state: string; reward_amount: number; notification_state: string }>(
+    const existing = await first<{
+      id: string;
+      user_id: string;
+      achievement_id: string;
+      achievement_version: number;
+      earned_at: string;
+      reward_state: string;
+      reward_amount: number;
+      reward_ledger_id: string | null;
+      notification_state: string;
+    }>(
       ctx.db,
-      "SELECT id, earned_at, reward_state, reward_amount, notification_state FROM fb_achievement_unlocks WHERE tenant_id = ? AND user_id = ? AND achievement_id = ? AND achievement_version = ?",
+      "SELECT id, user_id, achievement_id, achievement_version, earned_at, reward_state, reward_amount, reward_ledger_id, notification_state FROM fb_achievement_unlocks WHERE tenant_id = ? AND user_id = ? AND achievement_id = ? AND achievement_version = ?",
       ctx.tenant.id,
       userId,
       definition.id,
       definition.version,
     );
     if (existing) {
-      unlocked.push(toView(definition, criteria, reward, { progress, target, state }, existing.earned_at, existing.reward_amount, existing.reward_state, existing.notification_state));
+      const fulfilled = await fulfilAchievementReward(ctx, existing, definition);
+      unlocked.push(
+        toView(
+          definition,
+          criteria,
+          reward,
+          { progress, target, state },
+          existing.earned_at,
+          existing.reward_amount,
+          fulfilled.rewardState,
+          fulfilled.notificationState,
+        ),
+      );
       continue;
     }
 
@@ -238,59 +392,41 @@ export async function evaluateAchievements(
       continue;
     }
 
-    let rewardState = rewardAmount > 0 ? "pending" : "none";
-    let rewardLedgerId: string | null = null;
-    if (rewardAmount > 0) {
-      try {
-        const credit = await creditWallet(ctx.db, {
-          tenantId: ctx.tenant.id,
-          userId,
-          amount: rewardAmount,
-          kind: "issue",
-          description: `Achievement: ${definition.name}`,
-          idempotencyKey: `achievement:${definition.id}:${definition.version}:${userId}`,
-          referenceType: "achievement",
-          referenceId: unlockId,
-          metadata: { achievement_key: definition.key, achievement_version: definition.version },
-          actorType: "system",
-          actorId: "achievements",
-        });
-        rewardState = "granted";
-        rewardLedgerId = credit.ledgerId;
-      } catch (error) {
-        rewardState = "failed";
-        await ctx.db
-          .prepare("UPDATE fb_achievement_unlocks SET reward_state = 'failed' WHERE id = ?")
-          .bind(unlockId)
-          .run()
-          .catch(() => undefined);
-        console.error(JSON.stringify({ level: "error", message: "achievement reward failed", achievement: definition.key, error: String(error) }));
-      }
-    }
-    const notificationState = input.notify === false ? "suppressed" : "pending";
+    const fulfilled = await fulfilAchievementReward(
+      ctx,
+      {
+        id: unlockId,
+        user_id: userId,
+        achievement_id: definition.id,
+        achievement_version: definition.version,
+        reward_state: rewardAmount > 0 ? "pending" : "none",
+        reward_amount: rewardAmount,
+        reward_ledger_id: null,
+        notification_state: input.notify === false ? "suppressed" : "pending",
+      },
+      definition,
+    );
     await ctx.db.batch([
-      ctx.db
-        .prepare("UPDATE fb_achievement_unlocks SET reward_state = ?, reward_ledger_id = ?, notification_state = ? WHERE id = ?")
-        .bind(rewardState, rewardLedgerId, notificationState, unlockId),
       auditStatement(ctx, "achievement.earned", "achievement_unlock", unlockId, {
         achievement_id: definition.id,
         achievement_key: definition.key,
         version: definition.version,
         reward_amount: rewardAmount,
+        reward_state: fulfilled.rewardState,
+        notification_state: fulfilled.notificationState,
       }),
     ]);
-    if (notificationState === "pending") {
-      await ctx.db
-        .prepare(
-          `INSERT INTO fb_outbox (id, tenant_id, topic, payload_json, status, attempts, available_at, created_at)
-           VALUES (?, ?, 'achievement.earned', ?, 'pending', 0, ?, ?)`,
-        )
-        .bind(newId("obx"), ctx.tenant.id, JSON.stringify({ unlock_id: unlockId, user_id: userId, achievement_id: definition.id }), now, now)
-        .run()
-        .catch(() => undefined);
-    }
     unlocked.push(
-      toView(definition, criteria, reward, { progress, target, state }, now, rewardAmount, rewardState, notificationState),
+      toView(
+        definition,
+        criteria,
+        reward,
+        { progress, target, state },
+        now,
+        rewardAmount,
+        fulfilled.rewardState,
+        fulfilled.notificationState,
+      ),
     );
   }
 
@@ -509,12 +645,17 @@ export async function createAchievement(
  * running this again after a crash cannot double-award. Backfills suppress
  * notification spam; earned dates are the evaluation time.
  */
-export async function backfillAchievements(ctx: Ctx, limit = 500) {
+export async function backfillAchievements(ctx: Ctx, limit = 500, offset = 0) {
+  const pageSize = Math.min(2000, Math.max(1, limit));
+  const start = Math.max(0, offset);
   const users = await all<{ user_id: string }>(
     ctx.db,
-    "SELECT DISTINCT user_id FROM fb_memberships WHERE tenant_id = ? AND status = 'active' AND revoked_at IS NULL LIMIT ?",
+    `SELECT DISTINCT user_id FROM fb_memberships
+      WHERE tenant_id = ? AND status = 'active' AND revoked_at IS NULL
+      ORDER BY user_id LIMIT ? OFFSET ?`,
     ctx.tenant.id,
-    Math.min(2000, Math.max(1, limit)),
+    pageSize,
+    start,
   );
   let evaluated = 0;
   let unlocked = 0;
@@ -523,5 +664,14 @@ export async function backfillAchievements(ctx: Ctx, limit = 500) {
     evaluated += result.evaluated;
     unlocked += result.unlocked.length;
   }
-  return { members: users.length, evaluated, unlocked };
+  // The caller advances `next_offset` until `done`; this prevents a repeated
+  // first-page backfill from silently leaving later members unevaluated.
+  return {
+    members: users.length,
+    evaluated,
+    unlocked,
+    offset: start,
+    next_offset: start + users.length,
+    done: users.length < pageSize,
+  };
 }

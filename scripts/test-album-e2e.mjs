@@ -13,6 +13,7 @@
  */
 import { chromium } from "@playwright/test";
 import { spawnSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -190,12 +191,68 @@ try {
   await inspect.waitFor();
   const instanceHref = await inspect.getAttribute("href");
   await member.goto(instanceHref, { waitUntil: "networkidle" });
-  await member.getByRole("button", { name: /Inspect in 3D/ }).click();
-  await member.getByRole("button", { name: "Exit 3D" }).waitFor();
+  const inspector = member.locator(".card-inspector__stage");
+  const object = member.locator(".card-inspector__object");
+  const stageHash = async () => crypto.createHash("sha256").update(await inspector.screenshot()).digest("hex");
+  const assertSide = async (side) => {
+    const expected = side === "back" ? "true" : "false";
+    await member.waitForFunction(
+      ([selector, value]) => document.querySelector(selector)?.getAttribute("data-flipped") === value,
+      [".card-inspector__stage", expected],
+    );
+    const style = await object.getAttribute("style");
+    const angle = Number(style?.match(/rotateY\(([-\d.]+)deg\)/)?.[1] ?? 0);
+    const normalized = ((angle % 360) + 360) % 360;
+    const showsBack = normalized > 90 && normalized < 270;
+    if (side === "back" ? !showsBack : showsBack) {
+      throw new Error(`${side} transform was not applied: ${style}`);
+    }
+    const frontHidden = await member.locator(".card-inspector__front").getAttribute("aria-hidden");
+    const backHidden = await member.locator(".card-inspector__back").getAttribute("aria-hidden");
+    if (frontHidden !== expected || backHidden !== (side === "back" ? "false" : "true")) {
+      throw new Error(`Accessibility tree disagrees with the selected ${side}: front=${frontHidden} back=${backHidden}`);
+    }
+  };
+
+  // Flat mode must show both faces, not only change the button label.
+  if ((await inspector.getAttribute("data-mode")) !== "flat") throw new Error("Card inspector did not start flat.");
+  await assertSide("front");
+  const flatFront = await stageHash();
   await member.getByRole("button", { name: /View back/i }).click();
-  await member.getByRole("button", { name: /View front/i }).waitFor();
+  await assertSide("back");
+  await member.waitForTimeout(550);
+  const flatBack = await stageHash();
+  if (flatFront === flatBack) throw new Error("Flat back side rendered identically to the front.");
+  await member.getByRole("button", { name: /View front/i }).click();
+  await assertSide("front");
+  await member.waitForTimeout(550);
+  const frontVisible = await member.locator(".card-inspector__front img").isVisible();
+  const frontLoaded = await member.locator(".card-inspector__front img").evaluate((image) => image.complete && image.naturalWidth > 0);
+  if (!frontVisible || !frontLoaded) throw new Error("Returning to the flat front did not restore a loaded front image.");
+
+  // Switching modes while the back is selected must preserve the selected side.
+  await member.getByRole("button", { name: /View back/i }).click();
+  await assertSide("back");
+  await member.getByRole("button", { name: /Inspect in 3D/ }).click();
+  await member.waitForFunction(() => document.querySelector(".card-inspector__stage")?.getAttribute("data-mode") === "interactive");
+  await assertSide("back");
+  await member.getByRole("button", { name: /View front/i }).click();
+  await assertSide("front");
+  await member.getByRole("button", { name: /View back/i }).click();
+  await assertSide("back");
   await member.screenshot({ path: path.join(evidence, "member-card-3d.png"), fullPage: true });
-  pass("member drew with visible odds and inspected front/back/3D", instanceHref ?? "");
+
+  // Reduced motion keeps content and side selection; it removes the tilt only.
+  await member.emulateMedia({ reducedMotion: "reduce" });
+  await member.waitForFunction(() => document.querySelector(".card-inspector__stage")?.getAttribute("data-mode") === "static");
+  await assertSide("back");
+  await member.getByRole("button", { name: /View front/i }).click();
+  await assertSide("front");
+  await member.getByRole("button", { name: /View back/i }).click();
+  await assertSide("back");
+  await member.screenshot({ path: path.join(evidence, "member-card-reduced-motion.png"), fullPage: true });
+  await member.emulateMedia({ reducedMotion: "no-preference" });
+  pass("member drew with visible odds and inspected both faces in flat, 3D and reduced motion", instanceHref ?? "");
 
   await member.goto("/play/achievements", { waitUntil: "networkidle" });
   await member.getByText("Album proof complete").first().waitFor({ timeout: 20000 });

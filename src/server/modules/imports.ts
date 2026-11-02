@@ -1,4 +1,4 @@
-import type { D1Database } from "@cloudflare/workers-types";
+import type { D1Database, D1PreparedStatement } from "@cloudflare/workers-types";
 import { ApiError, type Ctx } from "../context";
 import { all, first, nowIso } from "../db";
 import { newId, sha256Hex } from "../ids";
@@ -101,6 +101,55 @@ export async function previewImport(ctx: Ctx, manifest: ImportManifest) {
   };
 }
 
+async function applyImportedCardMetadata(ctx: Ctx, cardId: string, item: ImportItemInput): Promise<void> {
+  const hasMetadata =
+    item.bio ||
+    item.bioSafe ||
+    item.bioFull ||
+    item.attributes ||
+    item.sourceRefs ||
+    item.reviewStatus ||
+    item.sourceWork ||
+    item.adaptationBoundary ||
+    item.quote ||
+    item.credit;
+  if (!hasMetadata) return;
+  await ctx.db
+    .prepare(
+      `UPDATE fb_card_definitions SET
+         bio = COALESCE(?, bio),
+         bio_safe = COALESCE(?, bio_safe),
+         spoiler_bio = COALESCE(?, spoiler_bio),
+         spoiler_level = COALESCE(?, spoiler_level),
+         attributes_json = COALESCE(?, attributes_json),
+         source_refs_json = COALESCE(?, source_refs_json),
+         review_status = COALESCE(?, review_status),
+         source_work = COALESCE(?, source_work),
+         adaptation_boundary = COALESCE(?, adaptation_boundary),
+         quote = COALESCE(?, quote),
+         credit = COALESCE(?, credit),
+         updated_at = ?
+       WHERE id = ? AND tenant_id = ?`,
+    )
+    .bind(
+      item.bio ?? null,
+      item.bioSafe ?? null,
+      item.bioFull ?? null,
+      item.spoilerLevel ?? null,
+      item.attributes ? JSON.stringify(item.attributes) : null,
+      item.sourceRefs ? JSON.stringify(item.sourceRefs) : null,
+      item.reviewStatus ?? null,
+      item.sourceWork ?? null,
+      item.adaptationBoundary ?? null,
+      item.quote ?? null,
+      item.credit ?? null,
+      nowIso(),
+      cardId,
+      ctx.tenant.id,
+    )
+    .run();
+}
+
 export async function commitImport(ctx: Ctx, manifest: ImportManifest) {
   if (manifest.items.length === 0) throw new ApiError(422, "import_empty", "The import manifest has no items.");
   if (manifest.items.length > 60) throw new ApiError(422, "import_limit", "Import at most 60 cards in one run.");
@@ -116,20 +165,9 @@ export async function commitImport(ctx: Ctx, manifest: ImportManifest) {
   const results: Array<{ logicalId: string; status: string; cardId?: string; editionId?: string; error?: string }> = [];
   for (const item of manifest.items) {
     try {
-      const existingImport = await first<{ id: string; hash: string; status: string; card_id: string | null }>(
-        ctx.db,
-        "SELECT id, hash, status, card_id FROM fb_import_items WHERE tenant_id = ? AND source = ? AND source_path = ? AND source_commit = ? AND logical_id = ? AND hash = ?",
-        ctx.tenant.id,
-        item.source,
-        item.sourcePath,
-        item.sourceCommit,
-        item.logicalId,
-        item.sourceHash,
-      );
-      if (existingImport && existingImport.status !== "failed") {
-        results.push({ logicalId: item.logicalId, status: "unchanged", cardId: existingImport.card_id ?? undefined });
-        continue;
-      }
+      // The current artwork edition's source hash is the authority. An import
+      // item row alone can outlive the edition it was applied to, so do not use
+      // it to skip reconciliation.
       const subject = await getAsset(ctx, item.subjectAssetId);
       if (subject.kind !== "subject") throw new ApiError(422, "subject_asset_invalid", "Subject asset must have kind subject.");
       if (item.backgroundAssetId) {
@@ -146,6 +184,12 @@ export async function commitImport(ctx: Ctx, manifest: ImportManifest) {
         throw new ApiError(409, "import_conflict", "This card changed through the Admin UI after the manifest was prepared. Re-export before importing.");
       }
       let outcome: "new" | "revision" = "new";
+      let previousEdition: {
+        id: string;
+        source_hash: string | null;
+        subject_asset_id: string;
+        background_asset_id: string | null;
+      } | null = null;
       if (!card) {
         const created = await createCard(ctx, {
           slug: item.slug,
@@ -179,13 +223,19 @@ export async function commitImport(ctx: Ctx, manifest: ImportManifest) {
         card = { id: created.id, status: created.status, version: 1 };
       } else {
         outcome = "revision";
-        const previousEdition = await first<{ source_hash: string | null; id: string }>(
+        previousEdition = await first<{
+          id: string;
+          source_hash: string | null;
+          subject_asset_id: string;
+          background_asset_id: string | null;
+        }>(
           ctx.db,
-          "SELECT id, source_hash FROM fb_artwork_editions WHERE tenant_id = ? AND card_id = ? ORDER BY created_at DESC LIMIT 1",
+          "SELECT id, source_hash, subject_asset_id, background_asset_id FROM fb_artwork_editions WHERE tenant_id = ? AND card_id = ? AND archived_at IS NULL ORDER BY created_at DESC LIMIT 1",
           ctx.tenant.id,
           card.id,
         );
         if (previousEdition?.source_hash === item.sourceHash) {
+          await applyImportedCardMetadata(ctx, card.id, item);
           results.push({ logicalId: item.logicalId, status: "unchanged", cardId: card.id });
           continue;
         }
@@ -196,34 +246,81 @@ export async function commitImport(ctx: Ctx, manifest: ImportManifest) {
         ctx.tenant.id,
       );
       if (!recipe) throw new ApiError(409, "recipe_missing", "No published card recipe exists.");
-      const editionId = newId("edt");
+      const editionId = previousEdition?.id ?? newId("edt");
       const variantIds: string[] = [];
-      const statements = [
-        ctx.db
-          .prepare(
-            `INSERT INTO fb_artwork_editions
-              (id, tenant_id, card_id, name, subject_asset_id, background_asset_id, recipe_id, status,
-               source_repo, source_path, source_commit, source_logical_id, source_hash, credit, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?)`,
-          )
-          .bind(
-            editionId,
-            ctx.tenant.id,
-            card.id,
-            `${item.name} — source edition`,
-            item.subjectAssetId,
-            item.backgroundAssetId ?? null,
-            recipe.id,
-            item.sourceRepo,
-            item.sourcePath,
-            item.sourceCommit,
-            item.logicalId,
-            item.sourceHash,
-            item.credit ?? null,
-            now,
-          ),
-      ];
+      const statements: D1PreparedStatement[] = [];
+      if (previousEdition) {
+        // Revise the current edition in place. The edition and variant IDs stay
+        // stable, so owned serials and the ledger keep pointing at the same
+        // collectible; only the artwork revision and provenance advance.
+        statements.push(
+          ctx.db
+            .prepare(
+              `UPDATE fb_artwork_editions SET
+                 name = ?, subject_asset_id = ?, background_asset_id = ?, recipe_id = ?, status = 'draft',
+                 source_repo = ?, source_path = ?, source_commit = ?, source_logical_id = ?, source_hash = ?,
+                 credit = ?, archived_at = NULL
+               WHERE id = ? AND tenant_id = ?`,
+            )
+            .bind(
+              `${item.name} — source edition`,
+              item.subjectAssetId,
+              item.backgroundAssetId ?? null,
+              recipe.id,
+              item.sourceRepo,
+              item.sourcePath,
+              item.sourceCommit,
+              item.logicalId,
+              item.sourceHash,
+              item.credit ?? null,
+              editionId,
+              ctx.tenant.id,
+            ),
+          auditStatement(ctx, "import.edition.revised", "artwork_edition", editionId, {
+            previous_source_hash: previousEdition.source_hash,
+            source_hash: item.sourceHash,
+            previous_subject_asset_id: previousEdition.subject_asset_id,
+            subject_asset_id: item.subjectAssetId,
+            previous_background_asset_id: previousEdition.background_asset_id,
+            background_asset_id: item.backgroundAssetId ?? null,
+          }),
+        );
+      } else {
+        statements.push(
+          ctx.db
+            .prepare(
+              `INSERT INTO fb_artwork_editions
+                (id, tenant_id, card_id, name, subject_asset_id, background_asset_id, recipe_id, status,
+                 source_repo, source_path, source_commit, source_logical_id, source_hash, credit, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?)`,
+            )
+            .bind(
+              editionId,
+              ctx.tenant.id,
+              card.id,
+              `${item.name} — source edition`,
+              item.subjectAssetId,
+              item.backgroundAssetId ?? null,
+              recipe.id,
+              item.sourceRepo,
+              item.sourcePath,
+              item.sourceCommit,
+              item.logicalId,
+              item.sourceHash,
+              item.credit ?? null,
+              now,
+            ),
+        );
+      }
       const taxonomy = await getTaxonomy(ctx);
+      const existingVariants = previousEdition
+        ? await all<{ id: string; material_id: string; effect_id: string | null }>(
+            ctx.db,
+            "SELECT id, material_id, effect_id FROM fb_variants WHERE tenant_id = ? AND edition_id = ? AND archived_at IS NULL",
+            ctx.tenant.id,
+            editionId,
+          )
+        : [];
       for (const spec of item.variants) {
         const material = taxonomy.materials.find((row) => row.key === spec.material);
         if (!material) throw new ApiError(422, "material_unknown", `Unknown material ${spec.material}.`);
@@ -231,35 +328,53 @@ export async function commitImport(ctx: Ctx, manifest: ImportManifest) {
           ? taxonomy.effects.find((row) => row.key === spec.effect)
           : taxonomy.effects.find((row) => row.key === "none");
         if (spec.effect && !effect) throw new ApiError(422, "effect_unknown", `Unknown effect ${spec.effect}.`);
-        const variantId = newId("var");
+        const effectId = effect ? String(effect.id) : null;
+        const existing = existingVariants.find(
+          (row) => row.material_id === String(material.id) && (row.effect_id ?? null) === effectId,
+        );
+        const variantId = existing?.id ?? newId("var");
         variantIds.push(variantId);
         const materialName = String(material.name);
         const effectName = effect ? String(effect.name) : "None";
-        statements.push(
-          ctx.db
-            .prepare(
-              `INSERT INTO fb_variants
-                (id, tenant_id, card_id, edition_id, material_id, effect_id, name, status, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?)`,
-            )
-            .bind(
-              variantId,
-              ctx.tenant.id,
-              card.id,
-              editionId,
-              String(material.id),
-              effect ? String(effect.id) : null,
-              effectName === "None" ? materialName : `${materialName} · ${effectName}`,
-              now,
-            ),
-        );
+        const variantName = effectName === "None" ? materialName : `${materialName} · ${effectName}`;
+        if (existing) {
+          statements.push(
+            ctx.db
+              .prepare(
+                "UPDATE fb_variants SET name = ?, status = 'draft', archived_at = NULL WHERE id = ? AND tenant_id = ? AND edition_id = ?",
+              )
+              .bind(variantName, variantId, ctx.tenant.id, editionId),
+          );
+        } else {
+          statements.push(
+            ctx.db
+              .prepare(
+                `INSERT INTO fb_variants
+                  (id, tenant_id, card_id, edition_id, material_id, effect_id, name, status, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?)`,
+              )
+              .bind(
+                variantId,
+                ctx.tenant.id,
+                card.id,
+                editionId,
+                String(material.id),
+                effectId,
+                variantName,
+                now,
+              ),
+          );
+        }
       }
       statements.push(
         ctx.db
           .prepare(
             `INSERT INTO fb_import_items
               (id, tenant_id, run_id, source, source_repo, source_path, source_commit, logical_id, hash, status, card_id, asset_id, notes, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(tenant_id, source, source_path, source_commit, logical_id, hash) DO UPDATE SET
+               run_id = excluded.run_id, status = excluded.status, card_id = excluded.card_id,
+               asset_id = excluded.asset_id, notes = excluded.notes, created_at = excluded.created_at`,
           )
           .bind(
             newId("imi"),
@@ -286,40 +401,7 @@ export async function commitImport(ctx: Ctx, manifest: ImportManifest) {
         }),
       );
       await ctx.db.batch(statements);
-      if (item.bio || item.bioSafe || item.bioFull || item.attributes) {
-        await ctx.db
-          .prepare(
-            `UPDATE fb_card_definitions SET
-               bio = COALESCE(?, bio),
-               bio_safe = COALESCE(?, bio_safe),
-               spoiler_bio = COALESCE(?, spoiler_bio),
-               spoiler_level = COALESCE(?, spoiler_level),
-               attributes_json = COALESCE(?, attributes_json),
-               source_refs_json = COALESCE(?, source_refs_json),
-               review_status = COALESCE(?, review_status),
-               source_work = COALESCE(?, source_work),
-               adaptation_boundary = COALESCE(?, adaptation_boundary),
-               quote = COALESCE(?, quote),
-               updated_at = ?
-             WHERE id = ? AND tenant_id = ?`,
-          )
-          .bind(
-            item.bio ?? null,
-            item.bioSafe ?? null,
-            item.bioFull ?? null,
-            item.spoilerLevel ?? null,
-            item.attributes ? JSON.stringify(item.attributes) : null,
-            item.sourceRefs ? JSON.stringify(item.sourceRefs) : null,
-            item.reviewStatus ?? null,
-            item.sourceWork ?? null,
-            item.adaptationBoundary ?? null,
-            item.quote ?? null,
-            nowIso(),
-            card.id,
-            ctx.tenant.id,
-          )
-          .run();
-      }
+      await applyImportedCardMetadata(ctx, card.id, item);
       if (manifest.publish) {
         await ctx.db.batch([
           ctx.db
@@ -351,7 +433,7 @@ export async function commitImport(ctx: Ctx, manifest: ImportManifest) {
       results.push({ logicalId: item.logicalId, status: "failed", error: message });
       await ctx.db
         .prepare(
-          "INSERT INTO fb_import_items (id, tenant_id, run_id, source, source_repo, source_path, source_commit, logical_id, hash, status, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'failed', ?, ?)",
+          "INSERT INTO fb_import_items (id, tenant_id, run_id, source, source_repo, source_path, source_commit, logical_id, hash, status, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'failed', ?, ?) ON CONFLICT(tenant_id, source, source_path, source_commit, logical_id, hash) DO UPDATE SET run_id = excluded.run_id, status = 'failed', notes = excluded.notes, created_at = excluded.created_at",
         )
         .bind(
           newId("imi"),
@@ -469,7 +551,11 @@ export async function createRenderJobs(ctx: Ctx, options?: { force?: boolean }) 
        LEFT JOIN fb_effects fx ON fx.id = v.effect_id
       WHERE v.tenant_id = ? AND v.status = 'published' AND e.status = 'published'
         AND v.archived_at IS NULL AND e.archived_at IS NULL
-        AND (? = 1 OR NOT EXISTS (SELECT 1 FROM fb_variant_renders r WHERE r.variant_id = v.id AND r.tenant_id = v.tenant_id AND r.status = 'published'))
+        AND (? = 1 OR NOT EXISTS (
+          SELECT 1 FROM fb_variant_renders r
+           WHERE r.variant_id = v.id AND r.tenant_id = v.tenant_id AND r.status = 'published'
+             AND r.source_hash IS e.source_hash
+        ))
         AND NOT EXISTS (SELECT 1 FROM fb_jobs j WHERE j.tenant_id = v.tenant_id AND j.kind = 'render_card'
           AND json_extract(j.payload_json, '$.variant_id') = v.id AND j.status IN ('pending','running'))`,
     ctx.tenant.id,

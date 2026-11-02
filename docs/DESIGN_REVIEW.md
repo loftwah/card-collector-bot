@@ -57,8 +57,14 @@ Contact sheets (private evidence, not committed):
 
 ## Remaining visual limits
 
-- Franchise art is an original Foilbury interpretation, not licensed character
-  likeness. It is intentionally abstract/typographic and labelled as such.
+- Franchise cards now use sourced subject images with recorded provenance, not
+  oversized initials. The collection framing, backs, typography and finishes
+  remain original Foilbury design. The images are third-party works used in a
+  private, non-commercial member album, not licensed or official artwork.
+- The earlier monogram fallback produced a specific failure: Hajime Hinata's
+  oversized "HH" read as an unintended political symbol. The fallback is now a
+  neutral silhouette labelled "art pending"; launch cards require a sourced
+  subject before publishing.
 - A human contact-sheet review on calibrated displays and constrained mobile
   hardware remains a release step; the automated screenshots are not a substitute.
 - Pity is disabled and no casino-style motion is used. The reveal is optional and

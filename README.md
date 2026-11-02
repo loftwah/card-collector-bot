@@ -132,7 +132,7 @@ The admin surfaces `/admin` and `/api/v1/admin` are behind Cloudflare Access. We
 
 Email delivery, paid generation, live headless agent runs and the two-person/second-server acceptance remain unverified or blocked. Public launch is not ready.
 
-Foilbury is not affiliated with or endorsed by the source game projects. Source artwork is credited per edition; the owner remains responsible for the content they import and publish.
+Foilbury is not affiliated with or endorsed by the source game projects. Launch subject images are sourced from public reference wikis and Wikimedia Commons with per-card provenance and credit; they are third-party works used in a private, non-commercial member album. The card design, backs, frames and finishes are Foilbury originals. The owner remains responsible for the content they import and publish.
 
 ## Album increment (2026-11-03)
 

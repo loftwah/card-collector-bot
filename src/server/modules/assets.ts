@@ -99,7 +99,40 @@ export async function uploadAsset(
     hash,
     input.kind,
   );
-  if (existing) return existing;
+  if (existing) {
+    // The bytes are unchanged, but provenance, credit, review status and access
+    // metadata may have been corrected. Keep the stable asset ID and R2 object,
+    // and update the authoritative metadata instead of silently returning stale
+    // values.
+    await ctx.db.batch([
+      ctx.db
+        .prepare(
+          `UPDATE fb_assets SET
+             name = ?, visibility = ?, access_classification = ?, role = ?, official = ?,
+             review_status = ?, provenance_json = ?, source_repo = ?, source_path = ?,
+             source_commit = ?, source_logical_id = ?, credit = ?
+           WHERE id = ? AND tenant_id = ?`,
+        )
+        .bind(
+          input.name.trim() || "Untitled asset",
+          input.visibility ?? (input.accessClassification === "public" ? "public_export" : "private"),
+          input.accessClassification ?? "private",
+          input.role ?? input.kind,
+          input.official ? 1 : 0,
+          input.reviewStatus ?? "unreviewed",
+          JSON.stringify(input.provenance ?? {}),
+          input.source?.repo ?? null,
+          input.source?.path ?? null,
+          input.source?.commit ?? null,
+          input.source?.logicalId ?? null,
+          input.source?.credit ?? null,
+          existing.id,
+          ctx.tenant.id,
+        ),
+      auditStatementSafe(ctx, "asset.metadata_revised", existing.id, { kind: input.kind, sha256: hash }),
+    ]);
+    return (await first<AssetRow>(ctx.db, "SELECT * FROM fb_assets WHERE id = ? AND tenant_id = ?", existing.id, ctx.tenant.id))!;
+  }
   const ext = mime === "image/png" ? "png" : mime === "image/jpeg" ? "jpg" : "webp";
   const key = `tenants/${ctx.tenant.id}/assets/${hash}.${ext}`;
   await ctx.media.put(key, input.bytes, {
@@ -217,7 +250,15 @@ export async function createRenderAsset(
   const assetId = existingAsset?.id ?? newId("rnd");
   const now = nowIso();
   const publicUrl = `/media/render/${assetId}`;
-  const variant = await first<{ card_id: string }>(ctx.db, "SELECT card_id FROM fb_variants WHERE id = ? AND tenant_id = ?", input.variantId, ctx.tenant.id);
+  const variant = await first<{ card_id: string; source_hash: string | null }>(
+    ctx.db,
+    `SELECT v.card_id, e.source_hash FROM fb_variants v
+       JOIN fb_artwork_editions e ON e.id = v.edition_id AND e.tenant_id = v.tenant_id
+      WHERE v.id = ? AND v.tenant_id = ?`,
+    input.variantId,
+    ctx.tenant.id,
+  );
+  const sourceHash = variant?.source_hash ?? null;
   const { effectiveCardAudience } = await import("./visibility");
   const audience = variant ? await effectiveCardAudience(ctx, variant.card_id) : "members";
   const access = audience === "public" ? "public" : audience === "members" ? "member" : "private";
@@ -249,14 +290,15 @@ export async function createRenderAsset(
     ctx.db
       .prepare(
         `INSERT INTO fb_variant_renders
-          (id, tenant_id, variant_id, recipe_id, asset_id, public_url, width, height, sha256, status, created_at, published_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', ?, ?)
+          (id, tenant_id, variant_id, recipe_id, asset_id, public_url, width, height, sha256, source_hash, status, created_at, published_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', ?, ?)
          ON CONFLICT(tenant_id, variant_id, recipe_id) DO UPDATE SET
            asset_id = excluded.asset_id, public_url = excluded.public_url, width = excluded.width,
-           height = excluded.height, sha256 = excluded.sha256, status = 'published', published_at = excluded.published_at`,
+           height = excluded.height, sha256 = excluded.sha256, source_hash = excluded.source_hash,
+           status = 'published', published_at = excluded.published_at`,
       )
-      .bind(newId("vr"), ctx.tenant.id, input.variantId, input.recipeId, assetId, publicUrl, dimensions.width, dimensions.height, hash, now, now),
-    auditStatementSafe(ctx, "render.published", assetId, { variant_id: input.variantId, recipe_id: input.recipeId, sha256: hash, access }),
+      .bind(newId("vr"), ctx.tenant.id, input.variantId, input.recipeId, assetId, publicUrl, dimensions.width, dimensions.height, hash, sourceHash, now, now),
+    auditStatementSafe(ctx, "render.published", assetId, { variant_id: input.variantId, recipe_id: input.recipeId, sha256: hash, source_hash: sourceHash, access }),
   ];
   await ctx.db.batch(statements);
   return { assetId, publicUrl, width: dimensions.width, height: dimensions.height, sha256: hash };

@@ -45,7 +45,7 @@ describe("catalogue lifecycle", () => {
 });
 
 describe("source imports", () => {
-  it("is idempotent for the same source hash and creates a reviewable edition for a change", async () => {
+  it("is idempotent for the same source hash and revises the current edition in place", async () => {
     await bootstrap();
     const owner = await ctxFor("cabinet", "owner@foilbury.local");
     const fixture = await fixturePool(owner);
@@ -80,6 +80,9 @@ describe("source imports", () => {
     const second = await commitImport(owner, base);
     expect(second.summary.unchanged).toBe(1);
     expect(second.summary.imported).toBe(0);
+    const before = await getCard(owner, "import-one");
+    const editionId = before.editions[0]!.id;
+    const variantId = before.editions[0]!.variants[0]!.id;
 
     const changed = {
       ...base,
@@ -89,7 +92,9 @@ describe("source imports", () => {
     expect(third.summary.revised).toBe(1);
     expect(third.summary.failed).toBe(0);
     const card = await getCard(owner, "import-one");
-    expect(card.editions).toHaveLength(2);
+    expect(card.editions).toHaveLength(1);
+    expect(card.editions[0]!.id).toBe(editionId);
+    expect(card.editions[0]!.variants[0]!.id).toBe(variantId);
     expect(card.name).toBe("Import One");
     const importItems = await runtime.DB.prepare("SELECT status, hash FROM fb_import_items WHERE tenant_id = ? AND logical_id = 'import:one' ORDER BY created_at").bind(owner.tenant.id).all<{ status: string; hash: string }>();
     expect(importItems.results.length).toBeGreaterThanOrEqual(2);

@@ -7,6 +7,7 @@
  * produces editable source layers (subject / background / mark / cover / back)
  * so the normal compositor and render pipeline stay authoritative.
  */
+import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 import { Resvg } from "@resvg/resvg-js";
@@ -35,11 +36,20 @@ function wrapText(value, maxChars) {
   return lines;
 }
 
-function textBlock({ value, x, y, maxChars, lineHeight, size, fill, opacity = 0.85, font = "Manrope, sans-serif", maxLines = 99 }) {
-  return wrapText(value, maxChars)
-    .slice(0, maxLines)
+function textBlock({ value, x, y, maxChars, lineHeight, size, fill, opacity = 0.85, font = "Manrope, sans-serif", maxLines = 99, ellipsis = false }) {
+  const allLines = wrapText(value, maxChars);
+  const lines = allLines.slice(0, maxLines);
+  if (ellipsis && allLines.length > maxLines && lines.length) {
+    lines[lines.length - 1] = `${lines[lines.length - 1].replace(/[.,;:!?]?$/, "")}…`;
+  }
+  return lines
     .map((line, index) => `<text x="${x}" y="${y + index * lineHeight}" font-family="${font}" font-size="${size}" fill="${fill}" opacity="${opacity}">${escapeXml(line)}</text>`)
     .join("");
+}
+
+function clip(value, max) {
+  const text = String(value ?? "").trim();
+  return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
 }
 
 function escapeXml(value) {
@@ -70,12 +80,12 @@ function mulberry32(seed) {
   };
 }
 
-function palette(input) {
+export function palette(input) {
   const colors = Array.isArray(input) && input.length >= 3 ? input : ["#17233f", "#e4572e", "#f4e3c1"];
   return { deep: colors[0], accent: colors[1], light: colors[2] };
 }
 
-function motifSvg(motif, colors, width, height, seed) {
+export function motifSvg(motif, colors, width, height, seed) {
   const rand = mulberry32(hashSeed(`${motif}:${seed}`));
   const parts = [];
   const line = colors.accent;
@@ -173,6 +183,8 @@ function subjectSvg({ name, initials, palette: colors, motif, seed }) {
   const c = palette(colors);
   const rand = mulberry32(hashSeed(`subject:${seed}`));
   const ringOffset = -30 + rand() * 60;
+  // Deliberate development fallback: a neutral silhouette, never oversized
+  // initials. Initials read as unrelated words or symbols at card size.
   return `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <linearGradient id="bg" x1="0" y1="0" x2="0.8" y2="1">
@@ -193,9 +205,11 @@ function subjectSvg({ name, initials, palette: colors, motif, seed }) {
     <circle cx="${600 + ringOffset}" cy="660" r="280" fill="none" stroke="${c.accent}" stroke-width="3" opacity=".65" stroke-dasharray="18 14"/>
     <path d="M 210 1600 Q 280 1130 600 1090 Q 920 1130 990 1600 Z" fill="${c.deep}" opacity=".55"/>
     <path d="M 280 1600 Q 340 1180 600 1145 Q 860 1180 920 1600 Z" fill="none" stroke="${c.light}" stroke-width="3" opacity=".28"/>
-    <circle cx="600" cy="620" r="170" fill="${c.accent}" opacity=".28"/>
-    <text x="600" y="735" text-anchor="middle" font-family="Fraunces, Georgia, serif" font-size="248" font-weight="560" fill="${c.light}" opacity=".96" letter-spacing="6">${escapeXml(initials)}</text>
-    <text x="600" y="1400" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="24" letter-spacing="9" fill="${c.light}" opacity=".5">FOILBURY ORIGINAL</text>
+    <circle cx="600" cy="610" r="168" fill="${c.accent}" opacity=".22"/>
+    <path d="M 432 826 Q 432 640 600 640 Q 768 640 768 826 Q 700 900 600 900 Q 500 900 432 826 Z" fill="${c.light}" opacity=".2"/>
+    <circle cx="600" cy="735" r="82" fill="${c.light}" opacity=".26"/>
+    <text x="600" y="1330" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="22" letter-spacing="8" fill="${c.light}" opacity=".55">ART PENDING</text>
+    <text x="600" y="1370" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="18" letter-spacing="5" fill="${c.light}" opacity=".38">${escapeXml(initials)}</text>
     <rect x="70" y="70" width="1060" height="1460" fill="none" stroke="${c.light}" stroke-width="2" opacity=".28"/>
     <rect x="96" y="96" width="1008" height="1408" fill="none" stroke="${c.light}" stroke-width="1" opacity=".18"/>
   </svg>`;
@@ -261,11 +275,22 @@ function coverSvg({ name, description, initials, palette: colors, motif, sourceW
   </svg>`;
 }
 
-function backSvg({ name, subtitle, bio, attributes, collectionName, collectionDescription, initials, palette: colors, motif, sourceWork }) {
+function backSvg({ name, subtitle, bio, attributes, collectionName, collectionDescription, initials, palette: colors, motif, sourceWork, artCredit }) {
   const c = palette(colors);
+  const titleLines = wrapText(name, 18).slice(0, 3);
+  const titleSize = titleLines.length >= 3 ? 44 : titleLines.length > 1 ? 52 : 58;
+  const titleLineHeight = titleSize + 6;
+  const titleY = 190;
+  const titleMarkup = titleLines
+    .map((line, index) => `<text x="70" y="${titleY + index * titleLineHeight}" font-family="Fraunces, Georgia, serif" font-size="${titleSize}" font-weight="560" fill="${c.light}">${escapeXml(line)}</text>`)
+    .join("");
+  const subtitleY = titleY + (titleLines.length - 1) * titleLineHeight + 34;
+  const bioY = subtitleY + 44;
+  const bioLineCount = Math.min(wrapText(bio ?? "", 40).length, 6);
+  const attrY = bioY + bioLineCount * 30 + 28;
   const attrLines = (attributes ?? [])
-    .slice(0, 4)
-    .map((attr, index) => `<text x="70" y="${610 + index * 50}" font-family="IBM Plex Mono, monospace" font-size="21" letter-spacing="2" fill="${c.light}" opacity=".72">${escapeXml(String(attr.label ?? "").toUpperCase())} · ${escapeXml(String(attr.value ?? ""))}</text>`)
+    .slice(0, 3)
+    .map((attr, index) => `<text x="70" y="${attrY + index * 40}" font-family="IBM Plex Mono, monospace" font-size="18" letter-spacing="1.6" fill="${c.light}" opacity=".76">${escapeXml(String(attr.label ?? "").toUpperCase())} · ${escapeXml(String(attr.value ?? ""))}</text>`)
     .join("");
   return `<svg width="750" height="1050" xmlns="http://www.w3.org/2000/svg">
     <defs>
@@ -276,19 +301,21 @@ function backSvg({ name, subtitle, bio, attributes, collectionName, collectionDe
     </defs>
     <rect width="750" height="1050" fill="url(#bg)"/>
     ${motifSvg(motif, c, 750, 1050, name)}
-    <rect width="750" height="1050" fill="${c.deep}" opacity=".55"/>
+    <rect width="750" height="1050" fill="#0b0d0c" opacity=".72"/>
     <rect x="34" y="34" width="682" height="982" fill="none" stroke="${c.light}" stroke-width="2" opacity=".55"/>
-    <text x="70" y="110" font-family="IBM Plex Mono, monospace" font-size="19" letter-spacing="7" fill="${c.light}" opacity=".75">${escapeXml(collectionName)}</text>
-    <text x="70" y="205" font-family="Fraunces, Georgia, serif" font-size="64" font-weight="560" fill="${c.light}">${escapeXml(name)}</text>
-    <text x="70" y="255" font-family="Manrope, sans-serif" font-size="24" fill="${c.light}" opacity=".75">${escapeXml(subtitle ?? "")}</text>
-    ${textBlock({ value: bio ?? "", x: 70, y: 355, maxChars: 38, lineHeight: 38, size: 25, fill: c.light, opacity: 0.9 })}
+    <text x="70" y="104" font-family="IBM Plex Mono, monospace" font-size="16" letter-spacing="5" fill="${c.light}" opacity=".72">${escapeXml(clip(collectionName, 42).toUpperCase())}</text>
+    ${titleMarkup}
+    <text x="70" y="${subtitleY}" font-family="Manrope, sans-serif" font-size="21" fill="${c.light}" opacity=".78">${escapeXml(clip(subtitle ?? "", 52))}</text>
+    ${textBlock({ value: bio ?? "", x: 70, y: bioY, maxChars: 40, lineHeight: 30, size: 21, fill: c.light, opacity: 0.88, maxLines: 6, ellipsis: true })}
     ${attrLines}
-    <text x="70" y="816" font-family="IBM Plex Mono, monospace" font-size="16" letter-spacing="5" fill="${c.light}" opacity=".5">ABOUT THIS WORLD</text>
-    ${textBlock({ value: collectionDescription ?? "", x: 70, y: 852, maxChars: 58, lineHeight: 27, size: 18, fill: c.light, opacity: 0.62, maxLines: 2 })}
-    <text x="70" y="948" font-family="IBM Plex Mono, monospace" font-size="15" letter-spacing="5" fill="${c.light}" opacity=".55">FOILBURY · ORIGINAL</text>
-    <circle cx="650" cy="900" r="48" fill="${c.deep}" opacity=".55"/>
-    <circle cx="650" cy="900" r="40" fill="none" stroke="${c.light}" stroke-width="2" opacity=".55"/>
-    <text x="650" y="918" text-anchor="middle" font-family="Fraunces, Georgia, serif" font-size="34" fill="${c.light}">${escapeXml(initials)}</text>
+    <path d="M70 768 H680" stroke="${c.light}" stroke-width="1" opacity=".18"/>
+    <text x="70" y="804" font-family="IBM Plex Mono, monospace" font-size="15" letter-spacing="4" fill="${c.light}" opacity=".52">ABOUT THIS WORLD</text>
+    ${textBlock({ value: collectionDescription ?? "", x: 70, y: 836, maxChars: 70, lineHeight: 24, size: 15, fill: c.light, opacity: 0.62, maxLines: 2, ellipsis: true })}
+    ${artCredit ? textBlock({ value: artCredit, x: 70, y: 920, maxChars: 58, lineHeight: 14, size: 10, fill: c.light, opacity: 0.46, maxLines: 2, ellipsis: true }) : ""}
+    <text x="70" y="1002" font-family="IBM Plex Mono, monospace" font-size="12" letter-spacing="4" fill="${c.light}" opacity=".5">FOILBURY · MEMBER EDITION</text>
+    <circle cx="650" cy="930" r="42" fill="#0b0d0c" opacity=".62"/>
+    <circle cx="650" cy="930" r="35" fill="none" stroke="${c.light}" stroke-width="2" opacity=".55"/>
+    <text x="650" y="944" text-anchor="middle" font-family="Fraunces, Georgia, serif" font-size="30" fill="${c.light}">${escapeXml(initials)}</text>
   </svg>`;
 }
 
@@ -302,16 +329,11 @@ async function render(svg, outputPath) {
   return outputPath;
 }
 
-export async function generateCollectionArt({ collection, cards, outputDir }) {
-  const fs = await import("node:fs");
+export async function generateCollectionArt({ collection, cards, outputDir, sourcedDir }) {
   fs.mkdirSync(outputDir, { recursive: true });
   const collectionColors = collection.palette ?? ["#17233f", "#e4572e", "#f4e3c1"];
   const collectionInitials = collection.initials ?? collection.name.split(/\s+/).slice(0, 2).map((word) => word[0]).join("").toUpperCase();
   const markSource = markSvg({ initials: collectionInitials, palette: collectionColors, motif: collection.motif ?? "grid", name: collection.slug });
-  if (collection.slug === "chainsaw-man-public-safety" || collection.slug === "nana-two-nanas") {
-    const fs = await import("node:fs");
-    fs.writeFileSync(`.foilbury/tmp/${collection.slug}-mark.svg`, markSource);
-  }
   const mark = await render(markSource, path.join(outputDir, "mark.png"));
   const coverSource = coverSvg({
     name: collection.name,
@@ -321,24 +343,33 @@ export async function generateCollectionArt({ collection, cards, outputDir }) {
     motif: collection.motif ?? "grid",
     sourceWork: collection.source_work,
   });
-  if (collection.slug === "chainsaw-man-public-safety" || collection.slug === "nana-two-nanas") {
-    const fs = await import("node:fs");
-    fs.writeFileSync(`.foilbury/tmp/${collection.slug}-cover.svg`, coverSource);
-  }
   const cover = await render(coverSource, path.join(outputDir, "cover.png"));
+  const sourcedCollectionDir = sourcedDir ? path.join(sourcedDir, collection.slug) : null;
   const cardArt = [];
   for (const card of cards) {
     const colors = card.art?.palette ?? collectionColors;
     const motif = card.art?.motif ?? collection.motif ?? "grid";
     const seed = card.slug;
-    const subject = await render(
-      subjectSvg({ name: card.name, initials: card.art?.initials ?? card.name.slice(0, 2).toUpperCase(), palette: colors, motif, seed }),
-      path.join(outputDir, `${card.slug}-subject.png`),
-    );
-    const background = await render(
-      backgroundSvg({ name: card.name, palette: colors, motif, seed }),
-      path.join(outputDir, `${card.slug}-background.png`),
-    );
+    const sourcedSubject = sourcedCollectionDir ? path.join(sourcedCollectionDir, `${card.slug}-subject.png`) : null;
+    const sourcedBackground = sourcedCollectionDir ? path.join(sourcedCollectionDir, `${card.slug}-background.png`) : null;
+    const hasSourcedArt = Boolean(sourcedSubject && sourcedBackground && fs.existsSync(sourcedSubject) && fs.existsSync(sourcedBackground));
+    let subject;
+    let background;
+    if (hasSourcedArt) {
+      subject = path.join(outputDir, `${card.slug}-subject.png`);
+      background = path.join(outputDir, `${card.slug}-background.png`);
+      fs.copyFileSync(sourcedSubject, subject);
+      fs.copyFileSync(sourcedBackground, background);
+    } else {
+      subject = await render(
+        subjectSvg({ name: card.name, initials: card.art?.initials ?? card.name.slice(0, 2).toUpperCase(), palette: colors, motif, seed }),
+        path.join(outputDir, `${card.slug}-subject.png`),
+      );
+      background = await render(
+        backgroundSvg({ name: card.name, palette: colors, motif, seed }),
+        path.join(outputDir, `${card.slug}-background.png`),
+      );
+    }
     const back = await render(
       backSvg({
         name: card.name,
@@ -351,10 +382,11 @@ export async function generateCollectionArt({ collection, cards, outputDir }) {
         palette: colors,
         motif,
         sourceWork: collection.source_work,
+        artCredit: card.art?.source?.credit ?? card.credit,
       }),
       path.join(outputDir, `${card.slug}-back.png`),
     );
-    cardArt.push({ card, subject, background, back });
+    cardArt.push({ card, subject, background, back, sourced: hasSourcedArt });
   }
   return { mark, cover, cards: cardArt };
 }
