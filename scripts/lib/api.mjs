@@ -20,6 +20,22 @@ export async function ensureServer() {
   await startDevServer(4321);
 }
 
+/** A dev server can briefly reload after a build or file change. Retry only transport failures. */
+export async function fetchWithRetry(url, options = {}, attempts = 4) {
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return await fetch(url, options);
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+      }
+    }
+  }
+  throw lastError;
+}
+
 export async function apiFetch(route, options = {}) {
   await ensureServer();
   const headers = new Headers(options.headers ?? {});
@@ -32,11 +48,11 @@ export async function apiFetch(route, options = {}) {
     body = JSON.stringify(options.body);
   }
   if (options.idempotencyKey) headers.set("idempotency-key", options.idempotencyKey);
-  const response = await fetch(`${BASE_URL}${route}`, {
-    method: options.method ?? (body === undefined ? "GET" : "POST"),
-    headers,
-    body,
-  });
+  const method = options.method ?? (body === undefined ? "GET" : "POST");
+  const retrySafe = method === "GET" || method === "HEAD" || Boolean(options.idempotencyKey);
+  const response = retrySafe
+    ? await fetchWithRetry(`${BASE_URL}${route}`, { method, headers, body })
+    : await fetch(`${BASE_URL}${route}`, { method, headers, body });
   const text = await response.text();
   let payload = null;
   try {

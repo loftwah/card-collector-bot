@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { apiJson, agentToken, ensureServer, BASE_URL } from "./lib/api.mjs";
+import { apiJson, agentToken, ensureServer, fetchWithRetry, BASE_URL } from "./lib/api.mjs";
 
 const root = process.cwd();
 const json = process.argv.includes("--json");
@@ -53,7 +53,7 @@ try {
   fs.mkdirSync(assetDir, { recursive: true, mode: 0o700 });
   const files = [];
   for (const asset of assets.items) {
-    const response = await fetch(`${BASE_URL}/api/v1/admin/assets/${asset.id}/bytes`, { headers: { authorization: `Bearer ${agentToken("owner")}` } });
+    const response = await fetchWithRetry(`${BASE_URL}/api/v1/admin/assets/${asset.id}/bytes`, { headers: { authorization: `Bearer ${agentToken("owner")}` } });
     if (!response.ok) throw new Error(`Could not back up asset ${asset.id}: HTTP ${response.status}`);
     const bytes = Buffer.from(await response.arrayBuffer());
     const digest = hash(bytes);
