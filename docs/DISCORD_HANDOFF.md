@@ -1,8 +1,10 @@
 # Foilbury Discord handoff
 
-Status: **not connected**. This document is a handoff plan, not a claim that Discord works. No bot was installed, no command was registered, no interaction endpoint or tunnel was opened, no message was sent and no DNS or deployment change was made during this assignment.
+Status: **connected for the Loftwah pilot**. The original plan below is retained as history; the live implementation and evidence are in `docs/DISCORD_ACCEPTANCE.md`.
 
-Discord is one future entrypoint. Foilbury's authority remains its local application commands and D1/R2 state.
+The existing Discord application (`1566702936615026769`) is installed in Loftwah (`997734945206313041`). Discord sends signed HTTP interactions to `https://foilbury.loftwah.com/api/discord/interactions`; guild commands are registered for `/foilbury`. No Gateway connection or privileged intent is used. Gameplay is restricted to `#card-collector-test` (`1566700752385081355`) by the server-side installation allowlist.
+
+Foilbury's authority remains its D1/R2 domain services and award ledger. Discord is an adapter over the same authorised commands, not a separate economy.
 
 ## Current local proof
 
@@ -41,7 +43,7 @@ Use an HTTP-interaction adapter, not a Gateway connection:
 
 Minimal permissions should be tested from a clean installation: application commands, send messages in the chosen channel and use external/embedded content only if an approved design needs it. Do not grant Administrator.
 
-## Live acceptance scenarios (not yet run)
+## Live acceptance scenarios (executed 2026-11-02)
 
 1. **One identity and inventory across web and Discord**
    - Link one player identity.
@@ -78,10 +80,10 @@ Minimal permissions should be tested from a clean installation: application comm
    - Confirm no deployment or DNS mutation occurs from the local review environment.
    - Confirm the bot token is absent from the browser, CMS content, logs, prompts, tracked files and tool results.
 
-## Test command registration (do not run yet)
+## Command registration
 
-After the above prerequisites are approved, register only in the test guild. Document the exact command names, descriptions and option schemas in the adapter release, then run the live scenarios. Keep a copy of the JSON registration payload and the interaction response fixtures as evidence. Registration alone is not delivery proof.
+Registration is reproducible with `pnpm discord:register` using `.env`; it merges the project's `/foilbury` command into the test guild without deleting unrelated commands. Registration alone is not delivery proof; the real interaction evidence is in `docs/DISCORD_ACCEPTANCE.md`.
 
 ## Stop point
 
-The local review gate ends here. The owner reviews `docs/LOCAL_ACCEPTANCE.md`, `docs/acceptance-report.json`, screenshots and the running application before authorising this phase. Local acceptance is not proof of Discord delivery, production authentication or deployed infrastructure.
+The original local review gate is preserved in `docs/LOCAL_ACCEPTANCE.md`. The deployed pilot has passed the real Discord game loop; public launch and the two-person matrix remain blocked as documented in `docs/DISCORD_ACCEPTANCE.md`.

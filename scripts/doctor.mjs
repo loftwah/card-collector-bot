@@ -46,7 +46,7 @@ else add("missing", "Lockfile", "pnpm-lock.yaml missing");
 
 const envNames = readNames(path.join(ROOT, ".env"));
 const envValues = values(path.join(ROOT, ".env"));
-const configuredNames = ["CF_ACCOUNT_ID", "CF_API_TOKEN", "CF_ACCESS_KEY_ID", "CF_SECRET_ACCESS_KEY", "CF_S3_API_ENDPOINT", "FAL_AI_API_KEY", "ELEVENLABS_API_KEY", "RESEND_API_KEY", "RESEND_FROM_ADDRESS", "ADMIN_DISCORD_WEBHOOK_URL", "DISCORD_APPLICATION_ID", "DISCORD_PUBLIC_KEY"];
+const configuredNames = ["CF_ACCOUNT_ID", "CF_API_TOKEN", "CF_ACCESS_KEY_ID", "CF_SECRET_ACCESS_KEY", "CF_S3_API_ENDPOINT", "FAL_AI_API_KEY", "ELEVENLABS_API_KEY", "RESEND_API_KEY", "RESEND_FROM_ADDRESS", "ADMIN_DISCORD_WEBHOOK_URL", "DISCORD_APPLICATION_ID", "DISCORD_PUBLIC_KEY", "DISCORD_BOT_TOKEN"];
 for (const name of configuredNames) {
   if (envValues.get(name)) add("configured", name, "present in private .env; value not read into this report");
   else if (name === "RESEND_FROM_ADDRESS") add("missing", name, "expected foilbury@loftwah.com");
@@ -94,9 +94,9 @@ try {
   const response = await fetch(`${url}/api/v1/status`, { signal: AbortSignal.timeout(1500) });
   const status = await response.json();
   add(response.ok ? "locallyVerified" : "missing", "Local server", `${url} · HTTP ${response.status} · configured=${status.configured}`);
-  if (status.providers?.discordApplication) add("configured", "Discord application", "ID/public key retained; Discord disabled");
-  if (status.providers?.discordBot) add("configured", "Discord bot token", "present; not used");
-  add("unverified", "Discord delivery", "not connected; no live check");
+  if (status.providers?.discordApplication) add("configured", "Discord application", "ID/public key retained; HTTP interactions implemented");
+  if (status.providers?.discordBot) add("configured", "Discord bot token", "present; not needed by the interactions endpoint");
+  add("unverified", "Discord delivery", "real delivery is recorded in docs/DISCORD_ACCEPTANCE.md; doctor does not contact Discord");
   add("unverified", "Email delivery", "local outbox only; no send performed");
   add("unverified", "Image generation", "no recorded ceiling; no billed job submitted");
 } catch {

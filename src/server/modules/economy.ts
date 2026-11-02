@@ -365,7 +365,13 @@ export async function operationsStatus(ctx: Ctx) {
     },
     release,
     providers: ctx.config.providers,
-    discord: { status: "disabled", connected: false, reason: "Discord integration is intentionally not activated in this local build." },
+    discord: {
+      status: ctx.config.providers.discordApplication ? "interactions_ready" : "disabled",
+      connected: Boolean(ctx.config.providers.discordApplication),
+      reason: ctx.config.providers.discordApplication
+        ? "Signed HTTP interactions are implemented; guild installations and channel allowlists are authoritative."
+        : "The Discord application ID and public key are not configured.",
+    },
     email: { status: "outbox_only", sends: 0 },
     generation: { status: "not_run", billed_cost_micros: 0, reason: "No recorded generation ceiling; supplied and designed assets only." },
     time: { now_utc: nowIso() },

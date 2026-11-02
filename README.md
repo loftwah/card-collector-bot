@@ -118,8 +118,18 @@ Development sign-in is explicit, loopback-only and revocable with `FOILBURY_DEV_
 
 ## Current status
 
-Local implementation and local acceptance are complete; the owner review gate is the stop point. See `docs/LOCAL_ACCEPTANCE.md` for the exact tested revision, commands, results, screenshots, limitations and owner playtest checklist.
+The original local-first build and its acceptance record remain in `docs/LOCAL_ACCEPTANCE.md`. The follow-on deployment is live at **https://foilbury.loftwah.com** on Cloudflare Workers, D1, R2 and KV.
 
-External capabilities remain unverified: Discord delivery, email delivery, live FAL/ElevenLabs calls and deployed Cloudflare infrastructure. No Discord bot was installed, no command registered, no endpoint/tunnel opened, no message sent, no DNS changed and no cloud resource created. The Discord handoff is in `docs/DISCORD_HANDOFF.md`.
+Discord is connected through a signed **HTTP interactions** endpoint, not a Gateway connection:
+
+- application `Foilbury` (`1566702936615026769`) installed in Loftwah (`997734945206313041`);
+- guild command `/foilbury` registered with `open`, `daily`, `collection`, `card`, `packs`, `profile`, `help` and guarded `admin` subcommands;
+- gameplay restricted to `#card-collector-test` (`1566700752385081355`) by the installation allowlist;
+- real pulls, card artwork, persistent collection, buttons and Bot Owner status verified live;
+- Presence, Server Members and Message Content intents remain disabled.
+
+The admin surfaces `/admin` and `/api/v1/admin` are behind Cloudflare Access. The production bootstrap owner login is password-based; website Discord OAuth, magic links, passkeys and MFA are not yet implemented. See `docs/DISCORD_ACCEPTANCE.md` for exact evidence, gaps and human prerequisites. `PRODUCT.md` and `DESIGN.md` hold the current product/design context.
+
+Email delivery, paid generation, live headless agent runs and the two-person/second-server acceptance remain unverified or blocked. Public launch is not ready.
 
 Foilbury is not affiliated with or endorsed by the source game projects. Source artwork is credited per edition; the owner remains responsible for the content they import and publish.

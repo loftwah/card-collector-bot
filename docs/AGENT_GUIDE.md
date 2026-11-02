@@ -80,6 +80,10 @@ The MCP server is stdio-only. It does not expose an unauthenticated remote endpo
 
 Tools include status, catalogue and taxonomy reads/writes, identity merging, imports, render queue, bounded generation planning, pools, inventory, wishlist, wallet, rewards, draws, trades, gifts, recycling, agent grants, catalogue publication, operations and local outbox processing. Generation submit deliberately refuses until a ceiling and verified adapter exist; no provider result is fabricated.
 
+## Discord adapter
+
+Discord uses the signed HTTP interaction endpoint at `/api/discord/interactions`. It is not a Gateway bot and does not use privileged intents. The guild installation, channel allowlist, Bot tenant and player identity are resolved server-side. Commands are `/foilbury open|daily|collection|card|packs|profile|help` plus guarded `admin` subcommands. Register the guild command with `pnpm discord:register`. See `docs/DISCORD_ACCEPTANCE.md` for live evidence.
+
 ## Authority
 
 - The server derives the tenant and member from the credential. A request parameter is not authority.

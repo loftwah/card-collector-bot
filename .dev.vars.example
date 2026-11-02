@@ -8,3 +8,7 @@ FOILBURY_BOOTSTRAP_TOKEN=
 FOILBURY_AGENT_TOKEN_PEPPER=
 EMDASH_ENCRYPTION_KEY=
 EMDASH_SITE_URL=http://127.0.0.1:4321
+# Public Discord identifiers are safe to bind locally; the bot token is not needed
+# by the HTTP interactions endpoint and must never be placed here.
+DISCORD_APPLICATION_ID=
+DISCORD_PUBLIC_KEY=

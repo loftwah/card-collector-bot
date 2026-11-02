@@ -37,7 +37,9 @@
     "foilbury": "node scripts/foilbury.mjs",
     "mcp": "node mcp/server.mjs",
     "test:persistence": "node scripts/test-persistence.mjs",
-    "webhook:test": "node scripts/test-admin-webhook.mjs"
+    "webhook:test": "node scripts/test-admin-webhook.mjs",
+    "deploy:production": "node scripts/deploy-production.mjs",
+    "discord:register": "tsx scripts/discord/register-commands.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "14.4.3",

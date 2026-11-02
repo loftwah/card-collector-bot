@@ -193,8 +193,8 @@ const primaryHref = user ? "/play" : "/login?next=%2Fplay";
         <p class="text-[var(--brass-bright)]">$ foilbury status --json</p>
         <p class="mt-2 text-[#8e8a7c]">{"{"}</p>
         <p class="ml-4">"name": "Foilbury",</p>
-        <p class="ml-4">"environment": "local",</p>
-        <p class="ml-4">"discord": "disabled",</p>
+        <p class="ml-4">"environment": "production",</p>
+        <p class="ml-4">"discord": "interactions_ready",</p>
         <p class="ml-4">"email": "outbox_only",</p>
         <p class="ml-4">"generation": "not_run"</p>
         <p class="text-[#8e8a7c]">{"}"}</p>
@@ -225,9 +225,9 @@ const primaryHref = user ? "/play" : "/login?next=%2Fplay";
         <p class="mt-3 text-sm leading-relaxed text-[var(--muted)]">Every imported edition records its repository, relative path, commit and hash. Re-imports become reviewable revisions, not silent replacements.</p>
       </article>
       <article class="surface-flat p-6">
-        <p class="eyebrow">Local first</p>
-        <h3 class="display-sm mt-3 text-2xl">Discord can wait.</h3>
-        <p class="mt-3 text-sm leading-relaxed text-[var(--muted)]">The cabinet, the website, the administration and the agent interfaces all work against the same local state before any Discord connection exists.</p>
+        <p class="eyebrow">One cabinet, several doors</p>
+        <h3 class="display-sm mt-3 text-2xl">Play where you already are.</h3>
+        <p class="mt-3 text-sm leading-relaxed text-[var(--muted)]">The website, the administration and Foilbury's Discord slash commands share the same inventory and award ledger. Discord is a signed HTTP endpoint, not a second game.</p>
       </article>
     </div>
   </section>

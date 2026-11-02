@@ -1,6 +1,9 @@
 import { base64url } from "./ids";
 
-const ITERATIONS = 210_000;
+// Cloudflare Workers WebCrypto caps PBKDF2 at 100,000 iterations. The verifier
+// accepts older higher-iteration hashes, but new hashes must stay within the
+// Workers limit so production login is not a runtime error.
+const ITERATIONS = 100_000;
 const encoder = new TextEncoder();
 
 export async function hashPassword(password: string): Promise<string> {

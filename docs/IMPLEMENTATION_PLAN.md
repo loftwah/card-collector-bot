@@ -1,26 +1,26 @@
 # Foilbury — implementation plan and acceptance checklist
 
-Status: in progress. This is the working plan; `docs/LOCAL_ACCEPTANCE.md` is the evidence record produced at the end.
+Status: local plan preserved; follow-on deployment and Discord evidence are in `docs/DISCORD_ACCEPTANCE.md`. The table below describes the original local build unless a later report supersedes it.
 
 ## Product decisions recorded for this build
 
 | Decision | Value |
 | --- | --- |
 | Product name | Foilbury |
-| Production hostname (not deployed) | foilbury.loftwah.com |
+| Production hostname | foilbury.loftwah.com — deployed on Cloudflare Workers |
 | Repository | card-collector-bot (unchanged) |
 | Local URL | `http://127.0.0.1:4321` (loopback only) |
-| Runtime | Astro 7 + React islands on Cloudflare Workers simulation; D1 for relational state; R2 for objects |
-| CMS | EmDash 1.4 mounted at `/_emdash`, same local D1/R2, owner passkey or local CLI dev bypass |
-| Auth | Local password sessions for players/owners; scoped agent bearer tokens; no external IdP required locally |
+| Runtime | Astro 7 + React islands on Cloudflare Workers; D1 for relational state; R2 for objects; KV for sessions |
+| CMS | EmDash 1.4 mounted locally and migrated in production; production editorial flow not yet verified |
+| Auth | Local password sessions for players/owners; production bootstrap password; OAuth/passkey/MFA pending; scoped agent bearer tokens |
 | Currency | earned `Foil` only (integer units, no purchase, cash-out or NFT) |
 | Primary tenant | `cabinet` (owner-controlled); test tenants `harbour` and `attic` are fixture-only |
 | Source policy | curated imports only; raw assets and libraries private by default; composed showcase cards published explicitly |
 | Finish model | Plain, Silver, Gold, Diamond materials; None, Holographic, Prismatic effects; variants are explicit combinations |
 | Default draw price | 80 Foil for the cabinet pool (editable, versioned) |
 | Default reward | 120 Foil daily cabinet allowance, 20 hour cooldown |
-| Discord | disabled; no connection, commands, messages, tunnels or deployment |
-| Email | local outbox only; no sends during setup, tests or startup |
+| Discord | HTTP interactions live in Loftwah; guild commands registered; privileged intents off; see `docs/DISCORD_ACCEPTANCE.md` |
+| Email | local outbox only; no production send verified |
 | Generation | provider jobs implemented with budget guard; no billed generation called (no recorded ceiling) |
 
 ## Architecture

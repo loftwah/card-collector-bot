@@ -199,7 +199,7 @@ function AdminOverview() {
             <div className="surface-flat p-5">
               <p className="eyebrow">External capabilities</p>
               <dl className="mt-3 grid gap-2 text-sm">
-                <div className="flex justify-between gap-3"><dt>Discord</dt><dd className="text-[var(--muted)]">disabled · not connected</dd></div>
+                <div className="flex justify-between gap-3"><dt>Discord</dt><dd className="text-[var(--muted)]">{providers.discordApplication ? "interactions ready · guild-bound" : "disabled"}</dd></div>
                 <div className="flex justify-between gap-3"><dt>Email</dt><dd className="text-[var(--muted)]">local outbox only</dd></div>
                 <div className="flex justify-between gap-3"><dt>Generation</dt><dd className="text-[var(--muted)]">not run · no ceiling recorded</dd></div>
                 <div className="flex justify-between gap-3"><dt>Admin webhook</dt><dd className="text-[var(--muted)]">{providers.adminWebhook ? "configured · not called" : "missing"}</dd></div>
@@ -765,12 +765,12 @@ function AdminIntegrations() {
   const providers = (status?.providers ?? {}) as Record<string, boolean>;
   return (
     <div>
-      <SectionHead eyebrow="Integrations" title="Optional outside the core." description="Discord is deliberately disabled. Email is a local outbox. Image generation has no recorded spending ceiling, so no billed job was submitted. The game works without any of them." />
+      <SectionHead eyebrow="Integrations" title="Optional outside the core." description="Discord uses a signed HTTP interactions endpoint, not a Gateway connection. Email remains a local outbox. Image generation has no recorded spending ceiling, so no billed job was submitted." />
       <Notice error={error} />
       <div className="mt-6 grid gap-4 md:grid-cols-2">
         <section className="surface-flat p-5">
-          <div className="flex items-center justify-between gap-3"><p className="eyebrow">Discord</p><span className="badge">disabled</span></div>
-          <p className="mt-2 text-sm text-[var(--muted)]">No bot token, installation, command registration, interaction endpoint, tunnel or message. The application ID and public key are retained, not treated as a connection.</p>
+          <div className="flex items-center justify-between gap-3"><p className="eyebrow">Discord</p><span className="badge">{providers.discordApplication ? "interactions ready" : "disabled"}</span></div>
+          <p className="mt-2 text-sm text-[var(--muted)]">Foilbury verifies Ed25519 signatures against the raw interaction body, resolves the installation server-side, and reuses the same inventory and award ledger as the website. No privileged intents are enabled.</p>
           <div className="mt-4 flex gap-2"><Button size="sm" variant="secondary" disabled title="Not run in this phase">Test admin webhook</Button><a className="btn btn-secondary btn-sm" href="/docs/discord-handoff">Read handoff</a></div>
           <p className="mt-2 text-xs text-[var(--muted)]">The labelled webhook test is intentionally not executed during this build. The destination is {providers.adminWebhook ? "configured" : "missing"} and its URL is never displayed.</p>
         </section>
@@ -785,8 +785,8 @@ function AdminIntegrations() {
           <div className="mt-4"><a className="btn btn-secondary btn-sm" href="/admin/catalogue">Use authored layers</a></div>
         </section>
         <section className="surface-flat p-5">
-          <div className="flex items-center justify-between gap-3"><p className="eyebrow">Cloudflare</p><span className="badge">local only</span></div>
-          <p className="mt-2 text-sm text-[var(--muted)]">D1 and R2 run under the local Workers simulation. Remote bindings are not enabled. No deployment, DNS change or cloud resource was created.</p>
+          <div className="flex items-center justify-between gap-3"><p className="eyebrow">Cloudflare</p><span className="badge">deployed</span></div>
+          <p className="mt-2 text-sm text-[var(--muted)]">The production Worker uses Cloudflare D1, R2 and KV bindings. Discord interactions and the website share the same deployed domain; media visibility remains authorised by the domain service.</p>
           <p className="mt-3 font-mono text-[0.62rem] uppercase tracking-[0.1em] text-[var(--brass)]">{providers.fal || providers.resend || providers.adminWebhook ? "Some optional providers are configured" : "Optional providers absent — core still works"}</p>
         </section>
       </div>

@@ -20,6 +20,14 @@ interface FoilburyEnv {
   FOILBURY_BOOTSTRAP_TOKEN?: string;
   FOILBURY_AGENT_TOKEN_PEPPER?: string;
   EMDASH_ENCRYPTION_KEY?: string;
+  DISCORD_APPLICATION_ID?: string;
+  DISCORD_PUBLIC_KEY?: string;
+  DISCORD_BOT_TOKEN?: string;
+  DISCORD_CLIENT_ID?: string;
+  DISCORD_CLIENT_SECRET?: string;
+  DISCORD_REDIRECT_URI?: string;
+  DISCORD_TEST_GUILD_ID?: string;
+  DISCORD_TEST_CHANNEL_ID?: string;
 }
 
 declare namespace App {
