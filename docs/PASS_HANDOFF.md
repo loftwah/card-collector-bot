@@ -1,6 +1,6 @@
 # Foilbury pass handoff — identity, administration, collections and design
 
-Date: 2026-11-02. Production Worker: `b4ebe173-6206-4bf9-a340-e174b19e91e1`. Repository: working tree based on `0077fb3`. Tests: **64 passing** (19 unit + 45 Workers), plus real Chromium journeys.
+Date: 2026-11-02. Production Worker: `e188ea0e-e73c-4c37-a62b-b5134cc2abc3`. Repository: working tree based on `0077fb3`. Tests: **64 passing** (19 unit + 45 Workers), plus real Chromium journeys.
 
 ## What was preserved
 
@@ -103,7 +103,7 @@ Date: 2026-11-02. Production Worker: `b4ebe173-6206-4bf9-a340-e174b19e91e1`. Rep
 ```sh
 pnpm check                    # 64 passing tests
 pnpm build
-pnpm deploy:production        # Worker b4ebe173-6206-4bf9-a340-e174b19e91e1
+pnpm deploy:production        # Worker e188ea0e-e73c-4c37-a62b-b5134cc2abc3
 node scripts/backup-d1-json.mjs .foilbury/backups/prod-pre-auth-2026-11-02.json
 node scripts/provision-owner.mjs --apply --email dean@deanlofts.xyz
 node scripts/test-auth-e2e.mjs

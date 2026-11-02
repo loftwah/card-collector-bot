@@ -180,6 +180,16 @@ export async function createBot(
     )
     .bind(newId("aud"), tenantId, user.id, user.id, botId, JSON.stringify({ name, slug }), ctx.requestId, now)
     .run();
+  // A creator's verified email is the explicit Access link allowlist for
+  // their own administration. This does not grant a role; membership does.
+  await ctx.db
+    .prepare(
+      `INSERT INTO fb_access_emails (email, user_id, added_by, created_at, revoked_at)
+       VALUES (?, ?, ?, ?, NULL)
+       ON CONFLICT(email) DO UPDATE SET user_id = excluded.user_id, revoked_at = NULL`,
+    )
+    .bind(user.email.toLowerCase(), user.id, user.id, now)
+    .run();
   return { bot: { id: botId, tenant_id: tenantId, owner_user_id: user.id, slug, name, description: input.description?.slice(0, 500) ?? null, status: "active", created_at: now, updated_at: now }, tenant: { id: tenantId, slug: tenantSlug, name }, created: true };
 }
 
@@ -302,6 +312,14 @@ export async function acceptBotInvitation(ctx: Ctx, rawToken: string): Promise<{
     .bind(user.id, now, invitation.id)
     .run();
   if ((accepted.meta?.changes ?? 0) !== 1) throw new ApiError(409, "invitation_already_used", "This invitation was already accepted.");
+  await ctx.db
+    .prepare(
+      `INSERT INTO fb_access_emails (email, user_id, added_by, created_at, revoked_at)
+       VALUES (?, ?, ?, ?, NULL)
+       ON CONFLICT(email) DO UPDATE SET user_id = excluded.user_id, revoked_at = NULL`,
+    )
+    .bind(user.email.toLowerCase(), user.id, invitation.created_by, now)
+    .run();
   await ctx.db
     .prepare(
       `INSERT INTO fb_audit_events

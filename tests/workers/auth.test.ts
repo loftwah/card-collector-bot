@@ -63,6 +63,9 @@ describe("passwordless identity, Access linking, bots and collections", () => {
     const result = await createBot(ctx, { name: "Second Cabinet", slug: "second-cabinet" });
     expect(result.created).toBe(true);
     expect(result.tenant.slug).toBe("bot-second-cabinet");
+    const accessEmail = await runtime.DB.prepare("SELECT email, user_id, revoked_at FROM fb_access_emails WHERE user_id = ?").bind(ctx.user!.id).first<{ email: string; user_id: string; revoked_at: string | null }>();
+    expect(accessEmail?.email).toBe("owner@foilbury.local");
+    expect(accessEmail?.revoked_at).toBeNull();
     const enabled = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_bot_collections WHERE bot_id = ? AND enabled = 1").bind(result.bot.id).first<{ count: number }>();
     expect(enabled?.count ?? 0).toBeGreaterThan(0);
     const local = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_collections WHERE owner_tenant_id = ? AND scope = 'bot'").bind(result.tenant.id).first<{ count: number }>();
@@ -126,6 +129,8 @@ describe("passwordless identity, Access linking, bots and collections", () => {
     await expect(acceptBotInvitation(invitedCtx, "wrong-token")).rejects.toBeInstanceOf(ApiError);
     const accepted = await acceptBotInvitation(invitedCtx, invitation.devToken!);
     expect(accepted.bot.id).toBe(bot!.id);
+    const invitedAccess = await runtime.DB.prepare("SELECT email, user_id FROM fb_access_emails WHERE user_id = ?").bind(invited.id).first<{ email: string; user_id: string }>();
+    expect(invitedAccess?.email).toBe("invited@example.com");
     const membership = await runtime.DB.prepare("SELECT role, capabilities_json FROM fb_memberships WHERE tenant_id = ? AND user_id = ?").bind(owner.tenant.id, invited.id).first<{ role: string; capabilities_json: string }>();
     expect(membership?.role).toBe("editor");
     expect(membership?.capabilities_json).toContain("content");
