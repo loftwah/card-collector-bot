@@ -15,9 +15,12 @@ function revision() {
   try {
     const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
     const dirty = execFileSync("git", ["status", "--porcelain"], { cwd: root, encoding: "utf8" }).trim();
-    return { head, workingTree: dirty ? "dirty" : "clean", changedFiles: dirty ? dirty.split("\n").length : 0 };
+    const files = dirty ? dirty.split("\n") : [];
+    const evidence = files.filter((line) => line.includes("docs/evidence/") || line.includes("docs/acceptance-report.json") || line.includes("docs/LOCAL_ACCEPTANCE.md"));
+    const code = files.filter((line) => !evidence.includes(line));
+    return { head, workingTree: dirty ? "dirty" : "clean", changedFiles: files.length, codeWorkingTree: code.length ? "dirty" : "clean", codeChanges: code.length, evidenceChanges: evidence.length };
   } catch {
-    return { head: null, workingTree: "unknown", changedFiles: 0 };
+    return { head: null, workingTree: "unknown", changedFiles: 0, codeWorkingTree: "unknown", codeChanges: 0, evidenceChanges: 0 };
   }
 }
 function run(name, command, args, options = {}) {
@@ -167,7 +170,7 @@ try {
 Generated ${report.finishedAt} from the actual local checkout.
 
 - Local URL: ${BASE_URL}
-- Tested revision: ${report.revision.head ?? "unknown"} (${report.revision.workingTree}, ${report.revision.changedFiles} working-tree entries)
+- Tested revision: ${report.revision.head ?? "unknown"} (code ${report.revision.codeWorkingTree}; ${report.revision.evidenceChanges} evidence-only working-tree entries)
 - Node: ${report.environment.node}; pnpm: ${report.environment.pnpm}
 - Machine-readable report: \`docs/acceptance-report.json\`
 
