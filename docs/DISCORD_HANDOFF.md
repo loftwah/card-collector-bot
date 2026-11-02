@@ -6,6 +6,8 @@ The existing Discord application (`1566702936615026769`) is installed in Loftwah
 
 Foilbury's authority remains its D1/R2 domain services and award ledger. Discord is an adapter over the same authorised commands, not a separate economy.
 
+Website sign-in also supports **Continue with Discord** at `/auth/discord/start`; the callback is `/auth/discord/callback`, using state and PKCE. A production OAuth sign-in has been verified against the same inventory.
+
 ## Current local proof
 
 - The website, player cabinet and owner administration run locally at the printed loopback URL.

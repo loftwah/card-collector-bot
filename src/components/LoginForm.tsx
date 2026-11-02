@@ -5,8 +5,16 @@ import { api, describeError } from "@/lib/client";
 import { Button } from "./ui/button";
 import { Field, Input } from "./ui/input";
 
-export default function LoginForm({ next, devLoginEnabled = false }: { next: string; devLoginEnabled?: boolean }) {
-  const [email, setEmail] = useState("owner@foilbury.local");
+export default function LoginForm({
+  next,
+  devLoginEnabled = false,
+  discordOAuth = false,
+}: {
+  next: string;
+  devLoginEnabled?: boolean;
+  discordOAuth?: boolean;
+}) {
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -40,7 +48,7 @@ export default function LoginForm({ next, devLoginEnabled = false }: { next: str
     <form onSubmit={submit} className="grid gap-4" noValidate>
       {error ? <div className="error-box" role="alert">{error}</div> : null}
       <Field label="Email">
-        <Input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required />
+        <Input type="email" autoComplete="username" placeholder="you@example.com" value={email} onChange={(event) => setEmail(event.target.value)} required />
       </Field>
       <Field label="Password">
         <Input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required autoFocus />
@@ -48,6 +56,19 @@ export default function LoginForm({ next, devLoginEnabled = false }: { next: str
       <Button type="submit" disabled={busy} className="mt-2 w-full">
         {busy ? "Opening the cabinet…" : "Sign in"}
       </Button>
+      {discordOAuth ? (
+        <>
+          <div className="flex items-center gap-3 text-[0.62rem] uppercase tracking-[0.14em] text-[var(--muted)]">
+            <span className="h-px flex-1 bg-[var(--line)]" />
+            or
+            <span className="h-px flex-1 bg-[var(--line)]" />
+          </div>
+          <a className="btn btn-secondary w-full" href={`/auth/discord/start?next=${encodeURIComponent(next)}`}>
+            Continue with Discord
+          </a>
+          <p className="text-center text-xs text-[var(--muted)]">Discord sign-in links the same Foilbury inventory. It is not a separate account.</p>
+        </>
+      ) : null}
       <p className="text-center text-xs text-[var(--muted)]">No public registration. Accounts are created by the cabinet owner.</p>
       {devLoginEnabled ? (
         <div className="mt-2 border-t border-[var(--line)] pt-4">

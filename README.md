@@ -128,7 +128,7 @@ Discord is connected through a signed **HTTP interactions** endpoint, not a Gate
 - real pulls, card artwork, persistent collection, buttons and Bot Owner status verified live;
 - Presence, Server Members and Message Content intents remain disabled.
 
-The admin surfaces `/admin` and `/api/v1/admin` are behind Cloudflare Access. The production bootstrap owner login is password-based; website Discord OAuth, magic links, passkeys and MFA are not yet implemented. See `docs/DISCORD_ACCEPTANCE.md` for exact evidence, gaps and human prerequisites. `PRODUCT.md` and `DESIGN.md` hold the current product/design context.
+The admin surfaces `/admin` and `/api/v1/admin` are behind Cloudflare Access. Website sign-in supports the production bootstrap password and **Continue with Discord** (OAuth with state + PKCE); a real production OAuth sign-in showed the same collection as the Discord bot. Magic links, passkeys, authenticator MFA, recovery codes and session review are not yet implemented. See `docs/DISCORD_ACCEPTANCE.md` for exact evidence, gaps and human prerequisites. `PRODUCT.md` and `DESIGN.md` hold the current product/design context.
 
 Email delivery, paid generation, live headless agent runs and the two-person/second-server acceptance remain unverified or blocked. Public launch is not ready.
 

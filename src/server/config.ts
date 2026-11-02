@@ -18,6 +18,7 @@ export interface RuntimeConfig {
     adminWebhook: boolean;
     discordApplication: boolean;
     discordBot: boolean;
+    discordOAuth: boolean;
   };
 }
 
@@ -85,6 +86,10 @@ export function readConfig(raw: RawEnv): RuntimeConfig {
       adminWebhook: Boolean(webhook),
       discordApplication: Boolean(raw.DISCORD_APPLICATION_ID?.trim()),
       discordBot: Boolean(raw.DISCORD_BOT_TOKEN?.trim()),
+      discordOAuth: Boolean(
+        raw.DISCORD_CLIENT_SECRET?.trim() &&
+          (raw.DISCORD_CLIENT_ID?.trim() || raw.DISCORD_APPLICATION_ID?.trim()),
+      ),
     },
   };
 }

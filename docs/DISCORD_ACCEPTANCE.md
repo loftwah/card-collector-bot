@@ -1,6 +1,6 @@
 # Foilbury follow-on acceptance: deployed Discord pilot
 
-Generated from the working tree on 2026-11-02. Follow-on code revision: `80b851d` (Discord pilot plus daily-boundary fix), building on `531756f`. Deployed Worker version: `cd58bc6f-2b7f-4b72-af18-7d7e0d19ff26`. This is the follow-on report; the original local-first acceptance record remains in `docs/LOCAL_ACCEPTANCE.md`.
+Generated from the working tree on 2026-11-02. Follow-on code revision: `80b851d` (Discord pilot plus daily-boundary fix), building on `531756f`. Deployed Worker version: `dfb77cf4-8539-4676-971b-9e4017131e4b`. This is the follow-on report; the original local-first acceptance record remains in `docs/LOCAL_ACCEPTANCE.md`.
 
 ## Baseline preserved
 
@@ -19,6 +19,7 @@ Generated from the working tree on 2026-11-02. Follow-on code revision: `80b851d
 - Added production deployment, seeding and media-upload scripts; created independent D1, R2 and KV resources and the `foilbury` Worker.
 - Added Cloudflare Access applications for `/admin` and `/api/v1/admin` with an allow policy for the account owner's Cloudflare email.
 - Added `PRODUCT.md`, `DESIGN.md` and this report.
+- Added Discord OAuth account sign-in at `/auth/discord/start` and `/auth/discord/callback`, with state, PKCE, deliberate account linking and session creation.
 
 ## Discord application and installation
 
@@ -91,7 +92,7 @@ The original local acceptance gate was not re-run as a replacement for this evid
 
 | Area | Status | Why |
 |---|---|---|
-| Website “Continue with Discord” | NOT IMPLEMENTED | No OAuth start/callback routes; `DISCORD_CLIENT_SECRET` and a redirect URI are not configured. |
+| Website “Continue with Discord” | PASS | Real production browser OAuth signed into the production owner and showed the same 7 cards and 120 Foil. Screenshot: `docs/evidence/production-discord-oauth-collection.png`. |
 | Magic links, passkey registration/login, authenticator MFA, recovery codes, session review | NOT IMPLEMENTED | The production bootstrap login is password-only. |
 | Administrative strong-authentication policy | NOT IMPLEMENTED | Access protects the edge; the app does not enforce recent strong auth for sensitive mutations. |
 | Super Admin bootstrap | NOT IMPLEMENTED | The production owner is a Bot Owner with `platform_admin=0`. No Super Admin was provisioned. |
@@ -111,7 +112,7 @@ The original local acceptance gate was not re-run as a replacement for this evid
 ## Human prerequisites
 
 1. **Cloudflare Access OTP** — open `https://foilbury.loftwah.com/admin` and complete the one-time PIN sent to the account owner's Cloudflare email. This is required for the admin browser journey; the Worker remains closed to unauthenticated admin requests.
-2. **Website Discord sign-in** — if required, supply a Discord OAuth client secret and add the redirect URI `https://foilbury.loftwah.com/api/v1/auth/discord/callback`. Do not paste it into chat; add it to `.env` or `wrangler secret put` as directed.
+2. **Local Discord OAuth callback** — the portal has `http://localhost:5173/auth/discord/callback`, but the local dev server runs at `http://127.0.0.1:4321`. Production OAuth is verified. For local OAuth, either add `http://127.0.0.1:4321/auth/discord/callback` in Discord or run the dev server on port 5173 and set the local origin/redirect consistently.
 3. **Super Admin** — explicitly confirm the immutable Discord/account identity to receive platform-wide authority. The current pilot intentionally does not infer it from guild ownership.
 4. **Kaylee / second guild** — obtain her consent and an authorised second server before running the two-person acceptance matrix.
 5. **EmDash production** — configure the production CMS owner/site if editorial publishing must be proven in this deployment.

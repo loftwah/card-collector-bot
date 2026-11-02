@@ -15,7 +15,10 @@ const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/play"
       <h1 class="display mt-4 text-[clamp(3rem,7vw,6rem)]">Welcome back.</h1>
       <p class="mt-5 max-w-md text-[var(--muted)]">Your collection, Foil balance, set progress and trade offers are waiting exactly where you left them.</p>
       <div class="surface mt-8 max-w-md p-6">
-        <LoginForm client:load next={safeNext} devLoginEnabled={ctx.config.devLogin} />
+        {Astro.url.searchParams.get("error") ? (
+          <div class="error-box mb-4" role="alert">Discord sign-in could not be completed. Try again, or sign in with your account password.</div>
+        ) : null}
+        <LoginForm client:load next={safeNext} devLoginEnabled={ctx.config.devLogin} discordOAuth={ctx.config.providers.discordOAuth} />
       </div>
       {ctx.config.localMode ? (
         <div class="notice mt-5 max-w-md">

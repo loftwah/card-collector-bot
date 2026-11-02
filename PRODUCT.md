@@ -31,7 +31,7 @@ Foilbury is a collectible-card cabinet. A player claims a free allowance, opens 
 
 ## Known product gaps
 
-- Website Discord OAuth, magic-link, passkey and authenticator MFA flows are not implemented in this pass.
+- Magic-link, passkey and authenticator MFA flows are not implemented in this pass. Website Discord OAuth is implemented and production-verified.
 - Creator self-service Bot creation, second-guild installation and Kaylee's independent acceptance are not implemented.
 - The CMS editorial flow is integrated locally but has not been exercised on the production deployment.
 - Cloudflare Access protects `/admin` and `/api/v1/admin` at the edge; the Worker does not yet validate the Access JWT itself.

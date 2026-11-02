@@ -219,6 +219,69 @@ export async function ensureDiscordPlayer(
   };
 }
 
+/**
+ * Deliberate account linking: an existing Foilbury session plus a completed
+ * Discord OAuth authorization prove both identities. Never merge automatically
+ * when the Discord ID or Foilbury account is already linked to another person.
+ */
+export async function linkDiscordIdentity(
+  env: DiscordEnv,
+  tenant: Tenant,
+  user: CurrentUser,
+  discordUser: DiscordUser,
+): Promise<DiscordIdentity> {
+  const existingForDiscord = await first<DiscordIdentity>(
+    env.DB,
+    "SELECT * FROM fb_discord_identities WHERE tenant_id = ? AND discord_user_id = ? AND revoked_at IS NULL",
+    tenant.id,
+    discordUser.id,
+  );
+  if (existingForDiscord && existingForDiscord.user_id !== user.id) {
+    throw new ApiError(409, "discord_already_linked", "That Discord account is already linked to another Foilbury account.");
+  }
+  const existingForUser = await first<DiscordIdentity>(
+    env.DB,
+    "SELECT * FROM fb_discord_identities WHERE tenant_id = ? AND user_id = ? AND revoked_at IS NULL",
+    tenant.id,
+    user.id,
+  );
+  if (existingForUser && existingForUser.discord_user_id !== discordUser.id) {
+    throw new ApiError(409, "account_already_linked", "This Foilbury account is already linked to a different Discord account.");
+  }
+  const now = nowIso();
+  if (existingForDiscord) {
+    await env.DB.prepare(
+      "UPDATE fb_discord_identities SET username = ?, global_name = ?, last_seen_at = ? WHERE id = ?",
+    )
+      .bind(discordUser.username, discordUser.global_name ?? null, now, existingForDiscord.id)
+      .run();
+    return { ...existingForDiscord, username: discordUser.username, global_name: discordUser.global_name ?? null, last_seen_at: now };
+  }
+  await ensureWallet(env.DB, tenant.id, user.id);
+  const id = newId("dci");
+  try {
+    await env.DB.prepare(
+      `INSERT INTO fb_discord_identities
+        (id, tenant_id, discord_user_id, user_id, username, global_name, linked_at, last_seen_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(id, tenant.id, discordUser.id, user.id, discordUser.username, discordUser.global_name ?? null, now, now)
+      .run();
+  } catch (error) {
+    if (!String(error).includes("UNIQUE")) throw error;
+  }
+  const linked = await first<DiscordIdentity>(
+    env.DB,
+    "SELECT * FROM fb_discord_identities WHERE tenant_id = ? AND discord_user_id = ? AND revoked_at IS NULL",
+    tenant.id,
+    discordUser.id,
+  );
+  if (!linked || linked.user_id !== user.id) {
+    throw new ApiError(409, "discord_link_conflict", "That Discord account could not be linked to this Foilbury account.");
+  }
+  return linked;
+}
+
 export function buildDiscordContext(
   env: DiscordEnv,
   tenant: Tenant,
