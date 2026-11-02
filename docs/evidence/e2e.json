@@ -1,0 +1,203 @@
+{
+  "testedAt": "2026-11-02T08:47:33.766Z",
+  "baseURL": "http://127.0.0.1:4321",
+  "checks": [
+    {
+      "name": "Public landing",
+      "result": "passed",
+      "evidence": "real card renders, responsive layout, no horizontal overflow"
+    },
+    {
+      "name": "PWA manifest",
+      "result": "passed",
+      "evidence": "site.webmanifest 200"
+    },
+    {
+      "name": "Owner browser session",
+      "result": "passed",
+      "evidence": "loopback development sign-in; wallet visible in the shared header"
+    },
+    {
+      "name": "Browser/headless owner parity",
+      "result": "passed",
+      "evidence": "13 instance ids and wallet-backed collection matched"
+    },
+    {
+      "name": "Explicit share + revoke",
+      "result": "passed",
+      "evidence": "13 public renders shown; revoked link returns 404; no private source assets"
+    },
+    {
+      "name": "Keyboard focus",
+      "result": "passed",
+      "evidence": "first Tab reaches the skip link; focus is visible"
+    },
+    {
+      "name": "Browser/headless player parity",
+      "result": "passed",
+      "evidence": "5 instance ids matched for the player"
+    },
+    {
+      "name": "Private media authorisation",
+      "result": "passed",
+      "evidence": "owner can read the private source asset; player gets 404; public route does not expose it"
+    },
+    {
+      "name": "Player collection",
+      "result": "passed",
+      "evidence": "render image loaded at 750px source width"
+    },
+    {
+      "name": "Draw journey",
+      "result": "passed",
+      "evidence": "skippable reveal; balance before draw ✦ 430"
+    },
+    {
+      "name": "Owner catalogue browser",
+      "result": "passed",
+      "evidence": "16 rows rendered"
+    },
+    {
+      "name": "Browser admin write + CSRF",
+      "result": "passed",
+      "evidence": "created and archived a taxonomy item with the browser session"
+    },
+    {
+      "name": "Route /cabinet",
+      "result": "passed",
+      "evidence": "rendered with expected heading and no horizontal overflow"
+    },
+    {
+      "name": "Route /cabinet/loftwah",
+      "result": "passed",
+      "evidence": "rendered with expected heading and no horizontal overflow"
+    },
+    {
+      "name": "Route /admin/pools",
+      "result": "passed",
+      "evidence": "rendered with expected heading and no horizontal overflow"
+    },
+    {
+      "name": "Route /admin/sets",
+      "result": "passed",
+      "evidence": "rendered with expected heading and no horizontal overflow"
+    },
+    {
+      "name": "Route /admin/taxonomy",
+      "result": "passed",
+      "evidence": "rendered with expected heading and no horizontal overflow"
+    },
+    {
+      "name": "Route /admin/imports",
+      "result": "passed",
+      "evidence": "rendered with expected heading and no horizontal overflow"
+    },
+    {
+      "name": "Route /play/rewards",
+      "result": "passed",
+      "evidence": "rendered with expected heading and no horizontal overflow"
+    },
+    {
+      "name": "Route /play/trades",
+      "result": "passed",
+      "evidence": "rendered with expected heading and no horizontal overflow"
+    },
+    {
+      "name": "Route /play/preferences",
+      "result": "passed",
+      "evidence": "rendered with expected heading and no horizontal overflow"
+    },
+    {
+      "name": "Route /admin/economy",
+      "result": "passed",
+      "evidence": "rendered with expected heading and no horizontal overflow"
+    },
+    {
+      "name": "Route /admin/agents",
+      "result": "passed",
+      "evidence": "rendered with expected heading and no horizontal overflow"
+    },
+    {
+      "name": "Route /admin/design",
+      "result": "passed",
+      "evidence": "rendered with expected heading and no horizontal overflow"
+    },
+    {
+      "name": "Route /admin/integrations",
+      "result": "passed",
+      "evidence": "rendered with expected heading and no horizontal overflow"
+    },
+    {
+      "name": "Route /admin/audit",
+      "result": "passed",
+      "evidence": "rendered with expected heading and no horizontal overflow"
+    },
+    {
+      "name": "Route /journal",
+      "result": "passed",
+      "evidence": "rendered with expected heading and no horizontal overflow"
+    },
+    {
+      "name": "Route /journal/the-first-cabinet-is-open",
+      "result": "passed",
+      "evidence": "rendered with expected heading and no horizontal overflow"
+    },
+    {
+      "name": "Route /admin/editorial",
+      "result": "passed",
+      "evidence": "rendered with expected heading and no horizontal overflow"
+    },
+    {
+      "name": "Route /docs/agent-guide",
+      "result": "passed",
+      "evidence": "rendered with expected heading and no horizontal overflow"
+    },
+    {
+      "name": "OpenAPI",
+      "result": "passed",
+      "evidence": "served at /openapi.json with title Foilbury"
+    },
+    {
+      "name": "Browser secret scan",
+      "result": "passed",
+      "evidence": "no bearer, encryption-key or provider credential markers in rendered HTML"
+    },
+    {
+      "name": "Light presentation",
+      "result": "passed",
+      "evidence": "light theme cookie applied"
+    },
+    {
+      "name": "Dark presentation",
+      "result": "passed",
+      "evidence": "dark theme cookie applied"
+    },
+    {
+      "name": "Mobile landing",
+      "result": "passed",
+      "evidence": "390×844 viewport with no horizontal overflow"
+    },
+    {
+      "name": "Reduced motion",
+      "result": "passed",
+      "evidence": "{\"present\":false,\"duration\":null}"
+    },
+    {
+      "name": "Console errors",
+      "result": "passed",
+      "evidence": "none"
+    }
+  ],
+  "consoleErrors": [],
+  "screenshots": [
+    "docs/evidence/home-desktop.png",
+    "docs/evidence/play-overview.png",
+    "docs/evidence/collection.png",
+    "docs/evidence/draw-room.png",
+    "docs/evidence/draw-result.png",
+    "docs/evidence/admin-catalogue.png",
+    "docs/evidence/home-light.png",
+    "docs/evidence/home-mobile.png",
+    "docs/evidence/card-reduced-motion.png"
+  ]
+}

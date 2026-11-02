@@ -1,0 +1,33 @@
+---
+import PlayerLayout from "../../layouts/PlayerLayout.astro";
+import TradeDesk from "../../components/player/TradeDesk";
+import { pageContext } from "../../server/page";
+import { listTrades, listGifts } from "../../server/modules/trades";
+import { getInventory, listTenantMembers } from "../../server/modules/collection";
+
+const ctx = await pageContext(Astro.request);
+const user = ctx.user!;
+const [trades, inventory, members, gifts] = await Promise.all([
+  listTrades(ctx),
+  getInventory(ctx, { limit: 200 }),
+  listTenantMembers(ctx),
+  listGifts(ctx),
+]);
+---
+<PlayerLayout title="Trades & gifts · Foilbury">
+  <div class="border-b border-[var(--line)] pb-5">
+    <p class="eyebrow">Trades & gifts</p>
+    <h2 class="display-sm mt-1 text-4xl">Move a card without losing the plot.</h2>
+    <p class="mt-2 max-w-2xl text-sm text-[var(--muted)]">Offers reserve both sides, require explicit acceptance at the same revision and transfer atomically. Gifts are a separate, one-way receipt.</p>
+  </div>
+  <div class="mt-7">
+    <TradeDesk
+      client:load
+      currentUserId={user.id}
+      initialTrades={trades}
+      inventory={inventory.map((item) => ({ id: item.id, card_name: item.card_name, variant_name: item.variant_name, serial: item.serial, render_url: item.render_url, favourite: item.favourite, locked: item.locked, status: item.status }))}
+      members={members}
+      initialGifts={gifts}
+    />
+  </div>
+</PlayerLayout>

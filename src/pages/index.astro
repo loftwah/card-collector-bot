@@ -1,0 +1,234 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { pageContext, publicStats, pickVariant } from "../server/page";
+import { listCards, listSets } from "../server/modules/catalogue";
+import { formatDual } from "../lib/utils";
+
+const ctx = await pageContext(Astro.request);
+const session = Astro.locals.foilbury;
+const user = session?.user ?? null;
+const [allCards, allSets, stats] = await Promise.all([
+  listCards(ctx, { publicOnly: true, limit: 60 }),
+  listSets(ctx),
+  publicStats(ctx),
+]);
+const publishedSets = allSets.filter((set) => set.status === "published");
+const bySlug = new Map(allCards.map((card) => [card.slug, card]));
+const heroSpecs = [
+  { slug: "loftwah", material: "gold", effect: "holographic", label: "Gold · Holographic", className: "w-[38%] -rotate-[4deg] translate-y-6 sm:w-[32%]" },
+  { slug: "tux", material: "silver", effect: undefined, label: "Silver", className: "w-[50%] z-10 sm:w-[44%]" },
+  { slug: "gabe", material: "gold", effect: undefined, label: "Gold", className: "w-[38%] rotate-[5deg] translate-y-10 sm:w-[32%]" },
+];
+const heroCards = heroSpecs
+  .map((spec) => {
+    const card = bySlug.get(spec.slug);
+    if (!card) return null;
+    const variant = pickVariant(card, spec.material, spec.effect);
+    if (!variant?.render_url) return null;
+    return { ...spec, card, variant };
+  })
+  .filter(Boolean) as Array<{ slug: string; material: string; label: string; className: string; card: (typeof allCards)[number]; variant: NonNullable<ReturnType<typeof pickVariant>> }>;
+const featured = allCards
+  .filter((card) => card.editions.some((edition) => edition.variants.some((variant) => variant.render_url)))
+  .slice(0, 8);
+const release = stats.release;
+const primaryHref = user ? "/play" : "/login?next=%2Fplay";
+---
+<BaseLayout
+  title="Foilbury — a collector's cabinet"
+  description="Foilbury is a curated collectible-card cabinet: earned Foil, transparent odds, real character artwork and a collection that stays yours."
+>
+  <section class="relative overflow-hidden border-b border-[var(--line)]">
+    <div class="container grid min-h-[74vh] items-center gap-10 py-16 lg:grid-cols-[1.15fr_0.85fr] lg:py-20">
+      <div class="relative z-10">
+        <p class="eyebrow">A collector's cabinet · est. 2026</p>
+        <h1 class="display mt-5 max-w-[12ch] text-[clamp(3.6rem,8.8vw,8rem)]">
+          Characters worth keeping.
+        </h1>
+        <p class="mt-7 max-w-xl text-lg leading-relaxed text-[var(--muted)]">
+          A small, curated collection game for the identities that stay with you. Earn Foil,
+          inspect every odd before you spend it, and choose the finish that belongs in your cabinet.
+        </p>
+        <div class="mt-8 flex flex-wrap gap-3">
+          <a class="btn btn-primary" href={primaryHref}>{user ? "Open my cabinet" : "Enter the cabinet"}</a>
+          <a class="btn btn-secondary" href="/cabinet">Browse the catalogue</a>
+        </div>
+        <dl class="mt-10 grid max-w-xl grid-cols-3 gap-4 border-t border-[var(--line)] pt-5">
+          <div><dt class="eyebrow">Identities</dt><dd class="display-sm mt-1 text-3xl">{stats.cards}</dd></div>
+          <div><dt class="eyebrow">Finishes</dt><dd class="display-sm mt-1 text-3xl">{stats.variants}</dd></div>
+          <div><dt class="eyebrow">Sets</dt><dd class="display-sm mt-1 text-3xl">{stats.sets}</dd></div>
+        </dl>
+        <p class="mt-5 font-mono text-[0.62rem] uppercase tracking-[0.13em] text-[var(--muted)]">
+          Curated from Bubbles, Fighter and Protocol 11 · credit retained · duplicate cards can be traded or recycled
+        </p>
+      </div>
+
+      <div class="relative flex min-h-[420px] items-center justify-center lg:min-h-[620px] lg:pl-12" aria-label="Selected cards from the starter cabinet">
+        <div class="pointer-events-none absolute inset-8 rounded-full border border-[var(--line)] opacity-50" aria-hidden="true"></div>
+        <div class="pointer-events-none absolute inset-20 rounded-full border border-dashed border-[var(--line)] opacity-40" aria-hidden="true"></div>
+        <div class="flex w-full items-center justify-center gap-0">
+          {heroCards.map((entry) => (
+            <a href={`/cabinet/${entry.card.slug}`} class:list={["relative block shrink-0 transition-transform duration-500 hover:z-30 hover:-translate-y-2", entry.className]} aria-label={`${entry.card.name}, ${entry.label}`}>
+              <div class="card-face rounded-[5px]">
+                <img src={entry.variant.render_url!} alt={`${entry.card.name} card in ${entry.label} finish`} loading="eager" />
+              </div>
+              <p class="mt-2 text-center font-mono text-[0.55rem] uppercase tracking-[0.12em] text-[var(--muted)]">{entry.card.name} · {entry.label}</p>
+            </a>
+          ))}
+        </div>
+        <div class="absolute bottom-1 right-0 max-w-[13rem] border-l border-[var(--brass)] pl-4 text-right">
+          <p class="font-mono text-[0.58rem] uppercase tracking-[0.14em] text-[var(--brass)]">Cabinet release {release ? String(release.version).padStart(2, "0") : "—"}</p>
+          <p class="mt-1 text-xs text-[var(--muted)]">{release ? formatDual(release.published_at) : "Awaiting first release"}</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="container py-16 md:py-24">
+    <div class="flex flex-wrap items-end justify-between gap-5">
+      <div>
+        <p class="eyebrow">The starter cabinet</p>
+        <h2 class="display-sm mt-2 text-4xl md:text-5xl">A small collection, properly made.</h2>
+      </div>
+      <a class="btn btn-secondary btn-sm" href="/cabinet">See all {allCards.length} cards</a>
+    </div>
+    <div class="card-grid mt-9">
+      {featured.map((card) => {
+        const variant = card.editions.flatMap((edition) => edition.variants).find((item) => item.render_url);
+        return (
+          <a href={`/cabinet/${card.slug}`} class="group no-underline">
+            <div class="card-face">
+              {variant?.render_url ? <img src={variant.render_url} alt={`${card.name} card`} loading="lazy" /> : <div class="card-face-fallback">{card.name.charAt(0)}</div>}
+            </div>
+            <div class="mt-2 flex items-start justify-between gap-2">
+              <div>
+                <p class="display-sm text-base leading-tight">{card.name}</p>
+                <p class="mt-0.5 text-xs text-[var(--muted)]">{card.subtitle ?? card.class?.name ?? "Cabinet card"}</p>
+              </div>
+              {card.rarity ? <span class:list={["badge", card.rarity.key === "cabinet_rare" ? "badge-cabinet" : card.rarity.key === "rare" ? "badge-rare" : ""]}>{card.rarity.name}</span> : null}
+            </div>
+          </a>
+        );
+      })}
+    </div>
+  </section>
+
+  <section id="sets" class="border-y border-[var(--line)] bg-[var(--paper-2)]/60">
+    <div class="container py-16 md:py-24">
+      <div class="grid gap-10 lg:grid-cols-[0.9fr_1.6fr]">
+        <div>
+          <p class="eyebrow">The checklist</p>
+          <h2 class="display-sm mt-2 text-4xl md:text-5xl">Collect a room, not a spreadsheet.</h2>
+          <p class="mt-5 max-w-md text-[var(--muted)]">
+            Sets are curated releases with their own completion reward. A set can change in a later
+            version; rewards already earned are kept exactly as they were issued.
+          </p>
+          <a class="btn btn-secondary mt-7" href={primaryHref}>Start a set</a>
+        </div>
+        <div class="grid gap-3 sm:grid-cols-2">
+          {publishedSets.map((set) => (
+            <article class="surface-flat p-5">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="eyebrow">Version {set.version}</p>
+                  <h3 class="display-sm mt-1 text-2xl">{set.name}</h3>
+                </div>
+                <span class="badge">{set.cards.length} cards</span>
+              </div>
+              <p class="mt-3 text-sm leading-relaxed text-[var(--muted)]">{set.description}</p>
+              <div class="mt-5 flex items-center justify-between border-t border-[var(--line)] pt-3">
+                <span class="font-mono text-[0.62rem] uppercase tracking-[0.1em] text-[var(--muted)]">Completion reward</span>
+                <span class="font-mono text-sm text-[var(--brass)]">✦ {set.reward_amount}</span>
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="container py-16 md:py-24">
+    <div class="max-w-2xl">
+      <p class="eyebrow">How a draw works</p>
+      <h2 class="display-sm mt-2 text-4xl md:text-5xl">No mystery box arithmetic.</h2>
+      <p class="mt-4 text-[var(--muted)]">The eligible pool, price and exact probability are shown before you commit. The server owns the random draw; your client never supplies a seed.</p>
+    </div>
+    <ol class="mt-10 grid gap-5 md:grid-cols-3">
+      {[
+        ["01", "Earn Foil", "Claim the daily cabinet allowance or complete a set. Foil is earned, never bought."],
+        ["02", "Inspect the pool", "See every eligible card, the revision, the price and the actual probability of each finish."],
+        ["03", "Draw and keep", "One atomic debit and issuance. Retry the same request safely; a changed pool asks you to review again."],
+      ].map(([number, title, body]) => (
+        <li class="border-t border-[var(--line-strong)] pt-5">
+          <span class="font-mono text-[0.66rem] tracking-[0.16em] text-[var(--brass)]">{number}</span>
+          <h3 class="display-sm mt-3 text-2xl">{title}</h3>
+          <p class="mt-2 text-sm leading-relaxed text-[var(--muted)]">{body}</p>
+        </li>
+      ))}
+    </ol>
+    <div class="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-[var(--line)] pt-5 font-mono text-[0.62rem] uppercase tracking-[0.12em] text-[var(--muted)]">
+      <span>Server-authoritative randomness</span><span aria-hidden="true">·</span>
+      <span>Integer Foil ledger</span><span aria-hidden="true">·</span>
+      <span>Pity: disabled</span><span aria-hidden="true">·</span>
+      <span>No purchase or cash-out</span>
+    </div>
+  </section>
+
+  <section class="border-y border-[var(--line)] bg-[var(--ink)] text-[var(--paper)]">
+    <div class="container grid gap-10 py-16 md:grid-cols-[1.1fr_0.9fr] md:py-20">
+      <div>
+        <p class="eyebrow text-[var(--brass-bright)]">For agents and owners</p>
+        <h2 class="display-sm mt-2 max-w-[14ch] text-4xl md:text-5xl">The whole cabinet is addressable.</h2>
+        <p class="mt-5 max-w-xl text-sm leading-relaxed text-[#cfc8b9]">
+          Every supported owner action has a REST endpoint, CLI command and MCP tool over the same
+          authorised command layer. Agents act within scoped, revocable grants and always record the
+          member they represent.
+        </p>
+        <div class="mt-7 flex flex-wrap gap-3">
+          <a class="btn btn-brass" href="/docs/agent-guide">Read the agent guide</a>
+          <a class="btn btn-secondary !border-[#5c594d] !text-[#f4f0e6]" href="/openapi.json">OpenAPI 1.0</a>
+        </div>
+      </div>
+      <div class="border border-[#3c3d34] bg-[#0c0e0b] p-5 font-mono text-[0.72rem] leading-relaxed text-[#d9d2c3]">
+        <p class="text-[var(--brass-bright)]">$ foilbury status --json</p>
+        <p class="mt-2 text-[#8e8a7c]">{"{"}</p>
+        <p class="ml-4">"name": "Foilbury",</p>
+        <p class="ml-4">"environment": "local",</p>
+        <p class="ml-4">"discord": "disabled",</p>
+        <p class="ml-4">"email": "outbox_only",</p>
+        <p class="ml-4">"generation": "not_run"</p>
+        <p class="text-[#8e8a7c]">{"}"}</p>
+        <p class="mt-5 text-[#8e8a7c]"># same commands, three interfaces</p>
+        <p class="text-[var(--brass-bright)]">mcp · stdio · /api/v1</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="container py-16 md:py-24">
+    <div class="flex flex-wrap items-end justify-between gap-5">
+      <div>
+        <p class="eyebrow">From the editorial desk</p>
+        <h2 class="display-sm mt-2 text-4xl md:text-5xl">Notes from the cabinet.</h2>
+      </div>
+      <a class="btn btn-secondary btn-sm" href="/journal">Open the journal</a>
+    </div>
+    <div class="mt-8 grid gap-4 md:grid-cols-3">
+      <article class="surface-flat p-6">
+        <p class="eyebrow">Editorial desk</p>
+        <h3 class="display-sm mt-3 text-2xl">The first cabinet is open.</h3>
+        <p class="mt-3 text-sm leading-relaxed text-[var(--muted)]">A note on the starter selection, the shared identities and why the finishes are part of the collecting.</p>
+        <p class="mt-5 font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[var(--brass)]">EmDash journal · available at /journal</p>
+      </article>
+      <article class="surface-flat p-6">
+        <p class="eyebrow">Provenance</p>
+        <h3 class="display-sm mt-3 text-2xl">Source art stays credited.</h3>
+        <p class="mt-3 text-sm leading-relaxed text-[var(--muted)]">Every imported edition records its repository, relative path, commit and hash. Re-imports become reviewable revisions, not silent replacements.</p>
+      </article>
+      <article class="surface-flat p-6">
+        <p class="eyebrow">Local first</p>
+        <h3 class="display-sm mt-3 text-2xl">Discord can wait.</h3>
+        <p class="mt-3 text-sm leading-relaxed text-[var(--muted)]">The cabinet, the website, the administration and the agent interfaces all work against the same local state before any Discord connection exists.</p>
+      </article>
+    </div>
+  </section>
+</BaseLayout>

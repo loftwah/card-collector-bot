@@ -1,0 +1,42 @@
+---
+const year = new Date().getFullYear();
+const local = Astro.locals.foilbury;
+---
+<footer class="site-footer">
+  <div class="container grid gap-10 py-12 md:grid-cols-[1.4fr_1fr_1fr]">
+    <div>
+      <div class="flex items-center gap-2.5">
+        <img src="/brand/mark.png" alt="" width="26" height="26" class="h-[26px] w-[26px] rounded-[5px]" />
+        <span class="display-sm text-lg">Foilbury</span>
+      </div>
+      <p class="mt-4 max-w-sm text-sm leading-relaxed text-[var(--muted)]">
+        A collector's cabinet for characters worth keeping. Earn Foil, inspect the odds, draw a card and decide what stays.
+      </p>
+      <p class="mt-4 font-mono text-[0.62rem] uppercase tracking-[0.14em] text-[var(--brass)]">
+        {local ? "Local cabinet · private by default" : "A local-first collection game"}
+      </p>
+    </div>
+    <div>
+      <p class="eyebrow mb-3">The cabinet</p>
+      <ul class="grid gap-2 text-sm">
+        <li><a href="/cabinet">Public catalogue</a></li>
+        <li><a href="/journal">The journal</a></li>
+        <li><a href="/play">Your collection</a></li>
+        <li><a href="/play/draw">Draw room</a></li>
+      </ul>
+    </div>
+    <div>
+      <p class="eyebrow mb-3">For agents & owners</p>
+      <ul class="grid gap-2 text-sm">
+        <li><a href="/docs/agent-guide">Agent guide</a></li>
+        <li><a href="/openapi.json">OpenAPI</a></li>
+        <li><a href="/admin">Administration</a></li>
+        <li><a href="/admin/editorial">Editorial desk</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="container flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] py-5">
+    <p class="font-mono text-[0.6rem] uppercase tracking-[0.14em] text-[var(--muted)]">© {year} Foilbury · Australian English · Melbourne time</p>
+    <p class="font-mono text-[0.6rem] uppercase tracking-[0.14em] text-[var(--muted)]">Earned currency only · no purchase · no cash-out</p>
+  </div>
+</footer>

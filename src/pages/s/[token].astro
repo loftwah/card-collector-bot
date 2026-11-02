@@ -1,0 +1,65 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { pageContext } from "../../server/page";
+import { all, first } from "../../server/db";
+import { sha256Hex } from "../../server/ids";
+import { formatDate } from "../../lib/utils";
+
+const ctx = await pageContext(Astro.request);
+const raw = Astro.params.token ?? "";
+const tokenHash = await sha256Hex(raw);
+const link = await first<{ id: string; user_id: string; status: string; expires_at: string }>(
+  ctx.db,
+  "SELECT id, user_id, status, expires_at FROM fb_share_links WHERE tenant_id = ? AND token_hash = ?",
+  ctx.tenant.id,
+  tokenHash,
+);
+const valid = link && link.status === "active" && new Date(link.expires_at) > new Date();
+if (!valid) Astro.response.status = 404;
+const user = valid
+  ? await first<{ display_name: string }>(ctx.db, "SELECT display_name FROM fb_users WHERE id = ?", link!.user_id)
+  : null;
+const cards = valid
+  ? await all<{ card_name: string; slug: string; variant_name: string; render_url: string; serial: string }>(
+      ctx.db,
+      `SELECT DISTINCT cd.name AS card_name, cd.slug, v.name AS variant_name, vr.public_url AS render_url, ci.serial
+         FROM fb_card_instances ci
+         JOIN fb_card_definitions cd ON cd.id = ci.card_id AND cd.tenant_id = ci.tenant_id
+         JOIN fb_variants v ON v.id = ci.variant_id AND v.tenant_id = ci.tenant_id
+         JOIN fb_variant_renders vr ON vr.variant_id = v.id AND vr.tenant_id = ci.tenant_id AND vr.status = 'published'
+        WHERE ci.tenant_id = ? AND ci.user_id = ? AND ci.status IN ('owned','reserved')
+        ORDER BY cd.name`,
+      ctx.tenant.id,
+      link!.user_id,
+    )
+  : [];
+---
+<BaseLayout title={valid ? `Shared cabinet · ${user?.display_name ?? "Collector"} · Foilbury` : "Share not found · Foilbury"} description="An explicitly shared Foilbury cabinet view. Only composed public renders are shown." noIndex>
+  <section class="container py-12 md:py-16">
+    {valid ? (
+      <>
+        <p class="eyebrow">Explicitly shared cabinet · {formatDate(link!.expires_at)}</p>
+        <h1 class="display mt-4 text-[clamp(3rem,7vw,6rem)]">{user?.display_name ?? "A collector"} shared a cabinet.</h1>
+        <p class="mt-4 max-w-2xl text-[var(--muted)]">This view shows only composed public card renders. The owner's private source library, raw imports and account details are not exposed.</p>
+        <div class="card-grid mt-8">
+          {cards.map((card) => (
+            <article>
+              <div class="card-face"><img src={card.render_url} alt={`${card.card_name} — ${card.variant_name}`} loading="lazy" /></div>
+              <p class="display-sm mt-2 text-base">{card.card_name}</p>
+              <p class="text-xs text-[var(--muted)]">{card.variant_name} · {card.serial}</p>
+            </article>
+          ))}
+        </div>
+        {cards.length === 0 ? <div class="empty mt-8"><p>This share has no public card renders yet.</p></div> : null}
+        <div class="mt-10 flex flex-wrap gap-3"><a class="btn btn-primary" href="/login">Enter your own cabinet</a><a class="btn btn-secondary" href="/cabinet">Browse the public catalogue</a></div>
+      </>
+    ) : (
+      <div class="container-narrow">
+        <p class="eyebrow">Share link</p>
+        <h1 class="display mt-4 text-5xl">This share is not available.</h1>
+        <p class="mt-4 text-[var(--muted)]">The link may have expired, been revoked, or never existed. No private cabinet data is shown.</p>
+        <a class="btn btn-secondary mt-6" href="/">Return home</a>
+      </div>
+    )}
+  </section>
+</BaseLayout>

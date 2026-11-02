@@ -1,0 +1,34 @@
+{
+  "generatedAt": "2026-11-02T08:46:37.848Z",
+  "freshDirectory": "/private/var/folders/qm/ltm8shgs7tv9k8qfqgfpjxq80000gn/T/foilbury-fresh2.nNJXR8",
+  "result": "passed",
+  "setupExit": 0,
+  "localUrl": "http://127.0.0.1:4321",
+  "status": {
+    "configured": true,
+    "environment": "local",
+    "providers": {
+      "fal": false,
+      "elevenlabs": false,
+      "resend": false,
+      "adminWebhook": false,
+      "discordApplication": false,
+      "discordBot": false
+    },
+    "discord": "disabled",
+    "email": "outbox_only",
+    "generation": "not_run"
+  },
+  "catalogue": {
+    "identities": 16,
+    "release": 1,
+    "renders": 80
+  },
+  "owner": {
+    "inventory": 0
+  },
+  "providerKeysInDevVars": [],
+  "credentialsFileMode": "600",
+  "agentFileMode": "600",
+  "note": "Throwaway fresh checkout with no .env, .dev.vars, .foilbury, .wrangler, sibling checkout mutation or provider binding. Setup installed schema, accounts, curated imports, renders and release."
+}

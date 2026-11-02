@@ -1,0 +1,497 @@
+import { ApiError, type Ctx } from "../context";
+import { all, first, nowIso } from "../db";
+import { newId, sha256Hex } from "../ids";
+import { auditStatement, findIdempotent, idempotencyStatement, type IdempotencyInput } from "../http";
+import { getWallet } from "./wallet";
+
+export interface PoolRow {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  status: string;
+  revision: number;
+  price: number;
+  channel_key: string | null;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EligibleEntry {
+  variant_id: string;
+  card_id: string;
+  card_name: string;
+  variant_name: string;
+  material_key: string;
+  effect_key: string | null;
+  render_url: string | null;
+  weight: number;
+  probability_bps: number;
+  tags: string[];
+}
+
+export interface PoolPreview {
+  pool: PoolRow;
+  revision: number;
+  price: number;
+  eligible_count: number;
+  total_weight: number;
+  entries: EligibleEntry[];
+  filters: {
+    channel_key: string | null;
+    excluded_tags: string[];
+    tenant_excluded_tags: string[];
+    player_excluded_tags: string[];
+    empty_reason: string | null;
+  };
+  pity: "disabled";
+  expected_revision: number;
+  currency: { name: string; symbol: string };
+}
+
+export async function listPools(ctx: Ctx, includeDrafts = false) {
+  const rows = await all<PoolRow>(
+    ctx.db,
+    `SELECT * FROM fb_pools WHERE tenant_id = ? ${includeDrafts ? "" : "AND status = 'active'"} ORDER BY name`,
+    ctx.tenant.id,
+  );
+  return rows;
+}
+
+export async function getPoolPreview(
+  ctx: Ctx,
+  slugOrId: string,
+  channelKey?: string,
+  options?: { includeDraft?: boolean },
+): Promise<PoolPreview> {
+  const pool = await first<PoolRow>(
+    ctx.db,
+    `SELECT * FROM fb_pools WHERE tenant_id = ? AND (id = ? OR slug = ?) ${options?.includeDraft ? "" : "AND status = 'active'"}`,
+    ctx.tenant.id,
+    slugOrId,
+    slugOrId,
+  );
+  if (!pool) throw new ApiError(404, "pool_not_found", "No eligible pool was found.");
+  const user = ctx.user;
+  const tenantRow = await first<{ publication_json: string }>(
+    ctx.db,
+    "SELECT publication_json FROM fb_tenants WHERE id = ?",
+    ctx.tenant.id,
+  );
+  const tenantPublication = parseTags(tenantRow?.publication_json, "blockedTags");
+  const excluded = new Set<string>(tenantPublication);
+  let channelExcluded: string[] = [];
+  if (channelKey) {
+    const policy = await first<{ exclude_tags_json: string }>(
+      ctx.db,
+      "SELECT exclude_tags_json FROM fb_topic_policies WHERE tenant_id = ? AND channel_key = ? AND active = 1",
+      ctx.tenant.id,
+      channelKey,
+    );
+    channelExcluded = policy ? (JSON.parse(policy.exclude_tags_json) as string[]) : [];
+    for (const tag of channelExcluded) excluded.add(tag);
+  }
+  let playerExcluded: string[] = [];
+  if (user) {
+    const prefs = await first<{ hide_tags_json: string }>(
+      ctx.db,
+      "SELECT hide_tags_json FROM fb_player_preferences WHERE tenant_id = ? AND user_id = ?",
+      ctx.tenant.id,
+      user.id,
+    );
+    playerExcluded = prefs ? (JSON.parse(prefs.hide_tags_json) as string[]) : [];
+    for (const tag of playerExcluded) excluded.add(tag);
+  }
+  const entries = await all<{
+    variant_id: string;
+    card_id: string;
+    card_name: string;
+    variant_name: string;
+    material_key: string;
+    effect_key: string | null;
+    render_url: string | null;
+    weight: number;
+    tags_json: string;
+  }>(
+    ctx.db,
+    `SELECT v.id AS variant_id, v.card_id, cd.name AS card_name, v.name AS variant_name,
+            m.key AS material_key, fx.key AS effect_key, r.public_url AS render_url, pe.weight,
+            COALESCE((SELECT json_group_array(t.slug) FROM fb_card_tags ct JOIN fb_tags t ON t.id = ct.tag_id WHERE ct.card_id = cd.id), '[]') AS tags_json
+       FROM fb_pool_entries pe
+       JOIN fb_variants v ON v.id = pe.variant_id AND v.tenant_id = pe.tenant_id
+       JOIN fb_card_definitions cd ON cd.id = v.card_id AND cd.tenant_id = pe.tenant_id
+       JOIN fb_materials m ON m.id = v.material_id
+       LEFT JOIN fb_effects fx ON fx.id = v.effect_id
+       LEFT JOIN fb_variant_renders r ON r.variant_id = v.id AND r.tenant_id = v.tenant_id AND r.status = 'published'
+      WHERE pe.tenant_id = ? AND pe.pool_id = ? AND pe.pool_revision = ? AND pe.enabled = 1
+        AND v.status = 'published' AND v.archived_at IS NULL AND cd.status = 'published' AND cd.archived_at IS NULL
+        AND r.id IS NOT NULL`,
+    ctx.tenant.id,
+    pool.id,
+    pool.revision,
+  );
+  const eligible: EligibleEntry[] = [];
+  for (const entry of entries) {
+    const tags = JSON.parse(entry.tags_json) as string[];
+    if (tags.some((tag) => excluded.has(tag))) continue;
+    eligible.push({
+      variant_id: entry.variant_id,
+      card_id: entry.card_id,
+      card_name: entry.card_name,
+      variant_name: entry.variant_name,
+      material_key: entry.material_key,
+      effect_key: entry.effect_key,
+      render_url: entry.render_url,
+      weight: entry.weight,
+      probability_bps: 0,
+      tags,
+    });
+  }
+  const totalWeight = eligible.reduce((sum, entry) => sum + entry.weight, 0);
+  for (const entry of eligible) {
+    entry.probability_bps = totalWeight > 0 ? Math.round((entry.weight / totalWeight) * 10000) : 0;
+  }
+  const economy = await first<{ currency_name: string; currency_symbol: string }>(
+    ctx.db,
+    "SELECT currency_name, currency_symbol FROM fb_economy_settings WHERE tenant_id = ?",
+    ctx.tenant.id,
+  );
+  const emptyReason =
+    eligible.length > 0
+      ? null
+      : entries.length > 0
+        ? "Every entry in this pool is hidden by the active topic policy or your preferences."
+        : "This pool has no published variants with a finished render.";
+  return {
+    pool,
+    revision: pool.revision,
+    price: pool.price,
+    eligible_count: eligible.length,
+    total_weight: totalWeight,
+    entries: eligible,
+    filters: {
+      channel_key: channelKey ?? null,
+      excluded_tags: [...excluded],
+      tenant_excluded_tags: tenantPublication,
+      player_excluded_tags: playerExcluded,
+      empty_reason: emptyReason,
+    },
+    pity: "disabled",
+    expected_revision: pool.revision,
+    currency: { name: economy?.currency_name ?? "Foil", symbol: economy?.currency_symbol ?? "✦" },
+  };
+}
+
+export async function executeDraw(
+  ctx: Ctx,
+  input: { pool: string; expectedRevision: number; channelKey?: string; idempotency: IdempotencyInput },
+) {
+  const user = ctx.user;
+  if (!user) throw new ApiError(401, "authentication_required", "Sign in to draw.");
+  const replay = await findIdempotent(ctx, "draw.execute", input.idempotency);
+  if (replay) return { ...(replay.response as object), replayed: true };
+  const preview = await getPoolPreview(ctx, input.pool, input.channelKey);
+  if (preview.revision !== input.expectedRevision) {
+    throw new ApiError(409, "stale_pool_revision", "The pool changed. Review the new odds before drawing.", {
+      expected_revision: preview.revision,
+    });
+  }
+  if (preview.eligible_count === 0) {
+    throw new ApiError(409, "empty_pool", preview.filters.empty_reason ?? "This pool has no eligible cards. You were not charged.");
+  }
+  const wallet = await getWallet(ctx.db, ctx.tenant.id, user.id);
+  if (wallet.balance < preview.price) {
+    throw new ApiError(409, "insufficient_funds", `You need ${preview.price} ${wallet.currency_symbol} for this draw.`, {
+      balance: wallet.balance,
+      price: preview.price,
+    });
+  }
+  const drawId = newId("drw");
+  const instanceId = newId("ins");
+  const random = crypto.getRandomValues(new Uint32Array(1))[0]!;
+  const selected = pickWeighted(preview.entries, random, preview.total_weight);
+  const commitment = await sha256Hex(`${drawId}:${random}:${selected.variant_id}:${ctx.config.sessionSecret}`);
+  const serial = makeSerial(user.displayName, preview.revision);
+  const now = nowIso();
+  const receipt = {
+    draw_id: drawId,
+    instance_id: instanceId,
+    pool_id: preview.pool.id,
+    pool_slug: preview.pool.slug,
+    pool_revision: preview.revision,
+    pool_name: preview.pool.name,
+    price: preview.price,
+    currency: preview.currency,
+    variant_id: selected.variant_id,
+    card_id: selected.card_id,
+    card_name: selected.card_name,
+    variant_name: selected.variant_name,
+    render_url: selected.render_url,
+    serial,
+    eligible_count: preview.eligible_count,
+    total_weight: preview.total_weight,
+    selected_weight: selected.weight,
+    probability_bps: selected.probability_bps,
+    odds: preview.entries.map((entry) => ({
+      variant_id: entry.variant_id,
+      card_name: entry.card_name,
+      variant_name: entry.variant_name,
+      probability_bps: entry.probability_bps,
+      weight: entry.weight,
+    })),
+    filters: preview.filters,
+    pity: preview.pity,
+    random_commitment: commitment,
+    drawn_at: now,
+  };
+
+  const statements = [
+    idempotencyStatement(ctx, "draw.execute", input.idempotency, receipt),
+    ctx.db
+      .prepare(
+        `INSERT INTO fb_draws
+          (id, tenant_id, user_id, pool_id, pool_revision, price, variant_id, instance_id, created_at, idempotency_key, receipt_json, random_commitment)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        drawId,
+        ctx.tenant.id,
+        user.id,
+        preview.pool.id,
+        preview.revision,
+        preview.price,
+        selected.variant_id,
+        instanceId,
+        now,
+        input.idempotency.key,
+        JSON.stringify(receipt),
+        commitment,
+      ),
+    ctx.db
+      .prepare(
+        `INSERT INTO fb_card_instances
+          (id, tenant_id, user_id, card_id, variant_id, serial, acquired_via, acquired_at, status, favourite, locked, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'draw', ?, 'owned', 0, 0, ?)`,
+      )
+      .bind(instanceId, ctx.tenant.id, user.id, selected.card_id, selected.variant_id, serial, now, now),
+    ctx.db
+      .prepare(
+        "INSERT INTO fb_instance_history (id, tenant_id, instance_id, event, from_user_id, to_user_id, reference_type, reference_id, metadata_json, created_at) VALUES (?, ?, ?, 'drawn', NULL, ?, 'draw', ?, ?, ?)",
+      )
+      .bind(newId("ih"), ctx.tenant.id, instanceId, user.id, drawId, JSON.stringify({ pool_revision: preview.revision, price: preview.price }), now),
+    auditStatement(ctx, "draw.executed", "draw", drawId, {
+      pool_id: preview.pool.id,
+      pool_revision: preview.revision,
+      price: preview.price,
+      variant_id: selected.variant_id,
+      instance_id: instanceId,
+    }),
+  ];
+  try {
+    await ctx.db.batch(statements);
+  } catch (error) {
+    const message = String(error);
+    if (message.includes("UNIQUE") && message.includes("fb_idempotency_keys")) {
+      const existing = await findIdempotent(ctx, "draw.execute", input.idempotency);
+      if (existing) return { ...(existing.response as object), replayed: true };
+      throw new ApiError(409, "draw_conflict", "This draw request collided with another request. Reload your collection.");
+    }
+    if (message.includes("insufficient_funds")) {
+      throw new ApiError(409, "insufficient_funds", "Your balance changed before the draw. You were not charged.");
+    }
+    if (message.includes("stale_pool_revision")) {
+      throw new ApiError(409, "stale_pool_revision", "The pool changed before the draw. You were not charged.");
+    }
+    if (message.includes("variant_unavailable")) {
+      throw new ApiError(409, "pool_changed", "A pool entry became unavailable. You were not charged.");
+    }
+    if (message.includes("UNIQUE") && message.includes("fb_card_instances")) {
+      throw new ApiError(409, "serial_collision", "The cabinet could not assign a serial. Try the draw again.");
+    }
+    throw error;
+  }
+  const after = await getWallet(ctx.db, ctx.tenant.id, user.id);
+  return { ...receipt, balance_after: after.balance, replayed: false };
+}
+
+function pickWeighted(entries: EligibleEntry[], random: number, totalWeight: number): EligibleEntry {
+  let target = (random / 2 ** 32) * totalWeight;
+  for (const entry of entries) {
+    target -= entry.weight;
+    if (target < 0) return entry;
+  }
+  return entries[entries.length - 1]!;
+}
+
+function makeSerial(displayName: string, revision: number): string {
+  const letters = displayName.replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase().padEnd(2, "F");
+  const bytes = crypto.getRandomValues(new Uint8Array(4));
+  const suffix = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("").slice(0, 6).toUpperCase();
+  return `FB-${revision}-${letters}-${suffix}`;
+}
+
+function parseTags(json: string | undefined, key: string): string[] {
+  if (!json) return [];
+  try {
+    const value = JSON.parse(json) as Record<string, unknown>;
+    return Array.isArray(value[key]) ? (value[key] as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function createPool(
+  ctx: Ctx,
+  input: { slug: string; name: string; description: string; price: number; channelKey?: string; entries: Array<{ variantId: string; weight: number }> },
+) {
+  const slug = input.slug.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const id = newId("pool");
+  const now = nowIso();
+  if (input.price < 0 || !Number.isInteger(input.price)) throw new ApiError(422, "price_invalid", "Price must be a non-negative integer.");
+  if (!input.entries.length) throw new ApiError(422, "pool_empty", "Add at least one pool entry.");
+  const variants = await all<{ id: string }>(
+    ctx.db,
+    `SELECT id FROM fb_variants WHERE tenant_id = ? AND id IN (${input.entries.map(() => "?").join(",")}) AND status = 'published'`,
+    ctx.tenant.id,
+    ...input.entries.map((entry) => entry.variantId),
+  );
+  if (variants.length !== new Set(input.entries.map((entry) => entry.variantId)).size) {
+    throw new ApiError(422, "pool_entry_invalid", "Every pool entry must be a published variant in this tenant.");
+  }
+  await ctx.db.batch([
+    ctx.db
+      .prepare(
+        "INSERT INTO fb_pools (id, tenant_id, slug, name, description, status, revision, price, channel_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'draft', 1, ?, ?, ?, ?)",
+      )
+      .bind(id, ctx.tenant.id, slug, input.name.trim(), input.description.trim(), input.price, input.channelKey ?? null, now, now),
+    ...input.entries.map((entry) =>
+      ctx.db
+        .prepare(
+          "INSERT INTO fb_pool_entries (id, tenant_id, pool_id, pool_revision, variant_id, weight, enabled, created_at) VALUES (?, ?, ?, 1, ?, ?, 1, ?)",
+        )
+        .bind(newId("poe"), ctx.tenant.id, id, entry.variantId, Math.max(1, Math.floor(entry.weight)), now),
+    ),
+    auditStatement(ctx, "pool.created", "pool", id, { slug, price: input.price, entries: input.entries.length }),
+  ]);
+  return (await listPools(ctx, true)).find((pool) => pool.id === id)!;
+}
+
+export async function publishPool(ctx: Ctx, id: string) {
+  const pool = await first<PoolRow>(ctx.db, "SELECT * FROM fb_pools WHERE id = ? AND tenant_id = ?", id, ctx.tenant.id);
+  if (!pool) throw new ApiError(404, "pool_not_found", "Pool not found.");
+  const entries = await first<{ count: number }>(
+    ctx.db,
+    "SELECT COUNT(*) AS count FROM fb_pool_entries WHERE tenant_id = ? AND pool_id = ? AND pool_revision = ? AND enabled = 1",
+    ctx.tenant.id,
+    pool.id,
+    pool.revision,
+  );
+  if (!entries?.count) throw new ApiError(422, "pool_empty", "A pool cannot be published without entries.");
+  await ctx.db.batch([
+    ctx.db
+      .prepare("UPDATE fb_pools SET status = 'active', published_at = ?, updated_at = ? WHERE id = ? AND tenant_id = ? AND revision = ?")
+      .bind(nowIso(), nowIso(), pool.id, ctx.tenant.id, pool.revision),
+    auditStatement(ctx, "pool.published", "pool", pool.id, { revision: pool.revision, price: pool.price }),
+  ]);
+  return (await listPools(ctx, true)).find((item) => item.id === id)!;
+}
+
+export async function updatePool(
+  ctx: Ctx,
+  id: string,
+  input: {
+    expectedRevision: number;
+    name?: string;
+    description?: string;
+    price?: number;
+    entries?: Array<{ variantId: string; weight: number }>;
+  },
+) {
+  const pool = await first<PoolRow>(ctx.db, "SELECT * FROM fb_pools WHERE id = ? AND tenant_id = ?", id, ctx.tenant.id);
+  if (!pool) throw new ApiError(404, "pool_not_found", "Pool not found.");
+  if (pool.revision !== input.expectedRevision) {
+    throw new ApiError(409, "stale_pool_revision", "The pool changed since you opened it.", { current_revision: pool.revision });
+  }
+  if (input.price !== undefined && (!Number.isInteger(input.price) || input.price < 0)) {
+    throw new ApiError(422, "price_invalid", "Price must be a non-negative integer.");
+  }
+  const revision = pool.revision + 1;
+  const now = nowIso();
+  const statements = [
+    ctx.db
+      .prepare(
+        "UPDATE fb_pools SET revision = ?, status = 'draft', name = COALESCE(?, name), description = COALESCE(?, description), price = COALESCE(?, price), updated_at = ? WHERE id = ? AND tenant_id = ? AND revision = ?",
+      )
+      .bind(revision, input.name?.trim() ?? null, input.description?.trim() ?? null, input.price ?? null, now, pool.id, ctx.tenant.id, pool.revision),
+  ];
+  if (input.entries) {
+    if (!input.entries.length) throw new ApiError(422, "pool_empty", "A pool needs at least one entry.");
+    const ids = [...new Set(input.entries.map((entry) => entry.variantId))];
+    const valid = await all<{ id: string }>(
+      ctx.db,
+      `SELECT id FROM fb_variants WHERE tenant_id = ? AND status = 'published' AND id IN (${ids.map(() => "?").join(",")})`,
+      ctx.tenant.id,
+      ...ids,
+    );
+    if (valid.length !== ids.length) throw new ApiError(422, "pool_entry_invalid", "Every pool entry must be a published variant in this tenant.");
+    statements.push(
+      ctx.db.prepare("DELETE FROM fb_pool_entries WHERE tenant_id = ? AND pool_id = ? AND pool_revision = ?").bind(ctx.tenant.id, pool.id, revision),
+    );
+    for (const entry of input.entries) {
+      statements.push(
+        ctx.db
+          .prepare(
+            "INSERT INTO fb_pool_entries (id, tenant_id, pool_id, pool_revision, variant_id, weight, enabled, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
+          )
+          .bind(newId("poe"), ctx.tenant.id, pool.id, revision, entry.variantId, Math.max(1, Math.floor(entry.weight)), now),
+      );
+    }
+  } else {
+    statements.push(
+      ctx.db
+        .prepare(
+          "INSERT INTO fb_pool_entries (id, tenant_id, pool_id, pool_revision, variant_id, weight, enabled, created_at) SELECT ?, tenant_id, pool_id, ?, variant_id, weight, enabled, ? FROM fb_pool_entries WHERE tenant_id = ? AND pool_id = ? AND pool_revision = ?",
+        )
+        .bind(newId("poe"), revision, now, ctx.tenant.id, pool.id, pool.revision),
+    );
+  }
+  statements.push(auditStatement(ctx, "pool.updated", "pool", pool.id, { revision, price: input.price ?? pool.price }));
+  await ctx.db.batch(statements);
+  return (await listPools(ctx, true)).find((item) => item.id === id)!;
+}
+
+export async function retirePool(ctx: Ctx, id: string) {
+  await ctx.db.batch([
+    ctx.db.prepare("UPDATE fb_pools SET status = 'retired', updated_at = ? WHERE id = ? AND tenant_id = ?").bind(nowIso(), id, ctx.tenant.id),
+    auditStatement(ctx, "pool.retired", "pool", id),
+  ]);
+}
+
+export async function getPoolDetail(ctx: Ctx, id: string) {
+  const pool = await first<PoolRow>(ctx.db, "SELECT * FROM fb_pools WHERE id = ? AND tenant_id = ?", id, ctx.tenant.id);
+  if (!pool) throw new ApiError(404, "pool_not_found", "Pool not found.");
+  const entries = await all<{
+    id: string;
+    variant_id: string;
+    weight: number;
+    enabled: number;
+    card_name: string;
+    variant_name: string;
+    material_key: string;
+    effect_key: string | null;
+  }>(
+    ctx.db,
+    `SELECT pe.id, pe.variant_id, pe.weight, pe.enabled, cd.name AS card_name, v.name AS variant_name,
+            m.key AS material_key, fx.key AS effect_key
+       FROM fb_pool_entries pe JOIN fb_variants v ON v.id = pe.variant_id AND v.tenant_id = pe.tenant_id
+       JOIN fb_card_definitions cd ON cd.id = v.card_id AND cd.tenant_id = pe.tenant_id
+       JOIN fb_materials m ON m.id = v.material_id
+       LEFT JOIN fb_effects fx ON fx.id = v.effect_id
+      WHERE pe.tenant_id = ? AND pe.pool_id = ? AND pe.pool_revision = ? ORDER BY cd.name, v.name`,
+    ctx.tenant.id,
+    pool.id,
+    pool.revision,
+  );
+  return { pool, entries };
+}

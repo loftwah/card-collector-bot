@@ -1,0 +1,43 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import PublicVariantViewer from "../../components/PublicVariantViewer";
+import { pageContext } from "../../server/page";
+import { getCard, listCards } from "../../server/modules/catalogue";
+import { publicCard } from "../../server/api/public";
+
+const ctx = await pageContext(Astro.request);
+const slug = Astro.params.slug ?? "";
+let card;
+try {
+  card = await getCard(ctx, slug);
+} catch {
+  return Astro.redirect("/cabinet");
+}
+const published = (await listCards(ctx, { publicOnly: true, limit: 100 })).find((item) => item.id === card!.id);
+if (!published) return Astro.redirect("/cabinet");
+const clean = publicCard(published);
+const variants = clean.editions.flatMap((edition) => edition.variants);
+const setName = clean.sets[0]?.name ?? null;
+---
+<BaseLayout title={`${clean.name} · Foilbury`} description={clean.description}>
+  <section class="container py-12 md:py-16">
+    <nav class="mb-8 font-mono text-[0.62rem] uppercase tracking-[0.12em] text-[var(--muted)]" aria-label="Breadcrumb">
+      <a href="/cabinet">Cabinet</a> <span aria-hidden="true">/</span> <span>{clean.name}</span>
+    </nav>
+    <PublicVariantViewer
+      client:load
+      name={clean.name}
+      subtitle={clean.subtitle}
+      description={clean.description}
+      rarity={clean.rarity?.name ?? null}
+      setName={setName}
+      tags={clean.tags.map((tag) => tag.name)}
+      variants={variants}
+    />
+    <div class="mt-14 grid gap-4 border-t border-[var(--line)] pt-8 md:grid-cols-3">
+      <div><p class="eyebrow">Identity</p><p class="mt-1 text-sm">{clean.class?.name ?? "Cabinet card"} · {clean.category?.name ?? "Uncategorised"}</p></div>
+      <div><p class="eyebrow">Sets</p><p class="mt-1 text-sm">{clean.sets.map((set) => set.name).join(", ") || "No published set"}</p></div>
+      <div><p class="eyebrow">Credit</p><p class="mt-1 text-sm">Source art credited by the owner. Technical provenance is retained privately.</p></div>
+    </div>
+  </section>
+</BaseLayout>

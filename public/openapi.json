@@ -1,0 +1,288 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Foilbury",
+    "version": "1.0.0",
+    "description": "Local-first collectible-card cabinet. The browser, CLI and MCP server call the same authorised application commands. Use the Idempotency-Key header on money-like and destructive commands; reuse it for transport retries.",
+    "contact": { "name": "Foilbury owner", "url": "https://foilbury.loftwah.com" }
+  },
+  "servers": [{ "url": "http://127.0.0.1:4321", "description": "Explicit local loopback server" }],
+  "security": [{ "agentBearer": [] }, { "sessionCookie": [] }],
+  "tags": [
+    { "name": "Public" },
+    { "name": "Player" },
+    { "name": "Administration" },
+    { "name": "Operations" }
+  ],
+  "paths": {
+    "/api/v1/status": {
+      "get": {
+        "tags": ["Public"],
+        "summary": "Local runtime status",
+        "description": "Returns environment, provider presence booleans and safe counts. No provider or deployment credentials are exposed.",
+        "security": [],
+        "responses": { "200": { "description": "Status", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Status" } } } } }
+      }
+    },
+    "/api/v1/catalogue": {
+      "get": {
+        "tags": ["Public"],
+        "summary": "Published catalogue",
+        "security": [],
+        "parameters": [
+          { "name": "search", "in": "query", "schema": { "type": "string" } },
+          { "name": "category", "in": "query", "schema": { "type": "string" } },
+          { "name": "tag", "in": "query", "schema": { "type": "string" } },
+          { "name": "set", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Public cards with published renders" } }
+      }
+    },
+    "/api/v1/pools/{slug}": {
+      "get": {
+        "tags": ["Public"],
+        "summary": "Inspect the eligible pool and actual odds",
+        "description": "The returned entries are the actual eligible pool. Community policy and player preferences narrow it; the probabilities shown are recalculated from the narrowed pool. An empty pool never charges.",
+        "security": [],
+        "parameters": [
+          { "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "channel", "in": "query", "schema": { "type": "string" }, "description": "Optional community/entrypoint policy key" }
+        ],
+        "responses": { "200": { "description": "Pool preview with revision, price and probabilities" }, "404": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": ["Public"],
+        "summary": "Sign in with email and password",
+        "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["email", "password"], "properties": { "email": { "type": "string", "format": "email" }, "password": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Session cookies set" }, "401": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/api/v1/dev/login": {
+      "post": {
+        "tags": ["Public"],
+        "summary": "Local loopback development sign-in",
+        "description": "Available only when FOILBURY_LOCAL_MODE=true, FOILBURY_DEV_LOGIN=true and the request is on loopback. Revoke by setting FOILBURY_DEV_LOGIN=false.",
+        "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["email"], "properties": { "email": { "type": "string", "format": "email" } } } } } },
+        "responses": { "200": { "description": "Development session cookies set" }, "404": { "description": "Development bypass disabled" } }
+      }
+    },
+    "/api/v1/me": {
+      "get": { "tags": ["Player"], "summary": "Current member and wallet", "responses": { "200": { "description": "Member, tenant, actor and wallet" }, "401": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/api/v1/inventory": {
+      "get": {
+        "tags": ["Player"],
+        "summary": "List the represented member's cards",
+        "parameters": [
+          { "name": "search", "in": "query", "schema": { "type": "string" } },
+          { "name": "favourite", "in": "query", "schema": { "type": "boolean" } },
+          { "name": "status", "in": "query", "schema": { "type": "string" } },
+          { "name": "set", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Inventory items" } }
+      }
+    },
+    "/api/v1/rewards/claim": {
+      "post": {
+        "tags": ["Player"],
+        "summary": "Claim the daily earned allowance",
+        "description": "Idempotency-Key is required. A retry with the same key and body returns the same receipt; changed input with the same key returns idempotency_conflict. A cooldown rejection does not credit.",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "200": { "description": "Claim receipt" }, "409": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/api/v1/draws": {
+      "post": {
+        "tags": ["Player"],
+        "summary": "Draw a card from a reviewed pool revision",
+        "description": "The server owns randomness. The expected revision, balance, pool eligibility and issuance are enforced in one D1 batch with triggers. A retry with the same idempotency key returns the original receipt and never rerolls.",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["pool", "expectedRevision"],
+                "properties": {
+                  "pool": { "type": "string" },
+                  "expectedRevision": { "type": "integer", "minimum": 1 },
+                  "channelKey": { "type": "string" }
+                }
+              },
+              "examples": { "draw": { "value": { "pool": "cabinet-draw", "expectedRevision": 1 } } }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Draw receipt with instance_id, serial, balance_after and random_commitment" }, "409": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/api/v1/recycle/preview": {
+      "post": { "tags": ["Player"], "summary": "Preview a destructive recycle", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["instanceId"], "properties": { "instanceId": { "type": "string" } } } } } }, "responses": { "200": { "description": "Exact credit and warning" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/api/v1/recycle": {
+      "post": {
+        "tags": ["Player"],
+        "summary": "Recycle a duplicate after preview",
+        "description": "Protects favourites and locked cards. The instance leaves ownership, history remains, and a recycle ledger entry credits the wallet.",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["instanceId", "expectedCredit"], "properties": { "instanceId": { "type": "string" }, "expectedCredit": { "type": "integer", "minimum": 0 } } } } } },
+        "responses": { "200": { "description": "Recycle receipt" }, "409": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/api/v1/trades": {
+      "get": { "tags": ["Player"], "summary": "List trades", "responses": { "200": { "description": "Trades for the represented member" } } },
+      "post": {
+        "tags": ["Player"],
+        "summary": "Create a reciprocal offer and reserve its cards",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["recipientEmail", "proposerInstanceIds", "recipientInstanceIds"], "properties": { "recipientEmail": { "type": "string", "format": "email" }, "proposerInstanceIds": { "type": "array", "items": { "type": "string" } }, "recipientInstanceIds": { "type": "array", "items": { "type": "string" } }, "expiresInHours": { "type": "integer", "minimum": 1, "maximum": 168 } } } } } },
+        "responses": { "200": { "description": "Trade with reservations" }, "409": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/api/v1/trades/{id}/{action}": {
+      "post": {
+        "tags": ["Player"],
+        "summary": "Accept, decline or cancel a trade",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "action", "in": "path", "required": true, "schema": { "type": "string", "enum": ["accept", "decline", "cancel"] } }
+        ],
+        "responses": { "200": { "description": "Updated trade" }, "409": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/api/v1/gifts": {
+      "post": {
+        "tags": ["Player"],
+        "summary": "Gift one card; a separate one-way transfer",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["recipientEmail", "instanceId"], "properties": { "recipientEmail": { "type": "string", "format": "email" }, "instanceId": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Gift receipt" }, "409": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/api/v1/admin/cards": {
+      "get": { "tags": ["Administration"], "summary": "Owner catalogue including drafts", "responses": { "200": { "description": "Cards" } } },
+      "post": { "tags": ["Administration"], "summary": "Create a draft card identity", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CardCreate" } } } }, "responses": { "201": { "description": "Draft card" }, "422": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/api/v1/admin/cards/{id}": {
+      "patch": {
+        "tags": ["Administration"],
+        "summary": "Edit a card with optimistic concurrency",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["expectedVersion"], "properties": { "expectedVersion": { "type": "integer" }, "name": { "type": "string" }, "subtitle": { "type": ["string", "null"] }, "description": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "Updated card" }, "409": { "$ref": "#/components/responses/Error" } }
+      },
+      "delete": { "tags": ["Administration"], "summary": "Remove a draft or archive a collectible", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Archived" } } }
+    },
+    "/api/v1/admin/cards/{id}/status": {
+      "post": { "tags": ["Administration"], "summary": "Publish or retire a card", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["status"], "properties": { "status": { "type": "string", "enum": ["draft", "published", "retired"] } } } } } }, "responses": { "200": { "description": "Updated card" }, "422": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/api/v1/admin/taxonomy": {
+      "get": { "tags": ["Administration"], "summary": "List taxonomy", "responses": { "200": { "description": "Classes, categories, tags, rarities, materials and effects" } } },
+      "post": { "tags": ["Administration"], "summary": "Create taxonomy item", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["kind", "key", "name"], "properties": { "kind": { "type": "string", "enum": ["class", "category", "tag", "rarity", "material", "effect"] }, "key": { "type": "string" }, "name": { "type": "string" } } } } } }, "responses": { "201": { "description": "Created" } } }
+    },
+    "/api/v1/admin/pools": {
+      "get": { "tags": ["Administration"], "summary": "List pools", "responses": { "200": { "description": "Pools" } } },
+      "post": { "tags": ["Administration"], "summary": "Create a draft pool", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["slug", "name", "description", "price", "entries"], "properties": { "slug": { "type": "string" }, "name": { "type": "string" }, "description": { "type": "string" }, "price": { "type": "integer", "minimum": 0 }, "channelKey": { "type": "string" }, "entries": { "type": "array", "items": { "type": "object", "required": ["variantId", "weight"], "properties": { "variantId": { "type": "string" }, "weight": { "type": "integer", "minimum": 1 } } } } } } } } }, "responses": { "201": { "description": "Draft pool" } } }
+    },
+    "/api/v1/admin/pools/{id}": {
+      "get": { "tags": ["Administration"], "summary": "Pool detail with entries", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Pool and entries" } } },
+      "patch": { "tags": ["Administration"], "summary": "Create a new draft pool revision", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Draft revision" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/api/v1/admin/pools/{id}/publish": {
+      "post": { "tags": ["Administration"], "summary": "Activate a pool revision", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Active pool" }, "422": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/api/v1/admin/economy": {
+      "get": { "tags": ["Administration"], "summary": "Economy settings", "responses": { "200": { "description": "Versioned settings" } } },
+      "patch": { "tags": ["Administration"], "summary": "Update settings with a new version", "responses": { "200": { "description": "Updated settings" }, "409": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/api/v1/admin/wallets/{userId}/adjust": {
+      "post": {
+        "tags": ["Administration"],
+        "summary": "Record a compensating wallet adjustment",
+        "description": "No set-balance endpoint. The adjustment is a ledger entry; agent grants are bounded to 500 Foil per command.",
+        "parameters": [{ "name": "userId", "in": "path", "required": true, "schema": { "type": "string" } }, { "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["amount", "reason"], "properties": { "amount": { "type": "integer" }, "reason": { "type": "string", "minLength": 3 } } } } } },
+        "responses": { "200": { "description": "Adjustment receipt" }, "403": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/api/v1/admin/agents": {
+      "get": { "tags": ["Administration"], "summary": "List agent grants without secrets", "responses": { "200": { "description": "Grants" } } },
+      "post": { "tags": ["Administration"], "summary": "Create a scoped grant (human owner only)", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["agentName", "representedUserId", "scopes", "expiresInDays"], "properties": { "agentName": { "type": "string" }, "representedUserId": { "type": "string" }, "scopes": { "type": "array", "items": { "type": "string" } }, "expiresInDays": { "type": "integer", "minimum": 1, "maximum": 365 } } } } } }, "responses": { "201": { "description": "Grant and one-time token" }, "403": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/api/v1/admin/agents/{id}/revoke": {
+      "post": { "tags": ["Administration"], "summary": "Revoke an agent grant", "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Revoked" } } }
+    },
+    "/api/v1/admin/imports/preview": {
+      "post": { "tags": ["Administration"], "summary": "Preview a source import without changing cards", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ImportManifest" } } } }, "responses": { "200": { "description": "Diff of new, revised and unchanged items" } } }
+    },
+    "/api/v1/admin/imports": {
+      "get": { "tags": ["Administration"], "summary": "List import runs", "responses": { "200": { "description": "Runs" } } },
+      "post": { "tags": ["Administration"], "summary": "Apply a source import as reviewable drafts", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ImportManifest" } } } }, "responses": { "200": { "description": "Import result" } } }
+    },
+    "/api/v1/admin/renders/queue": {
+      "post": { "tags": ["Administration"], "summary": "Queue missing local card renders", "responses": { "200": { "description": "Queued job count" } } }
+    },
+    "/api/v1/admin/catalogue/publish": {
+      "post": { "tags": ["Administration"], "summary": "Activate an immutable catalogue release", "description": "Validates card, edition, variant and render references before activation. It does not mutate wallets or issue cards.", "responses": { "200": { "description": "Release version and checksum" }, "422": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/api/v1/admin/audit": {
+      "get": { "tags": ["Operations"], "summary": "Read the tenant audit trail", "parameters": [{ "name": "limit", "in": "query", "schema": { "type": "integer", "maximum": 200 } }], "responses": { "200": { "description": "Audit events" } } }
+    },
+    "/api/v1/admin/status": {
+      "get": { "tags": ["Operations"], "summary": "Operational counts, release and safe provider state", "responses": { "200": { "description": "Operations status" } } }
+    },
+    "/api/v1/admin/outbox/process": {
+      "post": { "tags": ["Operations"], "summary": "Drain the local outbox", "description": "Never sends Discord or email. Local render/trade/gift receipts are marked delivered; external topics are suppressed for a future adapter.", "responses": { "200": { "description": "Processed counts" } } }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "agentBearer": { "type": "http", "scheme": "bearer", "description": "Scoped, revocable local agent credential (fba_…)." },
+      "sessionCookie": { "type": "apiKey", "in": "cookie", "name": "fb_session", "description": "Browser session cookie. Cookie-authenticated mutations also require x-foilbury-csrf." }
+    },
+    "parameters": {
+      "IdempotencyKey": { "name": "Idempotency-Key", "in": "header", "required": true, "schema": { "type": "string", "minLength": 8, "maxLength": 200 }, "description": "Scoped to tenant, actor and operation. Same key + same body returns the stored receipt; changed input returns 409 idempotency_conflict." }
+    },
+    "responses": {
+      "Error": { "description": "Machine-readable error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": ["error", "request_id"],
+        "properties": {
+          "error": { "type": "object", "required": ["code", "message"], "properties": { "code": { "type": "string" }, "message": { "type": "string" }, "details": { "type": "object" } } },
+          "request_id": { "type": "string" }
+        }
+      },
+      "Status": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" }, "version": { "type": "string" }, "environment": { "type": "string" }, "configured": { "type": "boolean" }, "origin": { "type": "string" },
+          "providers": { "type": "object", "additionalProperties": { "type": "boolean" } }, "discord": { "type": "string" }, "email": { "type": "string" }, "generation": { "type": "string" }
+        }
+      },
+      "CardCreate": {
+        "type": "object",
+        "required": ["slug", "name", "description"],
+        "properties": {
+          "slug": { "type": "string" }, "name": { "type": "string" }, "subtitle": { "type": "string" }, "description": { "type": "string" },
+          "classKey": { "type": "string" }, "categorySlug": { "type": "string" }, "rarityKey": { "type": "string" }, "tags": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "ImportManifest": {
+        "type": "object",
+        "required": ["source", "sourceRepo", "sourceCommit", "items"],
+        "properties": {
+          "source": { "type": "string" }, "sourceRepo": { "type": "string" }, "sourceCommit": { "type": "string" }, "publish": { "type": "boolean" },
+          "items": { "type": "array", "items": { "type": "object", "required": ["source", "sourceRepo", "sourceCommit", "sourcePath", "sourceHash", "logicalId", "slug", "name", "description", "subjectAssetId", "variants"], "properties": { "logicalId": { "type": "string" }, "sourcePath": { "type": "string" }, "sourceHash": { "type": "string" }, "subjectAssetId": { "type": "string" }, "variants": { "type": "array", "items": { "type": "object", "properties": { "material": { "type": "string" }, "effect": { "type": ["string", "null"] } } } }, "sets": { "type": "array", "items": { "type": "string" } } } } }
+        }
+      }
+    }
+  }
+}

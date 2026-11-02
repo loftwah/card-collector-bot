@@ -1,0 +1,193 @@
+{
+  "testedAt": "2026-11-02T08:47:57.725Z",
+  "revision": {
+    "head": "e5fce768bce11861bc29b32cee89581f83d5936c",
+    "workingTree": "dirty",
+    "diffHash": "744fa64c6ab6511861fbaa300d04738bd0e6af06c54e18741c3ccdebf4ff6253"
+  },
+  "checks": [
+    {
+      "name": "MCP tool inventory",
+      "command": "mcp listTools",
+      "result": "33 tools",
+      "evidence": [
+        "foilbury_status",
+        "foilbury_whoami",
+        "foilbury_catalogue_list",
+        "foilbury_content_create",
+        "foilbury_content_update",
+        "foilbury_content_publish",
+        "foilbury_taxonomy_list",
+        "foilbury_taxonomy_create",
+        "foilbury_sets_list",
+        "foilbury_set_publish",
+        "foilbury_pools_list",
+        "foilbury_pool_preview",
+        "foilbury_pool_update",
+        "foilbury_pool_publish",
+        "foilbury_inventory_list",
+        "foilbury_wallet",
+        "foilbury_reward_claim",
+        "foilbury_draw_execute",
+        "foilbury_recycle_preview",
+        "foilbury_recycle_commit",
+        "foilbury_trade_list",
+        "foilbury_trade_create",
+        "foilbury_trade_accept",
+        "foilbury_gift_create",
+        "foilbury_agents_list",
+        "foilbury_agent_create",
+        "foilbury_agent_revoke",
+        "foilbury_imports_preview",
+        "foilbury_imports_apply",
+        "foilbury_renders_queue",
+        "foilbury_catalogue_publish",
+        "foilbury_ops_status",
+        "foilbury_outbox_process"
+      ]
+    },
+    {
+      "name": "MCP status",
+      "command": "foilbury_status",
+      "result": "configured",
+      "evidence": {
+        "environment": "local",
+        "discord": "disabled",
+        "email": "outbox_only",
+        "generation": "not_run"
+      }
+    },
+    {
+      "name": "MCP owner identity",
+      "command": "foilbury_whoami",
+      "result": "owner",
+      "evidence": {
+        "email": "owner@foilbury.local",
+        "tenant": "cabinet",
+        "scopes": [
+          "content:read",
+          "content:write",
+          "catalogue:publish",
+          "import:write",
+          "render:write",
+          "economy:read",
+          "economy:write",
+          "economy:grant",
+          "inventory:read",
+          "draw:execute",
+          "reward:claim",
+          "trade:write",
+          "recycle:write",
+          "settings:write",
+          "ops:read"
+        ]
+      }
+    },
+    {
+      "name": "MCP catalogue read",
+      "command": "foilbury_catalogue_list",
+      "result": "3 cards",
+      "evidence": [
+        "drop-bear",
+        "gabe",
+        "grim-reaper"
+      ]
+    },
+    {
+      "name": "MCP owner write",
+      "command": "foilbury_content_create",
+      "result": "draft",
+      "evidence": {
+        "slug": "agent-proof-mvz0nk88",
+        "cardId": "crd_mvz0nk8wrzejvdrrccdt20d0"
+      }
+    },
+    {
+      "name": "MCP owner cleanup",
+      "command": "DELETE /api/v1/admin/cards/{id}",
+      "result": "archived",
+      "evidence": {
+        "slug": "agent-proof-mvz0nk88"
+      }
+    },
+    {
+      "name": "MCP operations",
+      "command": "foilbury_ops_status",
+      "result": "read",
+      "evidence": {
+        "cards": 16,
+        "variants": 80,
+        "activeRelease": 1
+      }
+    },
+    {
+      "name": "MCP player identity",
+      "command": "foilbury_whoami",
+      "result": "player",
+      "evidence": {
+        "email": "player@foilbury.local"
+      }
+    },
+    {
+      "name": "MCP player draw",
+      "command": "foilbury_draw_execute",
+      "result": "Pepe · FB-1-JU-820F1B",
+      "evidence": {
+        "instanceId": "ins_mvz0nkget6ncj881wkk1yyme",
+        "balanceAfter": 490,
+        "poolRevision": 1,
+        "probabilityBps": 367
+      }
+    },
+    {
+      "name": "MCP draw retry",
+      "command": "foilbury_draw_execute (same key)",
+      "result": "same receipt",
+      "evidence": {
+        "instanceId": "ins_mvz0nkget6ncj881wkk1yyme"
+      }
+    },
+    {
+      "name": "MCP shared state",
+      "command": "foilbury_inventory_list before/after",
+      "result": "5 → 6",
+      "evidence": {
+        "balanceBefore": 570,
+        "balanceAfter": 490
+      }
+    },
+    {
+      "name": "CLI status",
+      "command": "pnpm foilbury status --json",
+      "result": "configured"
+    },
+    {
+      "name": "CLI identity",
+      "command": "pnpm foilbury whoami --json",
+      "result": "owner"
+    },
+    {
+      "name": "CLI catalogue",
+      "command": "pnpm foilbury catalogue list --json",
+      "result": "16 cards"
+    },
+    {
+      "name": "CLI pool odds",
+      "command": "pnpm foilbury pools show cabinet-draw --json",
+      "result": "60 eligible · revision 1"
+    },
+    {
+      "name": "CLI inventory",
+      "command": "pnpm foilbury inventory --as player --json",
+      "result": "6 cards"
+    },
+    {
+      "name": "Secrets scan",
+      "command": "test-agent report scan",
+      "result": "no bearer tokens or secret values included",
+      "evidence": {
+        "tokenLeak": false
+      }
+    }
+  ]
+}

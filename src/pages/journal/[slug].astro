@@ -1,0 +1,45 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import PortableText from "../../components/PortableText.astro";
+import { formatDual } from "../../lib/utils";
+const slug = Astro.params.slug ?? "";
+let entry: any = null;
+let error = false;
+try {
+  const { getEmDashEntry } = await import("emdash");
+  const result = await getEmDashEntry("posts", slug);
+  entry = result.entry;
+  if (result.error) error = true;
+} catch {
+  error = true;
+}
+if (!error && !entry) Astro.response.status = 404;
+const title = error ? "Journal temporarily unavailable" : entry?.data?.title ?? "Journal entry not found";
+const description = error ? "The EmDash journal could not be read. The cabinet remains available." : entry?.data?.excerpt ?? "A note from the Foilbury editorial desk.";
+---
+<BaseLayout title={`${title} · Foilbury`} description={description} noIndex={!entry || error}>
+  <article class="container-narrow py-12 md:py-16">
+    <nav class="mb-8 font-mono text-[0.62rem] uppercase tracking-[0.12em] text-[var(--muted)]" aria-label="Breadcrumb"><a href="/journal">Journal</a> <span aria-hidden="true">/</span> <span>{title}</span></nav>
+    {error ? (
+      <div class="notice">
+        <p class="eyebrow text-[var(--brass)]">Editorial desk unavailable</p>
+        <p class="mt-2 text-sm">The published entry could not be read. Nothing has been substituted in its place. <a class="underline" href="/journal">Try the journal index</a>.</p>
+      </div>
+    ) : !entry ? (
+      <div class="empty"><div><p class="display-sm text-2xl">No entry at this address.</p><p class="mt-2 text-sm"><a class="underline" href="/journal">Return to the journal</a>.</p></div></div>
+    ) : (
+      <>
+        <p class="eyebrow">{entry.data?.publishedAt ? formatDual(entry.data.publishedAt) : "Editorial note"}</p>
+        <h1 class="display mt-4 text-[clamp(2.8rem,6vw,5.5rem)]">{title}</h1>
+        {entry.data?.excerpt ? <p class="mt-4 text-lg text-[var(--muted)]">{entry.data.excerpt}</p> : null}
+        <div class="prose mt-10">
+          <PortableText value={entry.data?.content ?? entry.data?.body ?? []} />
+        </div>
+        <div class="mt-12 flex flex-wrap gap-3 border-t border-[var(--line)] pt-6">
+          <a class="btn btn-primary" href="/cabinet">Browse the cabinet</a>
+          <a class="btn btn-secondary" href="/journal">More notes</a>
+        </div>
+      </>
+    )}
+  </article>
+</BaseLayout>

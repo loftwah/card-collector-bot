@@ -1,0 +1,165 @@
+---
+import PlayerLayout from "../../layouts/PlayerLayout.astro";
+import ClaimButton from "../../components/player/ClaimButton";
+import { pageContext } from "../../server/page";
+import { getWalletSummary } from "../../server/modules/wallet";
+import { getInventory } from "../../server/modules/collection";
+import { listSets } from "../../server/modules/catalogue";
+import { getEconomy, getPreferences } from "../../server/modules/economy";
+import { getPoolPreview, listPools } from "../../server/modules/pools";
+import { listTrades } from "../../server/modules/trades";
+import { first } from "../../server/db";
+import { formatDateTime, formatDual } from "../../lib/utils";
+
+const ctx = await pageContext(Astro.request);
+const user = ctx.user!;
+const [wallet, inventory, sets, economy, prefs, pools, trades, lastClaim, cabinetPool] = await Promise.all([
+  getWalletSummary(ctx.db, ctx.tenant.id, user.id, 8),
+  getInventory(ctx, { limit: 8 }),
+  listSets(ctx, user.id),
+  getEconomy(ctx),
+  getPreferences(ctx),
+  listPools(ctx),
+  listTrades(ctx),
+  first<{ created_at: string }>(ctx.db, "SELECT created_at FROM fb_reward_claims WHERE tenant_id = ? AND user_id = ? AND rule_key = 'daily-allowance' ORDER BY created_at DESC LIMIT 1", ctx.tenant.id, user.id),
+  getPoolPreview(ctx, "cabinet-draw").catch(() => null),
+]);
+const nextEligible = lastClaim ? new Date(new Date(lastClaim.created_at).getTime() + economy.daily_cooldown_seconds * 1000).toISOString() : null;
+const canClaim = !nextEligible || new Date(nextEligible) <= new Date();
+const completed = sets.filter((set) => set.progress?.complete && !set.progress.claimed);
+const activeTrades = trades.filter((trade) => trade.status === "open");
+const recent = inventory.slice(0, 4);
+const claimable = completed.length;
+---
+<PlayerLayout title="Overview · Foilbury">
+  <div class="grid gap-8 lg:grid-cols-[1.4fr_0.6fr]">
+    <div>
+      <div class="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--line)] pb-5">
+        <div>
+          <p class="eyebrow">Your cabinet</p>
+          <h2 class="display-sm mt-1 text-4xl">Good to see you, {user.displayName.split(" ")[0]}.</h2>
+          <p class="mt-2 text-sm text-[var(--muted)]">Every card here is yours. The cabinet is private unless you explicitly share it.</p>
+        </div>
+        <div class="text-right">
+          <p class="eyebrow">Foil balance</p>
+          <p class="display-sm mt-1 text-4xl text-[var(--brass)]">✦ {wallet.balance}</p>
+        </div>
+      </div>
+
+      <div class="mt-6 grid gap-3 sm:grid-cols-3">
+        <div class="surface-flat p-4">
+          <p class="eyebrow">Cards kept</p>
+          <p class="display-sm mt-1 text-3xl">{inventory.length}</p>
+          <p class="mt-1 text-xs text-[var(--muted)]">{inventory.filter((item) => item.favourite).length} favourited</p>
+          <a class="mt-3 inline-block font-mono text-[0.62rem] uppercase tracking-[0.1em] text-[var(--green)]" href="/play/collection">Open collection →</a>
+        </div>
+        <div class="surface-flat p-4">
+          <p class="eyebrow">Daily allowance</p>
+          <p class="display-sm mt-1 text-3xl">✦ {economy.daily_reward}</p>
+          <p class="mt-1 text-xs text-[var(--muted)]">{canClaim ? "Ready to claim" : `Next ${nextEligible ? formatDateTime(nextEligible) : "soon"}`}</p>
+          <div class="mt-3"><ClaimButton client:load amount={economy.daily_reward} canClaim={canClaim} nextEligible={nextEligible ? formatDual(nextEligible) : null} /></div>
+        </div>
+        <div class="surface-flat p-4">
+          <p class="eyebrow">Open offers</p>
+          <p class="display-sm mt-1 text-3xl">{activeTrades.length}</p>
+          <p class="mt-1 text-xs text-[var(--muted)]">Trade or gift a duplicate</p>
+          <a class="mt-3 inline-block font-mono text-[0.62rem] uppercase tracking-[0.1em] text-[var(--green)]" href="/play/trades">Open desk →</a>
+        </div>
+      </div>
+
+      <section class="mt-10">
+        <div class="flex items-end justify-between gap-4">
+          <div>
+            <p class="eyebrow">Draw room</p>
+            <h3 class="display-sm mt-1 text-3xl">The cabinet is open.</h3>
+          </div>
+          <a class="btn btn-secondary btn-sm" href="/play/draw">All pools</a>
+        </div>
+        {cabinetPool ? (
+          <div class="mt-4 grid gap-4 border border-[var(--line)] p-5 md:grid-cols-[1fr_auto] md:items-center">
+            <div>
+              <p class="font-mono text-[0.62rem] uppercase tracking-[0.12em] text-[var(--brass)]">{cabinetPool.pool.name} · revision {cabinetPool.revision}</p>
+              <p class="mt-2 text-sm text-[var(--muted)]">{cabinetPool.eligible_count} eligible finish{cabinetPool.eligible_count === 1 ? "" : "es"} from {new Set(cabinetPool.entries.map((entry) => entry.card_name)).size} identities. Odds are shown before any Foil leaves your wallet.</p>
+            </div>
+            <div class="flex items-center gap-4">
+              <div class="text-right">
+                <p class="font-mono text-[0.58rem] uppercase tracking-[0.12em] text-[var(--muted)]">Price</p>
+                <p class="font-mono text-lg text-[var(--brass)]">✦ {cabinetPool.price}</p>
+              </div>
+              <a class="btn btn-primary" href="/play/draw">Inspect odds</a>
+            </div>
+          </div>
+        ) : (
+          <div class="empty mt-4"><p>No active pool has a published render yet. The owner can finish the render queue in Administration.</p></div>
+        )}
+      </section>
+
+      <section class="mt-10">
+        <div class="flex items-end justify-between gap-4">
+          <div>
+            <p class="eyebrow">Recent acquisitions</p>
+            <h3 class="display-sm mt-1 text-3xl">Last through the door.</h3>
+          </div>
+          <a class="btn btn-secondary btn-sm" href="/play/collection">Full collection</a>
+        </div>
+        {recent.length ? (
+          <div class="card-grid mt-4">
+            {recent.map((item) => (
+              <a href={`/play/card/${item.id}`} class="no-underline">
+                <div class="card-face">
+                  {item.render_url ? <img src={item.render_url} alt={`${item.card_name} — ${item.variant_name}`} loading="lazy" /> : <div class="card-face-fallback">{item.card_name.charAt(0)}</div>}
+                </div>
+                <div class="mt-2 flex items-start justify-between gap-2">
+                  <div><p class="display-sm text-sm leading-tight">{item.card_name}</p><p class="mt-0.5 text-[0.7rem] text-[var(--muted)]">{item.variant_name}</p></div>
+                  {item.favourite ? <span class="text-[var(--brass)]" title="Favourite">♥</span> : null}
+                </div>
+              </a>
+            ))}
+          </div>
+        ) : (
+          <div class="empty mt-4"><p>No cards yet. Claim the daily allowance, then open the draw room.</p></div>
+        )}
+      </section>
+    </div>
+
+    <aside class="grid gap-6">
+      <div class="surface-flat p-5">
+        <p class="eyebrow">First action</p>
+        <h3 class="display-sm mt-1 text-2xl">{inventory.length ? "Keep exploring." : "Start with the allowance."}</h3>
+        <p class="mt-2 text-sm text-[var(--muted)]">{inventory.length ? "Your next set reward or an open trade is a good place to continue." : "Claim the daily allowance, then inspect the cabinet pool. Core collecting works with no LLM, email, Discord or generation provider."}</p>
+        <div class="mt-4 grid gap-2">
+          {canClaim ? <ClaimButton client:load amount={economy.daily_reward} canClaim={canClaim} nextEligible={null} /> : null}
+          <a class="btn btn-secondary" href="/play/draw">Open the draw room</a>
+        </div>
+      </div>
+
+      <div class="surface-flat p-5">
+        <div class="flex items-center justify-between gap-3">
+          <p class="eyebrow">Set progress</p>
+          <a class="font-mono text-[0.6rem] uppercase tracking-[0.1em] text-[var(--green)]" href="/play/rewards">Rewards</a>
+        </div>
+        <div class="mt-4 grid gap-4">
+          {sets.map((set) => (
+            <div>
+              <div class="flex items-baseline justify-between gap-2">
+                <p class="text-sm font-semibold">{set.name}</p>
+                <span class="font-mono text-[0.62rem] text-[var(--muted)]">{set.progress?.owned ?? 0}/{set.progress?.total ?? set.cards.length}</span>
+              </div>
+              <div class="mt-1.5 h-1.5 bg-[var(--paper-3)]">
+                <div class="h-full bg-[var(--brass)]" style={`width:${set.progress?.total ? Math.round(((set.progress.owned ?? 0) / set.progress.total) * 100) : 0}%`}></div>
+              </div>
+              <p class="mt-1 font-mono text-[0.56rem] uppercase tracking-[0.1em] text-[var(--muted)]">v{set.version} · {set.progress?.claimed ? "Reward claimed" : set.progress?.complete ? "Completion ready" : `✦ ${set.reward_amount} on completion`}</p>
+            </div>
+          ))}
+          {sets.length === 0 ? <p class="text-sm text-[var(--muted)]">No published sets yet.</p> : null}
+        </div>
+      </div>
+
+      <div class="surface-flat p-5">
+        <p class="eyebrow">Preferences</p>
+        <p class="mt-2 text-sm text-[var(--muted)]">Motion is {prefs.reduced_motion ? "reduced" : "on"}, sound is {prefs.sound_enabled ? "on" : "off"}, sharing is {prefs.sharing_enabled ? "enabled" : "off"}.</p>
+        <a class="mt-3 inline-block font-mono text-[0.62rem] uppercase tracking-[0.1em] text-[var(--green)]" href="/play/preferences">Adjust preferences →</a>
+      </div>
+    </aside>
+  </div>
+</PlayerLayout>

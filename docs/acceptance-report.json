@@ -1,0 +1,1459 @@
+{
+  "product": "Foilbury",
+  "localUrl": "http://127.0.0.1:4321",
+  "startedAt": "2026-11-02T08:47:19.788Z",
+  "finishedAt": "2026-11-02T08:50:55.031Z",
+  "revision": {
+    "head": "e5fce768bce11861bc29b32cee89581f83d5936c",
+    "workingTree": "dirty",
+    "changedFiles": 27
+  },
+  "environment": {
+    "node": "v22.23.4",
+    "pnpm": "10.34.4",
+    "platform": "darwin",
+    "timezone": "Australia/Melbourne"
+  },
+  "checks": [
+    {
+      "name": "Types and automated tests",
+      "command": "pnpm check",
+      "result": "passed",
+      "exitCode": 0,
+      "durationMs": 9605,
+      "evidence": "~~~\u001b[0m\n\n\u001b[96mscripts/setup-local.mjs\u001b[0m:\u001b[93m11\u001b[0m:\u001b[93m3\u001b[0m - \u001b[93mwarning\u001b[0m\u001b[90m ts(6133): \u001b[0m'statePath' is declared but its value is never read.\n\n\u001b[7m11\u001b[0m   statePath,\n\u001b[7m  \u001b[0m \u001b[93m  ~~~~~~~~~\u001b[0m\n\n\u001b[96mscripts/test-e2e.mjs\u001b[0m:\u001b[93m15\u001b[0m:\u001b[93m7\u001b[0m - \u001b[93mwarning\u001b[0m\u001b[90m ts(6133): \u001b[0m'fail' is declared but its value is never read.\n\n\u001b[7m15\u001b[0m const fail = (name, error) => {\n\u001b[7m  \u001b[0m \u001b[93m      ~~~~\u001b[0m\n\n\u001b[96mscripts/sources/discover.mjs\u001b[0m:\u001b[93m1\u001b[0m:\u001b[93m1\u001b[0m - \u001b[93mwarning\u001b[0m\u001b[90m ts(6133): \u001b[0m'fs' is declared but its value is never read.\n\n\u001b[7m1\u001b[0m import fs from \"node:fs\";\n\u001b[7m \u001b[0m \u001b[93m~~~~~~~~~~~~~~~~~~~~~~~~~\u001b[0m\n\n\u001b[96mscripts/sources/import.mjs\u001b[0m:\u001b[93m60\u001b[0m:\u001b[93m34\u001b[0m - \u001b[93mwarning\u001b[0m\u001b[90m ts(6133): \u001b[0m'discovered' is declared but its value is never read.\n\n\u001b[7m60\u001b[0m async function publishEverything(discovered) {\n\u001b[7m  \u001b[0m \u001b[93m                                 ~~~~~~~~~~\u001b[0m\n\nResult (113 files): \n- 0 errors\n- 0 warnings\n- 48 hints\n\n\n> foilbury@0.1.0 test /Users/deanlofts/gits/card-collector-bot\n> vitest run --config vitest.config.ts && vitest run --config vitest.workers.config.ts\n\n\n RUN  v4.1.12 /Users/deanlofts/gits/card-collector-bot\n\n\n Test Files  2 passed (2)\n      Tests  8 passed (8)\n   Start at  19:47:26\n   Duration  186ms (transform 32ms, setup 0ms, import 55ms, tests 94ms, environment 0ms)\n\n\n RUN  v4.1.12 /Users/deanlofts/gits/card-collector-bot\n\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\n\n Test Files  6 passed (6)\n      Tests  21 passed (21)\n   Start at  19:47:27\n   Duration  2.38s (transform 1.35s, setup 236ms, import 5.77s, tests 2.72s, environment 0ms)"
+    },
+    {
+      "name": "Unit and Workers integration tests",
+      "command": "pnpm test",
+      "result": "passed",
+      "exitCode": 0,
+      "durationMs": 3676,
+      "evidence": "> foilbury@0.1.0 test /Users/deanlofts/gits/card-collector-bot\n> vitest run --config vitest.config.ts && vitest run --config vitest.workers.config.ts\n\n\n RUN  v4.1.12 /Users/deanlofts/gits/card-collector-bot\n\n\n Test Files  2 passed (2)\n      Tests  8 passed (8)\n   Start at  19:47:29\n   Duration  180ms (transform 33ms, setup 0ms, import 57ms, tests 95ms, environment 0ms)\n\n\n RUN  v4.1.12 /Users/deanlofts/gits/card-collector-bot\n\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\nUsing secrets defined in .dev.vars\n\n Test Files  6 passed (6)\n      Tests  21 passed (21)\n   Start at  19:47:30\n   Duration  2.42s (transform 1.46s, setup 245ms, import 6.19s, tests 2.54s, environment 0ms)"
+    },
+    {
+      "name": "Browser end-to-end",
+      "command": "pnpm test:e2e",
+      "result": "passed",
+      "exitCode": 0,
+      "durationMs": 23147,
+      "evidence": "> foilbury@0.1.0 test:e2e /Users/deanlofts/gits/card-collector-bot\n> node scripts/test-e2e.mjs\n\n{\n  \"ok\": true,\n  \"checks\": 37,\n  \"screenshots\": 9,\n  \"evidence\": \"docs/evidence/e2e.json\"\n}"
+    },
+    {
+      "name": "CLI and real MCP client",
+      "command": "pnpm test:agent",
+      "result": "passed",
+      "exitCode": 0,
+      "durationMs": 2522,
+      "evidence": "> foilbury@0.1.0 test:agent /Users/deanlofts/gits/card-collector-bot\n> node scripts/test-agent.mjs\n\n{\n  \"ok\": true,\n  \"checks\": 17,\n  \"evidence\": \"docs/evidence/agent-interface.json\"\n}"
+    },
+    {
+      "name": "Persistence across server restart",
+      "command": "/Users/deanlofts/.local/share/mise/installs/node/22.23.4/bin/node scripts/test-persistence.mjs --json",
+      "result": "passed",
+      "exitCode": 0,
+      "durationMs": 11568,
+      "evidence": "vz09tx2knsgw3de260aey67\",\n        \"ins_mvz0iuy4hb9d23tawpkyq9bp\",\n        \"ins_mvz0jmg0g2a6hmcskae4pnqt\",\n        \"ins_mvz0n6o6a584mke1k8xd98xf\"\n      ],\n      \"ledgerCount\": 18,\n      \"setProgress\": [\n        {\n          \"slug\": \"fighter-night\",\n          \"version\": 1,\n          \"owned\": 2,\n          \"claimed\": false\n        },\n        {\n          \"slug\": \"first-cabinet\",\n          \"version\": 1,\n          \"owned\": 4,\n          \"claimed\": false\n        },\n        {\n          \"slug\": \"protocol-table\",\n          \"version\": 1,\n          \"owned\": 4,\n          \"claimed\": false\n        },\n        {\n          \"slug\": \"shared-table\",\n          \"version\": 1,\n          \"owned\": 2,\n          \"claimed\": false\n        }\n      ]\n    },\n    \"player\": {\n      \"email\": \"player@foilbury.local\",\n      \"balance\": 490,\n      \"instanceIds\": [\n        \"ins_mvyy5gg53k0q9z010ekrh188\",\n        \"ins_mvyz4c0wyb5k4j4qeccj0y56\",\n        \"ins_mvyzq879s7znabhcpj87fkea\",\n        \"ins_mvyzro6u903rqqfn2mw4qsjc\",\n        \"ins_mvz0a8c0wqqpry7pxc1v21dz\",\n        \"ins_mvz0nkget6ncj881wkk1yyme\"\n      ],\n      \"ledgerCount\": 9,\n      \"setProgress\": [\n        {\n          \"slug\": \"fighter-night\",\n          \"version\": 1,\n          \"owned\": 3,\n          \"claimed\": false\n        },\n        {\n          \"slug\": \"first-cabinet\",\n          \"version\": 1,\n          \"owned\": 3,\n          \"claimed\": false\n        },\n        {\n          \"slug\": \"protocol-table\",\n          \"version\": 1,\n          \"owned\": 0,\n          \"claimed\": false\n        },\n        {\n          \"slug\": \"shared-table\",\n          \"version\": 1,\n          \"owned\": 3,\n          \"claimed\": false\n        }\n      ]\n    }\n  },\n  \"note\": \"Compared inventory instance IDs, Foil balances, recent ledger counts and set progress across a full local server stop/start.\"\n}"
+    },
+    {
+      "name": "Doctor (local, read-only)",
+      "command": "/Users/deanlofts/.local/share/mise/installs/node/22.23.4/bin/node scripts/doctor.mjs --json",
+      "result": "passed",
+      "exitCode": 0,
+      "durationMs": 3331,
+      "evidence": "Session secret\",\n        \"detail\": \"present, value not printed\"\n      },\n      {\n        \"name\": \"Agent token pepper\",\n        \"detail\": \"present, value not printed\"\n      },\n      {\n        \"name\": \"EmDash encryption key\",\n        \"detail\": \"valid-format key present, value not printed\"\n      },\n      {\n        \"name\": \"Ignore .env\",\n        \"detail\": \"present in .gitignore\"\n      },\n      {\n        \"name\": \"Ignore .dev.vars\",\n        \"detail\": \"present in .gitignore\"\n      },\n      {\n        \"name\": \"Ignore .foilbury\",\n        \"detail\": \"present in .gitignore\"\n      },\n      {\n        \"name\": \"Ignore public/cards\",\n        \"detail\": \"present in .gitignore\"\n      },\n      {\n        \"name\": \"Ignore node_modules\",\n        \"detail\": \"present in .gitignore\"\n      },\n      {\n        \"name\": \"D1 domain schema\",\n        \"detail\": \"version 1\"\n      },\n      {\n        \"name\": \"Local tenant bootstrap\",\n        \"detail\": \"3 tenants\"\n      },\n      {\n        \"name\": \"Catalogue release\",\n        \"detail\": \"v1 ab67356ca44e…\"\n      },\n      {\n        \"name\": \"EmDash owner\",\n        \"detail\": \"1 local CMS user(s)\"\n      },\n      {\n        \"name\": \"Local server\",\n        \"detail\": \"http://127.0.0.1:4321 · HTTP 200 · configured=true\"\n      }\n    ],\n    \"liveVerified\": [],\n    \"unverified\": [\n      {\n        \"name\": \"Discord delivery\",\n        \"detail\": \"not connected; no live check\"\n      },\n      {\n        \"name\": \"Email delivery\",\n        \"detail\": \"local outbox only; no send performed\"\n      },\n      {\n        \"name\": \"Image generation\",\n        \"detail\": \"no recorded ceiling; no billed job submitted\"\n      }\n    ]\n  },\n  \"note\": \"Default checks are local and read-only. No Cloudflare, Discord, email or generation request was made. Provider presence does not imply live verification.\"\n}"
+    },
+    {
+      "name": "Source discovery",
+      "command": "/Users/deanlofts/.local/share/mise/installs/node/22.23.4/bin/node scripts/sources/discover.mjs --json",
+      "result": "passed",
+      "exitCode": 0,
+      "durationMs": 168,
+      "evidence": "{\n  \"ok\": true,\n  \"file\": \"/Users/deanlofts/gits/card-collector-bot/.foilbury/sources/discovered.json\",\n  \"counts\": {\n    \"sources\": 3,\n    \"backgrounds\": 4,\n    \"cards\": 19,\n    \"editions\": 19,\n    \"variants\": 80,\n    \"sharedIdentities\": 3\n  },\n  \"sources\": {\n    \"bubbles\": {\n      \"root\": \"/Users/deanlofts/gits/bubbles\",\n      \"remote\": \"git@github.com:loftwah/bubbles.git\",\n      \"commit\": \"98608579813a47879815bc8eaee0e0058095e009\",\n      \"branch\": \"main\"\n    },\n    \"fighter\": {\n      \"root\": \"/Users/deanlofts/gits/fighter\",\n      \"remote\": \"git@github.com:loftwah/fighter.git\",\n      \"commit\": \"66e4333f7a0acf8b72ec55eab21a027863368f60\",\n      \"branch\": \"main\"\n    },\n    \"protocol-11\": {\n      \"root\": \"/Users/deanlofts/gits/phase-11\",\n      \"remote\": \"https://github.com/loftwah/protocol-11.git\",\n      \"commit\": \"5b940059a52741dd84d5c2f04de9152d1ca03c8a\",\n      \"branch\": \"main\"\n    }\n  },\n  \"backgrounds\": [\n    {\n      \"key\": \"orbit-moonpool\",\n      \"sourceHash\": \"76d97668595869abfe3519e2bfe6551ce3cb4fcd11770ee8d46ef04cc8471a90\",\n      \"sourcePath\": \"public/assets/backgrounds/worlds-v1/orbit-moonpool-v1.webp\"\n    },\n    {\n      \"key\": \"lantern-grove\",\n      \"sourceHash\": \"fb674cea766b7909c6295f93c2a41cf0dfe18f0cfb65ae100da1ccffdb78e74b\",\n      \"sourcePath\": \"public/assets/backgrounds/worlds-v1/bubblecap-lantern-grove-v1.webp\"\n    },\n    {\n      \"key\": \"arena\",\n      \"sourceHash\": \"136d7fd883d12782889682a299db3e524a61d676e0f0e84f77ee9b5f315edef1\",\n      \"sourcePath\": \"public/assets/generated/launch-roster/environments/arena.png\"\n    },\n    {\n      \"key\": \"table-night\",\n      \"sourceHash\": \"23bb902d315e1a7186fdf943488239edad801a4f0e95042328cab7b9fffd7d57\",\n      \"sourcePath\": \"public/runtime/table-night/crews/classic-v1.webp\"\n    }\n  ]\n}"
+    },
+    {
+      "name": "Source preview (idempotent)",
+      "command": "/Users/deanlofts/.local/share/mise/installs/node/22.23.4/bin/node scripts/sources/preview.mjs --json",
+      "result": "passed",
+      "exitCode": 0,
+      "durationMs": 242,
+      "evidence": "   \"slug\": \"humpty\",\n      \"action\": \"unchanged\",\n      \"sets\": [\n        \"fighter-night\"\n      ],\n      \"variants\": 4\n    },\n    {\n      \"slug\": \"ned-kelly\",\n      \"action\": \"unchanged\",\n      \"sets\": [\n        \"fighter-night\"\n      ],\n      \"variants\": 4\n    },\n    {\n      \"slug\": \"grim-reaper\",\n      \"action\": \"unchanged\",\n      \"sets\": [\n        \"fighter-night\"\n      ],\n      \"variants\": 4\n    },\n    {\n      \"slug\": \"drop-bear\",\n      \"action\": \"unchanged\",\n      \"sets\": [\n        \"fighter-night\"\n      ],\n      \"variants\": 4\n    },\n    {\n      \"slug\": \"loftwah-fighter\",\n      \"action\": \"unchanged\",\n      \"sets\": [\n        \"fighter-night\",\n        \"shared-table\"\n      ],\n      \"variants\": 4\n    },\n    {\n      \"slug\": \"pippa-fighter\",\n      \"action\": \"unchanged\",\n      \"sets\": [\n        \"fighter-night\",\n        \"shared-table\"\n      ],\n      \"variants\": 4\n    },\n    {\n      \"slug\": \"pepe-fighter\",\n      \"action\": \"unchanged\",\n      \"sets\": [\n        \"fighter-night\",\n        \"shared-table\"\n      ],\n      \"variants\": 4\n    },\n    {\n      \"slug\": \"gabe\",\n      \"action\": \"unchanged\",\n      \"sets\": [\n        \"protocol-table\"\n      ],\n      \"variants\": 4\n    },\n    {\n      \"slug\": \"rhea\",\n      \"action\": \"unchanged\",\n      \"sets\": [\n        \"protocol-table\"\n      ],\n      \"variants\": 4\n    },\n    {\n      \"slug\": \"june\",\n      \"action\": \"unchanged\",\n      \"sets\": [\n        \"protocol-table\"\n      ],\n      \"variants\": 4\n    },\n    {\n      \"slug\": \"nora\",\n      \"action\": \"unchanged\",\n      \"sets\": [\n        \"protocol-table\"\n      ],\n      \"variants\": 4\n    },\n    {\n      \"slug\": \"knox\",\n      \"action\": \"unchanged\",\n      \"sets\": [\n        \"protocol-table\"\n      ],\n      \"variants\": 4\n    }\n  ],\n  \"file\": \"/Users/deanlofts/gits/card-collector-bot/.foilbury/sources/preview.json\"\n}"
+    },
+    {
+      "name": "Local backup",
+      "command": "/Users/deanlofts/.local/share/mise/installs/node/22.23.4/bin/node scripts/backup.mjs --json",
+      "result": "passed",
+      "exitCode": 0,
+      "durationMs": 4862,
+      "evidence": "{\n  \"ok\": true,\n  \"directory\": \".foilbury/backups/2026-11-02T084814104Z\",\n  \"databaseBytes\": 1076967,\n  \"assets\": 103,\n  \"assetBytes\": 36476575,\n  \"counts\": {\n    \"cards\": 16,\n    \"variants\": 80,\n    \"instances\": 20,\n    \"ledger\": 27,\n    \"wallets\": 2,\n    \"assets\": 103,\n    \"assetBytes\": 36476575\n  },\n  \"release\": 1\n}"
+    },
+    {
+      "name": "Isolated restore",
+      "command": "/Users/deanlofts/.local/share/mise/installs/node/22.23.4/bin/node scripts/restore.mjs --json --backup /Users/deanlofts/gits/card-collector-bot/.foilbury/backups/2026-11-02T084814104Z",
+      "result": "passed",
+      "exitCode": 0,
+      "durationMs": 152411,
+      "evidence": "{\n  \"ok\": true,\n  \"restoredAt\": \"2026-11-02T08:50:51.346Z\",\n  \"target\": \".foilbury/restore/2026-11-02T084818966Z\",\n  \"backup\": \".foilbury/backups/2026-11-02T084814104Z\",\n  \"checks\": {\n    \"databaseChecksum\": \"matched\",\n    \"assetsChecksummed\": 103,\n    \"counts\": {\n      \"tenants\": 3,\n      \"cards\": 16,\n      \"instances\": 20,\n      \"ledger\": 27,\n      \"wallet_total\": 840,\n      \"assets\": 103\n    },\n    \"expectedCounts\": {\n      \"cards\": 16,\n      \"variants\": 80,\n      \"instances\": 20,\n      \"ledger\": 27,\n      \"wallets\": 2,\n      \"assets\": 103,\n      \"assetBytes\": 36476575\n    },\n    \"walletTotal\": 840,\n    \"release\": 1,\n    \"sourceCommits\": {\n      \"bubbles\": \"98608579813a47879815bc8eaee0e0058095e009\",\n      \"fighter\": \"66e4333f7a0acf8b72ec55eab21a027863368f60\",\n      \"protocol-11\": \"5b940059a52741dd84d5c2f04de9152d1ca03c8a\"\n    }\n  },\n  \"note\": \"Isolated local target. No remote D1/R2 binding, no deployment and no secrets were restored.\"\n}"
+    },
+    {
+      "name": "Secret scan",
+      "command": "tracked file scan",
+      "result": "passed",
+      "evidence": {
+        "scanned": 6,
+        "filesWithSecretPatterns": [],
+        "trackedSecretFiles": []
+      }
+    },
+    {
+      "name": "Runtime provider absence",
+      "command": "read local status and .dev.vars key names",
+      "result": "passed",
+      "evidence": {
+        "providerKeysInDevVars": [],
+        "providerBindings": {
+          "fal": false,
+          "elevenlabs": false,
+          "resend": false,
+          "adminWebhook": false,
+          "discordApplication": false,
+          "discordBot": false
+        },
+        "discord": "disabled",
+        "email": "outbox_only",
+        "generation": "not_run"
+      }
+    },
+    {
+      "name": "Sibling-checkout independence",
+      "command": "discovery with a missing source root, then public catalogue and media",
+      "result": "passed",
+      "evidence": {
+        "discoveryExit": 1,
+        "catalogueStatus": 200,
+        "mediaStatus": 200,
+        "publicCards": 16
+      }
+    },
+    {
+      "name": "Fresh setup proof",
+      "command": "throwaway fresh checkout ·pnpm setup:local",
+      "result": "passed",
+      "evidence": {
+        "catalogue": {
+          "identities": 16,
+          "release": 1,
+          "renders": 80
+        },
+        "status": {
+          "configured": true,
+          "environment": "local",
+          "providers": {
+            "fal": false,
+            "elevenlabs": false,
+            "resend": false,
+            "adminWebhook": false,
+            "discordApplication": false,
+            "discordBot": false
+          },
+          "discord": "disabled",
+          "email": "outbox_only",
+          "generation": "not_run"
+        },
+        "providerKeysInDevVars": [],
+        "credentialsFileMode": "600",
+        "agentFileMode": "600"
+      }
+    },
+    {
+      "name": "External effects audit",
+      "command": "local D1 read-only query",
+      "result": "passed",
+      "evidence": {
+        "providerJobs": 0,
+        "emailSent": 0,
+        "discordSent": 0,
+        "externalSuppressed": 0,
+        "generationJobs": 0,
+        "note": "No provider job, email or Discord delivery was executed by this acceptance run."
+      }
+    }
+  ],
+  "required": {
+    "freshLocalSetupWithoutProviders": "throwaway fresh checkout completed setup/import/render/release with no provider keys or bindings",
+    "realSourceImports": {
+      "cards": 16,
+      "editions": 19,
+      "variants": 80,
+      "backgrounds": 4,
+      "commits": {
+        "bubbles": "98608579813a47879815bc8eaee0e0058095e009",
+        "fighter": "66e4333f7a0acf8b72ec55eab21a027863368f60",
+        "protocol-11": "a3264fa5dc091d6ff4a8ef1e02d4a36dd9ee61b6"
+      }
+    },
+    "layeredFinishes": "80 published variants across Plain, Silver, Gold, Diamond and Holo/Prismatic effects; finish studio and exported renders",
+    "ownerBrowserAdmin": true,
+    "explicitSharing": true,
+    "privateMediaAuthorisation": true,
+    "ownerAgentAdmin": true,
+    "playerSameInventory": true,
+    "rewardsAndDrawsPersist": "inventory ids, balances, ledger counts and set progress matched across a full server stop/start",
+    "concurrencyAndIdempotency": "workers/draws.test.ts: concurrent draws, replay, stale revision, empty pool",
+    "tradeGiftRecycle": "workers/social.test.ts: reservations, both acceptances, atomic swap, favourite/locked protection, gift history, recycle ledger",
+    "tenantIsolation": "workers/tenancy.test.ts: cross-tenant object references and wallets",
+    "failuresRecoverable": "workers/failures.test.ts: malformed upload, missing asset, job retry/terminal failure, archive with owned instances",
+    "backupRestore": "isolated target .foilbury/restore/2026-11-02T084818966Z; 103 assets checksummed; counts match",
+    "phoneDesktopKeyboardReducedMotion": [
+      "Keyboard focus: passed",
+      "Light presentation: passed",
+      "Dark presentation: passed",
+      "Mobile landing: passed",
+      "Reduced motion: passed"
+    ],
+    "siblingCheckoutIndependence": "missing source root stops discovery while the public catalogue and stored media remain available",
+    "secretsAbsent": "tracked files and browser output scanned",
+    "noDiscordOrDeployment": "no Discord delivery, generation job, deployment or DNS mutation in this run"
+  },
+  "evidence": {
+    "e2e": "docs/evidence/e2e.json",
+    "agent": "docs/evidence/agent-interface.json",
+    "backups": ".foilbury/backups/2026-11-02T084814104Z",
+    "restoreTarget": ".foilbury/restore/2026-11-02T084818966Z",
+    "screenshots": [
+      "docs/evidence/home-desktop.png",
+      "docs/evidence/play-overview.png",
+      "docs/evidence/collection.png",
+      "docs/evidence/draw-room.png",
+      "docs/evidence/draw-result.png",
+      "docs/evidence/admin-catalogue.png",
+      "docs/evidence/home-light.png",
+      "docs/evidence/home-mobile.png",
+      "docs/evidence/card-reduced-motion.png"
+    ],
+    "doctor": {
+      "generatedAt": "2026-11-02T08:48:13.664Z",
+      "url": "http://127.0.0.1:4321",
+      "toolchain": {
+        "node": "22.23.4",
+        "pnpm": "10.34.4"
+      },
+      "checks": {
+        "missing": [],
+        "configured": [
+          {
+            "name": "CF_ACCOUNT_ID",
+            "detail": "present in private .env; value not read into this report"
+          },
+          {
+            "name": "CF_API_TOKEN",
+            "detail": "present in private .env; value not read into this report"
+          },
+          {
+            "name": "CF_ACCESS_KEY_ID",
+            "detail": "present in private .env; value not read into this report"
+          },
+          {
+            "name": "CF_SECRET_ACCESS_KEY",
+            "detail": "present in private .env; value not read into this report"
+          },
+          {
+            "name": "CF_S3_API_ENDPOINT",
+            "detail": "present in private .env; value not read into this report"
+          },
+          {
+            "name": "FAL_AI_API_KEY",
+            "detail": "present in private .env; value not read into this report"
+          },
+          {
+            "name": "ELEVENLABS_API_KEY",
+            "detail": "present in private .env; value not read into this report"
+          },
+          {
+            "name": "RESEND_API_KEY",
+            "detail": "present in private .env; value not read into this report"
+          },
+          {
+            "name": "RESEND_FROM_ADDRESS",
+            "detail": "present in private .env; value not read into this report"
+          },
+          {
+            "name": "ADMIN_DISCORD_WEBHOOK_URL",
+            "detail": "present in private .env; value not read into this report"
+          },
+          {
+            "name": "DISCORD_APPLICATION_ID",
+            "detail": "present in private .env; value not read into this report"
+          },
+          {
+            "name": "DISCORD_PUBLIC_KEY",
+            "detail": "present in private .env; value not read into this report"
+          }
+        ],
+        "locallyVerified": [
+          {
+            "name": "Node toolchain",
+            "detail": "v22.23.4"
+          },
+          {
+            "name": "pnpm toolchain",
+            "detail": "10.34.4"
+          },
+          {
+            "name": "Lockfile",
+            "detail": "pnpm-lock.yaml present"
+          },
+          {
+            "name": "Admin webhook name",
+            "detail": "ADMIN_DISCORD_WEBHOOK_URL is canonical; value not printed"
+          },
+          {
+            "name": ".dev.vars permissions",
+            "detail": "600"
+          },
+          {
+            "name": "Local mode",
+            "detail": "explicit FOILBURY_LOCAL_MODE=true"
+          },
+          {
+            "name": "Session secret",
+            "detail": "present, value not printed"
+          },
+          {
+            "name": "Agent token pepper",
+            "detail": "present, value not printed"
+          },
+          {
+            "name": "EmDash encryption key",
+            "detail": "valid-format key present, value not printed"
+          },
+          {
+            "name": "Ignore .env",
+            "detail": "present in .gitignore"
+          },
+          {
+            "name": "Ignore .dev.vars",
+            "detail": "present in .gitignore"
+          },
+          {
+            "name": "Ignore .foilbury",
+            "detail": "present in .gitignore"
+          },
+          {
+            "name": "Ignore public/cards",
+            "detail": "present in .gitignore"
+          },
+          {
+            "name": "Ignore node_modules",
+            "detail": "present in .gitignore"
+          },
+          {
+            "name": "D1 domain schema",
+            "detail": "version 1"
+          },
+          {
+            "name": "Local tenant bootstrap",
+            "detail": "3 tenants"
+          },
+          {
+            "name": "Catalogue release",
+            "detail": "v1 ab67356ca44e…"
+          },
+          {
+            "name": "EmDash owner",
+            "detail": "1 local CMS user(s)"
+          },
+          {
+            "name": "Local server",
+            "detail": "http://127.0.0.1:4321 · HTTP 200 · configured=true"
+          }
+        ],
+        "liveVerified": [],
+        "unverified": [
+          {
+            "name": "Discord delivery",
+            "detail": "not connected; no live check"
+          },
+          {
+            "name": "Email delivery",
+            "detail": "local outbox only; no send performed"
+          },
+          {
+            "name": "Image generation",
+            "detail": "no recorded ceiling; no billed job submitted"
+          }
+        ]
+      },
+      "note": "Default checks are local and read-only. No Cloudflare, Discord, email or generation request was made. Provider presence does not imply live verification."
+    },
+    "discovery": {
+      "ok": true,
+      "file": "/Users/deanlofts/gits/card-collector-bot/.foilbury/sources/discovered.json",
+      "counts": {
+        "sources": 3,
+        "backgrounds": 4,
+        "cards": 19,
+        "editions": 19,
+        "variants": 80,
+        "sharedIdentities": 3
+      },
+      "sources": {
+        "bubbles": {
+          "root": "/Users/deanlofts/gits/bubbles",
+          "remote": "git@github.com:loftwah/bubbles.git",
+          "commit": "98608579813a47879815bc8eaee0e0058095e009",
+          "branch": "main"
+        },
+        "fighter": {
+          "root": "/Users/deanlofts/gits/fighter",
+          "remote": "git@github.com:loftwah/fighter.git",
+          "commit": "66e4333f7a0acf8b72ec55eab21a027863368f60",
+          "branch": "main"
+        },
+        "protocol-11": {
+          "root": "/Users/deanlofts/gits/phase-11",
+          "remote": "https://github.com/loftwah/protocol-11.git",
+          "commit": "5b940059a52741dd84d5c2f04de9152d1ca03c8a",
+          "branch": "main"
+        }
+      },
+      "backgrounds": [
+        {
+          "key": "orbit-moonpool",
+          "sourceHash": "76d97668595869abfe3519e2bfe6551ce3cb4fcd11770ee8d46ef04cc8471a90",
+          "sourcePath": "public/assets/backgrounds/worlds-v1/orbit-moonpool-v1.webp"
+        },
+        {
+          "key": "lantern-grove",
+          "sourceHash": "fb674cea766b7909c6295f93c2a41cf0dfe18f0cfb65ae100da1ccffdb78e74b",
+          "sourcePath": "public/assets/backgrounds/worlds-v1/bubblecap-lantern-grove-v1.webp"
+        },
+        {
+          "key": "arena",
+          "sourceHash": "136d7fd883d12782889682a299db3e524a61d676e0f0e84f77ee9b5f315edef1",
+          "sourcePath": "public/assets/generated/launch-roster/environments/arena.png"
+        },
+        {
+          "key": "table-night",
+          "sourceHash": "23bb902d315e1a7186fdf943488239edad801a4f0e95042328cab7b9fffd7d57",
+          "sourcePath": "public/runtime/table-night/crews/classic-v1.webp"
+        }
+      ]
+    },
+    "sourcePreview": {
+      "ok": true,
+      "counts": {
+        "new": 0,
+        "unchanged": 19,
+        "revision": 0
+      },
+      "sourceCommits": {
+        "bubbles": "98608579813a47879815bc8eaee0e0058095e009",
+        "fighter": "66e4333f7a0acf8b72ec55eab21a027863368f60",
+        "protocol-11": "5b940059a52741dd84d5c2f04de9152d1ca03c8a"
+      },
+      "items": [
+        {
+          "slug": "loftwah",
+          "action": "unchanged",
+          "sets": [
+            "first-cabinet",
+            "shared-table",
+            "fighter-night"
+          ],
+          "variants": 5
+        },
+        {
+          "slug": "pippa",
+          "action": "unchanged",
+          "sets": [
+            "first-cabinet",
+            "shared-table",
+            "fighter-night"
+          ],
+          "variants": 5
+        },
+        {
+          "slug": "moss",
+          "action": "unchanged",
+          "sets": [
+            "first-cabinet"
+          ],
+          "variants": 4
+        },
+        {
+          "slug": "miku",
+          "action": "unchanged",
+          "sets": [
+            "first-cabinet"
+          ],
+          "variants": 5
+        },
+        {
+          "slug": "pepe",
+          "action": "unchanged",
+          "sets": [
+            "first-cabinet",
+            "shared-table",
+            "fighter-night"
+          ],
+          "variants": 5
+        },
+        {
+          "slug": "pressure-orbit",
+          "action": "unchanged",
+          "sets": [
+            "first-cabinet"
+          ],
+          "variants": 4
+        },
+        {
+          "slug": "tux",
+          "action": "unchanged",
+          "sets": [
+            "fighter-night"
+          ],
+          "variants": 4
+        },
+        {
+          "slug": "humpty",
+          "action": "unchanged",
+          "sets": [
+            "fighter-night"
+          ],
+          "variants": 4
+        },
+        {
+          "slug": "ned-kelly",
+          "action": "unchanged",
+          "sets": [
+            "fighter-night"
+          ],
+          "variants": 4
+        },
+        {
+          "slug": "grim-reaper",
+          "action": "unchanged",
+          "sets": [
+            "fighter-night"
+          ],
+          "variants": 4
+        },
+        {
+          "slug": "drop-bear",
+          "action": "unchanged",
+          "sets": [
+            "fighter-night"
+          ],
+          "variants": 4
+        },
+        {
+          "slug": "loftwah-fighter",
+          "action": "unchanged",
+          "sets": [
+            "fighter-night",
+            "shared-table"
+          ],
+          "variants": 4
+        },
+        {
+          "slug": "pippa-fighter",
+          "action": "unchanged",
+          "sets": [
+            "fighter-night",
+            "shared-table"
+          ],
+          "variants": 4
+        },
+        {
+          "slug": "pepe-fighter",
+          "action": "unchanged",
+          "sets": [
+            "fighter-night",
+            "shared-table"
+          ],
+          "variants": 4
+        },
+        {
+          "slug": "gabe",
+          "action": "unchanged",
+          "sets": [
+            "protocol-table"
+          ],
+          "variants": 4
+        },
+        {
+          "slug": "rhea",
+          "action": "unchanged",
+          "sets": [
+            "protocol-table"
+          ],
+          "variants": 4
+        },
+        {
+          "slug": "june",
+          "action": "unchanged",
+          "sets": [
+            "protocol-table"
+          ],
+          "variants": 4
+        },
+        {
+          "slug": "nora",
+          "action": "unchanged",
+          "sets": [
+            "protocol-table"
+          ],
+          "variants": 4
+        },
+        {
+          "slug": "knox",
+          "action": "unchanged",
+          "sets": [
+            "protocol-table"
+          ],
+          "variants": 4
+        }
+      ],
+      "file": "/Users/deanlofts/gits/card-collector-bot/.foilbury/sources/preview.json"
+    },
+    "importSummary": {
+      "appliedAt": "2026-11-02T07:37:44.915Z",
+      "sourceCommits": {
+        "bubbles": "98608579813a47879815bc8eaee0e0058095e009",
+        "fighter": "66e4333f7a0acf8b72ec55eab21a027863368f60",
+        "protocol-11": "a3264fa5dc091d6ff4a8ef1e02d4a36dd9ee61b6"
+      },
+      "counts": {
+        "total": 19,
+        "imported": 0,
+        "revised": 0,
+        "unchanged": 19,
+        "failed": 0
+      },
+      "backgrounds": 4,
+      "cards": 16,
+      "editions": 19,
+      "variants": 80,
+      "release": {
+        "id": "rel_mvyy59e82q5xdgjmnwnhvr20",
+        "version": 1,
+        "checksum": "ab67356ca44ed8272c1f44905e503e67eece4b6a3f62dcc71991192ad4b891ed",
+        "manifest": {
+          "version": 1,
+          "schema": 1,
+          "cards": [
+            {
+              "id": "crd_mvyy31ry64m8cmazfwe4ryfm",
+              "slug": "drop-bear",
+              "name": "Drop Bear",
+              "editions": [
+                {
+                  "id": "edt_mvyy31s0s3rtyp1r96f7jh2c",
+                  "recipe_id": "rec_mvyy306qny02s2cb086j2rjg",
+                  "variants": [
+                    {
+                      "id": "var_mvyy31s133pryr1b55d3eby3",
+                      "name": "Plain",
+                      "render_url": "/media/public/rnd_mvyy3swsa0cae7j7tpvrcf7s"
+                    },
+                    {
+                      "id": "var_mvyy31s150wg6q5gbqa2s099",
+                      "name": "Silver",
+                      "render_url": "/media/public/rnd_mvyy3tdb40318hqk9w5d9ynr"
+                    },
+                    {
+                      "id": "var_mvyy31s1psaw378hqt837v1p",
+                      "name": "Gold",
+                      "render_url": "/media/public/rnd_mvyy3tss0rcrqdppf769sxjf"
+                    },
+                    {
+                      "id": "var_mvyy31s150hv2sgcgn5g8gg7",
+                      "name": "Diamond",
+                      "render_url": "/media/public/rnd_mvyy3u8oaerp1q8d73hwdcm2"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "crd_mvyy31sx90q77c4kzv2kt22h",
+              "slug": "gabe",
+              "name": "Gabe",
+              "editions": [
+                {
+                  "id": "edt_mvyy31sya44swf7ke2byakgv",
+                  "recipe_id": "rec_mvyy306qny02s2cb086j2rjg",
+                  "variants": [
+                    {
+                      "id": "var_mvyy31t0arbk9g19n6khcbhs",
+                      "name": "Plain",
+                      "render_url": "/media/public/rnd_mvyy3un5q8x5za81p5xwbk7t"
+                    },
+                    {
+                      "id": "var_mvyy31t0p5nctt6hg119v1kv",
+                      "name": "Silver",
+                      "render_url": "/media/public/rnd_mvyy3v2438hbf9w32t3rzsxn"
+                    },
+                    {
+                      "id": "var_mvyy31t09g0ttx50x1c39qz0",
+                      "name": "Gold",
+                      "render_url": "/media/public/rnd_mvyy3vfkr7nhqta73fkm120v"
+                    },
+                    {
+                      "id": "var_mvyy31t037jvvmdyv9rg2gne",
+                      "name": "Diamond",
+                      "render_url": "/media/public/rnd_mvyy3vtergv58ksmrv56bz6m"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "crd_mvyy31rop7tjdmg9yttba9he",
+              "slug": "grim-reaper",
+              "name": "Grim Reaper",
+              "editions": [
+                {
+                  "id": "edt_mvyy31rq6m2sanh4z6ekc4z7",
+                  "recipe_id": "rec_mvyy306qny02s2cb086j2rjg",
+                  "variants": [
+                    {
+                      "id": "var_mvyy31rrf9pgtwzq4rq2qjrt",
+                      "name": "Plain",
+                      "render_url": "/media/public/rnd_mvyy3rae6zpwqsrq8gjwsx6q"
+                    },
+                    {
+                      "id": "var_mvyy31rrmksbf53khspedaw3",
+                      "name": "Silver",
+                      "render_url": "/media/public/rnd_mvyy3rp0qg9d1yaqed40hq87"
+                    },
+                    {
+                      "id": "var_mvyy31rrq4g1sv86x2f8j2v8",
+                      "name": "Gold",
+                      "render_url": "/media/public/rnd_mvyy3s3g4ar88d4cdkcxy604"
+                    },
+                    {
+                      "id": "var_mvyy31rrpekv8vbp9z7bebvf",
+                      "name": "Diamond",
+                      "render_url": "/media/public/rnd_mvyy3sh9gyvwx9dmnv4n7pbd"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "crd_mvyy31r4tc8j3wg9fsrmvw1z",
+              "slug": "humpty",
+              "name": "Humpty",
+              "editions": [
+                {
+                  "id": "edt_mvyy31r6v2vv2j1wtd7t15gn",
+                  "recipe_id": "rec_mvyy306qny02s2cb086j2rjg",
+                  "variants": [
+                    {
+                      "id": "var_mvyy31r70efa5p4wb270wq37",
+                      "name": "Plain",
+                      "render_url": "/media/public/rnd_mvyy3nzy74nrwjjm463wrszm"
+                    },
+                    {
+                      "id": "var_mvyy31r71f3m71fhcmtdzqxg",
+                      "name": "Silver",
+                      "render_url": "/media/public/rnd_mvyy3ofq97xx6hbzt27c30tm"
+                    },
+                    {
+                      "id": "var_mvyy31r7ksyj30v79d993djt",
+                      "name": "Gold",
+                      "render_url": "/media/public/rnd_mvyy3oue1bfrzw90wk3fgg40"
+                    },
+                    {
+                      "id": "var_mvyy31r73pr7jrfeyykmy2x5",
+                      "name": "Diamond",
+                      "render_url": "/media/public/rnd_mvyy3p8g4adevn0rqn1tf8wn"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "crd_mvyy31tgwev7a8naygectfsq",
+              "slug": "june",
+              "name": "June",
+              "editions": [
+                {
+                  "id": "edt_mvyy31th5nyaa34wf02a2dqn",
+                  "recipe_id": "rec_mvyy306qny02s2cb086j2rjg",
+                  "variants": [
+                    {
+                      "id": "var_mvyy31ti8qfdyqbwzk6c9fz7",
+                      "name": "Plain",
+                      "render_url": "/media/public/rnd_mvyy3xsgyv1eyzt1q01engwr"
+                    },
+                    {
+                      "id": "var_mvyy31tiykq874fgxtn6bkd3",
+                      "name": "Silver",
+                      "render_url": "/media/public/rnd_mvyy3y7y3313sz590c32b8p5"
+                    },
+                    {
+                      "id": "var_mvyy31ti5q7h1drp7wc0nwbj",
+                      "name": "Gold",
+                      "render_url": "/media/public/rnd_mvyy3ymajndrxbfbevjpc0wp"
+                    },
+                    {
+                      "id": "var_mvyy31tid0cpadnye29tmftb",
+                      "name": "Diamond",
+                      "render_url": "/media/public/rnd_mvyy3yzmm5m11mapy65vxf3q"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "crd_mvyy31tys5yp2mahypb2856w",
+              "slug": "knox",
+              "name": "Knox",
+              "editions": [
+                {
+                  "id": "edt_mvyy31tze2vfrqpxhfe14h2f",
+                  "recipe_id": "rec_mvyy306qny02s2cb086j2rjg",
+                  "variants": [
+                    {
+                      "id": "var_mvyy31u1z4bvs0xw71srzd8k",
+                      "name": "Plain",
+                      "render_url": "/media/public/rnd_mvyy411nqry05x8wprbpqj2k"
+                    },
+                    {
+                      "id": "var_mvyy31u164w4ge55z3nxpgqj",
+                      "name": "Silver",
+                      "render_url": "/media/public/rnd_mvyy41gp5tg4hqyrq8d93jpv"
+                    },
+                    {
+                      "id": "var_mvyy31u1dhp2trmnw0xw2cvp",
+                      "name": "Gold",
+                      "render_url": "/media/public/rnd_mvyy41v1zy3af1ftt2v6x6pd"
+                    },
+                    {
+                      "id": "var_mvyy31u1pbeerhpvtayksfg3",
+                      "name": "Diamond",
+                      "render_url": "/media/public/rnd_mvyy4289m47v9bt3jtbk9rnk"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "crd_mvyy31orsa0023wqshq6yb4y",
+              "slug": "loftwah",
+              "name": "Loftwah",
+              "editions": [
+                {
+                  "id": "edt_mvyy31otjbk5pvs01b9nvpsc",
+                  "recipe_id": "rec_mvyy306qny02s2cb086j2rjg",
+                  "variants": [
+                    {
+                      "id": "var_mvyy31ovjvanp8cznrf7x3fp",
+                      "name": "Plain",
+                      "render_url": "/media/public/rnd_mvyy36qeyfjzg7vf97nj4rd1"
+                    },
+                    {
+                      "id": "var_mvyy31ovvgj6fjvxxyd8q5hc",
+                      "name": "Silver",
+                      "render_url": "/media/public/rnd_mvyy372x2nre5rw9kwezecjf"
+                    },
+                    {
+                      "id": "var_mvyy31ov6mkb1cy3m8vpmtmg",
+                      "name": "Gold",
+                      "render_url": "/media/public/rnd_mvyy37fdr02g4r0mng7nxvq9"
+                    },
+                    {
+                      "id": "var_mvyy31ovnyhxh925t9w8peby",
+                      "name": "Gold · Holographic",
+                      "render_url": "/media/public/rnd_mvyy385cd0xg3vf21p34sbcz"
+                    },
+                    {
+                      "id": "var_mvyy31ov7bg2pbfp42cr31ah",
+                      "name": "Diamond",
+                      "render_url": "/media/public/rnd_mvyy37req07m9zemvm2w8t46"
+                    }
+                  ]
+                },
+                {
+                  "id": "edt_mvyy31s7592fxarvgabxdd2c",
+                  "recipe_id": "rec_mvyy306qny02s2cb086j2rjg",
+                  "variants": [
+                    {
+                      "id": "var_mvyy31s8wvry3s9gwjp3sb1c",
+                      "name": "Plain",
+                      "render_url": "/media/public/rnd_mvyy38lf1pmk363v5czt9164"
+                    },
+                    {
+                      "id": "var_mvyy31s8nzrj1w7tqf1rxpaj",
+                      "name": "Silver",
+                      "render_url": "/media/public/rnd_mvyy391c6pqt6b2w8k81earh"
+                    },
+                    {
+                      "id": "var_mvyy31s88w7w8y7nrf5wpy69",
+                      "name": "Gold",
+                      "render_url": "/media/public/rnd_mvyy39gj738s987269y8v1z3"
+                    },
+                    {
+                      "id": "var_mvyy31s8ft2exxfe4m91pj5a",
+                      "name": "Diamond",
+                      "render_url": "/media/public/rnd_mvyy39v7cv4rjs3vccc09j07"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "crd_mvyy31prq9h1e56v20hjc4sq",
+              "slug": "miku",
+              "name": "Miku",
+              "editions": [
+                {
+                  "id": "edt_mvyy31ptqpzjed6dsvxdjz8n",
+                  "recipe_id": "rec_mvyy306qny02s2cb086j2rjg",
+                  "variants": [
+                    {
+                      "id": "var_mvyy31pu9dyzr8ez6b8sjgbj",
+                      "name": "Plain",
+                      "render_url": "/media/public/rnd_mvyy3f677c8hnsqxw3s9f9ys"
+                    },
+                    {
+                      "id": "var_mvyy31pux94nvzk2p7fjf3dq",
+                      "name": "Silver",
+                      "render_url": "/media/public/rnd_mvyy3fk4pcf6gmkj6beq4p4e"
+                    },
+                    {
+                      "id": "var_mvyy31pujyn99we90dc2t1vk",
+                      "name": "Silver · Holographic",
+                      "render_url": "/media/public/rnd_mvyy3gq1zc44rt8sqx9dj8wv"
+                    },
+                    {
+                      "id": "var_mvyy31puhmagkax419mr7ff6",
+                      "name": "Gold",
+                      "render_url": "/media/public/rnd_mvyy3fx24qvmy1ed6h69knnf"
+                    },
+                    {
+                      "id": "var_mvyy31puy8wpxyytdhfjt42m",
+                      "name": "Diamond",
+                      "render_url": "/media/public/rnd_mvyy3g9q1hj86mmge80agt9b"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "crd_mvyy31ph3ncxa3xmt4c4y3r1",
+              "slug": "moss",
+              "name": "Moss",
+              "editions": [
+                {
+                  "id": "edt_mvyy31pjpmnzgy5g4cjy2ef1",
+                  "recipe_id": "rec_mvyy306qny02s2cb086j2rjg",
+                  "variants": [
+                    {
+                      "id": "var_mvyy31pknc3v7nmkxpsaemmd",
+                      "name": "Plain",
+                      "render_url": "/media/public/rnd_mvyy3dp1w1cxvytteke3fg8e"
+                    },
+                    {
+                      "id": "var_mvyy31pk4bt6j3e7eyezadx8",
+                      "name": "Silver",
+                      "render_url": "/media/public/rnd_mvyy3e1pmmjqc65e5p24wqmg"
+                    },
+                    {
+                      "id": "var_mvyy31pk713bzk4td91jvjmk",
+                      "name": "Gold",
+                      "render_url": "/media/public/rnd_mvyy3een6809nmxg2rp3c6k1"
+                    },
+                    {
+                      "id": "var_mvyy31pk1vbpas0ntftfg0ye",
+                      "name": "Diamond",
+                      "render_url": "/media/public/rnd_mvyy3eri6cnwj87vf7x0wr04"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "crd_mvyy31remjcz07n94gb85pxm",
+              "slug": "ned-kelly",
+              "name": "Ned Kelly",
+              "editions": [
+                {
+                  "id": "edt_mvyy31rg42ah30sx55hjkh0m",
+                  "recipe_id": "rec_mvyy306qny02s2cb086j2rjg",
+                  "variants": [
+                    {
+                      "id": "var_mvyy31rh4hzfzqkwyqvfsz3k",
+                      "name": "Plain",
+                      "render_url": "/media/public/rnd_mvyy3pni2rs2sjyc8szdg0w3"
+                    },
+                    {
+                      "id": "var_mvyy31rhd8qehtwa7kw91yps",
+                      "name": "Silver",
+                      "render_url": "/media/public/rnd_mvyy3q2s96fz6dswmabyc5k1"
+                    },
+                    {
+                      "id": "var_mvyy31rhnf0nav970670hh6n",
+                      "name": "Gold",
+                      "render_url": "/media/public/rnd_mvyy3qhfr8d14rfe95bdwh0j"
+                    },
+                    {
+                      "id": "var_mvyy31rhh4c3wzchccg6dcv9",
+                      "name": "Diamond",
+                      "render_url": "/media/public/rnd_mvyy3qw09rkc6r4tsngysr4e"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "crd_mvyy31tp9ksqz8afe153m57g",
+              "slug": "nora",
+              "name": "Nora",
+              "editions": [
+                {
+                  "id": "edt_mvyy31tqe9p7w6f3qya0z0at",
+                  "recipe_id": "rec_mvyy306qny02s2cb086j2rjg",
+                  "variants": [
+                    {
+                      "id": "var_mvyy31tszkg17ccedvr279ax",
+                      "name": "Plain",
+                      "render_url": "/media/public/rnd_mvyy3zeadqfmkp5s6hb2waw4"
+                    },
+                    {
+                      "id": "var_mvyy31ts65psxjj2p6qxn1x5",
+                      "name": "Silver",
+                      "render_url": "/media/public/rnd_mvyy3zu2zbphazsyszj11yza"
+                    },
+                    {
+                      "id": "var_mvyy31tsamh3x2tfxchw6x51",
+                      "name": "Gold",
+                      "render_url": "/media/public/rnd_mvyy408hcja6wwfpn6k341w9"
+                    },
+                    {
+                      "id": "var_mvyy31ts3vwp3efekve6p9qd",
+                      "name": "Diamond",
+                      "render_url": "/media/public/rnd_mvyy40mjmx08h7jg2efx8gek"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "crd_mvyy31q2r7cppj3ex26ran6a",
+              "slug": "pepe",
+              "name": "Pepe",
+              "editions": [
+                {
+                  "id": "edt_mvyy31q3q7tq6f94v940q6y8",
+                  "recipe_id": "rec_mvyy306qny02s2cb086j2rjg",
+                  "variants": [
+                    {
+                      "id": "var_mvyy31q52c214w4pkf12efjc",
+                      "name": "Plain",
+                      "render_url": "/media/public/rnd_mvyy3h3utmq2vgav7nw662q1"
+                    },
+                    {
+                      "id": "var_mvyy31q5efqdr2q2phh7js1w",
+                      "name": "Silver",
+                      "render_url": "/media/public/rnd_mvyy3hh847tdnyaw3h6vjrkp"
+                    },
+                    {
+                      "id": "var_mvyy31q54m0qz298h9t8t111",
+                      "name": "Gold",
+                      "render_url": "/media/public/rnd_mvyy3hu0nsgk5x01wq6gdq2a"
+                    },
+                    {
+                      "id": "var_mvyy31q5tvr9k2kwht5k1jey",
+                      "name": "Gold · Holographic",
+                      "render_url": "/media/public/rnd_mvyy3ikrmf56zqb618cc6qq4"
+                    },
+                    {
+                      "id": "var_mvyy31q5mey04xz7wahqvm97",
+                      "name": "Diamond",
+                      "render_url": "/media/public/rnd_mvyy3i6pf8w8h85k56c02w32"
+                    }
+                  ]
+                },
+                {
+                  "id": "edt_mvyy31snzes3325caxq421xn",
+                  "recipe_id": "rec_mvyy306qny02s2cb086j2rjg",
+                  "variants": [
+                    {
+                      "id": "var_mvyy31so5tfthd70n1xg4vz1",
+                      "name": "Plain",
+                      "render_url": "/media/public/rnd_mvyy3j0o8gr2w704ap0vm5fp"
+                    },
+                    {
+                      "id": "var_mvyy31so27xkgxdqmmc1dqpd",
+                      "name": "Silver",
+                      "render_url": "/media/public/rnd_mvyy3jg8xnrnqffxz4ex87w5"
+                    },
+                    {
+                      "id": "var_mvyy31so6q1rf67142cjqk3w",
+                      "name": "Gold",
+                      "render_url": "/media/public/rnd_mvyy3jvoay2gnvy0hzfmy8c5"
+                    },
+                    {
+                      "id": "var_mvyy31sodr218aw5m8fkts28",
+                      "name": "Diamond",
+                      "render_url": "/media/public/rnd_mvyy3kaq4p4x0f8a0efr1vaf"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "crd_mvyy31p4t6k6ghf86bkab0p3",
+              "slug": "pippa",
+              "name": "Pippa",
+              "editions": [
+                {
+                  "id": "edt_mvyy31p7ehfnxah34f0zr0sg",
+                  "recipe_id": "rec_mvyy306qny02s2cb086j2rjg",
+                  "variants": [
+                    {
+                      "id": "var_mvyy31p8sjx9h7nb10x77red",
+                      "name": "Plain",
+                      "render_url": "/media/public/rnd_mvyy3a8x44sqbhpmexc3fgvn"
+                    },
+                    {
+                      "id": "var_mvyy31p8v825sra9y6ervvfa",
+                      "name": "Silver",
+                      "render_url": "/media/public/rnd_mvyy3alwf5bzkkc82hga4q2q"
+                    },
+                    {
+                      "id": "var_mvyy31p8z2faffmnw6zwzg0m",
+                      "name": "Gold",
+                      "render_url": "/media/public/rnd_mvyy3axjdp00dfv3j24ve0nn"
+                    },
+                    {
+                      "id": "var_mvyy31p8jw3zmhyars2ec58z",
+                      "name": "Gold · Holographic",
+                      "render_url": "/media/public/rnd_mvyy3bmgj4mvw77mzjy16251"
+                    },
+                    {
+                      "id": "var_mvyy31p8kpf8khhjsfypy8gj",
+                      "name": "Diamond",
+                      "render_url": "/media/public/rnd_mvyy3b96fd49q0s8cbk058qh"
+                    }
+                  ]
+                },
+                {
+                  "id": "edt_mvyy31sf448k2vkpdzfbqned",
+                  "recipe_id": "rec_mvyy306qny02s2cb086j2rjg",
+                  "variants": [
+                    {
+                      "id": "var_mvyy31sgay3j5508k0zffjtg",
+                      "name": "Plain",
+                      "render_url": "/media/public/rnd_mvyy3c2gvmfz8qk2g69m8t72"
+                    },
+                    {
+                      "id": "var_mvyy31sgkpa8gf8z7df8tqth",
+                      "name": "Silver",
+                      "render_url": "/media/public/rnd_mvyy3ci09j4htyvkphqrm8c0"
+                    },
+                    {
+                      "id": "var_mvyy31sg3hz0yhqt4ec4315r",
+                      "name": "Gold",
+                      "render_url": "/media/public/rnd_mvyy3cx0n07a3a8ypvk642pj"
+                    },
+                    {
+                      "id": "var_mvyy31sgm006pzccdx8bgtmp",
+                      "name": "Diamond",
+                      "render_url": "/media/public/rnd_mvyy3dbi02hyjn9q347vfv07"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "crd_mvyy31qe4fsdya1x4bq8mq8w",
+              "slug": "pressure-orbit",
+              "name": "Pressure Orbit",
+              "editions": [
+                {
+                  "id": "edt_mvyy31qgqpsz4kp55b809h7a",
+                  "recipe_id": "rec_mvyy306qny02s2cb086j2rjg",
+                  "variants": [
+                    {
+                      "id": "var_mvyy31qhgjagjmtraqqvkvp2",
+                      "name": "Plain",
+                      "render_url": "/media/public/rnd_mvyy3ko39q0zw6k452yf6qjg"
+                    },
+                    {
+                      "id": "var_mvyy31qhj0j92ey5y92b8fny",
+                      "name": "Silver",
+                      "render_url": "/media/public/rnd_mvyy3l1skqt1mf024t3gtgpr"
+                    },
+                    {
+                      "id": "var_mvyy31qhe9zdqtqfsd0jcjad",
+                      "name": "Gold",
+                      "render_url": "/media/public/rnd_mvyy3ler87mhkpq4z8ww173t"
+                    },
+                    {
+                      "id": "var_mvyy31qhe3er9djmh8b58vjb",
+                      "name": "Diamond",
+                      "render_url": "/media/public/rnd_mvyy3lrj2hx9m43d51nfespr"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "crd_mvyy31t6jbvgqyshvxg9a3yt",
+              "slug": "rhea",
+              "name": "Rhea",
+              "editions": [
+                {
+                  "id": "edt_mvyy31t861tzvpytt4j841w1",
+                  "recipe_id": "rec_mvyy306qny02s2cb086j2rjg",
+                  "variants": [
+                    {
+                      "id": "var_mvyy31t90gb2s6cywqmg5kjx",
+                      "name": "Plain",
+                      "render_url": "/media/public/rnd_mvyy3w7rhcrm6j55erc5a7jc"
+                    },
+                    {
+                      "id": "var_mvyy31t9fp49xh6p51a2839w",
+                      "name": "Silver",
+                      "render_url": "/media/public/rnd_mvyy3wn3gnttgtsawnjcqv0y"
+                    },
+                    {
+                      "id": "var_mvyy31t9yzdjhxp4r1rm07rf",
+                      "name": "Gold",
+                      "render_url": "/media/public/rnd_mvyy3x15pb50m1psd07m8kvb"
+                    },
+                    {
+                      "id": "var_mvyy31t9j2zse92j109banqj",
+                      "name": "Diamond",
+                      "render_url": "/media/public/rnd_mvyy3xdsmgg2zttaes284j62"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "crd_mvyy31qsehckx6he4ahjajn7",
+              "slug": "tux",
+              "name": "Tux",
+              "editions": [
+                {
+                  "id": "edt_mvyy31qunss2c953ppjsd1v0",
+                  "recipe_id": "rec_mvyy306qny02s2cb086j2rjg",
+                  "variants": [
+                    {
+                      "id": "var_mvyy31qvaahfz5gc6bcks0dk",
+                      "name": "Plain",
+                      "render_url": "/media/public/rnd_mvyy3m7gzd6tgjsdchk4pjc2"
+                    },
+                    {
+                      "id": "var_mvyy31qvyky1vm5tybk8d26r",
+                      "name": "Silver",
+                      "render_url": "/media/public/rnd_mvyy3mn8fc5ttkg0sg8d0faa"
+                    },
+                    {
+                      "id": "var_mvyy31qwqr5bmadeghmfhbwm",
+                      "name": "Gold",
+                      "render_url": "/media/public/rnd_mvyy3n4cm3necqsy0xy09r3k"
+                    },
+                    {
+                      "id": "var_mvyy31qw0s2x1hxh0d274akn",
+                      "name": "Diamond",
+                      "render_url": "/media/public/rnd_mvyy3njskqten8q0bgpsx3q2"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "sets": [
+            {
+              "id": "set_mvyy306re64svtz5srhpm1xc",
+              "slug": "fighter-night",
+              "version": 1,
+              "cards": [
+                "crd_mvyy31orsa0023wqshq6yb4y",
+                "crd_mvyy31p4t6k6ghf86bkab0p3",
+                "crd_mvyy31q2r7cppj3ex26ran6a",
+                "crd_mvyy31qsehckx6he4ahjajn7",
+                "crd_mvyy31r4tc8j3wg9fsrmvw1z",
+                "crd_mvyy31remjcz07n94gb85pxm",
+                "crd_mvyy31rop7tjdmg9yttba9he",
+                "crd_mvyy31ry64m8cmazfwe4ryfm"
+              ]
+            },
+            {
+              "id": "set_mvyy306rd2p12jd5tchabw32",
+              "slug": "first-cabinet",
+              "version": 1,
+              "cards": [
+                "crd_mvyy31orsa0023wqshq6yb4y",
+                "crd_mvyy31p4t6k6ghf86bkab0p3",
+                "crd_mvyy31ph3ncxa3xmt4c4y3r1",
+                "crd_mvyy31prq9h1e56v20hjc4sq",
+                "crd_mvyy31q2r7cppj3ex26ran6a",
+                "crd_mvyy31qe4fsdya1x4bq8mq8w"
+              ]
+            },
+            {
+              "id": "set_mvyy306samnsv2tex8cnp8v4",
+              "slug": "protocol-table",
+              "version": 1,
+              "cards": [
+                "crd_mvyy31sx90q77c4kzv2kt22h",
+                "crd_mvyy31t6jbvgqyshvxg9a3yt",
+                "crd_mvyy31tgwev7a8naygectfsq",
+                "crd_mvyy31tp9ksqz8afe153m57g",
+                "crd_mvyy31tys5yp2mahypb2856w"
+              ]
+            },
+            {
+              "id": "set_mvyy306s2kycr7vcz1rsz4me",
+              "slug": "shared-table",
+              "version": 1,
+              "cards": [
+                "crd_mvyy31orsa0023wqshq6yb4y",
+                "crd_mvyy31p4t6k6ghf86bkab0p3",
+                "crd_mvyy31q2r7cppj3ex26ran6a"
+              ]
+            }
+          ],
+          "pools": [
+            {
+              "id": "pool_mvyy597r42ta9bk1n9s0nw5k",
+              "slug": "cabinet-draw",
+              "revision": 1
+            },
+            {
+              "id": "pool_mvyy5993xahsfkt0d8dpcjzb",
+              "slug": "fighter-draw",
+              "revision": 1
+            },
+            {
+              "id": "pool_mvyy59c6eejr6qp1vn5d7kak",
+              "slug": "late-night-draw",
+              "revision": 1
+            },
+            {
+              "id": "pool_mvyy59b9hy82rxss817vbqqa",
+              "slug": "protocol-draw",
+              "revision": 1
+            }
+          ],
+          "published_at": "2026-11-02T07:37:44.912Z"
+        }
+      },
+      "note": "19 curated items; 16 unique identities; 3 shared-identity Fighter editions; 80 explicit variants."
+    },
+    "backup": {
+      "ok": true,
+      "directory": ".foilbury/backups/2026-11-02T084814104Z",
+      "databaseBytes": 1076967,
+      "assets": 103,
+      "assetBytes": 36476575,
+      "counts": {
+        "cards": 16,
+        "variants": 80,
+        "instances": 20,
+        "ledger": 27,
+        "wallets": 2,
+        "assets": 103,
+        "assetBytes": 36476575
+      },
+      "release": 1
+    },
+    "restore": {
+      "ok": true,
+      "restoredAt": "2026-11-02T08:50:51.346Z",
+      "target": ".foilbury/restore/2026-11-02T084818966Z",
+      "backup": ".foilbury/backups/2026-11-02T084814104Z",
+      "checks": {
+        "databaseChecksum": "matched",
+        "assetsChecksummed": 103,
+        "counts": {
+          "tenants": 3,
+          "cards": 16,
+          "instances": 20,
+          "ledger": 27,
+          "wallet_total": 840,
+          "assets": 103
+        },
+        "expectedCounts": {
+          "cards": 16,
+          "variants": 80,
+          "instances": 20,
+          "ledger": 27,
+          "wallets": 2,
+          "assets": 103,
+          "assetBytes": 36476575
+        },
+        "walletTotal": 840,
+        "release": 1,
+        "sourceCommits": {
+          "bubbles": "98608579813a47879815bc8eaee0e0058095e009",
+          "fighter": "66e4333f7a0acf8b72ec55eab21a027863368f60",
+          "protocol-11": "5b940059a52741dd84d5c2f04de9152d1ca03c8a"
+        }
+      },
+      "note": "Isolated local target. No remote D1/R2 binding, no deployment and no secrets were restored."
+    },
+    "externalEffects": {
+      "providerJobs": 0,
+      "emailSent": 0,
+      "discordSent": 0,
+      "externalSuppressed": 0,
+      "generationJobs": 0
+    },
+    "secretScan": {
+      "findings": [],
+      "trackedSecrets": [],
+      "scanned": 6
+    },
+    "freshSetup": {
+      "generatedAt": "2026-11-02T08:46:37.848Z",
+      "freshDirectory": "/private/var/folders/qm/ltm8shgs7tv9k8qfqgfpjxq80000gn/T/foilbury-fresh2.nNJXR8",
+      "result": "passed",
+      "setupExit": 0,
+      "localUrl": "http://127.0.0.1:4321",
+      "status": {
+        "configured": true,
+        "environment": "local",
+        "providers": {
+          "fal": false,
+          "elevenlabs": false,
+          "resend": false,
+          "adminWebhook": false,
+          "discordApplication": false,
+          "discordBot": false
+        },
+        "discord": "disabled",
+        "email": "outbox_only",
+        "generation": "not_run"
+      },
+      "catalogue": {
+        "identities": 16,
+        "release": 1,
+        "renders": 80
+      },
+      "owner": {
+        "inventory": 0
+      },
+      "providerKeysInDevVars": [],
+      "credentialsFileMode": "600",
+      "agentFileMode": "600",
+      "note": "Throwaway fresh checkout with no .env, .dev.vars, .foilbury, .wrangler, sibling checkout mutation or provider binding. Setup installed schema, accounts, curated imports, renders and release."
+    }
+  },
+  "limitations": [
+    "No live provider verification: FAL, Resend, ElevenLabs and Discord were not contacted.",
+    "No Discord bot installation, command registration, interaction endpoint, tunnel, message or DNS change.",
+    "The domain backup covers Foilbury fb_* tables, triggers and referenced assets. EmDash editorial tables and FTS indexes are excluded because D1 cannot export FTS5 virtual tables; use an EmDash site export for the CMS. This limitation is visible in the backup manifest.",
+    "Generation is implemented behind a budget guard but no billed job was submitted because no ceiling is recorded.",
+    "Owner visual playtest and Kaylee/Dean acceptance are still required; automated evidence cannot replace trying the game.",
+    "The local server binds to loopback. Local proof is not proof of Discord delivery, production auth or deployed infrastructure."
+  ]
+}

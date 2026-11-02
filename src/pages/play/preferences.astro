@@ -1,0 +1,21 @@
+---
+import PlayerLayout from "../../layouts/PlayerLayout.astro";
+import PreferenceForm from "../../components/player/PreferenceForm";
+import { pageContext } from "../../server/page";
+import { getPreferences } from "../../server/modules/economy";
+import { getTaxonomy } from "../../server/modules/catalogue";
+
+const ctx = await pageContext(Astro.request);
+const [prefs, taxonomy] = await Promise.all([getPreferences(ctx), getTaxonomy(ctx)]);
+const tags = (taxonomy.tags as Array<{ slug: string; name: string }>).map(({ slug, name }) => ({ slug, name }));
+---
+<PlayerLayout title="Preferences · Foilbury">
+  <div class="border-b border-[var(--line)] pb-5">
+    <p class="eyebrow">Preferences</p>
+    <h2 class="display-sm mt-1 text-4xl">Make the cabinet yours.</h2>
+    <p class="mt-2 max-w-2xl text-sm text-[var(--muted)]">Motion, sound, topic preferences and sharing are all explicit. None of them change the authoritative odds or another member's access.</p>
+  </div>
+  <div class="mt-7">
+    <PreferenceForm client:load initial={prefs} tags={tags} />
+  </div>
+</PlayerLayout>

@@ -1,0 +1,53 @@
+---
+interface Span {
+  _type?: string;
+  text?: string;
+  marks?: string[];
+}
+interface Block {
+  _type?: string;
+  style?: string;
+  listItem?: string;
+  children?: Span[];
+  markDefs?: Array<{ _key: string; _type: string; href?: string }>;
+  alt?: string;
+  url?: string;
+  asset?: { url?: string };
+}
+const { value } = Astro.props as { value?: Block[] };
+function childrenFor(block: Block) {
+  return (block.children ?? []).filter((child) => child._type === "span" || !child._type);
+}
+function hrefFor(block: Block, mark: string) {
+  return (block.markDefs ?? []).find((definition) => definition._key === mark)?.href ?? "";
+}
+---
+{value?.map((block) => {
+  if (block._type === "image") {
+    const src = block.url ?? block.asset?.url ?? "";
+    if (!src || (!src.startsWith("/") && !src.startsWith("http://") && !src.startsWith("https://"))) return null;
+    return <figure class="my-6"><img src={src} alt={block.alt ?? "Editorial image"} loading="lazy" class="w-full border border-[var(--line)]" /><figcaption class="mt-2 text-xs text-muted">{block.alt}</figcaption></figure>;
+  }
+  if (block._type !== "block") return null;
+  const children = childrenFor(block).map((child) => {
+    let content: any = child.text ?? "";
+    for (const mark of child.marks ?? []) {
+      if (mark === "strong") content = <strong>{content}</strong>;
+      else if (mark === "em") content = <em>{content}</em>;
+      else if (mark === "code") content = <code class="font-mono text-sm">{content}</code>;
+      else {
+        const href = hrefFor(block, mark);
+        if (href.startsWith("/") || href.startsWith("http://") || href.startsWith("https://")) content = <a href={href} rel="noreferrer">{content}</a>;
+      }
+    }
+    return content;
+  });
+  if (block.listItem) return <li class="ml-5 list-disc">{children}</li>;
+  switch (block.style) {
+    case "h1": return <h1 class="display mt-10 text-4xl">{children}</h1>;
+    case "h2": return <h2 class="display-sm mt-9 text-3xl">{children}</h2>;
+    case "h3": return <h3 class="display-sm mt-7 text-2xl">{children}</h3>;
+    case "blockquote": return <blockquote class="my-6 border-l-2 border-[var(--brass)] pl-5 text-muted">{children}</blockquote>;
+    default: return <p>{children}</p>;
+  }
+})}

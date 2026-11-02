@@ -1,0 +1,65 @@
+import fs from "node:fs";
+import path from "node:path";
+import { readSecretFile, startDevServer } from "./local.mjs";
+
+export const BASE_URL = process.env.FOILBURY_URL ?? "http://127.0.0.1:4321";
+
+export function agentToken(kind = process.env.FOILBURY_AGENT ?? "owner") {
+  if (process.env.FOILBURY_AGENT_TOKEN) return process.env.FOILBURY_AGENT_TOKEN;
+  const file = path.join(process.cwd(), ".foilbury/agents.json");
+  if (!fs.existsSync(file)) throw new Error("No local agent credentials. Run pnpm setup:local first.");
+  const data = JSON.parse(fs.readFileSync(file, "utf8"));
+  const match = data.agents.find((agent) =>
+    kind === "player" ? agent.represented === "player@foilbury.local" : agent.represented === "owner@foilbury.local",
+  );
+  if (!match?.token) throw new Error(`No local ${kind} agent credential found.`);
+  return match.token;
+}
+
+export async function ensureServer() {
+  await startDevServer(4321);
+}
+
+export async function apiFetch(route, options = {}) {
+  await ensureServer();
+  const headers = new Headers(options.headers ?? {});
+  headers.set("authorization", `Bearer ${options.token ?? agentToken(options.agent ?? "owner")}`);
+  let body;
+  if (options.form) {
+    body = options.form;
+  } else if (options.body !== undefined) {
+    headers.set("content-type", "application/json");
+    body = JSON.stringify(options.body);
+  }
+  if (options.idempotencyKey) headers.set("idempotency-key", options.idempotencyKey);
+  const response = await fetch(`${BASE_URL}${route}`, {
+    method: options.method ?? (body === undefined ? "GET" : "POST"),
+    headers,
+    body,
+  });
+  const text = await response.text();
+  let payload = null;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    payload = { raw: text };
+  }
+  if (!response.ok) {
+    const error = payload?.error;
+    const detail = error?.details ? ` ${JSON.stringify(error.details)}` : "";
+    throw new Error(`${response.status} ${error?.code ?? "request_failed"}: ${error?.message ?? text}${detail}`);
+  }
+  return payload;
+}
+
+export async function apiJson(route, options = {}) {
+  return apiFetch(route, options);
+}
+
+export async function apiForm(route, form) {
+  return apiFetch(route, { method: "POST", form });
+}
+
+export function credentials() {
+  return readSecretFile("local-credentials.json");
+}

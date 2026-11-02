@@ -1,0 +1,182 @@
+{
+  "ok": true,
+  "checkedAt": "2026-11-02T08:48:10.333Z",
+  "restarted": true,
+  "before": {
+    "owner": {
+      "email": "owner@foilbury.local",
+      "balance": 350,
+      "instanceIds": [
+        "ins_mvyyozrdedj6wyqjp5khzas2",
+        "ins_mvyz5btkmmkhw9asrnx3dxcz",
+        "ins_mvyzi5pt48m2ka3q0dsnbgkv",
+        "ins_mvyzjhas9jgjk6eaqv8mr4fe",
+        "ins_mvyzl1c67hqbc6j1sgy2rgd5",
+        "ins_mvyzmhhmfv15x8v8z6hmgwwg",
+        "ins_mvyznbgrwjrakeh1z8p8224r",
+        "ins_mvyzpvr0zwesqq5jt941e328",
+        "ins_mvyzrbqz6zezrv3pztv9v6wk",
+        "ins_mvyzxfk4cy7eem8zhy9tr122",
+        "ins_mvz09tx2knsgw3de260aey67",
+        "ins_mvz0iuy4hb9d23tawpkyq9bp",
+        "ins_mvz0jmg0g2a6hmcskae4pnqt",
+        "ins_mvz0n6o6a584mke1k8xd98xf"
+      ],
+      "ledgerCount": 18,
+      "setProgress": [
+        {
+          "slug": "fighter-night",
+          "version": 1,
+          "owned": 2,
+          "claimed": false
+        },
+        {
+          "slug": "first-cabinet",
+          "version": 1,
+          "owned": 4,
+          "claimed": false
+        },
+        {
+          "slug": "protocol-table",
+          "version": 1,
+          "owned": 4,
+          "claimed": false
+        },
+        {
+          "slug": "shared-table",
+          "version": 1,
+          "owned": 2,
+          "claimed": false
+        }
+      ]
+    },
+    "player": {
+      "email": "player@foilbury.local",
+      "balance": 490,
+      "instanceIds": [
+        "ins_mvyy5gg53k0q9z010ekrh188",
+        "ins_mvyz4c0wyb5k4j4qeccj0y56",
+        "ins_mvyzq879s7znabhcpj87fkea",
+        "ins_mvyzro6u903rqqfn2mw4qsjc",
+        "ins_mvz0a8c0wqqpry7pxc1v21dz",
+        "ins_mvz0nkget6ncj881wkk1yyme"
+      ],
+      "ledgerCount": 9,
+      "setProgress": [
+        {
+          "slug": "fighter-night",
+          "version": 1,
+          "owned": 3,
+          "claimed": false
+        },
+        {
+          "slug": "first-cabinet",
+          "version": 1,
+          "owned": 3,
+          "claimed": false
+        },
+        {
+          "slug": "protocol-table",
+          "version": 1,
+          "owned": 0,
+          "claimed": false
+        },
+        {
+          "slug": "shared-table",
+          "version": 1,
+          "owned": 3,
+          "claimed": false
+        }
+      ]
+    }
+  },
+  "after": {
+    "owner": {
+      "email": "owner@foilbury.local",
+      "balance": 350,
+      "instanceIds": [
+        "ins_mvyyozrdedj6wyqjp5khzas2",
+        "ins_mvyz5btkmmkhw9asrnx3dxcz",
+        "ins_mvyzi5pt48m2ka3q0dsnbgkv",
+        "ins_mvyzjhas9jgjk6eaqv8mr4fe",
+        "ins_mvyzl1c67hqbc6j1sgy2rgd5",
+        "ins_mvyzmhhmfv15x8v8z6hmgwwg",
+        "ins_mvyznbgrwjrakeh1z8p8224r",
+        "ins_mvyzpvr0zwesqq5jt941e328",
+        "ins_mvyzrbqz6zezrv3pztv9v6wk",
+        "ins_mvyzxfk4cy7eem8zhy9tr122",
+        "ins_mvz09tx2knsgw3de260aey67",
+        "ins_mvz0iuy4hb9d23tawpkyq9bp",
+        "ins_mvz0jmg0g2a6hmcskae4pnqt",
+        "ins_mvz0n6o6a584mke1k8xd98xf"
+      ],
+      "ledgerCount": 18,
+      "setProgress": [
+        {
+          "slug": "fighter-night",
+          "version": 1,
+          "owned": 2,
+          "claimed": false
+        },
+        {
+          "slug": "first-cabinet",
+          "version": 1,
+          "owned": 4,
+          "claimed": false
+        },
+        {
+          "slug": "protocol-table",
+          "version": 1,
+          "owned": 4,
+          "claimed": false
+        },
+        {
+          "slug": "shared-table",
+          "version": 1,
+          "owned": 2,
+          "claimed": false
+        }
+      ]
+    },
+    "player": {
+      "email": "player@foilbury.local",
+      "balance": 490,
+      "instanceIds": [
+        "ins_mvyy5gg53k0q9z010ekrh188",
+        "ins_mvyz4c0wyb5k4j4qeccj0y56",
+        "ins_mvyzq879s7znabhcpj87fkea",
+        "ins_mvyzro6u903rqqfn2mw4qsjc",
+        "ins_mvz0a8c0wqqpry7pxc1v21dz",
+        "ins_mvz0nkget6ncj881wkk1yyme"
+      ],
+      "ledgerCount": 9,
+      "setProgress": [
+        {
+          "slug": "fighter-night",
+          "version": 1,
+          "owned": 3,
+          "claimed": false
+        },
+        {
+          "slug": "first-cabinet",
+          "version": 1,
+          "owned": 3,
+          "claimed": false
+        },
+        {
+          "slug": "protocol-table",
+          "version": 1,
+          "owned": 0,
+          "claimed": false
+        },
+        {
+          "slug": "shared-table",
+          "version": 1,
+          "owned": 3,
+          "claimed": false
+        }
+      ]
+    }
+  },
+  "note": "Compared inventory instance IDs, Foil balances, recent ledger counts and set progress across a full local server stop/start."
+}

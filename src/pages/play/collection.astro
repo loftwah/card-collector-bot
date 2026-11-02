@@ -1,0 +1,29 @@
+---
+import PlayerLayout from "../../layouts/PlayerLayout.astro";
+import CollectionBrowser from "../../components/player/CollectionBrowser";
+import { pageContext } from "../../server/page";
+import { getInventory } from "../../server/modules/collection";
+import { listSets } from "../../server/modules/catalogue";
+import { getWalletSummary } from "../../server/modules/wallet";
+
+const ctx = await pageContext(Astro.request);
+const user = ctx.user!;
+const [items, sets, wallet] = await Promise.all([getInventory(ctx, { limit: 300 }), listSets(ctx, user.id), getWalletSummary(ctx.db, ctx.tenant.id, user.id, 1)]);
+const publishedSets = sets.filter((set) => set.status === "published");
+---
+<PlayerLayout title="Collection · Foilbury">
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <p class="eyebrow">Private collection</p>
+      <h2 class="display-sm mt-1 text-4xl">Your drawers.</h2>
+      <p class="mt-2 max-w-xl text-sm text-[var(--muted)]">Search, filter and favourite the cards you have drawn. Reserved cards are held for an open trade and cannot be spent twice.</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="text-right"><p class="eyebrow">Foil</p><p class="font-mono text-2xl text-[var(--brass)]">✦ {wallet.balance}</p></div>
+      <a class="btn btn-primary btn-sm" href="/play/draw">Draw a card</a>
+    </div>
+  </div>
+  <div class="mt-7">
+    <CollectionBrowser client:load initialItems={items} sets={publishedSets.map((set) => ({ slug: set.slug, name: set.name }))} />
+  </div>
+</PlayerLayout>

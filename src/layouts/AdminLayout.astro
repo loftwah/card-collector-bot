@@ -1,0 +1,55 @@
+---
+import BaseLayout from "./BaseLayout.astro";
+const session = Astro.locals.foilbury;
+const path = Astro.url.pathname;
+const links = [
+  { href: "/admin", label: "Overview" },
+  { href: "/admin/catalogue", label: "Catalogue" },
+  { href: "/admin/taxonomy", label: "Taxonomy" },
+  { href: "/admin/sets", label: "Sets" },
+  { href: "/admin/pools", label: "Pools" },
+  { href: "/admin/economy", label: "Economy" },
+  { href: "/admin/imports", label: "Imports" },
+  { href: "/admin/agents", label: "Agents" },
+  { href: "/admin/design", label: "Finish studio" },
+  { href: "/admin/integrations", label: "Integrations" },
+  { href: "/admin/audit", label: "Audit" },
+  { href: "/admin/editorial", label: "Editorial desk" },
+];
+---
+<BaseLayout title={`Administration · ${session?.tenantSlug ?? "Foilbury"}`} description="Foilbury owner administration: catalogue, publication, economy, pools, imports and agent grants." noIndex>
+  <section class="border-b border-[var(--line)] bg-[#141512] text-[#f4f0e6]">
+    <div class="container py-8 md:py-10">
+      <div class="flex flex-wrap items-end justify-between gap-5">
+        <div>
+          <p class="eyebrow text-[var(--brass-bright)]">Owner administration · {session?.tenantSlug}</p>
+          <h1 class="display-sm mt-2 text-4xl md:text-5xl">The cabinet office.</h1>
+          <p class="mt-2 max-w-2xl text-sm leading-relaxed text-[#cfc8b9]">Edit the catalogue, publish a release, tune the economy and issue scoped agent grants. Every action here is also available through REST and MCP.</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <a class="btn btn-brass btn-sm" href="/admin/catalogue">Catalogue</a>
+          <a class="btn btn-secondary btn-sm !border-[#5c594d] !text-[#f4f0e6]" href="/cabinet">Public view</a>
+          <a class="btn btn-secondary btn-sm !border-[#5c594d] !text-[#f4f0e6]" href="/_emdash/admin" target="_blank" rel="noreferrer">EmDash admin ↗</a>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section class="container grid gap-8 py-8 lg:grid-cols-[230px_1fr] lg:items-start">
+    <nav class="grid gap-1 lg:sticky lg:top-24" aria-label="Administration sections">
+      {links.map((link) => (
+        <a
+          href={link.href}
+          class:list={[
+            "border-l-2 px-3 py-2 font-mono text-[0.68rem] uppercase tracking-[0.1em] no-underline transition-colors",
+            path === link.href ? "border-[var(--brass)] bg-[var(--paper-2)] text-[var(--ink)]" : "border-transparent text-[var(--muted)] hover:border-[var(--line-strong)] hover:text-[var(--ink)]",
+          ]}
+        >
+          {link.label}
+        </a>
+      ))}
+    </nav>
+    <div class="min-w-0">
+      <slot />
+    </div>
+  </section>
+</BaseLayout>

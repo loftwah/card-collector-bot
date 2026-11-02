@@ -1,0 +1,37 @@
+---
+import PlayerLayout from "../../layouts/PlayerLayout.astro";
+import DrawStudio from "../../components/player/DrawStudio";
+import { pageContext } from "../../server/page";
+import { listPools } from "../../server/modules/pools";
+import { getWalletSummary } from "../../server/modules/wallet";
+import { getEconomy, getPreferences } from "../../server/modules/economy";
+
+const ctx = await pageContext(Astro.request);
+const user = ctx.user!;
+const [pools, wallet, economy, prefs] = await Promise.all([
+  listPools(ctx),
+  getWalletSummary(ctx.db, ctx.tenant.id, user.id, 1),
+  getEconomy(ctx),
+  getPreferences(ctx),
+]);
+---
+<PlayerLayout title="Draw room · Foilbury">
+  <div class="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--line)] pb-5">
+    <div>
+      <p class="eyebrow">Draw room</p>
+      <h2 class="display-sm mt-1 text-4xl">Inspect, then draw.</h2>
+      <p class="mt-2 max-w-2xl text-sm text-[var(--muted)]">Every pool shows its revision, price and actual eligible probabilities before you commit. Foil is earned; it is never purchased or cashed out.</p>
+    </div>
+    <div class="text-right">
+      <p class="eyebrow">Foil balance</p>
+      <p class="display-sm mt-1 text-3xl text-[var(--brass)]">✦ {wallet.balance}</p>
+      <p class="mt-1 font-mono text-[0.56rem] uppercase tracking-[0.1em] text-[var(--muted)]">Daily allowance ✦ {economy.daily_reward}</p>
+    </div>
+  </div>
+  <div class="mt-7">
+    <DrawStudio client:load pools={pools.map((pool) => ({ id: pool.id, slug: pool.slug, name: pool.name, description: pool.description, revision: pool.revision, price: pool.price, status: pool.status }))} initialBalance={wallet.balance} />
+  </div>
+  <div class="mt-8 notice">
+    <p class="text-sm"><strong>Reduced motion:</strong> {prefs.reduced_motion ? "on" : "off"}. The reveal is always skippable and no audio plays unless you enable it in Preferences.</p>
+  </div>
+</PlayerLayout>

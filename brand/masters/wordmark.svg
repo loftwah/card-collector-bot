@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300"><text x="24" y="172" font-family="Fraunces" font-size="150" font-weight="600" letter-spacing="10" fill="#141512">FOILBURY</text>
+     <path d="M28 220 H850" stroke="#B08A52" stroke-width="3"/>
+     <text x="30" y="264" font-family="IBM Plex Mono" font-size="25" letter-spacing="8" fill="#141512" opacity=".72">COLLECTORS' CABINET</text>
+     <path d="M1110 74 L1150 34 L1150 114 L1110 154 Z" fill="#B08A52"/>
+     <path d="M1096 128 L1136 88 L1136 168 L1096 208 Z" fill="#B08A52" opacity=".45"/></svg>

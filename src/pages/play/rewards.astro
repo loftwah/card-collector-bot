@@ -1,0 +1,70 @@
+---
+import PlayerLayout from "../../layouts/PlayerLayout.astro";
+import RewardCenter from "../../components/player/RewardCenter";
+import ClaimButton from "../../components/player/ClaimButton";
+import { pageContext } from "../../server/page";
+import { listSets } from "../../server/modules/catalogue";
+import { getEconomy, getLedger } from "../../server/modules/economy";
+import { getWalletSummary } from "../../server/modules/wallet";
+import { first } from "../../server/db";
+import { formatDual } from "../../lib/utils";
+
+const ctx = await pageContext(Astro.request);
+const user = ctx.user!;
+const [sets, economy, wallet, ledger, lastClaim] = await Promise.all([
+  listSets(ctx, user.id),
+  getEconomy(ctx),
+  getWalletSummary(ctx.db, ctx.tenant.id, user.id, 1),
+  getLedger(ctx, user.id, 30),
+  first<{ created_at: string }>(ctx.db, "SELECT created_at FROM fb_reward_claims WHERE tenant_id = ? AND user_id = ? AND rule_key = 'daily-allowance' ORDER BY created_at DESC LIMIT 1", ctx.tenant.id, user.id),
+]);
+const nextEligible = lastClaim ? new Date(new Date(lastClaim.created_at).getTime() + economy.daily_cooldown_seconds * 1000).toISOString() : null;
+const canClaim = !nextEligible || new Date(nextEligible) <= new Date();
+const published = sets.filter((set) => set.status === "published");
+const rewardSets = published.map((set) => ({
+  id: set.id,
+  name: set.name,
+  version: set.version,
+  reward_amount: set.reward_amount,
+  total: set.progress?.total ?? set.cards.length,
+  owned: set.progress?.owned ?? 0,
+  complete: Boolean(set.progress?.complete),
+  claimed: Boolean(set.progress?.claimed),
+}));
+---
+<PlayerLayout title="Rewards · Foilbury">
+  <div class="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--line)] pb-5">
+    <div>
+      <p class="eyebrow">Rewards</p>
+      <h2 class="display-sm mt-1 text-4xl">Earned, never bought.</h2>
+      <p class="mt-2 max-w-2xl text-sm text-[var(--muted)]">The daily allowance and set completion rewards are the standalone progression. Every credit is a ledger entry; corrections are compensating entries, never edits to history.</p>
+    </div>
+    <div class="text-right"><p class="eyebrow">Foil</p><p class="display-sm mt-1 text-3xl text-[var(--brass)]">✦ {wallet.balance}</p></div>
+  </div>
+
+  <div class="mt-7 grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
+    <div>
+      <RewardCenter client:load sets={rewardSets} dailyReward={economy.daily_reward} canClaimDaily={canClaim} nextEligible={nextEligible ? formatDual(nextEligible) : null} />
+    </div>
+    <aside class="grid gap-5">
+      <div class="surface-flat p-5">
+        <p class="eyebrow">Daily allowance</p>
+        <p class="display-sm mt-1 text-3xl text-[var(--brass)]">✦ {economy.daily_reward}</p>
+        <p class="mt-1 text-xs text-[var(--muted)]">{canClaim ? "Ready now" : `Next ${nextEligible ? formatDual(nextEligible) : "later"}`}</p>
+        <div class="mt-4"><ClaimButton client:load amount={economy.daily_reward} canClaim={canClaim} nextEligible={nextEligible ? formatDual(nextEligible) : null} /></div>
+      </div>
+      <div class="surface-flat p-5">
+        <p class="eyebrow">Recent ledger</p>
+        <div class="mt-3 grid gap-2">
+          {ledger.ledger.slice(0, 8).map((entry) => (
+            <div class="flex items-start justify-between gap-3 border-b border-[var(--line)] pb-2 last:border-0">
+              <div><p class="text-sm">{entry.description}</p><p class="mt-0.5 text-[0.62rem] text-[var(--muted)]">{formatDual(entry.created_at)} · {entry.kind}</p></div>
+              <p class:list={["font-mono text-sm", entry.amount > 0 ? "text-[var(--green)]" : "text-[var(--oxblood)]"]}>{entry.amount > 0 ? "+" : ""}{entry.amount}</p>
+            </div>
+          ))}
+          {ledger.ledger.length === 0 ? <p class="text-sm text-[var(--muted)]">No ledger entries yet.</p> : null}
+        </div>
+      </div>
+    </aside>
+  </div>
+</PlayerLayout>
