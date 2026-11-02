@@ -1,0 +1,12 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import GiftComposer from "../../components/admin/GiftComposer";
+---
+<AdminLayout>
+  <div class="mb-6">
+    <p class="eyebrow">Bot administration · appreciation</p>
+    <h2 class="display-sm mt-1 text-4xl">Send a gift.</h2>
+    <p class="mt-2 max-w-2xl text-sm text-[var(--muted)]">Foil, an opening or a specific card. Scoped to this Bot, capped by role, previewed before sending and recorded as a durable campaign.</p>
+  </div>
+  <GiftComposer client:load platformAdmin={Boolean(Astro.locals.foilbury?.user?.platformAdmin)} />
+</AdminLayout>

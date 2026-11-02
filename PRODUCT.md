@@ -13,7 +13,11 @@ Foilbury is a collectible-card cabinet. A player claims a free allowance, opens 
 
 ## Current product surface
 
-- Public landing page, catalogue with collection marks, journal and public card pages with front/back viewing.
+- Public showcase landing page and catalogue for approved Loftwah-owned project content only.
+- Explicit viewing audiences: public showcase, members, private. Global, published and public are separate dimensions.
+- Member album with collection browsing, front/back and on-demand 3D card inspection.
+- Versioned achievements shared by web, Discord and the reward ledger.
+- Generous free-play defaults (800 welcome / 480 daily), truthful finish odds and scoped administrator gifts.
 - Passwordless player sign-in: Discord OAuth, one-use email magic links, passkeys; authenticator TOTP and recovery codes for step-up.
 - Account security: passkeys, authenticator, recovery codes, session review and revocation.
 - Player cabinet: collection filtered by collection and set, draw studio, rewards, trades, preferences and share links.
@@ -25,9 +29,12 @@ Foilbury is a collectible-card cabinet. A player claims a free allowance, opens 
 
 ## Collections
 
-- **Global collection** — curated by the Super Admin, visible to every Bot, enabled or disabled per Bot. The Bot reads it; it does not edit or clone it.
+- **Global collection** — curated by the Super Admin, reusable by every Bot, enabled or disabled per Bot. The Bot reads it; it does not edit or clone it.
 - **Bot collection** — private to one Bot, managed by its Bot Owner or a Bot Admin with content capability.
-- Both have a logo, description, status and explicit card membership. Disabling a collection prevents its cards from dropping in that Bot without deleting or changing already-owned copies.
+- `view_audience` is independent of scope and status: **public** (approved showcase), **members** (active album/Bot membership) or **private** (owner scope plus explicit viewers).
+- New collections default to members-only. Only the Super Admin can approve public showcase material or promote a collection to public.
+- A card inherits the most restrictive audience of every collection it belongs to.
+- Disabling a collection prevents its cards from dropping in that Bot without deleting or changing already-owned copies or their access records.
 
 ## Trust boundaries
 
@@ -38,6 +45,14 @@ Foilbury is a collectible-card cabinet. A player claims a free allowance, opens 
 - Every draw is one D1 batch: entitlement debit, selected outcome, inventory insert, ledger row and idempotency receipt.
 - Interaction retries use the interaction ID as an idempotency key. A replayed interaction returns the recorded outcome and cannot re-roll or double-award.
 - Private media is authorised by ownership or membership, not by a secret URL.
+
+## Content and economy
+
+- 17 launch collections are delivered as private manifests and imported through the validated pipeline: NBA (12) plus 16 properties (8 each). See `docs/CONTENT_COVERAGE.md`.
+- The launch catalogue is members-only. Approved Loftwah originals remain the public showcase.
+- Achievements: 11 platform definitions plus collection milestones, versioned criteria, idempotent unlocks and separated reward/notification delivery.
+- Gifts: Foil, opening and card, scoped to the Bot, capped by role, previewed and idempotent.
+- No paid generation was run. Franchise art is an original, clearly labelled Foilbury interpretation pending reviewed licensed assets.
 
 ## Known gaps
 

@@ -133,3 +133,33 @@ The admin surfaces `/admin` and `/api/v1/admin` are behind Cloudflare Access. We
 Email delivery, paid generation, live headless agent runs and the two-person/second-server acceptance remain unverified or blocked. Public launch is not ready.
 
 Foilbury is not affiliated with or endorsed by the source game projects. Source artwork is credited per edition; the owner remains responsible for the content they import and publish.
+
+## Album increment (2026-11-03)
+
+- Public showcase remains approved Loftwah originals only. The 17 launch
+  collections are members-only.
+- Explicit visibility: public / members / private, independent of global,
+  published and distribution switches.
+- Member album: worlds browser, collection progress, front/back/3D inspection,
+  achievements, gifts and generous free play.
+- 11 platform achievements plus per-collection milestones; versioned,
+  idempotent and shared with Discord.
+- Foil defaults on the main album: 800 welcome, 480 daily, 80 per standard
+  opening; finish weights 45/30/18/7 for Plain/Silver/Gold/Holographic.
+- Scoped administrator gifts: Foil, opening or card, with preview, limits,
+  idempotency and receipts.
+
+### Commands
+
+```sh
+pnpm check                 # unit + Workers
+node scripts/test-album-e2e.mjs
+node scripts/test-privacy.mjs
+node scripts/test-seo.mjs
+pnpm content:validate
+pnpm content:provision
+pnpm content:export
+pnpm test:deployed         # read-only production smoke
+```
+
+Private manifests and evidence live under `.foilbury/` and are gitignored.

@@ -1,0 +1,7 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import AchievementAdmin from "../../components/admin/AchievementAdmin";
+---
+<AdminLayout>
+  <AchievementAdmin client:load platformAdmin={Boolean(Astro.locals.foilbury?.user?.platformAdmin)} />
+</AdminLayout>

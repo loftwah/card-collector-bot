@@ -1,0 +1,46 @@
+---
+interface Props {
+  artKey?: string | null;
+  name: string;
+  category?: string | null;
+  earned?: boolean;
+  size?: number;
+}
+
+const { artKey = "medal-generic", name, category = "milestone", earned = false, size = 72 } = Astro.props;
+const palettes: Record<string, { a: string; b: string; c: string }> = {
+  "medal-first": { a: "#7d5a26", b: "#e8c98f", c: "#141512" },
+  "medal-shelf": { a: "#245c4b", b: "#a7e0c4", c: "#0e231c" },
+  "medal-cabinet": { a: "#5a2d63", b: "#e0b6ef", c: "#1c0f22" },
+  "medal-long-shelf": { a: "#1d3a63", b: "#a9c9f5", c: "#0c1729" },
+  "medal-silver": { a: "#59646b", b: "#e4edf2", c: "#151b1e" },
+  "medal-gold": { a: "#8a5b12", b: "#ffe0a1", c: "#231707" },
+  "medal-holo": { a: "#265b6e", b: "#b9f3ff", c: "#0a1f26" },
+  "medal-quartet": { a: "#6d2b2b", b: "#ffc9b8", c: "#240d0d" },
+  "medal-compass": { a: "#2c5d3f", b: "#c5f0c8", c: "#0d1f14" },
+  "medal-atlas": { a: "#58421d", b: "#f0dba8", c: "#1d1608" },
+  "medal-parcel": { a: "#663d5a", b: "#ffd6f1", c: "#21101d" },
+  "medal-collection": { a: "#7d5a26", b: "#f3d9a4", c: "#1b1408" },
+  "medal-test": { a: "#3a4a5a", b: "#d9e6f2", c: "#111820" },
+};
+const fallback = palettes["medal-collection"]!;
+const palette = (artKey ? palettes[artKey] : undefined) ?? fallback;
+const shape =
+  category === "finish"
+    ? `<path d="M36 6 L66 36 L36 66 L6 36 Z" fill="${palette.a}" stroke="${palette.b}" stroke-width="2"/>`
+    : category === "explore"
+      ? `<circle cx="36" cy="36" r="30" fill="${palette.a}" stroke="${palette.b}" stroke-width="2"/><path d="M36 14 L41 31 L58 36 L41 41 L36 58 L31 41 L14 36 L31 31 Z" fill="${palette.b}" opacity=".9"/>`
+      : category === "community"
+        ? `<rect x="9" y="9" width="54" height="54" rx="14" fill="${palette.a}" stroke="${palette.b}" stroke-width="2"/><path d="M22 24 H50 V45 H36 L28 53 V45 H22 Z" fill="${palette.b}" opacity=".9"/>`
+        : category === "collection"
+          ? `<path d="M36 5 L64 20 V52 L36 67 L8 52 V20 Z" fill="${palette.a}" stroke="${palette.b}" stroke-width="2"/><circle cx="36" cy="36" r="13" fill="none" stroke="${palette.b}" stroke-width="3"/>`
+          : `<path d="M36 5 L46 24 L67 27 L52 42 L56 64 L36 54 L16 64 L20 42 L5 27 L26 24 Z" fill="${palette.a}" stroke="${palette.b}" stroke-width="2"/>`;
+---
+<span class:list={["achievement-badge", earned ? "is-earned" : "is-locked"]} style={`--badge-size:${size}px;--badge-a:${palette.a};--badge-b:${palette.b};--badge-c:${palette.c}`} aria-label={`${name}${earned ? " earned" : " locked"}`} role="img">
+  <svg viewBox="0 0 72 72" width={size} height={size} aria-hidden="true">
+    {shape}
+    <circle cx="36" cy="36" r="8" fill={palette.b} opacity={earned ? 0.95 : 0.35} />
+    <path d="M27 36 H45 M36 27 V45" stroke={palette.c} stroke-width="2" opacity={earned ? 0.8 : 0.3} />
+  </svg>
+  <span class="sr-only">{name}</span>
+</span>

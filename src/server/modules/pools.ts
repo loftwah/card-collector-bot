@@ -3,6 +3,7 @@ import { all, first, nowIso } from "../db";
 import { newId, sha256Hex } from "../ids";
 import { auditStatement, findIdempotent, idempotencyStatement, type IdempotencyInput } from "../http";
 import { getWallet } from "./wallet";
+import { cardVisibilitySql, viewerAccess } from "./visibility";
 
 export interface PoolRow {
   id: string;
@@ -103,6 +104,9 @@ export async function getPoolPreview(
     playerExcluded = prefs ? (JSON.parse(prefs.hide_tags_json) as string[]) : [];
     for (const tag of playerExcluded) excluded.add(tag);
   }
+  if (!ctx.user) throw new ApiError(401, "authentication_required", "Sign in to see the capsule pool.");
+  const access = await viewerAccess(ctx);
+  const visibility = cardVisibilitySql(access, "cd");
   const entries = await all<{
     variant_id: string;
     card_id: string;
@@ -116,7 +120,7 @@ export async function getPoolPreview(
   }>(
     ctx.db,
     `SELECT v.id AS variant_id, v.card_id, cd.name AS card_name, v.name AS variant_name,
-            m.key AS material_key, fx.key AS effect_key, r.public_url AS render_url, pe.weight,
+            m.key AS material_key, fx.key AS effect_key, ('/media/render/' || r.asset_id) AS render_url, pe.weight,
             COALESCE((SELECT json_group_array(t.slug) FROM fb_card_tags ct JOIN fb_tags t ON t.id = ct.tag_id WHERE ct.card_id = cd.id), '[]') AS tags_json
        FROM fb_pool_entries pe
        JOIN fb_variants v ON v.id = pe.variant_id
@@ -127,6 +131,7 @@ export async function getPoolPreview(
       WHERE pe.tenant_id = ? AND pe.pool_id = ? AND pe.pool_revision = ? AND pe.enabled = 1
         AND v.status = 'published' AND v.archived_at IS NULL AND cd.status = 'published' AND cd.archived_at IS NULL
         AND r.id IS NOT NULL
+        AND (${visibility.sql})
         AND (
           (v.tenant_id = pe.tenant_id AND cd.tenant_id = pe.tenant_id)
           OR EXISTS (
@@ -146,6 +151,7 @@ export async function getPoolPreview(
     ctx.tenant.id,
     pool.id,
     pool.revision,
+    ...visibility.params,
   );
   const eligible: EligibleEntry[] = [];
   for (const entry of entries) {
@@ -227,6 +233,18 @@ export async function executeDraw(
   const instanceId = newId("ins");
   const random = crypto.getRandomValues(new Uint32Array(1))[0]!;
   const selected = pickWeighted(preview.entries, random, preview.total_weight);
+  const prior = await first<{ copies: number; finishes: number }>(
+    ctx.db,
+    `SELECT COUNT(*) AS copies,
+            (SELECT COUNT(*) FROM fb_card_instances ci2 WHERE ci2.tenant_id = ? AND ci2.user_id = ? AND ci2.variant_id = ?) AS finishes
+       FROM fb_card_instances ci WHERE ci.tenant_id = ? AND ci.user_id = ? AND ci.card_id = ?`,
+    ctx.tenant.id,
+    user.id,
+    selected.variant_id,
+    ctx.tenant.id,
+    user.id,
+    selected.card_id,
+  );
   const commitment = await sha256Hex(`${drawId}:${random}:${selected.variant_id}:${ctx.config.sessionSecret}`);
   const serial = makeSerial(user.displayName, preview.revision);
   const now = nowIso();
@@ -243,8 +261,13 @@ export async function executeDraw(
     card_id: selected.card_id,
     card_name: selected.card_name,
     variant_name: selected.variant_name,
+    material_key: selected.material_key,
+    effect_key: selected.effect_key,
     render_url: selected.render_url,
     serial,
+    new_subject: (prior?.copies ?? 0) === 0,
+    new_finish: (prior?.finishes ?? 0) === 0,
+    owned_copies: (prior?.copies ?? 0) + 1,
     eligible_count: preview.eligible_count,
     total_weight: preview.total_weight,
     selected_weight: selected.weight,
@@ -331,7 +354,23 @@ export async function executeDraw(
     throw error;
   }
   const after = await getWallet(ctx.db, ctx.tenant.id, user.id);
-  return { ...receipt, balance_after: after.balance, replayed: false };
+  let achievements: Array<{ name: string; reward_amount: number }> = [];
+  try {
+    const { evaluateAchievements, recordDomainEvent } = await import("./achievements");
+    const eventId = await recordDomainEvent(ctx, {
+      type: "card.drawn",
+      objectType: "draw",
+      objectId: drawId,
+      dedupeKey: `draw:${drawId}`,
+      userId: user.id,
+      payload: { card_id: selected.card_id, variant_id: selected.variant_id, instance_id: instanceId },
+    });
+    const result = await evaluateAchievements(ctx, { userId: user.id, eventId });
+    achievements = result.unlocked.map((item) => ({ name: item.name, reward_amount: item.reward_amount }));
+  } catch (error) {
+    console.error(JSON.stringify({ level: "error", message: "achievement evaluation after draw failed", draw_id: drawId, error: String(error) }));
+  }
+  return { ...receipt, balance_after: after.balance, achievements, replayed: false };
 }
 
 function pickWeighted(entries: EligibleEntry[], random: number, totalWeight: number): EligibleEntry {
@@ -453,18 +492,24 @@ export async function updatePool(
   if (input.entries) {
     if (!input.entries.length) throw new ApiError(422, "pool_empty", "A pool needs at least one entry.");
     const ids = [...new Set(input.entries.map((entry) => entry.variantId))];
-    const valid = await all<{ id: string }>(
-      ctx.db,
-      `SELECT v.id FROM fb_variants v
-         JOIN fb_card_definitions cd ON cd.id = v.card_id
-        WHERE v.status = 'published' AND cd.status = 'published' AND v.id IN (${ids.map(() => "?").join(",")})
-          AND (v.tenant_id = ? OR EXISTS (
-            SELECT 1 FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id
-             WHERE cc.card_id = cd.id AND c.scope = 'global' AND c.status = 'published' AND c.owner_tenant_id = v.tenant_id
-          ))`,
-      ...ids,
-      ctx.tenant.id,
-    );
+    const valid: Array<{ id: string }> = [];
+    for (let index = 0; index < ids.length; index += 40) {
+      const chunk = ids.slice(index, index + 40);
+      valid.push(
+        ...(await all<{ id: string }>(
+          ctx.db,
+          `SELECT v.id FROM fb_variants v
+             JOIN fb_card_definitions cd ON cd.id = v.card_id
+            WHERE v.status = 'published' AND cd.status = 'published' AND v.id IN (${chunk.map(() => "?").join(",")})
+              AND (v.tenant_id = ? OR EXISTS (
+                SELECT 1 FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id
+                 WHERE cc.card_id = cd.id AND c.scope = 'global' AND c.status = 'published' AND c.owner_tenant_id = v.tenant_id
+              ))`,
+          ...chunk,
+          ctx.tenant.id,
+        )),
+      );
+    }
     if (valid.length !== ids.length) throw new ApiError(422, "pool_entry_invalid", "Every pool entry must be a published variant in this Bot or an enabled global collection.");
     statements.push(
       ctx.db.prepare("DELETE FROM fb_pool_entries WHERE tenant_id = ? AND pool_id = ? AND pool_revision = ?").bind(ctx.tenant.id, pool.id, revision),

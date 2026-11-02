@@ -2,18 +2,26 @@
 import BaseLayout from "./BaseLayout.astro";
 const session = Astro.locals.foilbury;
 const user = session?.user;
+interface Props {
+  title?: string;
+  description?: string;
+}
+const { title, description } = Astro.props;
 const path = Astro.url.pathname;
 const links = [
   { href: "/play", label: "Overview" },
-  { href: "/play/collection", label: "Collection" },
+  { href: "/play/collections", label: "Worlds" },
+  { href: "/play/collection", label: "My cards" },
   { href: "/play/draw", label: "Draw room" },
   { href: "/play/rewards", label: "Rewards" },
+  { href: "/play/achievements", label: "Achievements" },
+  { href: "/play/gifts", label: "Gifts" },
   { href: "/play/trades", label: "Trades & gifts" },
   { href: "/play/preferences", label: "Preferences" },
   { href: "/account/security", label: "Security" },
 ];
 ---
-<BaseLayout title={`${user?.displayName ?? "Player"} · Foilbury`} description="Your Foilbury cabinet: collection, Foil balance, draws, rewards and trades." noIndex>
+<BaseLayout title={title ?? `${user?.displayName ?? "Player"} · Foilbury`} description={description ?? "Your Foilbury album: collection, Foil balance, capsules, achievements and gifts."} noIndex>
   <section class="border-b border-[var(--line)] bg-[var(--paper-2)]/50">
     <div class="container py-6">
       <div class="flex flex-wrap items-end justify-between gap-4">

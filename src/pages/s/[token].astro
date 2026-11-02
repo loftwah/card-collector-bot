@@ -22,7 +22,7 @@ const user = valid
 const cards = valid
   ? await all<{ card_name: string; slug: string; variant_name: string; render_url: string; serial: string }>(
       ctx.db,
-      `SELECT DISTINCT cd.name AS card_name, cd.slug, v.name AS variant_name, vr.public_url AS render_url, ci.serial
+      `SELECT DISTINCT cd.name AS card_name, cd.slug, v.name AS variant_name, ('/media/render/' || vr.asset_id) AS render_url, ci.serial
          FROM fb_card_instances ci
          JOIN fb_card_definitions cd ON cd.id = ci.card_id AND cd.tenant_id = ci.tenant_id
          JOIN fb_variants v ON v.id = ci.variant_id AND v.tenant_id = ci.tenant_id

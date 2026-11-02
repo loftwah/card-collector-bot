@@ -23,6 +23,15 @@ export interface AssetRow {
   r2_key: string;
   sha256: string;
   visibility: "private" | "public_export";
+  access_classification: "public" | "member" | "private";
+  role: string | null;
+  processing_state: string;
+  revision: number;
+  derivative_of_asset_id: string | null;
+  dependencies_json: string;
+  provenance_json: string;
+  official: number;
+  review_status: string;
   source_repo: string | null;
   source_path: string | null;
   source_commit: string | null;
@@ -48,6 +57,11 @@ export async function uploadAsset(
     bytes: Uint8Array;
     declaredMime?: string;
     visibility?: "private" | "public_export";
+    accessClassification?: "public" | "member" | "private";
+    role?: string;
+    official?: boolean;
+    reviewStatus?: "unreviewed" | "reviewed" | "approved" | "rejected" | "placeholder";
+    provenance?: Record<string, unknown>;
     source?: {
       repo?: string;
       path?: string;
@@ -98,8 +112,9 @@ export async function uploadAsset(
       .prepare(
         `INSERT INTO fb_assets
           (id, tenant_id, kind, name, mime, width, height, bytes, r2_key, sha256, visibility,
+           access_classification, role, official, review_status, provenance_json,
            source_repo, source_path, source_commit, source_logical_id, credit, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         id,
@@ -112,7 +127,12 @@ export async function uploadAsset(
         input.bytes.length,
         key,
         hash,
-        input.visibility ?? "private",
+        input.visibility ?? (input.accessClassification === "public" ? "public_export" : "private"),
+        input.accessClassification ?? "private",
+        input.role ?? input.kind,
+        input.official ? 1 : 0,
+        input.reviewStatus ?? "unreviewed",
+        JSON.stringify(input.provenance ?? {}),
         input.source?.repo ?? null,
         input.source?.path ?? null,
         input.source?.commit ?? null,
@@ -188,16 +208,44 @@ export async function createRenderAsset(
     httpMetadata: { contentType: mime, contentDisposition: "inline" },
     customMetadata: { tenant: ctx.tenant.id, variant: input.variantId, recipe: input.recipeId },
   });
-  const assetId = newId("rnd");
+  const existingAsset = await first<{ id: string }>(
+    ctx.db,
+    "SELECT id FROM fb_assets WHERE tenant_id = ? AND r2_key = ?",
+    ctx.tenant.id,
+    key,
+  );
+  const assetId = existingAsset?.id ?? newId("rnd");
   const now = nowIso();
-  const publicUrl = `/media/public/${assetId}`;
-  await ctx.db.batch([
-    ctx.db
-      .prepare(
-        `INSERT INTO fb_assets (id, tenant_id, kind, name, mime, width, height, bytes, r2_key, sha256, visibility, created_at)
-         VALUES (?, ?, 'render', ?, ?, ?, ?, ?, ?, ?, 'public_export', ?)`,
-      )
-      .bind(assetId, ctx.tenant.id, `Card render ${input.variantId}`, mime, dimensions.width, dimensions.height, input.bytes.length, key, hash, now),
+  const publicUrl = `/media/render/${assetId}`;
+  const variant = await first<{ card_id: string }>(ctx.db, "SELECT card_id FROM fb_variants WHERE id = ? AND tenant_id = ?", input.variantId, ctx.tenant.id);
+  const { effectiveCardAudience } = await import("./visibility");
+  const audience = variant ? await effectiveCardAudience(ctx, variant.card_id) : "members";
+  const access = audience === "public" ? "public" : audience === "members" ? "member" : "private";
+  const statements = [
+    ...(existingAsset
+      ? []
+      : [
+          ctx.db
+            .prepare(
+              `INSERT INTO fb_assets (id, tenant_id, kind, name, mime, width, height, bytes, r2_key, sha256, visibility,
+                                      access_classification, role, processing_state, review_status, created_at)
+               VALUES (?, ?, 'render', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'render', 'ready', 'approved', ?)`,
+            )
+            .bind(
+              assetId,
+              ctx.tenant.id,
+              `Card render ${input.variantId}`,
+              mime,
+              dimensions.width,
+              dimensions.height,
+              input.bytes.length,
+              key,
+              hash,
+              access === "public" ? "public_export" : "private",
+              access,
+              now,
+            ),
+        ]),
     ctx.db
       .prepare(
         `INSERT INTO fb_variant_renders
@@ -208,9 +256,138 @@ export async function createRenderAsset(
            height = excluded.height, sha256 = excluded.sha256, status = 'published', published_at = excluded.published_at`,
       )
       .bind(newId("vr"), ctx.tenant.id, input.variantId, input.recipeId, assetId, publicUrl, dimensions.width, dimensions.height, hash, now, now),
-    auditStatementSafe(ctx, "render.published", assetId, { variant_id: input.variantId, recipe_id: input.recipeId, sha256: hash }),
-  ]);
+    auditStatementSafe(ctx, "render.published", assetId, { variant_id: input.variantId, recipe_id: input.recipeId, sha256: hash, access }),
+  ];
+  await ctx.db.batch(statements);
   return { assetId, publicUrl, width: dimensions.width, height: dimensions.height, sha256: hash };
+}
+
+export async function createBackRenderAsset(
+  ctx: Ctx,
+  input: { variantId: string; recipeId: string; bytes: Uint8Array },
+) {
+  const mime = detectMime(input.bytes);
+  if (!mime || !["image/png", "image/webp"].includes(mime)) {
+    throw new ApiError(422, "render_type_invalid", "Rendered card backs must be PNG or WebP.");
+  }
+  const dimensions = imageSize(input.bytes);
+  if (!dimensions.width || !dimensions.height) throw new ApiError(422, "render_dimensions_invalid", "Rendered back has no dimensions.");
+  const hash = await sha256Hex(input.bytes);
+  const ext = mime === "image/png" ? "png" : "webp";
+  const key = `tenants/${ctx.tenant.id}/backs/${hash}.${ext}`;
+  await ctx.media.put(key, input.bytes, {
+    httpMetadata: { contentType: mime, contentDisposition: "inline" },
+    customMetadata: { tenant: ctx.tenant.id, variant: input.variantId, recipe: input.recipeId, side: "back" },
+  });
+  const existingAsset = await first<{ id: string }>(
+    ctx.db,
+    "SELECT id FROM fb_assets WHERE tenant_id = ? AND r2_key = ?",
+    ctx.tenant.id,
+    key,
+  );
+  const assetId = existingAsset?.id ?? newId("rnd");
+  const now = nowIso();
+  const variant = await first<{ card_id: string }>(ctx.db, "SELECT card_id FROM fb_variants WHERE id = ? AND tenant_id = ?", input.variantId, ctx.tenant.id);
+  const { effectiveCardAudience } = await import("./visibility");
+  const audience = variant ? await effectiveCardAudience(ctx, variant.card_id) : "members";
+  const access = audience === "public" ? "public" : audience === "members" ? "member" : "private";
+  const statements = [
+    ...(existingAsset
+      ? []
+      : [
+          ctx.db
+            .prepare(
+              `INSERT INTO fb_assets (id, tenant_id, kind, name, mime, width, height, bytes, r2_key, sha256, visibility,
+                                      access_classification, role, processing_state, review_status, created_at)
+               VALUES (?, ?, 'render', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'render_back', 'ready', 'approved', ?)`,
+            )
+            .bind(assetId, ctx.tenant.id, `Card back ${input.variantId}`, mime, dimensions.width, dimensions.height, input.bytes.length, key, hash, access === "public" ? "public_export" : "private", access, now),
+        ]),
+    ctx.db
+      .prepare(
+        `INSERT INTO fb_variant_back_renders
+          (id, tenant_id, variant_id, recipe_id, asset_id, width, height, sha256, status, created_at, published_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'published', ?, ?)
+         ON CONFLICT(tenant_id, variant_id, recipe_id) DO UPDATE SET
+           asset_id = excluded.asset_id, width = excluded.width, height = excluded.height,
+           sha256 = excluded.sha256, status = 'published', published_at = excluded.published_at`,
+      )
+      .bind(newId("vbr"), ctx.tenant.id, input.variantId, input.recipeId, assetId, dimensions.width, dimensions.height, hash, now, now),
+    auditStatementSafe(ctx, "render.back.published", assetId, { variant_id: input.variantId, sha256: hash, access }),
+  ];
+  await ctx.db.batch(statements);
+  return { assetId, width: dimensions.width, height: dimensions.height, sha256: hash };
+}
+
+export async function createDerivative(
+  ctx: Ctx,
+  input: { sourceAssetId: string; sizeKey: "thumb" | "preview" | "detail"; bytes: Uint8Array },
+) {
+  const mime = detectMime(input.bytes);
+  if (!mime || mime !== "image/webp") throw new ApiError(422, "derivative_type_invalid", "Derivatives must be WebP.");
+  const dimensions = imageSize(input.bytes);
+  if (!dimensions.width || !dimensions.height) throw new ApiError(422, "derivative_dimensions_invalid", "Derivative has no dimensions.");
+  const source = await first<AssetRow & { card_id: string }>(
+    ctx.db,
+    `SELECT a.*, v.card_id FROM fb_assets a
+       JOIN fb_variant_renders vr ON vr.asset_id = a.id AND vr.tenant_id = a.tenant_id
+       JOIN fb_variants v ON v.id = vr.variant_id AND v.tenant_id = vr.tenant_id
+      WHERE a.tenant_id = ? AND a.id = ?`,
+    ctx.tenant.id,
+    input.sourceAssetId,
+  );
+  if (!source) throw new ApiError(404, "source_render_not_found", "The source render was not found.");
+  const hash = await sha256Hex(input.bytes);
+  const key = `tenants/${ctx.tenant.id}/derivatives/${hash}.webp`;
+  const existing = await first<{ id: string }>(
+    ctx.db,
+    "SELECT id FROM fb_asset_derivatives WHERE tenant_id = ? AND source_asset_id = ? AND size_key = ? AND sha256 = ?",
+    ctx.tenant.id,
+    source.id,
+    input.sizeKey,
+    hash,
+  );
+  if (existing) return { id: existing.id, width: dimensions.width, height: dimensions.height, bytes: input.bytes.length };
+  await ctx.media.put(key, input.bytes, {
+    httpMetadata: { contentType: mime, contentDisposition: "inline" },
+    customMetadata: { tenant: ctx.tenant.id, derivative: input.sizeKey, sha256: hash },
+  });
+  const assetId = newId("rnd");
+  const derivativeId = newId("drv");
+  const now = nowIso();
+  await ctx.db.batch([
+    ctx.db
+      .prepare(
+        `INSERT INTO fb_assets (id, tenant_id, kind, name, mime, width, height, bytes, r2_key, sha256, visibility,
+                                access_classification, role, processing_state, review_status, derivative_of_asset_id, created_at)
+         VALUES (?, ?, 'render', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready', 'approved', ?, ?)`,
+      )
+      .bind(
+        assetId,
+        ctx.tenant.id,
+        `${source.name} · ${input.sizeKey}`,
+        mime,
+        dimensions.width,
+        dimensions.height,
+        input.bytes.length,
+        key,
+        hash,
+        source.visibility,
+        source.access_classification,
+        `render_${input.sizeKey}`,
+        source.id,
+        now,
+      ),
+    ctx.db
+      .prepare(
+        `INSERT INTO fb_asset_derivatives
+          (id, tenant_id, source_asset_id, size_key, r2_key, mime, width, height, bytes, sha256, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready', ?)`,
+      )
+      .bind(derivativeId, ctx.tenant.id, source.id, input.sizeKey, key, mime, dimensions.width, dimensions.height, input.bytes.length, hash, now),
+    auditStatementSafe(ctx, "derivative.created", derivativeId, { source: source.id, size: input.sizeKey, bytes: input.bytes.length }),
+  ]);
+  return { id: derivativeId, width: dimensions.width, height: dimensions.height, bytes: input.bytes.length };
 }
 
 export async function getRenderAsset(ctx: Ctx, assetId: string) {
@@ -218,7 +395,7 @@ export async function getRenderAsset(ctx: Ctx, assetId: string) {
     ctx.db,
     `SELECT a.id, r.variant_id, r.public_url, a.mime, a.r2_key, a.width, a.height
        FROM fb_variant_renders r JOIN fb_assets a ON a.id = r.asset_id
-      WHERE r.tenant_id = ? AND a.id = ? AND r.status = 'published' AND a.visibility = 'public_export'`,
+      WHERE r.tenant_id = ? AND a.id = ? AND r.status = 'published'`,
     ctx.tenant.id,
     assetId,
   );

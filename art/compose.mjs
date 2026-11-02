@@ -197,6 +197,11 @@ function escapeXml(value) {
     .replaceAll("'", "&apos;");
 }
 
+function truncate(value, max) {
+  const text = String(value ?? "").trim();
+  return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
+}
+
 function wrapName(name) {
   const words = String(name).split(/\s+/);
   const lines = [];
@@ -210,18 +215,24 @@ function wrapName(name) {
     }
   }
   if (line) lines.push(line);
-  return lines.slice(0, 2);
+  // Long names get three lines at a smaller size rather than clipping.
+  return lines.slice(0, 3);
 }
 
 function cardTextSvg({ name, subtitle, setName, serial, className, rarity, material, effect }) {
   const lines = wrapName(name);
-  const nameSize = lines.length > 1 ? 46 : 54;
-  const nameY = 900 - (lines.length - 1) * 48;
+  const longest = Math.max(...lines.map((line) => line.length), 1);
+  const nameSize = lines.length >= 3 ? 40 : longest > 20 ? 40 : lines.length > 1 ? 46 : 54;
+  const lineHeight = nameSize + 8;
+  const nameY = 880 - (lines.length - 1) * lineHeight;
   const nameMarkup = lines
-    .map((line, index) => `<tspan x="64" dy="${index === 0 ? 0 : nameSize + 8}">${escapeXml(line)}</tspan>`)
+    .map((line, index) => `<tspan x="64" dy="${index === 0 ? 0 : lineHeight}">${escapeXml(line)}</tspan>`)
     .join("");
+  const lastBaseline = nameY + (lines.length - 1) * lineHeight;
+  const subtitleY = lastBaseline + 34;
+  const metaY = subtitleY + 32;
   const materialLabel = `${material.toUpperCase()}${effect && effect !== "none" ? ` · ${effect.toUpperCase()}` : ""}`;
-  const meta = [setName, className, rarity].filter(Boolean).map(escapeXml).join(" · ");
+  const meta = [setName, className, rarity].filter(Boolean).map((value) => escapeXml(truncate(value, 52))).join(" · ");
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
     <defs>
       <linearGradient id="shade" x1="0" y1="0" x2="0" y2="1">
@@ -235,8 +246,8 @@ function cardTextSvg({ name, subtitle, setName, serial, className, rarity, mater
     <text x="${W - 64}" y="116" text-anchor="end" font-family="IBM Plex Mono" font-size="14" letter-spacing="2.2" fill="#F4F0E6" opacity=".78">${escapeXml(materialLabel)}</text>
     <path d="M64 134 H260" stroke="#B08A52" stroke-width="1.2" opacity=".8"/>
     <text x="64" y="${nameY}" font-family="Fraunces" font-weight="600" font-size="${nameSize}" fill="#F4F0E6">${nameMarkup}</text>
-    ${subtitle ? `<text x="64" y="${nameY + (lines.length > 1 ? 52 : 40)}" font-family="Manrope" font-size="19" fill="#F4F0E6" opacity=".82">${escapeXml(subtitle)}</text>` : ""}
-    <text x="64" y="${nameY + (lines.length > 1 ? 96 : 82)}" font-family="IBM Plex Mono" font-size="13" letter-spacing="1.8" fill="#D9BF8B">${meta.toUpperCase()}</text>
+    ${subtitle ? `<text x="64" y="${subtitleY}" font-family="Manrope" font-size="19" fill="#F4F0E6" opacity=".82">${escapeXml(truncate(subtitle, 44))}</text>` : ""}
+    <text x="64" y="${metaY}" font-family="IBM Plex Mono" font-size="13" letter-spacing="1.8" fill="#D9BF8B">${meta.toUpperCase()}</text>
     <path d="M64 986 H686" stroke="#F4F0E6" stroke-width=".7" opacity=".22"/>
     <text x="64" y="1016" font-family="IBM Plex Mono" font-size="11" letter-spacing="4" fill="#F4F0E6" opacity=".55">FOILBURY</text>
     <text x="${W - 64}" y="1016" text-anchor="end" font-family="IBM Plex Mono" font-size="12" letter-spacing="1.2" fill="#F4F0E6" opacity=".76">${escapeXml(serial)}</text>
@@ -248,4 +259,33 @@ if (process.argv[1] && process.argv[1].endsWith("compose.mjs") && process.argv[2
   const input = JSON.parse(process.argv[2]);
   const result = await composeCard(input);
   console.log(JSON.stringify(result));
+}
+
+/**
+ * Applies the same authored finish materials to a designed card back. The back
+ * source already carries its own layout and editorial copy; this only adds the
+ * collectible material treatment, never a second random outcome.
+ */
+export async function composeCardBack(input) {
+  const { backPath, material = "plain", effect = "none", outputPath } = input;
+  const materialLayer = path.join(layerDir, `material-${material}.png`);
+  const frameLayer = path.join(layerDir, `frame-${material}.png`);
+  if (!fs.existsSync(materialLayer) || !fs.existsSync(frameLayer)) {
+    throw new Error(`Missing back material or frame layer for ${material}`);
+  }
+  const base = await sharp(backPath).resize(W, H, { fit: "cover" }).png().toBuffer();
+  const blend = material === "silver" ? "overlay" : material === "diamond" ? "screen" : "soft-light";
+  const opacity = material === "plain" ? 0.18 : 0.38;
+  const layers = [
+    { input: await sharp(materialLayer).resize(W, H).png().toBuffer(), blend, left: 0, top: 0 },
+    { input: await sharp(frameLayer).resize(W, H).png().toBuffer(), blend: "over", left: 0, top: 0 },
+  ];
+  if (effect && effect !== "none") {
+    const effectLayer = path.join(layerDir, `effect-${effect}.png`);
+    if (fs.existsSync(effectLayer)) {
+      layers.push({ input: await sharp(effectLayer).resize(W, H).ensureAlpha(opacity).png().toBuffer(), blend: "screen", left: 0, top: 0 });
+    }
+  }
+  await sharp(base).composite(layers).webp({ quality: 88, effort: 5 }).toFile(outputPath);
+  return outputPath;
 }

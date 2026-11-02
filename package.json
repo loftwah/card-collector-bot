@@ -46,7 +46,15 @@
     "test:ui": "node scripts/test-ui-a11y.mjs",
     "backup:prod": "node scripts/backup-d1-json.mjs",
     "provision:owner": "node scripts/provision-owner.mjs",
-    "access:configure": "node scripts/configure-cloudflare-access.mjs"
+    "access:configure": "node scripts/configure-cloudflare-access.mjs",
+    "content:validate": "node scripts/content/validate.mjs",
+    "content:provision": "node scripts/content/provision.mjs",
+    "content:export": "node scripts/content/export.mjs",
+    "test:album": "node scripts/test-album-e2e.mjs",
+    "test:privacy": "node scripts/test-privacy.mjs",
+    "test:seo": "node scripts/test-seo.mjs",
+    "test:achievements": "vitest run --config vitest.workers.config.ts tests/workers/achievements.test.ts tests/workers/gifts.test.ts tests/workers/visibility.test.ts",
+    "test:deployed": "node scripts/test-deployed.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "14.4.3",

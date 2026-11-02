@@ -37,3 +37,25 @@ Record source → installed location → actual use → findings → changes →
 - Never rotate the Discord bot token, OAuth secret, application identity or Access policy without a demonstrated need.
 - Run `pnpm check` and the relevant Playwright scripts before deploying. Do not count skipped or mocked human steps as passes.
 - Keep `.dev.vars` out of the production bundle; `scripts/deploy-production.mjs` removes it.
+
+## Album increment rules (2026-11-03)
+
+- `scope`, `status`, `view_audience` and distribution are separate. Never treat
+  global, published or public as synonyms. A card inherits the most restrictive
+  audience of every collection it belongs to.
+- Only the Super Admin approves public showcase content. New collections default
+  to members-only. NBA and the 16 third-party properties are never public.
+- Media authorisation is re-checked on every render/back/derivative/asset request.
+  Public bytes may be cached; member/private bytes are `private, no-store`.
+- Real launch manifests live under `.foilbury/content/` (gitignored). Import them
+  with `pnpm content:provision`; validate with `pnpm content:validate`; export a
+  metadata snapshot with `pnpm content:export`. Do not commit private rosters,
+  member data or private screenshots.
+- Do not run paid generation without a recorded bounded ceiling. The launch art
+  is a deterministic, clearly labelled original interpretation.
+- `pnpm test` includes unit, Workers, achievement, gift and visibility tests.
+  Run `node scripts/test-album-e2e.mjs` and `node scripts/test-privacy.mjs`
+  against the local server before deploying.
+- Production data changes require a JSON backup first
+  (`node scripts/backup-d1-json.mjs`), a reversible migration and a live smoke
+  check. Do not seed over live edits.

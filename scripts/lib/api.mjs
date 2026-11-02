@@ -4,6 +4,13 @@ import { readSecretFile, startDevServer } from "./local.mjs";
 
 export const BASE_URL = process.env.FOILBURY_URL ?? "http://localhost:5173";
 
+export function accessHeaders() {
+  const headers = {};
+  if (process.env.CF_ACCESS_CLIENT_ID) headers["CF-Access-Client-Id"] = process.env.CF_ACCESS_CLIENT_ID;
+  if (process.env.CF_ACCESS_CLIENT_SECRET) headers["CF-Access-Client-Secret"] = process.env.CF_ACCESS_CLIENT_SECRET;
+  return headers;
+}
+
 export function agentToken(kind = process.env.FOILBURY_AGENT ?? "owner") {
   if (process.env.FOILBURY_AGENT_TOKEN) return process.env.FOILBURY_AGENT_TOKEN;
   const file = path.join(process.cwd(), ".foilbury/agents.json");
@@ -39,6 +46,7 @@ export async function fetchWithRetry(url, options = {}, attempts = 4) {
 export async function apiFetch(route, options = {}) {
   await ensureServer();
   const headers = new Headers(options.headers ?? {});
+  for (const [name, value] of Object.entries(accessHeaders())) headers.set(name, value);
   headers.set("authorization", `Bearer ${options.token ?? agentToken(options.agent ?? "owner")}`);
   let body;
   if (options.form) {
@@ -63,7 +71,7 @@ export async function apiFetch(route, options = {}) {
   if (!response.ok) {
     const error = payload?.error;
     const detail = error?.details ? ` ${JSON.stringify(error.details)}` : "";
-    throw new Error(`${response.status} ${error?.code ?? "request_failed"}: ${error?.message ?? text}${detail}`);
+    throw new Error(`${response.status} ${route} ${error?.code ?? "request_failed"}: ${error?.message ?? text}${detail}`);
   }
   return payload;
 }

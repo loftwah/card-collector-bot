@@ -99,7 +99,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     }
   }
 
-  if ((isAdminApi || isPlatformApi) && ctx.config.access.enabled && (!ctx.accessIdentity || ctx.accessStatus !== "linked" || !ctx.user)) {
+  if ((isAdminApi || isPlatformApi) && ctx.actor.type !== "agent" && ctx.config.access.enabled && (!ctx.accessIdentity || ctx.accessStatus !== "linked" || !ctx.user)) {
     return new Response(
       JSON.stringify({
         error: { code: "access_identity_required", message: "Cloudflare Access identity is not linked to this Foilbury account." },

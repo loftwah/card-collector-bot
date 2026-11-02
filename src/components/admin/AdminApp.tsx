@@ -57,6 +57,11 @@ interface Variant {
 }
 
 interface Card {
+  bio_safe?: string | null;
+  spoiler_level?: number;
+  source_work?: string | null;
+  review_status?: string;
+  attributes_json?: string;
   id: string;
   slug: string;
   name: string;
@@ -265,7 +270,7 @@ function AdminCatalogue() {
   const [busy, setBusy] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Card | null>(null);
-  const [form, setForm] = useState({ slug: "", name: "", subtitle: "", description: "", bio: "", quote: "", classKey: "", categorySlug: "", rarityKey: "", tags: "" });
+  const [form, setForm] = useState({ slug: "", name: "", subtitle: "", description: "", bio: "", bioSafe: "", spoilerLevel: "0", sourceWork: "", reviewStatus: "draft", attributes: "[]", quote: "", classKey: "", categorySlug: "", rarityKey: "", tags: "" });
 
   async function load() {
     try {
@@ -281,15 +286,47 @@ function AdminCatalogue() {
   }
   useEffect(() => { void load(); }, []);
 
-  function resetForm() { setForm({ slug: "", name: "", subtitle: "", description: "", bio: "", quote: "", classKey: "", categorySlug: "", rarityKey: "", tags: "" }); }
+  function resetForm() { setForm({ slug: "", name: "", subtitle: "", description: "", bio: "", bioSafe: "", spoilerLevel: "0", sourceWork: "", reviewStatus: "draft", attributes: "[]", quote: "", classKey: "", categorySlug: "", rarityKey: "", tags: "" }); }
   function editForm(card: Card) {
     setEditing(card);
-    setForm({ slug: card.slug, name: card.name, subtitle: card.subtitle ?? "", description: card.description, bio: card.bio ?? "", quote: card.quote ?? "", classKey: card.class?.key ?? "", categorySlug: card.category?.slug ?? "", rarityKey: card.rarity?.key ?? "", tags: card.tags.map((tag) => tag.slug).join(", ") });
+    setForm({
+      slug: card.slug,
+      name: card.name,
+      subtitle: card.subtitle ?? "",
+      description: card.description,
+      bio: card.bio ?? "",
+      bioSafe: card.bio_safe ?? "",
+      spoilerLevel: String(card.spoiler_level ?? 0),
+      sourceWork: card.source_work ?? "",
+      reviewStatus: card.review_status ?? "draft",
+      attributes: card.attributes_json ?? "[]",
+      quote: card.quote ?? "",
+      classKey: card.class?.key ?? "",
+      categorySlug: card.category?.slug ?? "",
+      rarityKey: card.rarity?.key ?? "",
+      tags: card.tags.map((tag) => tag.slug).join(", "),
+    });
   }
   async function create() {
     setBusy("create"); setError(""); setMessage("");
     try {
-      await api("/api/v1/admin/cards", { method: "POST", body: { slug: form.slug, name: form.name, subtitle: form.subtitle || undefined, description: form.description, bio: form.bio || undefined, quote: form.quote || undefined, classKey: form.classKey || undefined, categorySlug: form.categorySlug || undefined, rarityKey: form.rarityKey || undefined, tags: form.tags ? form.tags.split(",").map((tag) => tag.trim()).filter(Boolean) : undefined } });
+      await api("/api/v1/admin/cards", { method: "POST", body: {
+        slug: form.slug,
+        name: form.name,
+        subtitle: form.subtitle || undefined,
+        description: form.description,
+        bio: form.bio || undefined,
+        bioSafe: form.bioSafe || undefined,
+        spoilerLevel: Number(form.spoilerLevel),
+        sourceWork: form.sourceWork || undefined,
+        reviewStatus: form.reviewStatus,
+        attributes: JSON.parse(form.attributes || "[]"),
+        quote: form.quote || undefined,
+        classKey: form.classKey || undefined,
+        categorySlug: form.categorySlug || undefined,
+        rarityKey: form.rarityKey || undefined,
+        tags: form.tags ? form.tags.split(",").map((tag) => tag.trim()).filter(Boolean) : undefined,
+      } });
       setCreateOpen(false); resetForm(); setMessage("Draft card created. Add an artwork edition through import before publishing."); await load();
     } catch (cause) { setError(describeError(cause)); } finally { setBusy(""); }
   }
@@ -297,7 +334,23 @@ function AdminCatalogue() {
     if (!editing) return;
     setBusy("save"); setError(""); setMessage("");
     try {
-      await api(`/api/v1/admin/cards/${editing.id}`, { method: "PATCH", body: { expectedVersion: editing.version, name: form.name, subtitle: form.subtitle || null, description: form.description, bio: form.bio || null, quote: form.quote || null, classKey: form.classKey || null, categorySlug: form.categorySlug || null, rarityKey: form.rarityKey || null, tags: form.tags ? form.tags.split(",").map((tag) => tag.trim()).filter(Boolean) : [] } });
+      await api(`/api/v1/admin/cards/${editing.id}`, { method: "PATCH", body: {
+        expectedVersion: editing.version,
+        name: form.name,
+        subtitle: form.subtitle || null,
+        description: form.description,
+        bio: form.bio || null,
+        bioSafe: form.bioSafe || null,
+        spoilerLevel: Number(form.spoilerLevel),
+        sourceWork: form.sourceWork || null,
+        reviewStatus: form.reviewStatus,
+        attributes: JSON.parse(form.attributes || "[]"),
+        quote: form.quote || null,
+        classKey: form.classKey || null,
+        categorySlug: form.categorySlug || null,
+        rarityKey: form.rarityKey || null,
+        tags: form.tags ? form.tags.split(",").map((tag) => tag.trim()).filter(Boolean) : [],
+      } });
       setEditing(null); setMessage("Card saved with optimistic concurrency."); await load();
     } catch (cause) { setError(describeError(cause)); } finally { setBusy(""); }
   }
@@ -312,8 +365,12 @@ function AdminCatalogue() {
           subjectAssetId: artwork.subjectAssetId,
           backgroundAssetId: artwork.backgroundAssetId || null,
           recipeId: artwork.recipeId || null,
-          materials: artwork.materials,
+          materials: artwork.materials.filter((material) => material !== "holographic"),
           effects: ["none"],
+          variants: [
+            ...artwork.materials.filter((material) => material !== "holographic").map((material) => ({ material, effect: null })),
+            ...(artwork.materials.includes("holographic") ? [{ material: "gold", effect: "holographic" }] : []),
+          ],
           status: "published",
         },
       });
@@ -389,9 +446,16 @@ function AdminCatalogue() {
             <Field label="Subtitle"><Input value={form.subtitle} onChange={(event) => setForm({ ...form, subtitle: event.target.value })} /></Field>
             <Field label="Description"><Textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></Field>
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Bio" hint="The character story shown on the card detail page."><Textarea value={form.bio} onChange={(event) => setForm({ ...form, bio: event.target.value })} /></Field>
+              <Field label="Spoiler-safe introduction" hint="Shown before a member opts into spoilers."><Textarea value={form.bioSafe} onChange={(event) => setForm({ ...form, bioSafe: event.target.value })} /></Field>
+              <Field label="Full profile" hint="May contain spoilers when spoiler level is above zero."><Textarea value={form.bio} onChange={(event) => setForm({ ...form, bio: event.target.value })} /></Field>
               <Field label="Quote"><Input value={form.quote} onChange={(event) => setForm({ ...form, quote: event.target.value })} placeholder="A line worth keeping." /></Field>
             </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Field label="Spoiler level"><Select value={form.spoilerLevel} onChange={(event) => setForm({ ...form, spoilerLevel: event.target.value })}><option value="0">0 · safe</option><option value="1">1 · light</option><option value="2">2 · story</option><option value="3">3 · major</option></Select></Field>
+              <Field label="Source work"><Input value={form.sourceWork} onChange={(event) => setForm({ ...form, sourceWork: event.target.value })} placeholder="e.g. Original project" /></Field>
+              <Field label="Review status"><Select value={form.reviewStatus} onChange={(event) => setForm({ ...form, reviewStatus: event.target.value })}><option value="draft">Draft</option><option value="reviewed">Reviewed</option><option value="approved">Approved</option><option value="placeholder">Placeholder</option></Select></Field>
+            </div>
+            <Field label="Structured attributes" hint='JSON array, e.g. [{"key":"team","label":"Team","value":"Example"}]'><Textarea value={form.attributes} onChange={(event) => setForm({ ...form, attributes: event.target.value })} /></Field>
             <div className="grid gap-3 sm:grid-cols-3">
               <Field label="Class"><Select value={form.classKey} onChange={(event) => setForm({ ...form, classKey: event.target.value })}><option value="">None</option>{taxonomy?.classes.map((item) => <option key={item.key} value={item.key}>{item.name}</option>)}</Select></Field>
               <Field label="Category"><Select value={form.categorySlug} onChange={(event) => setForm({ ...form, categorySlug: event.target.value })}><option value="">None</option>{taxonomy?.categories.map((item) => <option key={item.slug} value={item.slug}>{item.name}</option>)}</Select></Field>
@@ -412,9 +476,16 @@ function AdminCatalogue() {
             <Field label="Subtitle"><Input value={form.subtitle} onChange={(event) => setForm({ ...form, subtitle: event.target.value })} /></Field>
             <Field label="Description"><Textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></Field>
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Bio" hint="The character story shown on the card detail page."><Textarea value={form.bio} onChange={(event) => setForm({ ...form, bio: event.target.value })} /></Field>
+              <Field label="Spoiler-safe introduction" hint="Shown before a member opts into spoilers."><Textarea value={form.bioSafe} onChange={(event) => setForm({ ...form, bioSafe: event.target.value })} /></Field>
+              <Field label="Full profile" hint="May contain spoilers when spoiler level is above zero."><Textarea value={form.bio} onChange={(event) => setForm({ ...form, bio: event.target.value })} /></Field>
               <Field label="Quote"><Input value={form.quote} onChange={(event) => setForm({ ...form, quote: event.target.value })} placeholder="A line worth keeping." /></Field>
             </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Field label="Spoiler level"><Select value={form.spoilerLevel} onChange={(event) => setForm({ ...form, spoilerLevel: event.target.value })}><option value="0">0 · safe</option><option value="1">1 · light</option><option value="2">2 · story</option><option value="3">3 · major</option></Select></Field>
+              <Field label="Source work"><Input value={form.sourceWork} onChange={(event) => setForm({ ...form, sourceWork: event.target.value })} placeholder="e.g. Original project" /></Field>
+              <Field label="Review status"><Select value={form.reviewStatus} onChange={(event) => setForm({ ...form, reviewStatus: event.target.value })}><option value="draft">Draft</option><option value="reviewed">Reviewed</option><option value="approved">Approved</option><option value="placeholder">Placeholder</option></Select></Field>
+            </div>
+            <Field label="Structured attributes" hint='JSON array, e.g. [{"key":"team","label":"Team","value":"Example"}]'><Textarea value={form.attributes} onChange={(event) => setForm({ ...form, attributes: event.target.value })} /></Field>
             <div className="grid gap-3 sm:grid-cols-3">
               <Field label="Class"><Select value={form.classKey} onChange={(event) => setForm({ ...form, classKey: event.target.value })}><option value="">None</option>{taxonomy?.classes.map((item) => <option key={item.key} value={item.key}>{item.name}</option>)}</Select></Field>
               <Field label="Category"><Select value={form.categorySlug} onChange={(event) => setForm({ ...form, categorySlug: event.target.value })}><option value="">None</option>{taxonomy?.categories.map((item) => <option key={item.slug} value={item.slug}>{item.name}</option>)}</Select></Field>
@@ -449,7 +520,7 @@ function AdminCatalogue() {
             </Field>
             <Field label="Background asset"><Select value={artwork.backgroundAssetId} onChange={(event) => setArtwork({ ...artwork, backgroundAssetId: event.target.value })}><option value="">None</option>{backgrounds.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</Select></Field>
             <Field label="Render recipe"><Select value={artwork.recipeId} onChange={(event) => setArtwork({ ...artwork, recipeId: event.target.value })}><option value="">Latest published</option>{recipes.map((recipe) => <option key={recipe.id} value={recipe.id}>{recipe.name} · v{recipe.version}</option>)}</Select></Field>
-            <div><p className="label">Finishes</p><div className="grid grid-cols-2 gap-2">{["plain", "silver", "gold", "diamond"].map((material) => <label key={material} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={artwork.materials.includes(material)} onChange={(event) => setArtwork({ ...artwork, materials: event.target.checked ? [...artwork.materials, material] : artwork.materials.filter((item) => item !== material) })} />{material}</label>)}</div></div>
+            <div><p className="label">Finishes</p><div className="grid grid-cols-2 gap-2">{( [["plain","Base / Plain"],["silver","Silver"],["gold","Gold"],["holographic","Holographic (Gold + holo)"]] as const).map(([material, label]) => <label key={material} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={artwork.materials.includes(material)} onChange={(event) => setArtwork({ ...artwork, materials: event.target.checked ? [...artwork.materials, material] : artwork.materials.filter((item) => item !== material) })} />{label}</label>)}</div></div>
             <div className="flex gap-2"><Button onClick={addArtwork} disabled={busy === "artwork" || !artwork.subjectAssetId || artwork.materials.length === 0}>{busy === "artwork" ? "Adding…" : "Add artwork edition"}</Button><Button variant="secondary" onClick={() => setArtworkFor(null)}>Cancel</Button></div>
           </div>
         </DialogContent>

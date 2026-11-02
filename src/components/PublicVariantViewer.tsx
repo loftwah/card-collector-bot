@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { RotateCcw, Sparkles } from "lucide-react";
+import { Box, RotateCcw, Sparkles } from "lucide-react";
+import { displayFinish } from "@/lib/utils";
+import CardInspector from "./player/CardInspector";
 import { cn } from "@/lib/utils";
 
 interface Variant {
@@ -10,6 +12,7 @@ interface Variant {
   material_key: string;
   effect_key: string | null;
   render_url: string | null;
+  back_render_url: string | null;
 }
 
 export default function PublicVariantViewer({
@@ -24,6 +27,10 @@ export default function PublicVariantViewer({
   variants,
   collection,
   cardBackUrl,
+  attributes = [],
+  sourceWork,
+  sourceRefs = [],
+  reviewStatus,
 }: {
   name: string;
   subtitle: string | null;
@@ -36,13 +43,29 @@ export default function PublicVariantViewer({
   variants: Variant[];
   collection?: { name: string; logo_url: string | null; description: string } | null;
   cardBackUrl?: string | null;
+  attributes?: Array<{ label?: string; value?: string; unit?: string | null }>;
+  sourceWork?: string | null;
+  sourceRefs?: string[];
+  reviewStatus?: string;
 }) {
   const [selected, setSelected] = useState(0);
   const [showBack, setShowBack] = useState(false);
+  const [inspect, setInspect] = useState(false);
   const variant = variants[selected] ?? variants[0];
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-start">
       <div>
+        {inspect ? (
+          <CardInspector
+            frontUrl={variant?.render_url ?? null}
+            backUrl={variant?.back_render_url ?? null}
+            fallbackUrl={cardBackUrl}
+            name={name}
+            subtitle={subtitle}
+            finish={displayFinish(variant?.name, variant?.material_key, variant?.effect_key)}
+            collection={collection?.name ?? null}
+          />
+        ) : (
         <div className="card-rail p-3">
           <div className="card-face">
             {showBack ? (
@@ -57,7 +80,10 @@ export default function PublicVariantViewer({
             ) : variant?.render_url ? <img src={variant.render_url} alt={`${name} card in ${variant.name} finish`} /> : <div className="card-face-fallback">{name.charAt(0)}</div>}
           </div>
         </div>
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><p className="font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[var(--muted)]">{showBack ? "Card back" : `Published render · ${variant?.name ?? "Awaiting render"}`}</p><button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowBack((value) => !value)}><RotateCcw size={13} /> {showBack ? "Show front" : "Show back"}</button></div>
+        )}
+        {inspect ? null : (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><p className="font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[var(--muted)]">{showBack ? "Card back" : `Published render · ${variant?.name ?? "Awaiting render"}`}</p><div className="flex gap-1"><button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowBack((value) => !value)}><RotateCcw size={13} /> {showBack ? "Show front" : "Show back"}</button><button type="button" className="btn btn-secondary btn-sm" onClick={() => setInspect(true)}><Box size={13} /> Inspect in 3D</button></div></div>
+        )}
       </div>
       <div>
         <div className="flex flex-wrap items-center gap-2">
@@ -69,6 +95,23 @@ export default function PublicVariantViewer({
         {subtitle ? <p className="mt-2 text-lg text-[var(--brass)]">{subtitle}</p> : null}
         <p className="prose mt-6 text-[var(--muted)]">{bio || description}</p>
         {quote ? <blockquote className="mt-5 border-l-2 border-[var(--brass)] pl-4 font-display text-2xl leading-snug text-[var(--ink)]">“{quote}”</blockquote> : null}
+
+        {attributes.length ? (
+          <dl className="mt-7 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-[var(--line)] pt-5 text-sm">
+            {attributes.slice(0, 6).map((attribute) => (
+              <div key={`${attribute.label}-${attribute.value}`}>
+                <dt className="font-mono text-[0.56rem] uppercase tracking-[0.12em] text-[var(--muted)]">{attribute.label}</dt>
+                <dd className="mt-1">{attribute.value}{attribute.unit ? ` ${attribute.unit}` : ""}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : null}
+
+        <div className="mt-5 grid gap-2 border-t border-[var(--line)] pt-4 text-sm text-[var(--muted)]">
+          {sourceWork ? <p><span className="font-mono text-[0.56rem] uppercase tracking-[0.12em]">Source</span> · {sourceWork}</p> : null}
+          <p><span className="font-mono text-[0.56rem] uppercase tracking-[0.12em]">Review</span> · {reviewStatus ?? "unreviewed"}</p>
+          {sourceRefs.length ? <p className="break-words"><span className="font-mono text-[0.56rem] uppercase tracking-[0.12em]">References</span> · {sourceRefs.length} retained source {sourceRefs.length === 1 ? "link" : "links"} in the editorial record.</p> : null}
+        </div>
 
         <div className="mt-8">
           <p className="eyebrow mb-3">Published finishes</p>
@@ -86,8 +129,8 @@ export default function PublicVariantViewer({
                     : "border-[var(--line)] text-[var(--muted)] hover:border-[var(--brass)] hover:text-[var(--ink)]",
                 )}
               >
-                <span className="block font-mono text-[0.58rem] uppercase tracking-[0.1em]">{item.material_key}</span>
-                <span className="mt-0.5 block text-sm font-semibold">{item.name}</span>
+                <span className="block font-mono text-[0.58rem] uppercase tracking-[0.1em]">{item.material_key === "diamond" ? "holographic" : item.material_key}</span>
+                <span className="mt-0.5 block text-sm font-semibold">{displayFinish(item.name, item.material_key, item.effect_key)}</span>
               </button>
             ))}
           </div>

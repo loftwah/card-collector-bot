@@ -49,6 +49,9 @@ interface DrawResult {
   variant_name: string;
   render_url: string | null;
   serial: string;
+  new_subject: boolean;
+  new_finish: boolean;
+  owned_copies: number;
   price: number;
   balance_after: number;
   probability_bps: number;
@@ -108,6 +111,7 @@ export default function DrawStudio({ pools, initialBalance }: { pools: PoolSumma
         idempotencyKey: pendingKey,
       });
       setResult(data);
+      setRevealed(true);
       setBalance(data.balance_after);
       document.querySelectorAll<HTMLElement>("[data-foil-balance]").forEach((node) => { node.textContent = `${data.balance_after} Foil`; });
       setPendingKey(idempotencyKey("draw"));
@@ -131,39 +135,42 @@ export default function DrawStudio({ pools, initialBalance }: { pools: PoolSumma
     <div className="grid gap-8 lg:grid-cols-[0.72fr_1.28fr] lg:items-start">
       <aside className="grid gap-4">
         <div className="surface-flat p-5">
-          <p className="eyebrow">Choose a pool</p>
-          <div className="mt-3 grid gap-2">
-            {pools.map((pool) => (
-              <button
-                key={pool.id}
-                type="button"
-                onClick={() => { setSlug(pool.slug); setResult(null); }}
-                aria-pressed={pool.slug === slug}
-                className={cn(
-                  "border p-3 text-left transition-colors",
-                  pool.slug === slug ? "surface-selected border-ink" : "border-[var(--line)] hover:border-[var(--brass)]",
-                )}
-              >
-                <span className="flex items-center justify-between gap-2">
-                  <span className="font-semibold">{pool.name}</span>
-                  <span className={cn("font-mono text-xs", pool.slug === slug ? "text-[var(--brass-bright)]" : "text-[var(--brass)]")}>✦ {pool.price}</span>
-                </span>
-                <span className={cn("mt-1 block text-xs", pool.slug === slug ? "text-[#c9c2b4]" : "text-[var(--muted)]")}>{pool.description}</span>
-              </button>
-            ))}
-          </div>
+          <label className="field">
+            <span className="label">Choose a capsule</span>
+            <select className="select" value={slug} onChange={(event) => { setSlug(event.target.value); setResult(null); }} aria-label="Choose a capsule">
+              <optgroup label="Everyday">
+                {pools.filter((pool) => pool.slug === "cabinet-draw").map((pool) => <option key={pool.id} value={pool.slug}>{pool.name} · ✦ {pool.price}</option>)}
+              </optgroup>
+              <optgroup label="Collections">
+                {pools.filter((pool) => pool.slug !== "cabinet-draw").map((pool) => <option key={pool.id} value={pool.slug}>{pool.name} · ✦ {pool.price}</option>)}
+              </optgroup>
+            </select>
+          </label>
+          {(() => {
+            const selectedPool = pools.find((pool) => pool.slug === slug) ?? pools[0];
+            if (!selectedPool) return null;
+            return (
+              <div className="mt-4 border-t border-[var(--line)] pt-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-semibold">{selectedPool.name}</p>
+                  <span className="font-mono text-sm text-[var(--brass)]">✦ {selectedPool.price}</span>
+                </div>
+                <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">{selectedPool.description}</p>
+              </div>
+            );
+          })()}
         </div>
 
         <div className="surface-flat p-5">
-          <p className="eyebrow">Entrypoint context</p>
+          <p className="eyebrow">Where you are opening</p>
           <label className="field mt-3">
-            <span className="label">Channel policy</span>
+            <span className="label">Community filter</span>
             <select value={channel} onChange={(event) => setChannel(event.target.value)} className="select">
               <option value="">Public cabinet</option>
-              <option value="family-table">Family table (excludes horror)</option>
+              <option value="family-table">Family table · hides horror-tagged cards</option>
             </select>
           </label>
-          <p className="mt-2 text-xs leading-relaxed text-[var(--muted)]">A community policy can only narrow the tenant pool. Your personal preferences narrow it further; neither silently improves your odds.</p>
+          <p className="mt-2 text-xs leading-relaxed text-[var(--muted)]">A community filter can only hide cards. Your own preferences can hide more. Neither makes the remaining cards more likely than the odds shown.</p>
         </div>
 
         <div className="border border-[var(--line)] p-5">
@@ -175,7 +182,7 @@ export default function DrawStudio({ pools, initialBalance }: { pools: PoolSumma
               {drawing ? "Drawing…" : empty ? "No eligible cards" : insufficient ? "Not enough Foil" : `Draw for ✦ ${preview?.price ?? 0}`}
             </Button>
           </div>
-          <p className="mt-2 text-center font-mono text-[0.55rem] uppercase tracking-[0.1em] text-[var(--muted)]">Server-authoritative · pity {preview?.pity ?? "disabled"}</p>
+          <p className="mt-2 text-center font-mono text-[0.55rem] uppercase tracking-[0.1em] text-[var(--muted)]">Odds shown before you open · no purchase</p>
         </div>
       </aside>
 
@@ -218,6 +225,10 @@ export default function DrawStudio({ pools, initialBalance }: { pools: PoolSumma
                     <p className="eyebrow">Draw receipt {result.replayed ? "· replayed safely" : ""}</p>
                     <h3 className="display-sm mt-1 text-3xl">{result.card_name}</h3>
                     <p className="text-sm text-[var(--brass)]">{result.variant_name} · {result.serial}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <span className="badge">{result.new_subject ? "New subject" : `Another copy · ${result.owned_copies} owned`}</span>
+                      <span className="badge">{result.new_finish ? "New finish" : "Finish already in your album"}</span>
+                    </div>
                   </div>
                   <Button variant="secondary" size="sm" onClick={() => setRevealed((value) => !value)}>
                     {revealed ? <EyeOff size={14} /> : <Eye size={14} />} {revealed ? "Hide card" : "Reveal card"}
@@ -227,9 +238,9 @@ export default function DrawStudio({ pools, initialBalance }: { pools: PoolSumma
                   <div className="mt-5 grid gap-5 sm:grid-cols-[180px_1fr] sm:items-start">
                     {result.render_url ? <img src={result.render_url} alt={`${result.card_name} — ${result.variant_name}`} className="draw-result-image w-full rounded-[4px] border border-[var(--line)]" decoding="sync" /> : null}
                     <div className="text-sm text-[var(--muted)]">
-                      <p>Paid <span className="font-mono text-[var(--brass)]">✦ {result.price}</span> from pool revision {result.pool_revision}. Balance after: <span className="font-mono text-[var(--ink)]">✦ {result.balance_after}</span>.</p>
-                      <p className="mt-2">Selected at {pct(result.probability_bps)} probability. The receipt pins the pool revision and the random commitment.</p>
-                      <p className="mt-2 break-all font-mono text-[0.56rem] text-[var(--muted)]">commitment {result.random_commitment.slice(0, 24)}…</p>
+                      <p>Paid <span className="font-mono text-[var(--brass)]">✦ {result.price}</span>. Balance after: <span className="font-mono text-[var(--ink)]">✦ {result.balance_after}</span>.</p>
+                      <p className="mt-2">This copy was selected at {pct(result.probability_bps)} chance. Your draw record is saved with this copy.</p>
+                      <p className="mt-2 break-all font-mono text-[0.56rem] text-[var(--muted)]">draw proof {result.random_commitment.slice(0, 24)}…</p>
                       <a className="btn btn-primary btn-sm mt-4" href={`/play/card/${result.instance_id}`}>Inspect this instance <ArrowRight size={14} /></a>
                     </div>
                   </div>
@@ -241,32 +252,32 @@ export default function DrawStudio({ pools, initialBalance }: { pools: PoolSumma
 
             <div className="mt-6">
               <div className="flex items-center justify-between gap-3">
-                <p className="eyebrow">Actual probability before you draw</p>
-                <span className="font-mono text-[0.6rem] uppercase tracking-[0.1em] text-[var(--muted)]">total weight {preview.total_weight}</span>
+                <p className="eyebrow">Actual chance before you open</p>
+
               </div>
               <div className="mt-3 max-h-[30rem] overflow-auto border border-[var(--line)]">
                 <table className="table">
-                  <thead><tr><th>Card</th><th>Finish</th><th className="text-right">Weight</th><th className="text-right">Chance</th></tr></thead>
+                  <thead><tr><th>Card</th><th>Finish</th><th className="text-right">Chance</th></tr></thead>
                   <tbody>
                     {sorted.map((entry) => (
                       <tr key={entry.variant_id}>
                         <td className="font-medium">{entry.card_name}</td>
-                        <td className="text-[var(--muted)]">{entry.variant_name}</td>
-                        <td className="text-right font-mono text-xs">{entry.weight}</td>
+                        <td className="text-[var(--muted)]">{entry.material_key === "diamond" ? "Holographic" : entry.variant_name}</td>
+
                         <td className="text-right font-mono text-xs">{pct(entry.probability_bps)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-              <p className="mt-2 text-xs text-[var(--muted)]">The table is the eligible pool at revision {preview.revision}. The draw endpoint rejects a stale revision before charging. Empty pools never charge.</p>
+              <p className="mt-2 text-xs text-[var(--muted)]">This is the live capsule. If it changes before you open, you will be asked to review the new odds. Empty pools never charge.</p>
             </div>
 
             <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-[var(--line)] pt-4 font-mono text-[0.58rem] uppercase tracking-[0.1em] text-[var(--muted)]">
-              <span><Sparkles size={12} className="mr-1 inline text-[var(--brass)]" aria-hidden="true" />No player-selected seed</span>
-              <span>Idempotent request key</span>
-              <span>Atomic debit + issuance</span>
-              <span>Retry does not reroll</span>
+              <span><Sparkles size={12} className="mr-1 inline text-[var(--brass)]" aria-hidden="true" />One capsule, one card</span>
+              <span>Your result is saved if the connection drops</span>
+              <span>No purchase or cash-out</span>
+              <span>A retry never charges twice</span>
             </div>
           </>
         ) : null}

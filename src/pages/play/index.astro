@@ -11,11 +11,13 @@ import { getPoolPreview, listPools } from "../../server/modules/pools";
 import { listCollections } from "../../server/modules/collections";
 import { listTrades } from "../../server/modules/trades";
 import { first } from "../../server/db";
+import { listAchievements } from "../../server/modules/achievements";
+import AchievementBadge from "../../components/player/AchievementBadge.astro";
 import { formatDateTime, formatDual } from "../../lib/utils";
 
 const ctx = await pageContext(Astro.request);
 const user = ctx.user!;
-const [wallet, inventory, sets, economy, prefs, pools, trades, lastClaim, cabinetPool, collections] = await Promise.all([
+const [wallet, inventory, sets, economy, prefs, pools, trades, lastClaim, cabinetPool, collections, achievements] = await Promise.all([
   getWalletSummary(ctx.db, ctx.tenant.id, user.id, 8),
   getInventory(ctx, { limit: 12 }),
   listSets(ctx, user.id),
@@ -26,6 +28,7 @@ const [wallet, inventory, sets, economy, prefs, pools, trades, lastClaim, cabine
   first<{ created_at: string }>(ctx.db, "SELECT created_at FROM fb_reward_claims WHERE tenant_id = ? AND user_id = ? AND rule_key = 'daily-allowance' ORDER BY created_at DESC LIMIT 1", ctx.tenant.id, user.id),
   getPoolPreview(ctx, "cabinet-draw").catch(() => null),
   listCollections(ctx),
+  listAchievements(ctx, user.id),
 ]);
 const nextEligible = lastClaim ? new Date(new Date(lastClaim.created_at).getTime() + economy.daily_cooldown_seconds * 1000).toISOString() : null;
 const canClaim = !nextEligible || new Date(nextEligible) <= new Date();
@@ -35,6 +38,11 @@ const featured = inventory[0];
 const recent = inventory.slice(0, 8);
 const enabledCollections = collections.filter((collection) => collection.enabled);
 const publishedSets = sets.filter((set) => set.status === "published");
+const earnedAchievements = achievements.filter((item) => item.state === "earned");
+const nextAchievements = achievements
+  .filter((item) => item.state !== "earned")
+  .sort((a, b) => b.progress / Math.max(1, b.target) - a.progress / Math.max(1, a.target))
+  .slice(0, 2);
 ---
 <PlayerLayout title="Your cabinet · Foilbury">
   <section class="grid gap-10 lg:grid-cols-[1.08fr_0.92fr] lg:items-center">
@@ -112,7 +120,7 @@ const publishedSets = sets.filter((set) => set.status === "published");
         {recent.map((item) => (
           <a href={`/play/card/${item.id}`} class="group no-underline">
             <div class="card-face">
-              {item.render_url ? <img src={item.render_url} alt={`${item.card_name} — ${item.variant_name}`} loading="lazy" /> : <div class="card-face-fallback">{item.card_name.charAt(0)}</div>}
+              {item.render_url ? <img src={item.thumbnail_url ?? item.render_url} alt={`${item.card_name} — ${item.variant_name}`} loading="lazy" /> : <div class="card-face-fallback">{item.card_name.charAt(0)}</div>}
             </div>
             <div class="mt-2 flex items-start justify-between gap-2"><div><p class="display-sm text-sm leading-tight">{item.card_name}</p><p class="mt-0.5 text-[0.7rem] text-[var(--muted)]">{item.variant_name} · {item.collection_name ?? item.category_name ?? "Cabinet"}</p></div>{item.favourite ? <span class="text-[var(--brass)]" title="Favourite">♥</span> : null}</div>
           </a>
@@ -168,8 +176,27 @@ const publishedSets = sets.filter((set) => set.status === "published");
         </div>
         <a class="mt-4 inline-block font-mono text-[0.58rem] uppercase tracking-[0.12em] text-[var(--green)]" href="/play/rewards">Rewards & completions →</a>
       </div>
-      <div class="border border-[var(--line)] p-5 text-sm text-[var(--muted)]">
-        Motion is {prefs.reduced_motion ? "reduced" : "on"}; sound is {prefs.sound_enabled ? "on" : "off"}; sharing is {prefs.sharing_enabled ? "enabled" : "off"}. <a class="text-[var(--green)]" href="/play/preferences">Adjust preferences</a>
+      <div class="border border-[var(--line)] p-5">
+        <div class="flex items-start justify-between gap-3">
+          <div><h3 class="display-sm text-2xl">Achievements</h3><p class="mt-1 text-sm text-[var(--muted)]">Badges for the things you actually did.</p></div>
+          <a class="font-mono text-[0.58rem] uppercase tracking-[0.12em] text-[var(--green)]" href="/play/achievements">All {achievements.length}</a>
+        </div>
+        <div class="mt-4 grid gap-2">
+          {earnedAchievements.slice(0, 2).map((item) => (
+            <div class="flex items-center gap-3 border border-[var(--line)] p-2.5">
+              <AchievementBadge artKey={item.art_key} name={item.name} category={item.category} earned size={38} />
+              <div class="min-w-0"><p class="truncate text-sm font-semibold">{item.name}</p><p class="font-mono text-[0.52rem] uppercase tracking-[0.08em] text-[var(--green)]">Earned{item.reward_amount ? ` · +${item.reward_amount} Foil` : ""}</p></div>
+            </div>
+          ))}
+          {nextAchievements.map((item) => (
+            <div class="flex items-center gap-3 border border-[var(--line)] p-2.5">
+              <AchievementBadge artKey={item.art_key} name={item.name} category={item.category} size={38} />
+              <div class="min-w-0 flex-1"><p class="truncate text-sm font-semibold">{item.name}</p><div class="mt-1 h-1 bg-[var(--paper-3)]"><div class="h-full bg-[var(--brass)]" style={`width:${Math.min(100, Math.round((item.progress / Math.max(1, item.target)) * 100))}%`}></div></div><p class="mt-1 font-mono text-[0.52rem] uppercase tracking-[0.08em] text-[var(--muted)]">{item.progress}/{item.target}</p></div>
+            </div>
+          ))}
+          {achievements.length === 0 ? <p class="text-sm text-[var(--muted)]">No achievements are configured yet.</p> : null}
+        </div>
+        <p class="mt-4 border-t border-[var(--line)] pt-3 text-xs text-[var(--muted)]">Motion is {prefs.reduced_motion ? "reduced" : "on"}; sound is {prefs.sound_enabled ? "on" : "off"}; sharing is {prefs.sharing_enabled ? "enabled" : "off"}. <a class="text-[var(--green)]" href="/play/preferences">Adjust preferences</a></p>
       </div>
     </div>
   </section>

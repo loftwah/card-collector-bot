@@ -3,6 +3,7 @@ import { ApiError, type Ctx, type Role } from "../context";
 import { all, first, nowIso, statement } from "../db";
 import { newId, sha256Hex } from "../ids";
 import { auditStatement } from "../http";
+import { cardVisibilitySql, publicCollectionSql, viewerAccess } from "./visibility";
 
 export interface CardRow {
   id: string;
@@ -26,7 +27,17 @@ export interface CardRow {
   archived_at: string | null;
   version: number;
   bio: string | null;
+  bio_safe: string | null;
   quote: string | null;
+  spoiler_level: number;
+  spoiler_bio: string | null;
+  attributes_json: string;
+  source_refs_json: string;
+  review_status: string;
+  source_work: string | null;
+  adaptation_boundary: string | null;
+  editorial_version: number;
+  released_at: string | null;
   card_back_asset_id: string | null;
   visibility: string;
   class_key: string | null;
@@ -71,6 +82,9 @@ export interface VariantRow {
   effect_key: string | null;
   effect_name: string | null;
   render_url: string | null;
+  back_render_url: string | null;
+  thumbnail_url: string | null;
+  preview_url: string | null;
   render_status: string | null;
 }
 
@@ -101,14 +115,34 @@ export async function listCards(
     category?: string;
     tag?: string;
     set?: string;
+    collection?: string;
     limit?: number;
     publicOnly?: boolean;
+    /** Disable the viewer predicate only for an authorised administrative read. */
+    viewerScope?: boolean;
   } = {},
 ): Promise<CardView[]> {
   const limit = Math.min(200, Math.max(1, options.limit ?? 100));
   const where: string[] = ["cd.tenant_id = ?", "cd.archived_at IS NULL"];
   const params: unknown[] = [ctx.tenant.id];
   if (!options.includeDrafts) where.push("cd.status = 'published'");
+  if (options.publicOnly) {
+    const pub = publicCollectionSql("cvis");
+    const hidden = publicCollectionSql("chidden");
+    where.push(`EXISTS (
+      SELECT 1 FROM fb_collection_cards cc_vis JOIN fb_collections cvis ON cvis.id = cc_vis.collection_id
+       WHERE cc_vis.card_id = cd.id AND ${pub}
+    )`);
+    where.push(`NOT EXISTS (
+      SELECT 1 FROM fb_collection_cards cc_hidden JOIN fb_collections chidden ON chidden.id = cc_hidden.collection_id
+       WHERE cc_hidden.card_id = cd.id AND NOT (${hidden})
+    )`);
+  } else if (options.viewerScope !== false && !options.includeDrafts) {
+    const access = await viewerAccess(ctx);
+    const visibility = cardVisibilitySql(access);
+    where.push(visibility.sql);
+    params.push(...visibility.params);
+  }
   if (options.search) {
     where.push("(cd.name LIKE ? OR cd.description LIKE ? OR cd.subtitle LIKE ?)");
     const query = `%${options.search}%`;
@@ -129,6 +163,12 @@ export async function listCards(
       "EXISTS (SELECT 1 FROM fb_set_memberships sm JOIN fb_sets s ON s.id = sm.set_id WHERE sm.card_id = cd.id AND s.slug = ? AND sm.set_version = s.version)",
     );
     params.push(options.set);
+  }
+  if (options.collection) {
+    where.push(
+      "EXISTS (SELECT 1 FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id WHERE cc.card_id = cd.id AND c.slug = ? AND c.archived_at IS NULL)",
+    );
+    params.push(options.collection);
   }
   if (options.publicOnly) {
     const release = await first<{ id: string }>(
@@ -160,13 +200,23 @@ export async function listCards(
     .filter((card) => card.editions.length > 0);
 }
 
-export async function getCard(ctx: Ctx, idOrSlug: string): Promise<CardView> {
+export async function getCard(
+  ctx: Ctx,
+  idOrSlug: string,
+  options?: { includeDrafts?: boolean },
+): Promise<CardView> {
+  const access = await viewerAccess(ctx);
+  const visibility = cardVisibilitySql(access);
+  const administrative = Boolean(options?.includeDrafts || access.managesCurrentTenant);
+  const gate = administrative ? "1 = 1" : `(cd.status = 'published' AND (${visibility.sql}))`;
+  const gateParams = administrative ? [] : visibility.params;
   const row = await first<CardRow>(
     ctx.db,
-    `${CARD_SELECT} WHERE cd.tenant_id = ? AND (cd.id = ? OR cd.slug = ?) AND cd.archived_at IS NULL`,
+    `${CARD_SELECT} WHERE cd.tenant_id = ? AND (cd.id = ? OR cd.slug = ?) AND cd.archived_at IS NULL AND ${gate}`,
     ctx.tenant.id,
     idOrSlug,
     idOrSlug,
+    ...gateParams,
   );
   if (!row) {
     const alias = await first<{ target_card_id: string }>(
@@ -175,7 +225,7 @@ export async function getCard(ctx: Ctx, idOrSlug: string): Promise<CardView> {
       ctx.tenant.id,
       idOrSlug,
     );
-    if (alias) return getCard(ctx, alias.target_card_id);
+    if (alias) return getCard(ctx, alias.target_card_id, options);
     throw new ApiError(404, "card_not_found", "That card does not exist in this cabinet.");
   }
   return (await hydrateCards(ctx, [row]))[0]!;
@@ -183,6 +233,15 @@ export async function getCard(ctx: Ctx, idOrSlug: string): Promise<CardView> {
 
 async function hydrateCards(ctx: Ctx, rows: CardRow[]): Promise<CardView[]> {
   if (rows.length === 0) return [];
+  // D1 has a finite bound-parameter budget per statement. Keep each hydration
+  // batch small so a 200-card admin page cannot exceed it.
+  if (rows.length > 20) {
+    const hydrated: CardView[] = [];
+    for (let index = 0; index < rows.length; index += 20) {
+      hydrated.push(...(await hydrateCards(ctx, rows.slice(index, index + 20))));
+    }
+    return hydrated;
+  }
   const ids = rows.map((row) => row.id);
   const placeholders = ids.map(() => "?").join(",");
   const editions = await all<EditionRow & { subject_url: string; background_url: string | null }>(
@@ -212,15 +271,42 @@ async function hydrateCards(ctx: Ctx, rows: CardRow[]): Promise<CardView[]> {
   const variantIds = variants.map((variant) => variant.id);
   const renders =
     variantIds.length > 0
-      ? await all<{ variant_id: string; public_url: string; status: string }>(
+      ? await all<{ variant_id: string; asset_id: string; public_url: string; status: string }>(
           ctx.db,
-          `SELECT variant_id, public_url, status FROM fb_variant_renders
+          `SELECT variant_id, asset_id, public_url, status FROM fb_variant_renders
             WHERE tenant_id = ? AND variant_id IN (${variantIds.map(() => "?").join(",")}) AND status = 'published'`,
           ctx.tenant.id,
           ...variantIds,
         )
       : [];
   const renderMap = new Map(renders.map((render) => [render.variant_id, render]));
+  const backRenders =
+    variantIds.length > 0
+      ? await all<{ variant_id: string; asset_id: string }>(
+          ctx.db,
+          `SELECT variant_id, asset_id FROM fb_variant_back_renders
+            WHERE tenant_id = ? AND variant_id IN (${variantIds.map(() => "?").join(",")}) AND status = 'published'`,
+          ctx.tenant.id,
+          ...variantIds,
+        )
+      : [];
+  const backMap = new Map(backRenders.map((render) => [render.variant_id, render]));
+  const derivativeRows =
+    variantIds.length > 0
+      ? await all<{ id: string; source_asset_id: string; size_key: string }>(
+          ctx.db,
+          `SELECT id, source_asset_id, size_key FROM fb_asset_derivatives
+            WHERE tenant_id = ? AND source_asset_id IN (${renders.map(() => "?").join(",")}) AND status = 'ready'`,
+          ctx.tenant.id,
+          ...renders.map((render) => render.asset_id),
+        )
+      : [];
+  const derivativeMap = new Map(derivativeRows.map((row) => [`${row.source_asset_id}:${row.size_key}`, row.id]));
+  const derivativeUrl = (assetId: string | undefined, size: string) => {
+    if (!assetId) return null;
+    const id = derivativeMap.get(`${assetId}:${size}`);
+    return id ? `/media/derivative/${id}` : null;
+  };
   const tagRows = await all<{ card_id: string; id: string; slug: string; name: string }>(
     ctx.db,
     `SELECT ct.card_id, t.id, t.slug, t.name FROM fb_card_tags ct JOIN fb_tags t ON t.id = ct.tag_id
@@ -258,7 +344,12 @@ async function hydrateCards(ctx: Ctx, rows: CardRow[]): Promise<CardView[]> {
           .filter((variant) => variant.edition_id === edition.id)
           .map((variant) => ({
             ...variant,
-            render_url: renderMap.get(variant.id)?.public_url ?? null,
+            render_url: renderMap.get(variant.id)?.asset_id
+              ? `/media/render/${renderMap.get(variant.id)!.asset_id}`
+              : null,
+            back_render_url: backMap.get(variant.id)?.asset_id ? `/media/back/${backMap.get(variant.id)!.asset_id}` : null,
+            thumbnail_url: derivativeUrl(renderMap.get(variant.id)?.asset_id, "thumb"),
+            preview_url: derivativeUrl(renderMap.get(variant.id)?.asset_id, "preview"),
             render_status: renderMap.get(variant.id)?.status ?? null,
           })),
       }));
@@ -288,10 +379,20 @@ export async function createCard(
     subtitle?: string;
     description: string;
     bio?: string;
+    bioSafe?: string;
     quote?: string;
+    spoilerLevel?: number;
+    spoilerBio?: string;
+    attributes?: Array<Record<string, unknown>>;
+    sourceRefs?: string[];
+    reviewStatus?: string;
+    sourceWork?: string;
+    adaptationBoundary?: string;
+    editorialVersion?: number;
     logicalId?: string;
     classKey?: string;
     categorySlug?: string;
+    collectionSlug?: string;
     rarityKey?: string;
     tags?: string[];
     source?: { repo?: string; path?: string; commit?: string; logicalId?: string; credit?: string };
@@ -332,9 +433,11 @@ export async function createCard(
     ctx.db
       .prepare(
         `INSERT INTO fb_card_definitions
-          (id, tenant_id, logical_id, slug, name, subtitle, description, bio, quote, class_id, category_id, rarity_id,
-           status, source_repo, source_path, source_commit, source_logical_id, credit, created_at, updated_at, version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, 1)`,
+          (id, tenant_id, logical_id, slug, name, subtitle, description, bio, bio_safe, quote, spoiler_level, spoiler_bio,
+           attributes_json, source_refs_json, review_status, source_work, adaptation_boundary, editorial_version,
+           class_id, category_id, rarity_id, status, source_repo, source_path, source_commit, source_logical_id, credit,
+           created_at, updated_at, version)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, 1)`,
       )
       .bind(
         id,
@@ -345,7 +448,16 @@ export async function createCard(
         input.subtitle?.trim() || null,
         input.description.trim(),
         input.bio?.trim() || null,
+        input.bioSafe?.trim() || null,
         input.quote?.trim() || null,
+        Math.min(3, Math.max(0, Math.trunc(input.spoilerLevel ?? 0))),
+        input.spoilerBio?.trim() || null,
+        JSON.stringify(input.attributes ?? []),
+        JSON.stringify(input.sourceRefs ?? []),
+        input.reviewStatus ?? "unreviewed",
+        input.sourceWork ?? null,
+        input.adaptationBoundary ?? null,
+        Math.max(1, Math.trunc(input.editorialVersion ?? 1)),
         classRow?.id ?? null,
         categoryRow?.id ?? null,
         rarityRow?.id ?? null,
@@ -360,19 +472,22 @@ export async function createCard(
     ...tagRows.map((tag) =>
       statement(ctx.db, "INSERT INTO fb_card_tags (tenant_id, card_id, tag_id) VALUES (?, ?, ?)", ctx.tenant.id, id, tag.id),
     ),
-    ...(categoryRow
+    ...((input.collectionSlug ?? input.categorySlug)
       ? [
           ctx.db
             .prepare(
               `INSERT OR IGNORE INTO fb_collection_cards (collection_id, card_id, tenant_id, sort, added_by, added_at)
                SELECT c.id, ?, ?, 0, ?, ? FROM fb_collections c
-                WHERE c.slug = ? AND c.scope = 'global' AND c.owner_tenant_id = ? AND c.archived_at IS NULL`,
+                WHERE c.slug = ? AND c.owner_tenant_id = ? AND c.archived_at IS NULL`,
             )
-            .bind(id, ctx.tenant.id, ctx.user?.id ?? "system", now, input.categorySlug!, ctx.tenant.id),
+            .bind(id, ctx.tenant.id, ctx.user?.id ?? "system", now, input.collectionSlug ?? input.categorySlug!, ctx.tenant.id),
           ctx.db
             .prepare(
-              `UPDATE fb_card_definitions SET visibility = 'global'
-                WHERE id = ? AND EXISTS (SELECT 1 FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id WHERE cc.card_id = ? AND c.scope = 'global')`,
+              `UPDATE fb_card_definitions SET visibility = CASE WHEN EXISTS (
+                 SELECT 1 FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id
+                  WHERE cc.card_id = ? AND c.scope = 'global' AND c.view_audience = 'public'
+               ) THEN 'global' ELSE 'collection' END
+                WHERE id = ?`,
             )
             .bind(id, id),
         ]
@@ -380,7 +495,7 @@ export async function createCard(
     auditStatement(ctx, "card.created", "card", id, { slug, name: input.name }),
   ];
   await ctx.db.batch(statements);
-  return getCard(ctx, id);
+  return getCard(ctx, id, { includeDrafts: true });
 }
 
 export async function updateCard(
@@ -392,6 +507,15 @@ export async function updateCard(
     subtitle?: string | null;
     description?: string;
     bio?: string | null;
+    bioSafe?: string | null;
+    spoilerLevel?: number;
+    spoilerBio?: string | null;
+    attributes?: Array<Record<string, unknown>>;
+    sourceRefs?: string[];
+    reviewStatus?: string;
+    sourceWork?: string | null;
+    adaptationBoundary?: string | null;
+    editorialVersion?: number;
     quote?: string | null;
     classKey?: string | null;
     categorySlug?: string | null;
@@ -399,7 +523,7 @@ export async function updateCard(
     tags?: string[];
   },
 ): Promise<CardView> {
-  const card = await getCard(ctx, id);
+  const card = await getCard(ctx, id, { includeDrafts: true });
   if (card.version !== input.expectedVersion) {
     throw new ApiError(409, "stale_write", "This card changed since you opened it. Reload before saving.", {
       current_version: card.version,
@@ -478,7 +602,7 @@ export async function updateCard(
     auditStatement(ctx, "card.updated", "card", card.id, { expected_version: input.expectedVersion }),
   ];
   await ctx.db.batch(statements);
-  return getCard(ctx, card.id);
+  return getCard(ctx, card.id, { includeDrafts: true });
 }
 
 export async function setCardStatus(
@@ -486,7 +610,7 @@ export async function setCardStatus(
   id: string,
   status: "draft" | "published" | "retired",
 ): Promise<CardView> {
-  const card = await getCard(ctx, id);
+  const card = await getCard(ctx, id, { includeDrafts: true });
   if (status === "published") {
     const variants = await first<{ count: number }>(
       ctx.db,
@@ -508,11 +632,11 @@ export async function setCardStatus(
       .bind(status, nowIso(), card.id, ctx.tenant.id),
     auditStatement(ctx, `card.${status}`, "card", card.id),
   ]);
-  return getCard(ctx, card.id);
+  return getCard(ctx, card.id, { includeDrafts: true });
 }
 
 export async function archiveCard(ctx: Ctx, id: string): Promise<void> {
-  const card = await getCard(ctx, id);
+  const card = await getCard(ctx, id, { includeDrafts: true });
   const instances = await first<{ count: number }>(
     ctx.db,
     "SELECT COUNT(*) AS count FROM fb_card_instances WHERE tenant_id = ? AND card_id = ? AND status IN ('owned','reserved')",
@@ -571,14 +695,23 @@ export interface Taxonomy {
   effects: Array<Record<string, unknown>>;
 }
 
-export async function getTaxonomy(ctx: Ctx): Promise<Taxonomy> {
+export async function getTaxonomy(ctx: Ctx, options?: { publicOnly?: boolean }): Promise<Taxonomy> {
+  let categoryFilter = "";
+  let tagFilter = "";
+  let classFilter = "";
+  const params: unknown[] = [ctx.tenant.id];
+  if (options?.publicOnly) {
+    categoryFilter = `AND EXISTS (SELECT 1 FROM fb_card_definitions cd JOIN fb_collection_cards cc ON cc.card_id = cd.id JOIN fb_collections c ON c.id = cc.collection_id WHERE cd.category_id = fb_categories.id AND cd.status = 'published' AND c.status = 'published' AND c.view_audience = 'public' AND c.public_approved_at IS NOT NULL)`;
+    tagFilter = `AND EXISTS (SELECT 1 FROM fb_card_tags ct JOIN fb_card_definitions cd ON cd.id = ct.card_id JOIN fb_collection_cards cc ON cc.card_id = cd.id JOIN fb_collections c ON c.id = cc.collection_id WHERE ct.tag_id = fb_tags.id AND cd.status = 'published' AND c.status = 'published' AND c.view_audience = 'public' AND c.public_approved_at IS NOT NULL)`;
+    classFilter = `AND EXISTS (SELECT 1 FROM fb_card_definitions cd JOIN fb_collection_cards cc ON cc.card_id = cd.id JOIN fb_collections c ON c.id = cc.collection_id WHERE cd.class_id = fb_classes.id AND cd.status = 'published' AND c.status = 'published' AND c.view_audience = 'public' AND c.public_approved_at IS NOT NULL)`;
+  }
   const [classes, categories, tags, rarities, materials, effects] = await Promise.all([
-    all(ctx.db, "SELECT id, key, name, description, sort FROM fb_classes WHERE tenant_id = ? AND archived_at IS NULL ORDER BY sort, name", ctx.tenant.id),
-    all(ctx.db, "SELECT id, parent_id, slug, name, description, sort FROM fb_categories WHERE tenant_id = ? AND archived_at IS NULL ORDER BY sort, name", ctx.tenant.id),
-    all(ctx.db, "SELECT id, slug, name FROM fb_tags WHERE tenant_id = ? AND archived_at IS NULL ORDER BY name", ctx.tenant.id),
-    all(ctx.db, "SELECT id, key, name, weight, tone, sort FROM fb_rarities WHERE tenant_id = ? AND archived_at IS NULL ORDER BY sort, name", ctx.tenant.id),
-    all(ctx.db, "SELECT id, key, name, config_json, sort FROM fb_materials WHERE tenant_id = ? AND archived_at IS NULL ORDER BY sort, name", ctx.tenant.id),
-    all(ctx.db, "SELECT id, key, name, config_json, sort FROM fb_effects WHERE tenant_id = ? AND archived_at IS NULL ORDER BY sort, name", ctx.tenant.id),
+    all(ctx.db, `SELECT id, key, name, description, sort FROM fb_classes WHERE tenant_id = ? AND archived_at IS NULL ${classFilter} ORDER BY sort, name`, ...params),
+    all(ctx.db, `SELECT id, parent_id, slug, name, description, sort, icon_url FROM fb_categories WHERE tenant_id = ? AND archived_at IS NULL ${categoryFilter} ORDER BY sort, name`, ...params),
+    all(ctx.db, `SELECT id, slug, name FROM fb_tags WHERE tenant_id = ? AND archived_at IS NULL ${tagFilter} ORDER BY name`, ...params),
+    all(ctx.db, "SELECT id, key, name, weight, tone, sort FROM fb_rarities WHERE tenant_id = ? AND archived_at IS NULL ORDER BY sort, name", ...params),
+    all(ctx.db, "SELECT id, key, name, config_json, sort FROM fb_materials WHERE tenant_id = ? AND archived_at IS NULL ORDER BY sort, name", ...params),
+    all(ctx.db, "SELECT id, key, name, config_json, sort FROM fb_effects WHERE tenant_id = ? AND archived_at IS NULL ORDER BY sort, name", ...params),
   ]);
   return { classes, categories, tags, rarities, materials, effects } as Taxonomy;
 }
@@ -675,7 +808,27 @@ export interface SetView {
   progress?: { owned: number; total: number; complete: boolean; claimed: boolean };
 }
 
-export async function listSets(ctx: Ctx, userId?: string): Promise<SetView[]> {
+export async function listSets(
+  ctx: Ctx,
+  userId?: string,
+  options?: { publicOnly?: boolean; viewerScope?: boolean },
+): Promise<SetView[]> {
+  const access = await viewerAccess(ctx);
+  let cardFilter = "";
+  const cardParams: unknown[] = [];
+  if (options?.publicOnly) {
+    cardFilter = `AND EXISTS (
+      SELECT 1 FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id
+       WHERE cc.card_id = cd.id AND c.status = 'published' AND c.view_audience = 'public' AND c.public_approved_at IS NOT NULL
+    ) AND NOT EXISTS (
+      SELECT 1 FROM fb_collection_cards cc2 JOIN fb_collections c2 ON c2.id = cc2.collection_id
+       WHERE cc2.card_id = cd.id AND NOT (c2.status = 'published' AND c2.view_audience = 'public' AND c2.public_approved_at IS NOT NULL)
+    )`;
+  } else if (options?.viewerScope) {
+    const visibility = cardVisibilitySql(access);
+    cardFilter = `AND ${visibility.sql}`;
+    cardParams.push(...visibility.params);
+  }
   const rows = await all<{
     id: string;
     slug: string;
@@ -698,11 +851,15 @@ export async function listSets(ctx: Ctx, userId?: string): Promise<SetView[]> {
       ctx.db,
       `SELECT cd.id, cd.slug, cd.name, sm.sort FROM fb_set_memberships sm
         JOIN fb_card_definitions cd ON cd.id = sm.card_id
-       WHERE sm.tenant_id = ? AND sm.set_id = ? AND sm.set_version = ? ORDER BY sm.sort, cd.name`,
+       WHERE sm.tenant_id = ? AND sm.set_id = ? AND sm.set_version = ? ${cardFilter} ORDER BY sm.sort, cd.name`,
       ctx.tenant.id,
       row.id,
       row.version,
+      ...cardParams,
     );
+    if (options?.publicOnly || options?.viewerScope) {
+      if (cards.length === 0) continue;
+    }
     let progress: SetView["progress"];
     if (userId) {
       const owned = await first<{ count: number }>(
@@ -1070,10 +1227,11 @@ export async function createEditionForCard(
     recipeId?: string | null;
     materials: string[];
     effects?: string[];
+    variants?: Array<{ material: string; effect?: string | null }>;
     status?: "draft" | "published";
   },
 ): Promise<CardView> {
-  const card = await getCard(ctx, cardId);
+  const card = await getCard(ctx, cardId, { includeDrafts: true });
   if (!input.name.trim()) throw new ApiError(422, "edition_name_required", "Give the artwork edition a name.");
   if (!input.subjectAssetId) throw new ApiError(422, "subject_required", "Choose a subject asset.");
   const subject = await first<{ id: string; kind: string }>(
@@ -1096,21 +1254,27 @@ export async function createEditionForCard(
     ? await first<{ id: string }>(ctx.db, "SELECT id FROM fb_recipes WHERE id = ? AND tenant_id = ? AND status = 'published'", input.recipeId, ctx.tenant.id)
     : await first<{ id: string }>(ctx.db, "SELECT id FROM fb_recipes WHERE tenant_id = ? AND status = 'published' ORDER BY version DESC LIMIT 1", ctx.tenant.id);
   if (!recipe) throw new ApiError(422, "recipe_required", "Publish a render recipe before adding artwork.");
+  const requestedVariants = input.variants?.length
+    ? input.variants
+    : input.materials.flatMap((material) =>
+        (input.effects?.length ? input.effects : ["none"]).map((effect) => ({ material, effect })),
+      );
+  const materialKeys = [...new Set(requestedVariants.map((variant) => variant.material))];
+  const effectKeys = [...new Set(requestedVariants.map((variant) => variant.effect ?? "none"))];
   const materialRows = await all<{ id: string; key: string; name: string }>(
     ctx.db,
-    `SELECT id, key, name FROM fb_materials WHERE tenant_id = ? AND key IN (${input.materials.map(() => "?").join(",")}) AND archived_at IS NULL`,
+    `SELECT id, key, name FROM fb_materials WHERE tenant_id = ? AND key IN (${materialKeys.map(() => "?").join(",")}) AND archived_at IS NULL`,
     ctx.tenant.id,
-    ...input.materials,
+    ...materialKeys,
   );
-  if (materialRows.length !== new Set(input.materials).size) throw new ApiError(422, "material_invalid", "One or more materials are not available.");
-  const effectKeys = input.effects?.length ? input.effects : ["none"];
+  if (materialRows.length !== materialKeys.length) throw new ApiError(422, "material_invalid", "One or more materials are not available.");
   const effectRows = await all<{ id: string; key: string; name: string }>(
     ctx.db,
     `SELECT id, key, name FROM fb_effects WHERE tenant_id = ? AND key IN (${effectKeys.map(() => "?").join(",")}) AND archived_at IS NULL`,
     ctx.tenant.id,
     ...effectKeys,
   );
-  if (effectRows.length !== new Set(effectKeys).size) throw new ApiError(422, "effect_invalid", "One or more effects are not available.");
+  if (effectRows.length !== effectKeys.length) throw new ApiError(422, "effect_invalid", "One or more effects are not available.");
   const editionId = newId("edt");
   const now = nowIso();
   const statements = [
@@ -1121,28 +1285,28 @@ export async function createEditionForCard(
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(editionId, ctx.tenant.id, card.id, input.name.trim().slice(0, 160), subject.id, input.backgroundAssetId ?? null, recipe.id, input.status ?? "published", now),
-    ...materialRows.flatMap((material) =>
-      effectRows.map((effect) =>
-        ctx.db
-          .prepare(
-            `INSERT INTO fb_variants (id, tenant_id, card_id, edition_id, material_id, effect_id, name, status, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          )
-          .bind(
-            newId("var"),
-            ctx.tenant.id,
-            card.id,
-            editionId,
-            material.id,
-            effect.key === "none" ? null : effect.id,
-            effect.key === "none" ? material.name : `${material.name} · ${effect.name}`,
-            input.status ?? "published",
-            now,
-          ),
-      ),
-    ),
+    ...requestedVariants.map((variant) => {
+      const material = materialRows.find((row) => row.key === variant.material)!;
+      const effect = effectRows.find((row) => row.key === (variant.effect ?? "none"))!;
+      return ctx.db
+        .prepare(
+          `INSERT INTO fb_variants (id, tenant_id, card_id, edition_id, material_id, effect_id, name, status, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          newId("var"),
+          ctx.tenant.id,
+          card.id,
+          editionId,
+          material.id,
+          effect.key === "none" ? null : effect.id,
+          effect.key === "none" ? material.name : `${material.name} · ${effect.name}`,
+          input.status ?? "published",
+          now,
+        );
+    }),
     auditStatement(ctx, "card.edition.created", "card", card.id, { edition: input.name, materials: input.materials, effects: effectKeys }),
   ];
   await ctx.db.batch(statements);
-  return getCard(ctx, card.id);
+  return getCard(ctx, card.id, { includeDrafts: true });
 }

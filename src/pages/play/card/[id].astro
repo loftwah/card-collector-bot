@@ -1,12 +1,12 @@
 ---
 import PlayerLayout from "../../../layouts/PlayerLayout.astro";
-import LayeredCard from "../../../components/player/LayeredCard";
+import CardInspector from "../../../components/player/CardInspector";
 import CardDetailActions from "../../../components/player/CardDetailActions";
 import { pageContext } from "../../../server/page";
 import { getInstance } from "../../../server/modules/collection";
 import { listSets } from "../../../server/modules/catalogue";
 import { getWishlist } from "../../../server/modules/collection";
-import { formatDual } from "../../../lib/utils";
+import { displayFinish, formatDual } from "../../../lib/utils";
 
 const ctx = await pageContext(Astro.request);
 const instanceId = Astro.params.id ?? "";
@@ -35,30 +35,22 @@ const eventLabel: Record<string, string> = {
 
   <div class="grid gap-9 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-start">
     <div>
-      <LayeredCard
+      <CardInspector
         client:load
-        subjectUrl={`/media/asset/${instance.subject_asset_id}`}
-        backgroundUrl={instance.background_asset_id ? `/media/asset/${instance.background_asset_id}` : "/brand/card-back.webp"}
-        material={instance.material_key}
-        effect={instance.effect_key}
+        frontUrl={instance.render_url}
+        backUrl={instance.back_render_url}
+        fallbackUrl="/brand/card-back.webp"
         name={instance.card_name}
         subtitle={instance.subtitle}
-        setName={set?.name ?? instance.category_name ?? "Cabinet"}
-        characterClass={instance.class_name}
-        rarity={instance.rarity_name}
+        finish={displayFinish(instance.variant_name, instance.material_key, instance.effect_key)}
+        collection={instance.collection_name}
         serial={instance.serial}
-        subjectWidth={instance.subject_width}
-        subjectHeight={instance.subject_height}
-        cardBackUrl="/brand/card-back.webp"
-        collectionName={instance.collection_name}
-        collectionLogo={instance.collection_logo}
-        collectionDescription={instance.collection_description}
       />
       <div class="mt-4 flex flex-wrap items-center justify-between gap-2">
-        <p class="font-mono text-[0.58rem] uppercase tracking-[0.12em] text-[var(--muted)]">Live layered composition · {instance.material_key}{instance.effect_key ? ` · ${instance.effect_key}` : ""}</p>
-        {instance.render_url ? <a class="font-mono text-[0.58rem] uppercase tracking-[0.12em] text-[var(--green)]" href={instance.render_url} target="_blank" rel="noreferrer">Published render ↗</a> : null}
+        <p class="font-mono text-[0.58rem] uppercase tracking-[0.12em] text-[var(--muted)]">Your copy · {displayFinish(instance.variant_name, instance.material_key, instance.effect_key)}</p>
+        {instance.render_url ? <a class="font-mono text-[0.58rem] uppercase tracking-[0.12em] text-[var(--green)]" href={instance.render_url} target="_blank" rel="noreferrer">Open full-size front ↗</a> : null}
       </div>
-      <p class="mt-2 text-xs text-[var(--muted)]">The layered view uses the private source assets with your session. The public render is an explicit export; it does not expose the source library.</p>
+      <p class="mt-2 text-xs text-[var(--muted)]">The 3D view is an inspection aid. Your ownership, finish and serial are fixed in your album, not changed by the camera.</p>
     </div>
 
     <div>
@@ -70,8 +62,32 @@ const eventLabel: Record<string, string> = {
       </div>
       <h1 class="display mt-4 text-[clamp(2.8rem,7vw,5.5rem)]">{instance.card_name}</h1>
       <p class="mt-2 text-lg text-[var(--brass)]">{instance.subtitle}</p>
-      <p class="prose mt-5 text-[var(--muted)]">{instance.bio || instance.description}</p>
+      <p class="prose mt-5 text-[var(--muted)]">{instance.bio_safe || instance.bio || instance.description}</p>
+      {instance.spoiler_level > 0 && instance.bio ? (
+        <details class="mt-4 border border-[var(--line)] p-4">
+          <summary class="cursor-pointer font-mono text-[0.62rem] uppercase tracking-[0.1em] text-[var(--coral)]">Show full profile · spoiler level {instance.spoiler_level}</summary>
+          <p class="prose mt-3 text-[var(--muted)]">{instance.bio}</p>
+        </details>
+      ) : null}
       {instance.quote ? <blockquote class="mt-5 border-l-2 border-[var(--brass)] pl-4 text-xl italic text-[var(--ink)]">“{instance.quote}”</blockquote> : null}
+      {(() => {
+        try {
+          const attributes = JSON.parse(instance.attributes_json ?? "[]") as Array<{ label?: string; value?: string; unit?: string | null; source?: string }>;
+          if (!attributes.length) return null;
+          return (
+            <dl class="mt-7 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-[var(--line)] pt-5 text-sm">
+              {attributes.slice(0, 8).map((attribute) => (
+                <div>
+                  <dt class="eyebrow">{attribute.label}</dt>
+                  <dd class="mt-1">{attribute.value}{attribute.unit ? ` ${attribute.unit}` : ""}{attribute.source ? <span class="mt-0.5 block text-[0.65rem] text-[var(--muted)]">{attribute.source}</span> : null}</dd>
+                </div>
+              ))}
+            </dl>
+          );
+        } catch {
+          return null;
+        }
+      })()}
 
       <div class="mt-7">
         <CardDetailActions client:load instanceId={instance.id} cardId={instance.card_id} initialFavourite={Boolean(instance.favourite)} initialLocked={Boolean(instance.locked)} initialWishlist={wished} reserved={instance.status === "reserved"} />
@@ -79,12 +95,14 @@ const eventLabel: Record<string, string> = {
 
       <dl class="mt-8 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-[var(--line)] pt-5 text-sm">
         <div><dt class="eyebrow">Serial</dt><dd class="mt-1 font-mono text-xs">{instance.serial}</dd></div>
-        <div><dt class="eyebrow">Finish</dt><dd class="mt-1">{instance.material_key}{instance.effect_key ? ` · ${instance.effect_key}` : ""}</dd></div>
+        <div><dt class="eyebrow">Finish</dt><dd class="mt-1">{displayFinish(instance.variant_name, instance.material_key, instance.effect_key)}</dd></div>
         <div><dt class="eyebrow">Acquired</dt><dd class="mt-1">{formatDual(instance.acquired_at)}</dd></div>
         <div><dt class="eyebrow">Via</dt><dd class="mt-1">{instance.acquired_via}</dd></div>
         <div><dt class="eyebrow">Set</dt><dd class="mt-1">{set ? `${set.name} · v${set.version}` : "No published set"}</dd></div>
         <div><dt class="eyebrow">Category</dt><dd class="mt-1">{instance.category_name ?? "—"}</dd></div>
         <div><dt class="eyebrow">Collection</dt><dd class="mt-1">{instance.collection_name ?? "Uncollected"}</dd></div>
+        <div><dt class="eyebrow">Source work</dt><dd class="mt-1">{instance.source_work ?? "Foilbury original"}</dd></div>
+        <div><dt class="eyebrow">Review</dt><dd class="mt-1">{instance.review_status}</dd></div>
       </dl>
 
       {set?.progress ? (

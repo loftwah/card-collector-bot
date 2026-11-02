@@ -3,10 +3,12 @@ import { first, nowIso } from "../db";
 import { auditStatement } from "../http";
 import { newId, sha256Hex } from "../ids";
 import { getInventory } from "../modules/collection";
+import { displayFinish } from "../../lib/utils";
 import { adjustWallet, claimDailyReward, getEconomy } from "../modules/economy";
 import { getWalletSummary } from "../modules/wallet";
 import { getCard, listCards } from "../modules/catalogue";
 import { executeDraw, getPoolPreview, listPools } from "../modules/pools";
+import { listAchievements } from "../modules/achievements";
 import { HELP_TEXT } from "./command-definitions";
 import { isBotAdmin, requireBotAdmin } from "./context";
 import type {
@@ -24,6 +26,8 @@ interface DrawReceipt {
   variant_id: string;
   card_name: string;
   variant_name: string;
+  material_key: string;
+  effect_key: string | null;
   render_url: string | null;
   serial: string;
   pool_name: string;
@@ -191,7 +195,7 @@ async function openCard(
   const rarityKey = await cardRarityKey(ctx, result.card_id);
   const fields = [
     { name: "Rarity", value: rarityName ?? "Unclassified", inline: true },
-    { name: "Variant", value: result.variant_name, inline: true },
+    { name: "Variant", value: displayFinish(result.variant_name, result.material_key, result.effect_key), inline: true },
     { name: "Serial", value: `\`${result.serial}\``, inline: true },
     { name: "Pool", value: `${result.pool_name} · ${result.price} ${result.currency.symbol}`, inline: true },
     { name: "Balance", value: `${result.balance_after} ${result.currency.symbol}`, inline: true },
@@ -337,11 +341,12 @@ async function card(ctx: Ctx, query: string): Promise<DiscordCallback> {
   }
   const variants = found.editions.flatMap((edition) => edition.variants.filter((variant) => variant.status === "published"));
   const imageVariant = variants.find((variant) => variant.render_url);
-  const image = absoluteUrl(ctx.config.publicOrigin, imageVariant?.render_url);
   const render = imageVariant
-    ? await first<{ width: number; height: number }>(
+    ? await first<{ width: number; height: number; r2_key: string; mime: string }>(
         ctx.db,
-        "SELECT width, height FROM fb_variant_renders WHERE tenant_id = ? AND variant_id = ? AND status = 'published' LIMIT 1",
+        `SELECT vr.width, vr.height, a.r2_key, a.mime FROM fb_variant_renders vr
+           JOIN fb_assets a ON a.id = vr.asset_id AND a.tenant_id = vr.tenant_id
+          WHERE vr.tenant_id = ? AND vr.variant_id = ? AND vr.status = 'published' LIMIT 1`,
         ctx.tenant.id,
         imageVariant.id,
       )
@@ -353,7 +358,7 @@ async function card(ctx: Ctx, query: string): Promise<DiscordCallback> {
     { name: "Tags", value: found.tags.length ? found.tags.map((tag) => tag.name).join(", ") : "None", inline: false },
     { name: "Sets", value: found.sets.length ? found.sets.map((set) => set.name).join(", ") : "None", inline: false },
   ];
-  return callback(
+  const resultCallback = callback(
     {
       embeds: [
         {
@@ -362,9 +367,171 @@ async function card(ctx: Ctx, query: string): Promise<DiscordCallback> {
           color: colorFor(found.rarity?.key),
           fields,
           footer: { text: `Foilbury catalogue · ${ctx.tenant.name}` },
-          ...(image ? { image: { url: image, width: render?.width, height: render?.height } } : {}),
+          ...(render ? { image: { url: "attachment://foilbury-card.webp", width: render.width, height: render.height } } : {}),
+        },
+        ...(variants.length
+          ? [{
+              title: "Private next steps",
+              description: "Viewing another side or reading details never spends Foil or awards another copy.",
+              color: 0x7c6b4f,
+            }]
+          : []),
+      ],
+      components: components([
+        ...(imageVariant
+          ? [[
+              button("View back", `foilbury:card:${found.id}:${imageVariant.id}:back`, 2),
+              button("Details", `foilbury:card:${found.id}:${imageVariant.id}:details`, 2),
+              { type: 5, style: 5, label: "Open my album", url: absoluteUrl(ctx.config.publicOrigin, "/play/collection")! },
+            ]]
+          : []),
+      ]),
+    },
+    true,
+  );
+  if (render) resultCallback.attachments = [{ r2Key: render.r2_key, filename: "foilbury-card.webp", contentType: render.mime || "image/webp" }];
+  return resultCallback;
+}
+
+async function cardFace(
+  ctx: Ctx,
+  cardId: string,
+  variantId: string | null,
+  side: "front" | "back",
+): Promise<DiscordCallback> {
+  const found = await getCard(ctx, cardId);
+  if (found.status !== "published") throw new ApiError(404, "card_not_found", "That card is not published.");
+  const variants = found.editions.flatMap((edition) => edition.variants.filter((variant) => variant.status === "published"));
+  const variant = variants.find((item) => item.id === variantId) ?? variants.find((item) => item.render_url);
+  if (!variant) throw new ApiError(404, "render_missing", "That card has no finished render yet.");
+  const render = await first<{ width: number; height: number; r2_key: string; mime: string }>(
+    ctx.db,
+    side === "front"
+      ? `SELECT vr.width, vr.height, a.r2_key, a.mime FROM fb_variant_renders vr
+           JOIN fb_assets a ON a.id = vr.asset_id AND a.tenant_id = vr.tenant_id
+          WHERE vr.tenant_id = ? AND vr.variant_id = ? AND vr.status = 'published' LIMIT 1`
+      : `SELECT br.width, br.height, a.r2_key, a.mime FROM fb_variant_back_renders br
+           JOIN fb_assets a ON a.id = br.asset_id AND a.tenant_id = br.tenant_id
+          WHERE br.tenant_id = ? AND br.variant_id = ? AND br.status = 'published' LIMIT 1`,
+    ctx.tenant.id,
+    variant.id,
+  );
+  if (!render) throw new ApiError(404, "render_missing", `That card has no finished ${side} render yet.`);
+  const collection = found.collections[0];
+  const embed: DiscordEmbed = {
+    title: `${found.name} — ${variant.name}`,
+    description: truncate(side === "front" ? found.description : (found.bio_safe ?? found.bio ?? found.description), 1500),
+    color: colorFor(found.rarity?.key),
+    fields: [
+      { name: "Collection", value: collection?.name ?? "Cabinet", inline: true },
+      { name: "Side", value: side === "front" ? "Front" : "Back", inline: true },
+      { name: "Source", value: found.source_work ?? found.sets[0]?.name ?? "Foilbury", inline: true },
+    ],
+    footer: { text: "Private member view · viewing does not spend Foil or award another copy" },
+    image: { url: `attachment://foilbury-${side}.webp`, width: render.width, height: render.height },
+  };
+  const resultCallback = callback(
+    {
+      embeds: [embed],
+      components: components([
+        [
+          button(side === "front" ? "View back" : "View front", `foilbury:card:${found.id}:${variant.id}:${side === "front" ? "back" : "front"}`, 2),
+          button("Details", `foilbury:card:${found.id}:${variant.id}:details`, 2),
+          { type: 5, style: 5, label: "Open my album", url: absoluteUrl(ctx.config.publicOrigin, "/play/collection")! },
+        ],
+      ]),
+    },
+    true,
+  );
+  resultCallback.attachments = [{ r2Key: render.r2_key, filename: `foilbury-${side}.webp`, contentType: render.mime || "image/webp" }];
+  return resultCallback;
+}
+
+async function cardDetails(ctx: Ctx, cardId: string): Promise<DiscordCallback> {
+  const found = await getCard(ctx, cardId);
+  const owned = await first<{ copies: number; finishes: number; serials: string | null }>(
+    ctx.db,
+    `SELECT COUNT(*) AS copies, COUNT(DISTINCT material.key) AS finishes,
+            GROUP_CONCAT(ci.serial, ', ') AS serials
+       FROM fb_card_instances ci
+       JOIN fb_variants v ON v.id = ci.variant_id
+       JOIN fb_materials material ON material.id = v.material_id
+      WHERE ci.tenant_id = ? AND ci.user_id = ? AND ci.card_id = ? AND ci.status IN ('owned','reserved')`,
+    ctx.tenant.id,
+    ctx.user!.id,
+    found.id,
+  );
+  const attributes = (() => {
+    try {
+      return JSON.parse(found.attributes_json ?? "[]") as Array<{ label?: string; value?: string }>;
+    } catch {
+      return [];
+    }
+  })();
+  return callback(
+    {
+      embeds: [
+        {
+          title: `${found.name} · details`,
+          description: truncate(found.bio_safe ?? found.bio ?? found.description, 1800),
+          color: colorFor(found.rarity?.key),
+          fields: [
+            { name: "Collection", value: found.collections[0]?.name ?? "Cabinet", inline: true },
+            { name: "Source", value: found.source_work ?? "Foilbury", inline: true },
+            { name: "Rarity", value: found.rarity?.name ?? "Unclassified", inline: true },
+            ...attributes.slice(0, 5).map((attr) => ({ name: attr.label ?? "Detail", value: attr.value ?? "—", inline: true })),
+            { name: "Your copies", value: owned?.copies ? `${owned.copies} across ${owned.finishes} finish${owned.finishes === 1 ? "" : "es"}` : "Not in your album yet", inline: false },
+            { name: "Spoilers", value: found.spoiler_level ? `This profile has ${found.spoiler_level} spoiler layer${found.spoiler_level === 1 ? "" : "s"}. The full text is available in the website album after opting in.` : "This profile is spoiler-safe.", inline: false },
+          ],
+          footer: { text: "Private member view · no draw, charge or new copy" },
         },
       ],
+    },
+    true,
+  );
+}
+
+async function achievements(ctx: Ctx): Promise<DiscordCallback> {
+  const items = await listAchievements(ctx, ctx.user!.id);
+  const earned = items.filter((item) => item.state === "earned");
+  const close = items
+    .filter((item) => item.state !== "earned")
+    .sort((a, b) => b.progress / Math.max(1, b.target) - a.progress / Math.max(1, a.target))
+    .slice(0, 5);
+  return callback(
+    {
+      embeds: [
+        {
+          title: "Achievements",
+          description: earned.length
+            ? `You have earned **${earned.length}** of ${items.length}. Rewards are credited once and never removed when a collection grows.`
+            : "Your first card is the first badge. Every milestone below uses your committed collection history.",
+          color: 0xc9a227,
+          fields: [
+            {
+              name: "Earned",
+              value: earned.length
+                ? earned.slice(0, 8).map((item) => `• **${item.name}** — ${item.reward_amount ? `+${item.reward_amount} Foil` : "badge"}`).join("\n")
+                : "No badges yet.",
+              inline: false,
+            },
+            {
+              name: "Closest next",
+              value: close.length
+                ? close.map((item) => `• **${item.name}** — ${Math.min(item.progress, item.target)}/${item.target}`).join("\n")
+                : "Everything visible is complete.",
+              inline: false,
+            },
+            {
+              name: "Privacy",
+              value: "This private response only shows achievements for albums you can access.",
+              inline: false,
+            },
+          ],
+          footer: { text: "Open the website album for full progress, criteria and earned dates" },
+        },
+      ],
+      components: components([[{ type: 5, style: 5, label: "Open achievements", url: absoluteUrl(ctx.config.publicOrigin, "/play/achievements")! }]]),
     },
     true,
   );
@@ -668,6 +835,8 @@ export async function runCommand(
     }
     case "packs":
       return packs(ctx, installation);
+    case "achievements":
+      return achievements(ctx);
     case "profile":
       return profile(ctx, installation);
     case "help":
@@ -800,6 +969,13 @@ export async function runComponent(
   if (customId === "foilbury:daily") return daily(ctx, interaction);
   if (customId === "foilbury:packs") return packs(ctx, installation);
   if (customId === "foilbury:help") return help(ctx);
+  if (customId.startsWith("foilbury:card:")) {
+    const [, , cardId, variantId, action] = customId.split(":");
+    if (!cardId) throw new ApiError(422, "card_component_invalid", "That card control is incomplete.");
+    if (action === "front" || action === "back") return cardFace(ctx, cardId, variantId ?? null, action);
+    if (action === "details") return cardDetails(ctx, cardId);
+    throw new ApiError(404, "card_component_unknown", "That card control is not recognised.");
+  }
   if (customId.startsWith("foilbury:confirm:")) {
     return executeConfirmation(ctx, interaction, customId.slice("foilbury:confirm:".length));
   }

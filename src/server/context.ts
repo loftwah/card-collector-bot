@@ -128,7 +128,8 @@ export async function buildContext(request: Request, options?: { requireTenant?:
 
   // Administrative routes are re-verified against Cloudflare Access on every
   // request. An old application cookie alone never retains authority.
-  if (isAccessProtectedPath(path)) {
+  const agentAdminApi = actor.type === "agent" && (path === "/api/v1/admin" || path.startsWith("/api/v1/admin/"));
+  if (isAccessProtectedPath(path) && !agentAdminApi) {
     if (config.environment === "production" && !config.access.enabled) {
       throw new ApiError(503, "access_not_configured", "Administrative access is not configured.");
     }
@@ -432,6 +433,27 @@ export function requireSuperAdmin(ctx: Ctx): CurrentUser {
   const user = requireUser(ctx);
   if (ctx.actor.type !== "user" || !user.platformAdmin) {
     throw new ApiError(403, "super_admin_required", "Platform administration is restricted to the provisioned Super Admin.");
+  }
+  return user;
+}
+
+/**
+ * Content authority for platform-global collections and achievements. A scoped
+ * agent may act for the provisioned Super Admin only with an explicit content
+ * or import scope; it never gains platform administration from this helper.
+ */
+export function requireSuperAdminContent(ctx: Ctx): CurrentUser {
+  const user = requireUser(ctx);
+  if (!user.platformAdmin) {
+    throw new ApiError(403, "super_admin_required", "Platform content is restricted to the provisioned Super Admin.");
+  }
+  if (ctx.actor.type === "agent") {
+    const scopes = ctx.scopes ?? [];
+    if (!scopes.includes("content:write") && !scopes.includes("import:write") && !scopes.includes("catalogue:publish")) {
+      throw new ApiError(403, "insufficient_scope", "This agent grant cannot change platform content.");
+    }
+  } else if (ctx.actor.type !== "user") {
+    throw new ApiError(403, "super_admin_required", "Platform content is restricted to a signed-in Super Admin.");
   }
   return user;
 }

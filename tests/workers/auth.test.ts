@@ -78,6 +78,11 @@ describe("passwordless identity, Access linking, bots and collections", () => {
     const collection = await createCollection(ctx, { name: "Test World", scope: "bot", status: "published" });
     await addCollectionCards(ctx, collection.id, [fixture.cardId]);
     await enableCollection(ctx, collection.id, false);
+    // The fixture card is also in the public fixture collection, so it remains
+    // eligible through that live membership link.
+    const stillOn = await getPoolPreview(ctx, "test-pool");
+    expect(stillOn.eligible_count).toBe(1);
+    await runtime.DB.prepare("UPDATE fb_bot_collections SET enabled = 0 WHERE collection_id = 'col_test_public'").run();
     const off = await getPoolPreview(ctx, "test-pool");
     expect(off.eligible_count).toBe(0);
     await enableCollection(ctx, collection.id, true);

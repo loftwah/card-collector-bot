@@ -44,7 +44,7 @@ try {
     await page.getByRole("heading", { name: /characters worth keeping/i }).waitFor();
     await audit(page, `${scheme} public home`, `ui-home-${scheme}.png`);
     await page.goto("/cabinet");
-    await page.getByRole("heading", { name: /the cabinet/i }).waitFor();
+    await page.getByRole("heading", { name: /public showcase/i }).waitFor();
     await audit(page, `${scheme} public catalogue`);
     await page.goto("/login");
     await page.getByRole("heading", { name: /the cabinet is open/i }).waitFor();
@@ -72,7 +72,7 @@ try {
     });
     if (!instance) throw new Error("No inventory instance for card detail audit");
     await page.goto(`/play/card/${instance}`);
-    await page.getByRole("button", { name: /show card back/i }).waitFor();
+    await page.getByRole("button", { name: /view back/i }).waitFor();
     await audit(page, `${scheme} card detail`, `ui-card-${scheme}.png`);
     await page.goto("/admin");
     await page.getByRole("heading", { name: /the cabinet office/i }).waitFor();

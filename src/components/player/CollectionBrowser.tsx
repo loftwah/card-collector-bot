@@ -18,6 +18,7 @@ interface Item {
   favourite: number;
   locked: number;
   render_url: string | null;
+  thumbnail_url: string | null;
   acquired_at: string;
 }
 
@@ -120,7 +121,7 @@ export default function CollectionBrowser({ initialItems, sets, collections = []
             <article key={item.id} className="group relative">
               <a href={`/play/card/${item.id}`} className="block no-underline">
                 <div className="card-face">
-                  {item.render_url ? <img src={item.render_url} alt={`${item.card_name} — ${item.variant_name}`} loading="lazy" /> : <div className="card-face-fallback">{item.card_name.charAt(0)}</div>}
+                  {item.render_url ? <img src={item.thumbnail_url ?? item.render_url} alt={`${item.card_name} — ${item.variant_name}`} loading="lazy" /> : <div className="card-face-fallback">{item.card_name.charAt(0)}</div>}
                 </div>
                 <div className="mt-2">
                   <div className="flex items-start justify-between gap-2">

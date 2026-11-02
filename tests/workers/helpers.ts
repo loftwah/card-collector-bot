@@ -117,11 +117,20 @@ export async function fixturePool(ctx: Ctx) {
       "INSERT INTO fb_assets (id, tenant_id, kind, name, mime, width, height, bytes, r2_key, sha256, visibility, created_at) VALUES (?, ?, 'subject', 'Test subject', 'image/png', 500, 700, 100, 'test/subject.png', ?, 'private', ?)",
     ).bind(subjectAsset, ctx.tenant.id, await sha256Hex("subject"), now),
     runtime.DB.prepare(
-      "INSERT INTO fb_assets (id, tenant_id, kind, name, mime, width, height, bytes, r2_key, sha256, visibility, created_at) VALUES (?, ?, 'render', 'Test render', 'image/webp', 750, 1050, 100, 'test/render.webp', ?, 'public_export', ?)",
+      "INSERT INTO fb_assets (id, tenant_id, kind, name, mime, width, height, bytes, r2_key, sha256, visibility, access_classification, processing_state, review_status, created_at) VALUES (?, ?, 'render', 'Test render', 'image/webp', 750, 1050, 100, 'test/render.webp', ?, 'public_export', 'public', 'ready', 'approved', ?)",
     ).bind(renderAsset, ctx.tenant.id, await sha256Hex("render"), now),
+    runtime.DB.prepare(
+      "INSERT INTO fb_collections (id, slug, name, description, scope, owner_tenant_id, accent, status, view_audience, public_approved_at, public_approved_by, created_by, created_at, updated_at) VALUES ('col_test_public', 'test-public', 'Test Public', 'Public fixture collection.', 'global', ?, 'brass', 'published', 'public', ?, 'owner@foilbury.local', 'test', ?, ?)",
+    ).bind(ctx.tenant.id, now, now, now),
     runtime.DB.prepare(
       "INSERT INTO fb_card_definitions (id, tenant_id, logical_id, slug, name, subtitle, description, status, created_at, updated_at, version) VALUES (?, ?, 'test:one', 'test-one', 'Test One', 'Test subject', 'A card used by the worker integration tests.', 'published', ?, ?, 1)",
     ).bind(cardId, ctx.tenant.id, now, now),
+    runtime.DB.prepare(
+      "INSERT INTO fb_collection_cards (collection_id, card_id, tenant_id, sort, added_by, added_at) VALUES ('col_test_public', ?, ?, 0, 'test', ?)",
+    ).bind(cardId, ctx.tenant.id, now),
+    runtime.DB.prepare(
+      "INSERT OR IGNORE INTO fb_bot_collections (bot_id, collection_id, enabled, updated_at) SELECT b.id, 'col_test_public', 1, ? FROM fb_bots b WHERE b.tenant_id = ?",
+    ).bind(now, ctx.tenant.id),
     runtime.DB.prepare(
       "INSERT INTO fb_artwork_editions (id, tenant_id, card_id, name, subject_asset_id, recipe_id, status, source_repo, source_path, source_commit, source_hash, created_at) VALUES (?, ?, ?, 'Test edition', ?, ?, 'published', 'test/repo', 'test/subject.png', 'test-commit', 'test-hash', ?)",
     ).bind(editionId, ctx.tenant.id, cardId, subjectAsset, recipe.id, now),

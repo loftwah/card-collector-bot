@@ -71,6 +71,7 @@ export interface DiscordComponent {
   style?: number;
   label?: string;
   custom_id?: string;
+  url?: string;
   disabled?: boolean;
   emoji?: { name: string };
 }

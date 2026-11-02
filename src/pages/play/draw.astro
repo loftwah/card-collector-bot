@@ -24,12 +24,18 @@ const [pools, wallet, economy, prefs] = await Promise.all([
     </div>
     <div class="text-right">
       <p class="eyebrow">Foil balance</p>
-      <p class="display-sm mt-1 text-3xl text-[var(--brass)]">✦ {wallet.balance}</p>
+      <p class="display-sm mt-1 text-3xl text-[var(--brass)]" data-foil-balance>✦ {wallet.balance}</p>
       <p class="mt-1 font-mono text-[0.56rem] uppercase tracking-[0.1em] text-[var(--muted)]">Daily allowance ✦ {economy.daily_reward}</p>
     </div>
   </div>
   <div class="mt-7">
-    <DrawStudio client:load pools={pools.map((pool) => ({ id: pool.id, slug: pool.slug, name: pool.name, description: pool.description, revision: pool.revision, price: pool.price, status: pool.status }))} initialBalance={wallet.balance} />
+    <DrawStudio
+      client:load
+      pools={[...pools]
+        .sort((a, b) => (a.slug === "cabinet-draw" ? -1 : b.slug === "cabinet-draw" ? 1 : a.name.localeCompare(b.name)))
+        .map((pool) => ({ id: pool.id, slug: pool.slug, name: pool.name, description: pool.description, revision: pool.revision, price: pool.price, status: pool.status }))}
+      initialBalance={wallet.balance}
+    />
   </div>
   <div class="mt-8 notice">
     <p class="text-sm"><strong>Reduced motion:</strong> {prefs.reduced_motion ? "on" : "off"}. The reveal is always skippable and no audio plays unless you enable it in Preferences.</p>

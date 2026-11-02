@@ -5,6 +5,7 @@ import { newId, sha256Hex } from "../ids";
 import { audit, auditStatement } from "../http";
 import { createCard, getCard, normalizeSlug, publishSet, setCardStatus, getTaxonomy } from "./catalogue";
 import { getAsset } from "./assets";
+import { assertTransition } from "../state";
 
 export interface ImportVariantSpec {
   material: string;
@@ -22,7 +23,18 @@ export interface ImportItemInput {
   name: string;
   subtitle?: string;
   description: string;
+  bio?: string;
+  bioSafe?: string;
+  bioFull?: string;
+  spoilerLevel?: number;
+  attributes?: Array<Record<string, unknown>>;
+  sourceRefs?: string[];
+  reviewStatus?: string;
+  sourceWork?: string;
+  adaptationBoundary?: string;
+  quote?: string;
   categorySlug?: string;
+  collectionSlug?: string;
   classKey?: string;
   rarityKey?: string;
   tags?: string[];
@@ -31,6 +43,8 @@ export interface ImportItemInput {
   backgroundAssetId?: string;
   variants: ImportVariantSpec[];
   sets?: string[];
+  /** Optimistic concurrency: the card version the manifest was built from. */
+  expectedVersion?: number;
 }
 
 export interface ImportManifest {
@@ -44,9 +58,9 @@ export interface ImportManifest {
 export async function previewImport(ctx: Ctx, manifest: ImportManifest) {
   const items = [];
   for (const item of manifest.items) {
-    const card = await first<{ id: string; slug: string; name: string }>(
+    const card = await first<{ id: string; slug: string; name: string; version: number }>(
       ctx.db,
-      "SELECT id, slug, name FROM fb_card_definitions WHERE tenant_id = ? AND logical_id = ?",
+      "SELECT id, slug, name, version FROM fb_card_definitions WHERE tenant_id = ? AND logical_id = ?",
       ctx.tenant.id,
       item.logicalId,
     );
@@ -66,6 +80,9 @@ export async function previewImport(ctx: Ctx, manifest: ImportManifest) {
       sourceHash: item.sourceHash,
       action,
       existingCardId: card?.id ?? null,
+      currentVersion: card?.version ?? null,
+      expectedVersion: item.expectedVersion ?? null,
+      conflict: Boolean(card && item.expectedVersion !== undefined && card.version !== item.expectedVersion),
       sets: item.sets ?? [],
       variants: item.variants,
       published: card ? (await first<{ status: string }>(ctx.db, "SELECT status FROM fb_card_definitions WHERE id = ?", card.id))?.status === "published" : false,
@@ -119,12 +136,15 @@ export async function commitImport(ctx: Ctx, manifest: ImportManifest) {
         const background = await getAsset(ctx, item.backgroundAssetId);
         if (background.kind !== "background") throw new ApiError(422, "background_asset_invalid", "Background asset must have kind background.");
       }
-      let card = await first<{ id: string; status: string }>(
+      let card = await first<{ id: string; status: string; version: number }>(
         ctx.db,
-        "SELECT id, status FROM fb_card_definitions WHERE tenant_id = ? AND logical_id = ?",
+        "SELECT id, status, version FROM fb_card_definitions WHERE tenant_id = ? AND logical_id = ?",
         ctx.tenant.id,
         item.logicalId,
       );
+      if (card && item.expectedVersion !== undefined && card.version !== item.expectedVersion) {
+        throw new ApiError(409, "import_conflict", "This card changed through the Admin UI after the manifest was prepared. Re-export before importing.");
+      }
       let outcome: "new" | "revision" = "new";
       if (!card) {
         const created = await createCard(ctx, {
@@ -132,9 +152,20 @@ export async function commitImport(ctx: Ctx, manifest: ImportManifest) {
           name: item.name,
           subtitle: item.subtitle,
           description: item.description,
+          bio: item.bio,
+          bioSafe: item.bioSafe,
+          quote: item.quote,
+          spoilerLevel: item.spoilerLevel,
+          spoilerBio: item.bioFull,
+          attributes: item.attributes,
+          sourceRefs: item.sourceRefs,
+          reviewStatus: item.reviewStatus,
+          sourceWork: item.sourceWork,
+          adaptationBoundary: item.adaptationBoundary,
           logicalId: item.logicalId,
           classKey: item.classKey,
           categorySlug: item.categorySlug,
+          collectionSlug: item.collectionSlug,
           rarityKey: item.rarityKey,
           tags: item.tags,
           source: {
@@ -145,7 +176,7 @@ export async function commitImport(ctx: Ctx, manifest: ImportManifest) {
             credit: item.credit,
           },
         });
-        card = { id: created.id, status: created.status };
+        card = { id: created.id, status: created.status, version: 1 };
       } else {
         outcome = "revision";
         const previousEdition = await first<{ source_hash: string | null; id: string }>(
@@ -255,6 +286,40 @@ export async function commitImport(ctx: Ctx, manifest: ImportManifest) {
         }),
       );
       await ctx.db.batch(statements);
+      if (item.bio || item.bioSafe || item.bioFull || item.attributes) {
+        await ctx.db
+          .prepare(
+            `UPDATE fb_card_definitions SET
+               bio = COALESCE(?, bio),
+               bio_safe = COALESCE(?, bio_safe),
+               spoiler_bio = COALESCE(?, spoiler_bio),
+               spoiler_level = COALESCE(?, spoiler_level),
+               attributes_json = COALESCE(?, attributes_json),
+               source_refs_json = COALESCE(?, source_refs_json),
+               review_status = COALESCE(?, review_status),
+               source_work = COALESCE(?, source_work),
+               adaptation_boundary = COALESCE(?, adaptation_boundary),
+               quote = COALESCE(?, quote),
+               updated_at = ?
+             WHERE id = ? AND tenant_id = ?`,
+          )
+          .bind(
+            item.bio ?? null,
+            item.bioSafe ?? null,
+            item.bioFull ?? null,
+            item.spoilerLevel ?? null,
+            item.attributes ? JSON.stringify(item.attributes) : null,
+            item.sourceRefs ? JSON.stringify(item.sourceRefs) : null,
+            item.reviewStatus ?? null,
+            item.sourceWork ?? null,
+            item.adaptationBoundary ?? null,
+            item.quote ?? null,
+            nowIso(),
+            card.id,
+            ctx.tenant.id,
+          )
+          .run();
+      }
       if (manifest.publish) {
         await ctx.db.batch([
           ctx.db
@@ -265,6 +330,15 @@ export async function commitImport(ctx: Ctx, manifest: ImportManifest) {
             .bind(editionId, ctx.tenant.id),
         ]);
         await setCardStatus(ctx, card.id, "published");
+      }
+      if (item.collectionSlug) {
+        await ctx.db
+          .prepare(
+            `INSERT OR IGNORE INTO fb_collection_cards (collection_id, card_id, tenant_id, sort, added_by, added_at)
+             SELECT id, ?, ?, 0, ?, ? FROM fb_collections WHERE slug = ? AND owner_tenant_id = ? AND archived_at IS NULL`,
+          )
+          .bind(card.id, ctx.tenant.id, ctx.user?.id ?? "system", nowIso(), item.collectionSlug, ctx.tenant.id)
+          .run();
       }
       if (item.sets?.length) {
         for (const setSlug of item.sets) {
@@ -371,7 +445,7 @@ async function appendSetMembership(ctx: Ctx, setSlug: string, cardIds: string[])
   );
 }
 
-export async function createRenderJobs(ctx: Ctx) {
+export async function createRenderJobs(ctx: Ctx, options?: { force?: boolean }) {
   const variants = await all<{
     variant_id: string;
     card_id: string;
@@ -386,7 +460,8 @@ export async function createRenderJobs(ctx: Ctx) {
   }>(
     ctx.db,
     `SELECT v.id AS variant_id, v.card_id, v.edition_id, e.recipe_id, e.subject_asset_id, e.background_asset_id,
-            cd.name AS card_name, v.name AS variant_name, m.key AS material_key, fx.key AS effect_key
+            cd.name AS card_name, cd.slug AS card_slug, cd.subtitle AS card_subtitle, v.name AS variant_name,
+            m.key AS material_key, fx.key AS effect_key
        FROM fb_variants v
        JOIN fb_artwork_editions e ON e.id = v.edition_id
        JOIN fb_card_definitions cd ON cd.id = v.card_id
@@ -394,10 +469,11 @@ export async function createRenderJobs(ctx: Ctx) {
        LEFT JOIN fb_effects fx ON fx.id = v.effect_id
       WHERE v.tenant_id = ? AND v.status = 'published' AND e.status = 'published'
         AND v.archived_at IS NULL AND e.archived_at IS NULL
-        AND NOT EXISTS (SELECT 1 FROM fb_variant_renders r WHERE r.variant_id = v.id AND r.tenant_id = v.tenant_id AND r.status = 'published')
+        AND (? = 1 OR NOT EXISTS (SELECT 1 FROM fb_variant_renders r WHERE r.variant_id = v.id AND r.tenant_id = v.tenant_id AND r.status = 'published'))
         AND NOT EXISTS (SELECT 1 FROM fb_jobs j WHERE j.tenant_id = v.tenant_id AND j.kind = 'render_card'
           AND json_extract(j.payload_json, '$.variant_id') = v.id AND j.status IN ('pending','running'))`,
     ctx.tenant.id,
+    options?.force ? 1 : 0,
   );
   const jobIds: string[] = [];
   for (const variant of variants) {
@@ -482,7 +558,7 @@ export async function failRenderJob(ctx: Ctx, jobId: string, message: string) {
   return { retry };
 }
 
-export async function completeRenderJob(ctx: Ctx, jobId: string, bytes: Uint8Array) {
+export async function completeRenderJob(ctx: Ctx, jobId: string, bytes: Uint8Array, backBytes?: Uint8Array) {
   const job = await first<{ payload_json: string; status: string }>(
     ctx.db,
     "SELECT payload_json, status FROM fb_jobs WHERE id = ? AND tenant_id = ?",
@@ -491,6 +567,7 @@ export async function completeRenderJob(ctx: Ctx, jobId: string, bytes: Uint8Arr
   );
   if (!job) throw new ApiError(404, "job_not_found", "Job not found.");
   if (job.status === "succeeded") throw new ApiError(409, "job_already_complete", "This render job already completed.");
+  if (job.status !== "running") throw new ApiError(409, "job_not_running", "Claim the render job before completing it.");
   const payload = JSON.parse(job.payload_json) as {
     variant_id: string;
     recipe_id: string;
@@ -502,18 +579,27 @@ export async function completeRenderJob(ctx: Ctx, jobId: string, bytes: Uint8Arr
     recipeId: payload.recipe_id,
     bytes,
   });
+  let back = null;
+  if (backBytes?.length) {
+    const { createBackRenderAsset } = await import("./assets");
+    back = await createBackRenderAsset(ctx, {
+      variantId: payload.variant_id,
+      recipeId: payload.recipe_id,
+      bytes: backBytes,
+    });
+  }
   await ctx.db.batch([
     ctx.db
       .prepare("UPDATE fb_jobs SET status = 'succeeded', result_json = ?, last_error = NULL, updated_at = ? WHERE id = ? AND tenant_id = ?")
-      .bind(JSON.stringify(render), nowIso(), jobId, ctx.tenant.id),
+      .bind(JSON.stringify({ ...render, back }), nowIso(), jobId, ctx.tenant.id),
     ctx.db
       .prepare(
         "INSERT INTO fb_outbox (id, tenant_id, topic, payload_json, status, attempts, available_at, created_at) VALUES (?, ?, 'render.completed', ?, 'pending', 0, ?, ?)",
       )
-      .bind(newId("out"), ctx.tenant.id, JSON.stringify({ job_id: jobId, ...render }), nowIso(), nowIso()),
-    auditStatement(ctx, "render.completed", "job", jobId, render),
+      .bind(newId("out"), ctx.tenant.id, JSON.stringify({ job_id: jobId, ...render, back }), nowIso(), nowIso()),
+    auditStatement(ctx, "render.completed", "job", jobId, { ...render, back }),
   ]);
-  return render;
+  return { ...render, back };
 }
 
 export async function estimateGenerationPlan(ctx: Ctx, input: { prompt: string; model: string; count: number }) {

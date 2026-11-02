@@ -103,7 +103,7 @@ export async function getTrade(ctx: Ctx, tradeId: string) {
     render_url: string | null;
   }>(
     ctx.db,
-    `SELECT ti.id, ti.side, ti.instance_id, cd.name AS card_name, v.name AS variant_name, ci.serial, vr.public_url AS render_url
+    `SELECT ti.id, ti.side, ti.instance_id, cd.name AS card_name, v.name AS variant_name, ci.serial, ('/media/render/' || vr.asset_id) AS render_url
        FROM fb_trade_items ti JOIN fb_card_instances ci ON ci.id = ti.instance_id
        JOIN fb_card_definitions cd ON cd.id = ci.card_id JOIN fb_variants v ON v.id = ci.variant_id
        LEFT JOIN fb_variant_renders vr ON vr.variant_id = v.id AND vr.tenant_id = ti.tenant_id AND vr.status = 'published'

@@ -66,3 +66,9 @@ export function statusTone(status: string): string {
   if (["failed", "revoked", "retired", "cancelled"].includes(status)) return "oxblood";
   return "muted";
 }
+
+/** Player-facing finish language: the legacy diamond material reads as Holographic. */
+export function displayFinish(name: string | null | undefined, material?: string | null, effect?: string | null): string {
+  if (material === "diamond" && (!effect || effect === "none")) return "Holographic";
+  return name ?? "Plain";
+}

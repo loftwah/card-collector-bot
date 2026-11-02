@@ -2,5 +2,11 @@ User-agent: *
 Allow: /
 Disallow: /admin
 Disallow: /play
+Disallow: /account
 Disallow: /api
 Disallow: /_emdash
+Disallow: /platform-admin
+Disallow: /create-bot
+Disallow: /invite
+
+Sitemap: https://foilbury.loftwah.com/sitemap-public.xml

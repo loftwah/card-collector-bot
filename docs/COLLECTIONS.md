@@ -63,3 +63,37 @@ If a creator wants a new collection logo or card artwork, they can upload a lice
 - Cloudflare Access: administrative authentication boundary.
 
 There is no two-way catalogue sync. An EmDash journal post cannot mint a card or change a wallet.
+
+## 2026-11-03 visibility update
+
+- `scope` (global/bot), `status` (draft/published/archived), `view_audience`
+  (public/members/private) and distribution (`fb_bot_collections.enabled`) are
+  separate. See `docs/PRIVACY_MODEL.md`.
+- New collections default to `members`; only the Super Admin can set `public`
+  and that requires a published collection plus an explicit approval timestamp.
+- A card inherits the most restrictive audience across every collection it
+  belongs to. Adding a public link cannot widen a members-only card.
+- Global member collections are reusable by authorised members of a Bot
+  community. Global media renders are authorised against the card's effective
+  audience, not the caller's current tenant; Bot-private media remains scoped.
+- Public showcase approval for the existing Loftwah originals was reviewed
+  individually: Bubbles, Fighter, Protocol 11 and Shared Characters. The NBA and
+  16 third-party launch collections are members-only.
+- The members' album has `/play/collections` browsing, collection progress,
+  spoiler-safe profiles, typed attributes, front/back/3D inspection, duplicates,
+  provenance and achievement progress.
+
+## EmDash boundary (reconciled)
+
+The older issue sentence that implied EmDash should own card/profile editing is
+superseded by the working product boundary:
+
+- **Foilbury D1** is the source of truth for collections, cards, subjects,
+  variants, recipes, achievements, pools, awards and inventory.
+- **EmDash** remains the editorial CMS for journal posts and media, with its
+  existing Access-protected operator workflow.
+- A second editable card catalogue was deliberately not added. Editorial card
+  fields are validated through the Foilbury import/Admin API, and the public
+  journal does not mint cards.
+- The real editorial journey is the existing `/journal` + EmDash console; card
+  creation remains the Foilbury Admin UI/import path.

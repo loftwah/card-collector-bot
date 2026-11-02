@@ -46,6 +46,25 @@ export async function api<T>(
   return payload as T;
 }
 
+export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
+  const headers = new Headers({ accept: "application/json" });
+  const token = csrfToken();
+  if (token) headers.set("x-foilbury-csrf", token);
+  const response = await fetch(path, { method: "POST", headers, credentials: "same-origin", body: form });
+  const text = await response.text();
+  let payload: unknown = null;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    payload = null;
+  }
+  if (!response.ok) {
+    const error = (payload as { error?: { code?: string; message?: string; details?: Record<string, unknown> } })?.error;
+    throw new ApiClientError(response.status, error?.code ?? "request_failed", error?.message ?? FALLBACK, error?.details);
+  }
+  return payload as T;
+}
+
 export function idempotencyKey(prefix = "ui"): string {
   return `${prefix}-${crypto.randomUUID()}`;
 }

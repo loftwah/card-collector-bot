@@ -17,3 +17,44 @@ Installed and exercised on 2026-11-02 against this working tree. Installation us
 - The browser integration changed from the prior `browser` tool to the OpenCode Playwright tools during the pass. The scripts use the installed Playwright package directly, so they are reproducible without assuming a desktop tab.
 - Impeccable's automatic hook was not active. `detect.mjs` was run explicitly and its result is recorded, but acceptance used rendered axe/manual checks.
 - No skill was copied merely as documentation: each entry above names the code/configuration or browser evidence it produced.
+
+## 2026-11-03 album increment
+
+| Skill | Provenance / version | Loaded location | Actual work | Findings | Evidence |
+|---|---|---|---|---|---|
+| Impeccable | User-installed `~/.agents/skills/impeccable`, version `4.0.4`; upstream docs checked at `https://impeccable.style/docs/` (install/context/hooks/detector workflow) | Harness skill + `scripts/context.mjs --target src/pages/index.astro`; `reference/craft-floor.md` read before UI edits | Replaced the restrained cabinet-only landing composition with a warmer public-showcase direction, added coral/saffron/teal accents, kept Geist, rewrote player language, built the 3D inspector, achievement badge family and gift surface | The mechanical detector is not visual acceptance. The first render showed an over-tall members section and duplicate filter chips; both were corrected. Eyebrow overuse remains on admin surfaces and is being reduced on player surfaces. | `.foilbury/tmp/home-desktop.png`, `home-mobile.png`, `cabinet.png`, `card.png`; final evidence in `docs/evidence/` |
+| shadcn/ui | `shadcn` skill from `shadcn/ui`, project-local `.agents/skills/shadcn`; upstream docs checked at `https://ui.shadcn.com/docs/skills`; `npx shadcn@4.23.0 info --json` confirmed Astro/Tailwind v4/base-radix/lucide and the `@/components/ui` alias | Existing `src/components/ui/*` primitives | Reused Button, Field, Input, Select, Textarea, Switch, Dialog and Badge for the gift composer, achievement admin, collection visibility form and card inspector controls. No second primitive library was introduced. | Inputs needed explicit labels and `className` rather than `class` in React surfaces; the detector/typecheck caught the mismatch. | `pnpm check:types`; `src/components/admin/GiftComposer.tsx`, `AchievementAdmin.tsx`, `CardInspector.tsx` |
+| Cloudflare One / Wrangler / Workers best practices | `cloudflare/skills` project-local copies from `skills-lock.json`; Wrangler `4.156.1`; Workers compatibility date `2026-11-01` | `.agents/skills/cloudflare-one`, `.agents/skills/wrangler`, `.agents/skills/workers-best-practices` | Added D1 migration `0008`; used `wrangler d1 execute --remote` read-only inspections, a JSON backup, local migration application, Worker deployment and live smoke checks. Reviewed D1/R2 bindings, cache headers, media delivery and Access separation. | The existing agent path was blocked by the Access gate on `/api/v1/admin`; fixed by allowing scoped agent tokens only on that API surface, while gifts and platform administration still require a human. D1's bound-parameter budget broke 200-card hydration; fixed with 20-card hydration batches. | `migrations/0008_album_visibility_achievements_gifts.sql`; `scripts/backup-d1-json.mjs`; `wrangler deployments list`; `docs/evidence/deployed-*.json` |
+| EmDash CMS | `emdash-cli`, `building-emdash-site` and `creating-plugins` skills from `emdash-cms/skills`; EmDash `1.4.0`; upstream docs checked at `https://docs.emdashcms.com/agent-skills/` | `.agents/skills/emdash-cli`, `.agents/skills/building-emdash-site`, `.agents/skills/creating-plugins` | Inspected the adopted editorial boundary before changing collection/card content. Confirmed the journal remains EmDash-owned and the Foilbury catalogue remains D1-owned; no second editable card catalogue was added. | The older issue sentence implying EmDash should own card editing is superseded by the working boundary. Documented the reconciliation in `docs/COLLECTIONS.md` and `PRODUCT.md`. | `/journal`, `/_emdash` route protection; `docs/COLLECTIONS.md` |
+| Playwright | `@playwright/test` `1.64.1` | Project dependency; real Chromium scripts in `scripts/` | Public showcase, cabinet, card detail, 3D controls, mobile reflow, admin collection/card/achievement/gift journeys, member draw/inspection and privacy states. Axe/keyboard/zoom checks use the existing UI script. | Screenshots alone did not catch duplicate chips, a too-tall section or the 3D fallback; the scripts assert the visible state and take desktop/mobile evidence. | `scripts/test-album-e2e.mjs`, `docs/evidence/album-*.png`, `docs/evidence/album-browser.json` |
+| SEO audit | `coreyhaines31/marketingskills` `seo-audit`, checked against Google Search Central; not installed as a broad marketing toolkit | Read-only skill guidance applied to approved public routes | Audited titles, descriptions, canonical URLs, headings, image alternatives, sitemap/robots posture and structured-data scope. Kept member routes `noindex` and out of the sitemap. | The public showcase has a small, honest index surface; no franchise landing pages, public profiles or achievement feeds were created. | `docs/SEO.md`; `scripts/test-seo.mjs` |
+
+## Cloudflare Access note for headless import
+
+The production `/api/v1/admin` edge application correctly blocks unauthenticated
+requests. To run the reviewed content import through the same domain API, a
+24-hour Access **service token** was created and attached only to the
+`Foilbury Admin API` app with a `non_identity` policy. The Worker still required a
+scoped Foilbury agent token and re-validated the represented Super Admin and
+scopes. The policy/token were removed after the import:
+
+- `scripts/provision-access-service-token.mjs --apply`
+- `scripts/provision-production-agent.mjs --apply`
+- `node scripts/content/provision.mjs` with `FOILBURY_URL`, `FOILBURY_AGENT_TOKEN`,
+  `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET`
+- `scripts/provision-access-service-token.mjs --cleanup`
+
+This is a temporary machine-admission path, not a new human role. Access still
+never grants a Foilbury role, and gifts/platform administration still require a
+human with recent strong authentication.
+
+## Final production release
+
+- Migrations `0008` and `0009` applied to production D1 after a JSON backup.
+- Worker deployed as `c7a7966e-9d6e-4ef1-b6b7-546b54ca54b6`.
+- Catalogue release `3`.
+- 17 launch collections / 140 cards / 560 launch variants / 560 backs /
+  1,280 derivatives imported through the scoped API.
+- Signed-out API returns 4 public collections; member/agent context returns 21.
+- Public engine remains free: 800 welcome, 480 daily, 80 standard opening;
+  finish weights Plain 45 / Silver 30 / Gold 18 / Holographic 7.

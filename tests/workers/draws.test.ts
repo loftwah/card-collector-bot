@@ -44,7 +44,8 @@ describe("draw transaction", () => {
     const result = await executeDraw(player, { pool: "test-pool", expectedRevision: preview.revision, idempotency: input });
     expect(result.card_name).toBe("Test One");
     expect(result.balance_after).toBe(270);
-    expect(await walletBalance(player, player.user!.id)).toBe(270);
+    const achievementFoil = result.achievements.reduce((sum, item) => sum + item.reward_amount, 0);
+    expect(await walletBalance(player, player.user!.id)).toBe(270 + achievementFoil);
     const inventory = await getInventory(player);
     expect(inventory).toHaveLength(1);
     expect(inventory[0]!.id).toBe(result.instance_id);
@@ -52,14 +53,14 @@ describe("draw transaction", () => {
     const replay = await executeDraw(player, { pool: "test-pool", expectedRevision: preview.revision, idempotency: input });
     expect(replay.replayed).toBe(true);
     expect(replay.instance_id).toBe(result.instance_id);
-    expect(await walletBalance(player, player.user!.id)).toBe(270);
+    expect(await walletBalance(player, player.user!.id)).toBe(270 + achievementFoil);
     expect(await getInventory(player)).toHaveLength(1);
 
     await runtime.DB.prepare("UPDATE fb_pools SET revision = 2 WHERE id = ?").bind(fixture.poolId).run();
     await expect(
       executeDraw(player, { pool: "test-pool", expectedRevision: 1, idempotency: { key: "draw-test-002", digest: "draw-digest-b" } }),
     ).rejects.toMatchObject({ code: "stale_pool_revision" });
-    expect(await walletBalance(player, player.user!.id)).toBe(270);
+    expect(await walletBalance(player, player.user!.id)).toBe(270 + achievementFoil);
   });
 
   it("does not charge an empty pool and does not charge when eligibility disappears", async () => {
@@ -99,10 +100,10 @@ describe("draw transaction", () => {
     const rejected = settled.filter((item) => item.status === "rejected");
     expect(fulfilled).toHaveLength(1);
     expect(rejected).toHaveLength(1);
-    expect(await walletBalance(player, player.user!.id)).toBe(20);
+    expect(await walletBalance(player, player.user!.id)).toBe(20 + 160);
     expect(await getInventory(player)).toHaveLength(1);
     const summary = await getWalletSummary(player.db, player.tenant.id, player.user!.id);
-    expect(summary.balance).toBe(20);
+    expect(summary.balance).toBe(20 + 160);
   });
 
   it("applies community and personal filters without improving hidden odds", async () => {

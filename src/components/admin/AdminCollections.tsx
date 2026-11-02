@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Globe2, Loader2, Lock, Plus, Trash2 } from "lucide-react";
-import { api, describeError } from "@/lib/client";
+import { api, apiUpload, describeError } from "@/lib/client";
 import { Button } from "../ui/button";
 import { Field, Input, Select, Textarea } from "../ui/input";
 import { Switch } from "../ui/switch";
@@ -17,6 +17,10 @@ interface Collection {
   banner_url: string | null;
   accent: string;
   status: string;
+  view_audience: "public" | "members" | "private";
+  public_approved_at: string | null;
+  source_work: string | null;
+  release_version: number;
   card_count: number;
   enabled: boolean;
   manageable: boolean;
@@ -45,7 +49,22 @@ export default function AdminCollections({ platformAdmin }: { platformAdmin: boo
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState("");
-  const [form, setForm] = useState({ name: "", slug: "", description: "", scope: platformAdmin ? "global" : "bot", logoUrl: "", accent: "brass", status: "draft" });
+  const [form, setForm] = useState({ name: "", slug: "", description: "", scope: platformAdmin ? "global" : "bot", logoUrl: "", accent: "brass", status: "draft", viewAudience: "members", sourceWork: "" });
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+
+  async function uploadBrand(file: File, role: "logo" | "cover", access: string, scope: string) {
+    const data = new FormData();
+    data.append("file", file);
+    data.append("kind", "brand");
+    data.append("name", `${form.name || "Collection"} ${role}`);
+    data.append("role", role);
+    data.append("access", access === "public" ? "public" : scope === "bot" ? "private" : "member");
+    data.append("reviewStatus", "reviewed");
+    data.append("provenance", "Uploaded by the collection owner. Review permission before publishing.");
+    const result = await apiUpload<{ asset: { id: string } }>("/api/v1/admin/assets", data);
+    return `/media/asset/${result.asset.id}`;
+  }
   const selected = collections.find((collection) => collection.id === selectedId) ?? null;
 
   async function load() {
@@ -77,8 +96,14 @@ export default function AdminCollections({ platformAdmin }: { platformAdmin: boo
   async function create() {
     setBusy("create"); setError(""); setMessage("");
     try {
-      const result = await api<{ collection: Collection }>("/api/v1/admin/collections", { method: "POST", body: { ...form, logoUrl: form.logoUrl || undefined } });
-      setForm({ name: "", slug: "", description: "", scope: platformAdmin ? "global" : "bot", logoUrl: "", accent: "brass", status: "draft" });
+      let logoUrl = form.logoUrl;
+      let bannerUrl: string | undefined;
+      if (logoFile) logoUrl = await uploadBrand(logoFile, "logo", form.viewAudience, form.scope);
+      if (coverFile) bannerUrl = await uploadBrand(coverFile, "cover", form.viewAudience, form.scope);
+      const result = await api<{ collection: Collection }>("/api/v1/admin/collections", { method: "POST", body: { ...form, logoUrl: logoUrl || undefined, bannerUrl, viewAudience: form.viewAudience, sourceWork: form.sourceWork || undefined } });
+      setForm({ name: "", slug: "", description: "", scope: platformAdmin ? "global" : "bot", logoUrl: "", accent: "brass", status: "draft", viewAudience: "members", sourceWork: "" });
+      setLogoFile(null);
+      setCoverFile(null);
       setMessage(`${result.collection.scope === "global" ? "Global" : "Bot"} collection created.`);
       await load();
       setSelectedId(result.collection.id);
@@ -119,8 +144,24 @@ export default function AdminCollections({ platformAdmin }: { platformAdmin: boo
     if (!selected) return;
     setBusy("save"); setError(""); setMessage("");
     try {
-      await api(`/api/v1/admin/collections/${selected.id}`, { method: "PATCH", body: { name: selected.name, description: selected.description, logoUrl: selected.logo_url, accent: selected.accent, status: selected.status } });
+      let logoUrl = selected.logo_url;
+      let bannerUrl = selected.banner_url;
+      if (logoFile) logoUrl = await uploadBrand(logoFile, "logo", selected.view_audience, selected.scope);
+      if (coverFile) bannerUrl = await uploadBrand(coverFile, "cover", selected.view_audience, selected.scope);
+      await api(`/api/v1/admin/collections/${selected.id}`, { method: "PATCH", body: {
+        name: selected.name,
+        description: selected.description,
+        logoUrl,
+        bannerUrl,
+        accent: selected.accent,
+        status: selected.status,
+        viewAudience: selected.view_audience,
+        sourceWork: selected.source_work,
+        expectedVersion: selected.release_version,
+      } });
       setMessage("Collection details saved.");
+      setLogoFile(null);
+      setCoverFile(null);
       await load();
     } catch (cause) { setError(describeError(cause)); } finally { setBusy(""); }
   }
@@ -144,7 +185,7 @@ export default function AdminCollections({ platformAdmin }: { platformAdmin: boo
                   <button className="min-w-0 flex-1 text-left" onClick={() => setSelectedId(collection.id)}>
                     <p className="flex items-center gap-2 font-semibold">{collection.name} {collection.scope === "global" ? <span className="badge badge-rare"><Globe2 size={11} /> Global</span> : <span className="badge">Your Bot</span>}</p>
                     <p className="mt-1 line-clamp-2 text-xs text-[var(--muted)]">{collection.description || "No description yet."}</p>
-                    <p className="mt-1 font-mono text-[0.58rem] uppercase tracking-[0.08em] text-[var(--muted)]">{collection.card_count} cards · {collection.status} · {collection.owner_name}</p>
+                    <p className="mt-1 font-mono text-[0.58rem] uppercase tracking-[0.08em] text-[var(--muted)]">{collection.card_count} cards · {collection.status} · {collection.view_audience === "public" ? "public showcase" : collection.view_audience} · {collection.owner_name}</p>
                   </button>
                   <div className="grid justify-items-end gap-2">
                     {collection.scope === "global" && !platformAdmin ? <span className="text-[0.58rem] uppercase tracking-wider text-[var(--muted)]"><Lock size={11} className="inline" /> Read-only</span> : null}
@@ -163,7 +204,7 @@ export default function AdminCollections({ platformAdmin }: { platformAdmin: boo
             <>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex items-center gap-3"><CollectionMark collection={selected} /><div><p className="eyebrow">{selected.scope === "global" ? "Global collection" : "Bot collection"}</p><h3 className="display-sm text-2xl">{selected.name}</h3></div></div>
-                <span className={`badge ${selected.status === "published" ? "badge-rare" : ""}`}>{selected.status}</span>
+                <div className="flex flex-wrap gap-2"><span className={`badge ${selected.view_audience === "public" ? "badge-rare" : ""}`}>{selected.view_audience === "public" ? "Public showcase" : selected.view_audience}</span><span className={`badge ${selected.status === "published" ? "badge-rare" : ""}`}>{selected.status}</span></div>
               </div>
               <div className="mt-4 grid gap-3">
                 <Field label="Name"><Input value={selected.name} onChange={(event) => setCollections((items) => items.map((item) => item.id === selected.id ? { ...item, name: event.target.value } : item))} disabled={!selected.manageable} /></Field>
@@ -171,6 +212,19 @@ export default function AdminCollections({ platformAdmin }: { platformAdmin: boo
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Field label="Logo URL" hint="Local path or HTTPS image. Leave empty for the monogram."><Input value={selected.logo_url ?? ""} onChange={(event) => setCollections((items) => items.map((item) => item.id === selected.id ? { ...item, logo_url: event.target.value } : item))} disabled={!selected.manageable} placeholder="/art/collections/bubbles.svg" /></Field>
                   <Field label="Status"><Select value={selected.status} onChange={(event) => setCollections((items) => items.map((item) => item.id === selected.id ? { ...item, status: event.target.value } : item))} disabled={!selected.manageable}><option value="draft">Draft</option><option value="published">Published</option><option value="archived">Archived</option></Select></Field>
+                  <Field label="Viewing audience" hint={selected.view_audience === "public" ? "Approved for the signed-out public showcase." : selected.view_audience === "members" ? "Signed-in members of this album or Bot." : "Owner scope and explicitly invited viewers only."}>
+                    <Select value={selected.view_audience} onChange={(event) => setCollections((items) => items.map((item) => item.id === selected.id ? { ...item, view_audience: event.target.value as Collection["view_audience"] } : item))} disabled={!selected.manageable || (!platformAdmin && selected.view_audience === "public")}>
+                      <option value="members">Members</option>
+                      <option value="private">Private</option>
+                      {platformAdmin ? <option value="public">Public showcase (Super Admin approval)</option> : null}
+                    </Select>
+                  </Field>
+                  <Field label="Source work" hint="The work or property this world adapts, if any."><Input value={selected.source_work ?? ""} onChange={(event) => setCollections((items) => items.map((item) => item.id === selected.id ? { ...item, source_work: event.target.value } : item))} disabled={!selected.manageable} /></Field>
+                </div>
+                {selected.view_audience === "public" ? <p className="notice text-xs">Public approval is explicit. Only approved Loftwah project content should be public. Changing this to members takes effect immediately for new media requests; previously downloaded copies cannot be recalled.</p> : null}
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Field label="Upload a logo" hint="PNG, JPEG or WebP up to 8 MB."><Input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setLogoFile(event.target.files?.[0] ?? null)} disabled={!selected.manageable} /></Field>
+                  <Field label="Upload a cover" hint="Used on the collection panel and album header."><Input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setCoverFile(event.target.files?.[0] ?? null)} disabled={!selected.manageable} /></Field>
                 </div>
                 {selected.manageable ? <Button size="sm" onClick={saveCollection} disabled={busy === "save"}>{busy === "save" ? "Saving…" : "Save collection details"}</Button> : <p className="text-xs text-[var(--muted)]">Global collections are managed by the Super Admin. You can still turn this collection on or off for your Bot.</p>}
               </div>
@@ -220,6 +274,10 @@ export default function AdminCollections({ platformAdmin }: { platformAdmin: boo
           <Field label="Logo URL" hint="Use a licensed logo you have rights to. Local path or HTTPS."><Input value={form.logoUrl} onChange={(event) => setForm({ ...form, logoUrl: event.target.value })} placeholder="/art/collections/your-world.svg" /></Field>
           <Field label="Scope"><Select value={form.scope} onChange={(event) => setForm({ ...form, scope: event.target.value })} disabled={!platformAdmin}>{platformAdmin ? <><option value="global">Global · visible to every Bot</option><option value="bot">Bot · private to this Bot</option></> : <option value="bot">Bot · private to this Bot</option>}</Select></Field>
           <Field label="Initial status"><Select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}><option value="draft">Draft</option><option value="published">Published</option></Select></Field>
+          <Field label="Viewing audience"><Select value={form.viewAudience} onChange={(event) => setForm({ ...form, viewAudience: event.target.value })}>{platformAdmin && form.scope === "global" ? <option value="public">Public showcase (Super Admin approval)</option> : null}<option value="members">Members only</option><option value="private">Private</option></Select></Field>
+          <Field label="Source work"><Input value={form.sourceWork} onChange={(event) => setForm({ ...form, sourceWork: event.target.value })} placeholder="e.g. Original Foilbury project" /></Field>
+          <Field label="Logo upload"><Input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setLogoFile(event.target.files?.[0] ?? null)} /></Field>
+          <Field label="Cover upload"><Input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setCoverFile(event.target.files?.[0] ?? null)} /></Field>
         </div>
         <Button className="mt-4" onClick={create} disabled={busy === "create" || form.name.trim().length < 2}>{busy === "create" ? "Creating…" : "Create collection"}</Button>
       </section>

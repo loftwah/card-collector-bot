@@ -9,7 +9,25 @@ export function publicCard(card: CardView) {
     subtitle: card.subtitle,
     description: card.description,
     bio: card.bio,
+    bio_safe: card.bio_safe,
     quote: card.quote,
+    spoiler_level: card.spoiler_level,
+    attributes: (() => {
+      try {
+        return JSON.parse(card.attributes_json ?? "[]") as Array<Record<string, unknown>>;
+      } catch {
+        return [];
+      }
+    })(),
+    source_work: card.source_work,
+    review_status: card.review_status,
+    source_refs: (() => {
+      try {
+        return JSON.parse(card.source_refs_json ?? "[]") as string[];
+      } catch {
+        return [];
+      }
+    })(),
     class: card.class ? { key: card.class.key, name: card.class.name } : null,
     category: card.category ? { slug: card.category.slug, name: card.category.name } : null,
     rarity: card.rarity ? { key: card.rarity.key, name: card.rarity.name, tone: card.rarity.tone } : null,
@@ -29,6 +47,9 @@ export function publicCard(card: CardView) {
             material_key: variant.material_key,
             effect_key: variant.effect_key,
             render_url: variant.render_url,
+            back_render_url: variant.back_render_url,
+            thumbnail_url: variant.thumbnail_url,
+            preview_url: variant.preview_url,
           })),
       }))
       .filter((edition) => edition.variants.length > 0),
