@@ -51,7 +51,7 @@ human with recent strong authentication.
 ## Final production release
 
 - Migrations `0008` and `0009` applied to production D1 after a JSON backup.
-- Worker deployed as `c7a7966e-9d6e-4ef1-b6b7-546b54ca54b6`.
+- Worker deployed as `099b878f-1f79-4132-ac7c-b1c15e8ae77c`.
 - Catalogue release `3`.
 - 17 launch collections / 140 cards / 560 launch variants / 560 backs /
   1,280 derivatives imported through the scoped API.

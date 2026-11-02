@@ -118,10 +118,10 @@ node scripts/test-ui-a11y.mjs
 
 ## Revisions
 
-- Repository base: `main@5f71454` plus this working tree.
+- Source revision: `main@d98b825` (base `main@5f71454`).
 - Production migration: `0008_album_visibility_achievements_gifts.sql` and
   `0009_existing_showcase_review.sql`.
-- Production Worker: `c7a7966e-9d6e-4ef1-b6b7-546b54ca54b6` (plus later
+- Production Worker: `099b878f-1f79-4132-ac7c-b1c15e8ae77c` (plus later
   docs/script-only changes).
 - Production catalogue release: `3`.
 - Public origin: `https://foilbury.loftwah.com`.
