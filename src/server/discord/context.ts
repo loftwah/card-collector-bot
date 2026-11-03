@@ -151,6 +151,10 @@ export async function ensureDiscordPlayer(
       user_display_name: string;
       platform_admin: number;
       role: CurrentUser["role"];
+      capabilities_json: string | null;
+      self_grants_enabled: number;
+      grant_limit: number;
+      capability_revision: number;
       disabled_at: string | null;
       membership_status: string | null;
       membership_revoked_at: string | null;
@@ -159,7 +163,8 @@ export async function ensureDiscordPlayer(
   >(
     env.DB,
     `SELECT di.*, u.email, u.display_name AS user_display_name, u.platform_admin, u.disabled_at,
-            m.role, m.status AS membership_status, m.revoked_at AS membership_revoked_at, t.name AS tenant_name
+            m.role, m.capabilities_json, m.self_grants_enabled, m.grant_limit, m.capability_revision,
+            m.status AS membership_status, m.revoked_at AS membership_revoked_at, t.name AS tenant_name
        FROM fb_discord_identities di
        JOIN fb_users u ON u.id = di.user_id
        LEFT JOIN fb_memberships m ON m.user_id = u.id AND m.tenant_id = di.tenant_id
@@ -206,6 +211,12 @@ export async function ensureDiscordPlayer(
         displayName: existing.user_display_name,
         role: existing.role,
         platformAdmin: Boolean(existing.platform_admin),
+        capabilities: existing.capabilities_json
+          ? (JSON.parse(existing.capabilities_json) as string[])
+          : [],
+        selfGrantsEnabled: Boolean(existing.self_grants_enabled),
+        grantLimit: Number(existing.grant_limit ?? 0),
+        capabilityRevision: Number(existing.capability_revision ?? 1),
       },
     };
   }
@@ -333,6 +344,10 @@ export async function ensureDiscordPlayer(
       user_display_name: string;
       platform_admin: number;
       role: CurrentUser["role"];
+      capabilities_json: string | null;
+      self_grants_enabled: number;
+      grant_limit: number;
+      capability_revision: number;
       disabled_at: string | null;
       tenant_name: string;
     }

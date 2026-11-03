@@ -24,7 +24,7 @@ export const GET: APIRoute = async () => {
     origin: config.publicOrigin,
     tenant: config.tenantSlug,
     providers: config.providers,
-    discord: config.providers.discordApplication ? "interactions_ready" : "disabled",
+    discord: config.providers.discordApplication ? "configured_unverified" : "disabled",
     email: config.providers.resend ? "live_configured" : "outbox_only",
     access: config.providers.cloudflareAccess ? "edge_and_jwt" : "not_configured",
     generation: "not_run",

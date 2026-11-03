@@ -43,9 +43,13 @@ describe("draw transaction", () => {
     const input = { key: "draw-test-001", digest: "draw-digest-a" };
     const result = await executeDraw(player, { pool: "test-pool", expectedRevision: preview.revision, expectedDistribution: preview.distribution_fingerprint, idempotency: input });
     expect(result.card_name).toBe("Test One");
-    expect(result.balance_after).toBe(270);
+    expect(result.balance_after_debit).toBe(270);
+    expect(result.credits_total).toBe(160);
+    expect(result.balance_after).toBe(430);
+    expect(result.current_balance).toBe(430);
     const achievementFoil = result.achievements.reduce((sum, item) => sum + item.reward_amount, 0);
-    expect(await walletBalance(player, player.user!.id)).toBe(270 + achievementFoil);
+    expect(result.credits_total).toBe(achievementFoil);
+    expect(await walletBalance(player, player.user!.id)).toBe(430);
     const inventory = await getInventory(player);
     expect(inventory).toHaveLength(1);
     expect(inventory[0]!.id).toBe(result.instance_id);
@@ -53,14 +57,55 @@ describe("draw transaction", () => {
     const replay = await executeDraw(player, { pool: "test-pool", expectedRevision: preview.revision, expectedDistribution: preview.distribution_fingerprint, idempotency: input });
     expect(replay.replayed).toBe(true);
     expect(replay.instance_id).toBe(result.instance_id);
-    expect(await walletBalance(player, player.user!.id)).toBe(270 + achievementFoil);
+    expect(replay.balance_after_debit).toBe(270);
+    expect(replay.credits_total).toBe(160);
+    expect(replay.balance_after).toBe(430);
+    expect(replay.current_balance).toBe(430);
+    expect(await walletBalance(player, player.user!.id)).toBe(430);
     expect(await getInventory(player)).toHaveLength(1);
 
     await runtime.DB.prepare("UPDATE fb_pools SET revision = 2 WHERE id = ?").bind(fixture.poolId).run();
     await expect(
       executeDraw(player, { pool: "test-pool", expectedRevision: 1, expectedDistribution: preview.distribution_fingerprint, idempotency: { key: "draw-test-002", digest: "draw-digest-b" } }),
     ).rejects.toMatchObject({ code: "stale_pool_revision" });
-    expect(await walletBalance(player, player.user!.id)).toBe(270 + achievementFoil);
+    expect(await walletBalance(player, player.user!.id)).toBe(430);
+  });
+
+  it("shows 500 − 80 + a settled 100 reward as 520 with separate debit and credit", async () => {
+    await bootstrap();
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    await fixturePool(player);
+    await setBalance(player, player.user!.id, 500);
+    await runtime.DB.prepare(
+      "UPDATE fb_achievement_definitions SET reward_json = '{\"foil\":100}' WHERE key = 'first-card'",
+    ).run();
+    const preview = await getPoolPreview(player, "test-pool");
+    const result = await executeDraw(player, {
+      pool: "test-pool",
+      expectedRevision: preview.revision,
+      expectedDistribution: preview.distribution_fingerprint,
+      idempotency: { key: "draw-economy-500-80-100", digest: "economy-fixture" },
+    });
+    expect(result.price).toBe(80);
+    expect(result.balance_after_debit).toBe(420);
+    expect(result.credits_total).toBe(100);
+    expect(result.achievement_credits).toEqual([
+      { id: "ach_first_card", name: "The first one is always special", amount: 100 },
+    ]);
+    expect(result.balance_after).toBe(520);
+    expect(result.current_balance).toBe(520);
+    expect(await walletBalance(player, player.user!.id)).toBe(520);
+    const ledger = await runtime.DB.prepare(
+      "SELECT kind, amount, description FROM fb_ledger_entries WHERE tenant_id = ? AND user_id = ? ORDER BY created_at",
+    )
+      .bind(player.tenant.id, player.user!.id)
+      .all<{ kind: string; amount: number; description: string }>();
+    expect(ledger.results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "spend", amount: -80 }),
+        expect.objectContaining({ kind: "issue", amount: 100, description: "Achievement: The first one is always special" }),
+      ]),
+    );
   });
 
   it("does not charge an empty pool and does not charge when eligibility disappears", async () => {

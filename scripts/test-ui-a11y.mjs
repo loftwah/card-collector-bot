@@ -98,8 +98,17 @@ try {
     await page.goto("/studio/npcs");
     await page.getByRole("heading", { name: /npc collectors/i }).first().waitFor();
     await audit(page, `${scheme} Studio NPC collectors`, `ui-studio-npcs-${scheme}.png`);
+    await page.goto("/studio/economy");
+    await page.getByRole("heading", { name: /foil, with a receipt/i }).waitFor();
+    await page.getByText(/grant capability/i).first().waitFor();
+    await audit(page, `${scheme} Studio Foil grants`, `ui-studio-economy-${scheme}.png`);
+    await page.goto("/studio/team");
+    await page.getByText(/only the bot you were given/i).waitFor();
+    await page.getByText(/capabilities:/i).first().waitFor();
+    await audit(page, `${scheme} Studio team policy`, `ui-studio-team-${scheme}.png`);
     await page.goto("/play/preferences");
     await page.getByRole("heading", { name: /choose what can drop for you/i }).waitFor();
+    await page.getByText(/manage shares/i).waitFor();
     await audit(page, `${scheme} collection preferences`, `ui-preferences-${scheme}.png`);
     await page.goto("/play/wishlist");
     await page.getByRole("heading", { name: /what you are still looking for/i }).waitFor();

@@ -52,6 +52,7 @@ import {
   getPoolDetail,
   getPoolPreview,
   listPools,
+  listEligiblePools,
   publishPool,
   retirePool,
   updatePool,
@@ -383,7 +384,8 @@ function ensureEconomyRead(ctx: Ctx) {
   if (
     user.role !== "owner" &&
     !hasCapability(user, "economy") &&
-    !hasCapability(user, "inventory")
+    !hasCapability(user, "inventory") &&
+    !hasCapability(user, "grants")
   ) {
     throw new ApiError(403, "insufficient_role", "Your Bot role cannot read the economy.");
   }
@@ -401,7 +403,7 @@ function ensureEconomyWrite(ctx: Ctx) {
     return;
   }
   const user = requireUser(ctx);
-  if (user.role !== "owner" && !hasCapability(user, "economy"))
+  if (user.role !== "owner" && !hasCapability(user, "economy") && !hasCapability(user, "grants"))
     throw new ApiError(403, "insufficient_role", "Your Bot role cannot edit the economy.");
 }
 
@@ -413,8 +415,8 @@ function ensureOwner(ctx: Ctx) {
       "This action requires a signed-in human owner.",
     );
   const user = requireUser(ctx);
-  if (user.role !== "owner")
-    throw new ApiError(403, "owner_required", "Only the Bot Owner can do that.");
+  if (user.role !== "owner" && !user.platformAdmin)
+    throw new ApiError(403, "owner_required", "Only the Bot Owner or Super Admin can do that.");
 }
 
 function ensureOps(ctx: Ctx) {
@@ -429,7 +431,12 @@ function ensureOps(ctx: Ctx) {
     return;
   }
   const user = requireUser(ctx);
-  if (user.role !== "owner" && !hasCapability(user, "content") && !hasCapability(user, "economy")) {
+  if (
+    user.role !== "owner" &&
+    !hasCapability(user, "content") &&
+    !hasCapability(user, "economy") &&
+    !hasCapability(user, "grants")
+  ) {
     throw new ApiError(403, "insufficient_role", "Your Bot role cannot read operations.");
   }
 }
@@ -510,16 +517,19 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     // must not enumerate a Bot's pool metadata.
     playerWrite(ctx);
     requireScope(ctx, "inventory:read");
-    const pools = await listPools(ctx);
+    // Only pools with real eligible entries for this actor are selectable.
+    // Admin/inventory read routes use includeDrafts to inspect all definitions.
+    const previews = await listEligiblePools(ctx, url.searchParams.get("channel") ?? undefined);
     return json({
-      items: pools.map(({ id, slug, name, description, revision, price, status }) => ({
-        id,
-        slug,
-        name,
-        description,
-        revision,
-        price,
-        status,
+      items: previews.map(({ pool, eligible_count }) => ({
+        id: pool.id,
+        slug: pool.slug,
+        name: pool.name,
+        description: pool.description,
+        revision: pool.revision,
+        price: pool.price,
+        status: pool.status,
+        eligible_count,
       })),
     });
   }
@@ -825,7 +835,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       z.object({
         expiresInDays: z.number().int().min(1).max(30).optional(),
         kind: z
-          .enum(["cabinet", "card", "collection", "achievement", "wishlist", "latest", "profile"])
+          .enum(["card", "collection", "achievement", "wishlist", "latest", "profile"])
           .optional(),
         targetId: idSchema.optional(),
       }),
@@ -1825,14 +1835,19 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     const form = await request.formData();
     const file = form.get("file");
     const back = form.get("back");
+    const attempt = Number(form.get("attempt"));
     if (!(file instanceof File))
       throw new ApiError(422, "file_required", "Upload the rendered card image.");
+    if (!Number.isInteger(attempt) || attempt < 1) {
+      throw new ApiError(422, "attempt_required", "Send the attempt number returned by claim.");
+    }
     return json(
       await completeRenderJob(
         ctx,
         segments[2],
         new Uint8Array(await file.arrayBuffer()),
         back instanceof File ? new Uint8Array(await back.arrayBuffer()) : undefined,
+        attempt,
       ),
     );
   }
@@ -1845,8 +1860,14 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   ) {
     ensureOps(ctx);
     requireScope(ctx, "render:write");
-    const body = await readJson(request, z.object({ message: z.string().min(1).max(500) }));
-    return json(await failRenderJob(ctx, segments[2], body.message));
+    const body = await readJson(
+      request,
+      z.object({
+        message: z.string().min(1).max(500),
+        attempt: z.number().int().min(1),
+      }),
+    );
+    return json(await failRenderJob(ctx, segments[2], body.message, body.attempt));
   }
   if (
     segments[0] === "admin" &&
@@ -2036,6 +2057,105 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       }),
     );
     return json(await createBotInvitation(ctx, { botId: bot.id, ...body }), 201);
+  }
+  if (
+    segments[0] === "admin" &&
+    segments[1] === "bot" &&
+    segments[2] === "admins" &&
+    segments[3] &&
+    segments.length === 4 &&
+    method === "PATCH"
+  ) {
+    ensureOwner(ctx);
+    ensureStepUp(ctx);
+    const { botForTenant } = await import("../modules/bots");
+    const { validateCapabilities } = await import("../modules/bots");
+    const bot = await botForTenant(ctx.db, ctx.tenant.id);
+    if (!bot)
+      throw new ApiError(404, "bot_not_found", "No Bot is attached to this administration area.");
+    const targetUserId = segments[3]!;
+    if (targetUserId === bot.owner_user_id) {
+      throw new ApiError(422, "owner_capability_fixed", "The Bot Owner's authority is not edited as a Bot Admin grant.");
+    }
+    const body = await readJson(
+      request,
+      z.object({
+        capabilities: z.array(z.string().max(40)).min(1).max(12),
+        selfGrantsEnabled: z.boolean(),
+        grantLimit: z.number().int().min(0).max(5000),
+        reason: z.string().min(3).max(500),
+      }),
+    );
+    const capabilities = validateCapabilities(body.capabilities);
+    if (body.selfGrantsEnabled && !capabilities.includes("grants")) {
+      throw new ApiError(
+        422,
+        "self_grants_requires_grants",
+        "Enable the grant capability before enabling self-grants.",
+      );
+    }
+    const existing = await first<{ role: string }>(
+      ctx.db,
+      "SELECT role FROM fb_memberships WHERE tenant_id = ? AND user_id = ? AND status = 'active'",
+      ctx.tenant.id,
+      targetUserId,
+    );
+    if (!existing) throw new ApiError(404, "admin_not_found", "That Bot Admin was not found.");
+    const now = nowIso();
+    const updated = await ctx.db.batch([
+      ctx.db
+        .prepare(
+          `UPDATE fb_memberships
+              SET capabilities_json = ?, self_grants_enabled = ?, grant_limit = ?,
+                  capability_revision = capability_revision + 1
+            WHERE tenant_id = ? AND user_id = ? AND status = 'active'`,
+        )
+        .bind(
+          JSON.stringify(capabilities),
+          body.selfGrantsEnabled ? 1 : 0,
+          body.grantLimit,
+          ctx.tenant.id,
+          targetUserId,
+        ),
+      ctx.db
+        .prepare(
+          `UPDATE fb_bot_admins
+              SET capabilities_json = ?
+            WHERE bot_id = ? AND user_id = ? AND status = 'active'`,
+        )
+        .bind(JSON.stringify(capabilities), bot.id, targetUserId),
+      ctx.db
+        .prepare(
+          `INSERT INTO fb_audit_events
+            (id, tenant_id, actor_type, actor_id, represented_user_id, action, object_type, object_id,
+             metadata_json, request_id, created_at)
+           VALUES (?, ?, 'user', ?, ?, 'bot.admin.capabilities.updated', 'bot_admin', ?, ?, ?, ?)`,
+        )
+        .bind(
+          newId("aud"),
+          ctx.tenant.id,
+          ctx.user!.id,
+          ctx.user!.id,
+          targetUserId,
+          JSON.stringify({
+            capabilities,
+            self_grants_enabled: body.selfGrantsEnabled,
+            grant_limit: body.grantLimit,
+            reason: body.reason.trim(),
+          }),
+          ctx.requestId,
+          now,
+        ),
+    ]);
+    if ((updated[0]?.meta?.changes ?? 0) !== 1) {
+      throw new ApiError(409, "admin_not_found", "That Bot Admin was not updated; reload the team.");
+    }
+    return json({
+      ok: true,
+      capabilities,
+      self_grants_enabled: body.selfGrantsEnabled,
+      grant_limit: body.grantLimit,
+    });
   }
   if (
     segments[0] === "admin" &&

@@ -576,6 +576,9 @@ export async function playNpcOnce(ctx: Ctx, id: string, idempotencyKey?: string)
     const after = {
       balance: receipt.balance_after,
       balance_after: receipt.balance_after,
+      balance_after_debit: receipt.balance_after_debit,
+      credits_total: receipt.credits_total,
+      achievement_credits: receipt.achievement_credits,
       card_name: receipt.card_name,
       variant_name: receipt.variant_name,
       serial: receipt.serial,

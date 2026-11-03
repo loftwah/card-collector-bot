@@ -1,9 +1,8 @@
 # Discord presentation layer
 
-Status: reusable builders and structural tests. The command router still owns
-every command decision and has not been migrated in this change. This document
-is a specification for that integration, not a claim that the live Discord
-client has been re-reviewed.
+Status: reusable builders are integrated into the primary command/component
+router. See **Adoption status — current** at the end. Real Discord desktop/mobile
+client review remains a separate observation; this document does not claim it.
 
 Source: `src/server/discord/presentation.ts`
 Tests: `tests/workers/discord-presentation.test.ts`
@@ -198,3 +197,23 @@ The structural suite covers exact payload shape, limit truncation and
 rejection, private-by-default responses, attachment naming, reveal-receipt
 parity, audience gates, mission/album states and deterministic preview output.
 It does not replace a real Discord desktop/mobile/spectator session.
+
+
+## Adoption status — current
+
+The command router now consumes the shared builders for the primary player
+surface:
+
+- `/foilbury help` → welcome/guide builder;
+- `/foilbury daily` → daily claim builder;
+- `/foilbury packs` and the empty-default picker → capsule picker builder;
+- `/foilbury open`, open buttons and re-send receipt → reveal/receipt builder;
+- `/foilbury card`, card buttons → card-face builder;
+- `/foilbury collection` → cabinet summary builder;
+- `/foilbury achievements` → achievements overview builder;
+- `/foilbury profile` → profile builder;
+- errors/denied states → shared safe-copy state builder.
+
+The handler tests invoke the actual command/component path and assert the
+builder-specific titles, fields and action labels. Builder-only tests remain
+useful but are no longer the adoption proof.

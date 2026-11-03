@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { bootstrap, ctxFor, fixturePool, runtime, walletBalance } from "./helpers";
-import { executeDraw, getPoolPreview } from "../../src/server/modules/pools";
+import { executeDraw, getPoolPreview, listEligiblePools } from "../../src/server/modules/pools";
 import { getPreferences, updatePreferences } from "../../src/server/modules/economy";
 import { nowIso } from "../../src/server/db";
 
@@ -37,6 +37,29 @@ describe("collection-first draw preferences and preview consent", () => {
     expect(await walletBalance(player, player.user!.id)).toBe(balanceBefore);
     const inventory = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_card_instances WHERE tenant_id = ? AND user_id = ?").bind(player.tenant.id, player.user!.id).first<{ count: number }>();
     expect(inventory?.count ?? 0).toBe(0);
+  });
+
+  it("derives the selectable pool list from the same effective eligibility as preview and commit", async () => {
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    await fixturePool(player);
+    expect((await listEligiblePools(player)).map((preview) => preview.pool.slug)).toEqual([
+      "test-pool",
+    ]);
+
+    await updatePreferences(player, { hiddenCollectionIds: ["col_test_public"] });
+    expect(await listEligiblePools(player)).toEqual([]);
+
+    await updatePreferences(player, { hiddenCollectionIds: [] });
+    await runtime.DB.prepare(
+      "UPDATE fb_bot_collections SET enabled = 0 WHERE collection_id = 'col_test_public'",
+    ).run();
+    expect(await listEligiblePools(player)).toEqual([]);
+
+    await runtime.DB.prepare(
+      "UPDATE fb_bot_collections SET enabled = 1 WHERE collection_id = 'col_test_public'",
+    ).run();
+    await runtime.DB.prepare("UPDATE fb_pools SET status = 'draft' WHERE slug = 'test-pool'").run();
+    expect(await listEligiblePools(player)).toEqual([]);
   });
 
   it("keeps a multi-collection card while any member collection remains included", async () => {

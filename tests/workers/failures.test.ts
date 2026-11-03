@@ -32,12 +32,12 @@ describe("recoverable failures", () => {
     await runtime.DB.prepare("INSERT INTO fb_jobs (id, tenant_id, kind, status, payload_json, attempts, max_attempts, available_at, created_at, updated_at) VALUES ('job_failure_test', ?, 'render_card', 'running', '{}', 0, 3, ?, ?, ?)")
       .bind(owner.tenant.id, now, now, now)
       .run();
-    const retry = await failRenderJob(owner, "job_failure_test", "temporary render failure");
+    const retry = await failRenderJob(owner, "job_failure_test", "temporary render failure", 0);
     expect(retry.retry).toBe(true);
     const pending = await runtime.DB.prepare("SELECT status FROM fb_jobs WHERE id = 'job_failure_test'").first<{ status: string }>();
     expect(pending?.status).toBe("pending");
     await runtime.DB.prepare("UPDATE fb_jobs SET status = 'running', attempts = 3 WHERE id = 'job_failure_test'").run();
-    const terminal = await failRenderJob(owner, "job_failure_test", "terminal render failure");
+    const terminal = await failRenderJob(owner, "job_failure_test", "terminal render failure", 3);
     expect(terminal.retry).toBe(false);
     const failed = await runtime.DB.prepare("SELECT status, last_error FROM fb_jobs WHERE id = 'job_failure_test'").first<{ status: string; last_error: string }>();
     expect(failed?.status).toBe("failed");

@@ -41,3 +41,15 @@ Collection and card edits use `expectedVersion`; a stale write returns 409 with
 the current version. The UI preserves the form, announces the conflict and asks
 the operator to reload. Gift previews are separate from sends; sends require
 recent strong authentication and record the actor, scope, reason and campaign ID.
+
+
+## Render-job fencing — current
+
+- A claim selects `pending` or `failed`, asserts the transition, and updates
+  only when the expected status and attempt still match.
+- A claim returns the incremented attempt. Complete and fail require that
+  attempt; a stale worker cannot overwrite a newer attempt or terminal job.
+- Failed → running is an explicit retry edge; succeeded/cancelled are terminal.
+- `failRenderJob` and `completeRenderJob` are conditional writes on
+  `status='running'` plus the attempt number; a terminal job cannot be reopened
+  by a late completion/failure.

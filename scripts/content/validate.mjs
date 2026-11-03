@@ -32,6 +32,11 @@ for (const file of files) {
     errors.push(`${file}: invalid JSON (${error instanceof Error ? error.message : String(error)})`);
     continue;
   }
+  // Print-set manifests live beside collection manifests but are consumed by
+  // the print-selection workflow, not the collection importer.
+  if (!manifest.collection && (manifest.prints || manifest.selections || manifest.print_set || manifest.subjects)) {
+    continue;
+  }
   const collection = manifest.collection ?? {};
   if (manifest.schema !== 1) errors.push(`${file}: schema must be 1`);
   if (!collection.slug) errors.push(`${file}: collection.slug is required`);

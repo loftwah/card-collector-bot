@@ -2,15 +2,15 @@
 import PlayerLayout from "../../layouts/PlayerLayout.astro";
 import DrawStudio from "../../components/player/DrawStudio";
 import { pageContext } from "../../server/page";
-import { listPools } from "../../server/modules/pools";
+import { listEligiblePools } from "../../server/modules/pools";
 import { getWalletSummary } from "../../server/modules/wallet";
 import { getEconomy, getPreferences } from "../../server/modules/economy";
 
 const ctx = await pageContext(Astro.request);
 const user = ctx.user!;
 const requestedPool = Astro.url.searchParams.get("pool") ?? "";
-const [pools, wallet, economy, prefs] = await Promise.all([
-  listPools(ctx),
+const [eligiblePools, wallet, economy, prefs] = await Promise.all([
+  listEligiblePools(ctx),
   getWalletSummary(ctx.db, ctx.tenant.id, user.id, 1),
   getEconomy(ctx),
   getPreferences(ctx),
@@ -32,9 +32,16 @@ const [pools, wallet, economy, prefs] = await Promise.all([
   <div class="mt-7">
     <DrawStudio
       client:load
-      pools={[...pools]
-        .sort((a, b) => (a.slug === "cabinet-draw" ? -1 : b.slug === "cabinet-draw" ? 1 : a.name.localeCompare(b.name)))
-        .map((pool) => ({ id: pool.id, slug: pool.slug, name: pool.name, description: pool.description, revision: pool.revision, price: pool.price, status: pool.status }))}
+      pools={eligiblePools.map((preview) => ({
+        id: preview.pool.id,
+        slug: preview.pool.slug,
+        name: preview.pool.name,
+        description: preview.pool.description,
+        revision: preview.pool.revision,
+        price: preview.pool.price,
+        status: preview.pool.status,
+        eligibleCount: preview.eligible_count,
+      }))}
       initialBalance={wallet.balance}
       initialPool={requestedPool}
     />

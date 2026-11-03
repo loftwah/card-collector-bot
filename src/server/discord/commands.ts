@@ -14,11 +14,29 @@ import {
   listCollections,
   listPublicCollections,
 } from "../modules/collections";
-import { executeDraw, getPoolPreview, listPools } from "../modules/pools";
+import {
+  executeDraw,
+  getPoolPreview,
+  listEligiblePools,
+  listPools,
+} from "../modules/pools";
 import { finishKey, listAchievements } from "../modules/achievements";
 import { compareNpc, listNpcProfiles } from "../modules/npcs";
 import { claimDailyMission, getDailyMissions } from "../modules/missions";
-import { missionProgressMessage } from "./presentation";
+import {
+  achievementsOverviewMessage,
+  cabinetSummaryMessage,
+  capsulePickerMessage,
+  cardFaceMessage,
+  dailyClaimMessage,
+  formatDiscordTimestamp,
+  missionProgressMessage,
+  profileMessage,
+  revealReceiptMessage,
+  stateFromError,
+  welcomeMessage,
+} from "./presentation";
+import { readInteractionReceipt, recordInteractionReceipt } from "./receipts";
 import { audienceRank, canViewCard, effectiveCardAudience } from "../modules/visibility";
 import { HELP_TEXT } from "./command-definitions";
 import { channelAudienceFor, isBotAdmin, requireBotAdmin } from "./context";
@@ -33,6 +51,8 @@ import type {
 } from "./types";
 
 interface DrawReceipt {
+  draw_id: string;
+  instance_id: string;
   card_id: string;
   variant_id: string;
   card_name: string;
@@ -46,6 +66,10 @@ interface DrawReceipt {
   price: number;
   currency: { name: string; symbol: string };
   balance_after: number;
+  balance_after_debit?: number;
+  current_balance?: number;
+  credits_total?: number;
+  achievement_credits?: Array<{ id: string; name: string; amount: number }>;
   probability_bps: number;
   drawn_at: string;
   replayed: boolean;
@@ -116,41 +140,24 @@ function callback(message: DiscordMessage, ephemeral = false): DiscordCallback {
   };
 }
 
-function errorCallback(error: unknown, ephemeral = true): DiscordCallback {
+function errorCallback(error: unknown, _ephemeral = true): DiscordCallback {
   const apiError = error instanceof ApiError ? error : null;
-  const detail =
+  const nextEligibleAt =
     apiError?.details && typeof apiError.details.next_eligible_at === "string"
-      ? `\nNext eligible: <t:${Math.floor(new Date(apiError.details.next_eligible_at).getTime() / 1000)}:R>`
-      : "";
-  let message =
-    apiError?.message ?? "Foilbury could not complete that action. Nothing was changed.";
-  if (apiError?.code === "insufficient_funds") {
-    message += " Claim your daily allowance with /foilbury daily, or choose a cheaper capsule from /foilbury packs.";
-  } else if (apiError?.code === "empty_pool") {
-    message += " Try /foilbury packs or check your collection preferences.";
-  } else if (apiError?.code === "discord_channel_not_allowed" || apiError?.code === "discord_installation_disabled") {
-    message += " Ask a Bot Admin to enable this channel or gameplay; nothing was charged.";
-  }
-  const title =
-    apiError?.code === "reward_cooldown"
-      ? "Allowance not ready"
+      ? apiError.details.next_eligible_at
+      : null;
+  const nextStep =
+    apiError?.code === "reward_cooldown" && nextEligibleAt
+      ? `Come back ${formatDiscordTimestamp(nextEligibleAt)} or open a capsule you can afford.`
       : apiError?.code === "insufficient_funds"
-        ? "Not enough Foil"
+        ? "Claim the daily allowance with /foilbury daily, or choose a cheaper capsule from /foilbury packs."
         : apiError?.code === "empty_pool"
-          ? "No eligible cards here"
-          : "Foilbury could not do that";
-  return callback(
-    {
-      embeds: [
-        {
-          title,
-          description: `${truncate(message, 1500)}${detail}`,
-          color: 0xd97757,
-        },
-      ],
-    },
-    ephemeral,
-  );
+          ? "Try /foilbury packs, or check your collection preferences on the website."
+          : undefined;
+  return stateFromError({
+    code: apiError?.code,
+    ...(nextStep ? { nextStep } : {}),
+  });
 }
 
 function parseCommand(data: DiscordInteraction["data"]): {
@@ -206,42 +213,26 @@ async function openCard(
       // The default capsule can be empty because a collection was disabled or
       // the member hid every world. Present real alternatives and their price
       // instead of a dead end; opening still requires an explicit press.
-      const pools = await listPools(ctx);
-      const choices = [];
-      for (const pool of pools.slice(0, 8)) {
-        const candidate = await getPoolPreview(ctx, pool.slug, installation.channel_key ?? undefined).catch(() => null);
-        if (candidate && candidate.eligible_count > 0) {
-          choices.push({ pool, preview: candidate });
-        }
-      }
+      const choices = (await listEligiblePools(ctx, installation.channel_key ?? undefined)).slice(0, 8);
       if (choices.length) {
-        choices.sort((left, right) => left.preview.price - right.preview.price || left.pool.name.localeCompare(right.pool.name));
-        return callback(
-          {
-            embeds: [
-              {
-                title: "Choose your capsule",
-                description: "The default capsule has no eligible cards for you right now. These capsules have real eligible cards and show their ordinary price. Press one to open it; nothing is charged until you press.",
-                color: 0x00c8b8,
-                fields: choices.slice(0, 5).map((choice) => ({
-                  name: choice.pool.name,
-                  value: `✦ ${choice.preview.price} · ${choice.preview.eligible_count} eligible cards`,
-                  inline: true,
-                })),
-                footer: { text: "Nothing is charged by viewing this picker." },
-              },
-            ],
-            components: components([
-              choices.slice(0, 4).map((choice) => ({
-                type: 2,
-                style: 1,
-                label: `Open ${choice.pool.name} · ✦${choice.preview.price}`.slice(0, 80),
-                custom_id: `foilbury:open:${choice.pool.slug}`,
-              })),
-            ]),
-          },
-          true,
+        choices.sort(
+          (left, right) =>
+            left.price - right.price || left.pool.name.localeCompare(right.pool.name),
         );
+        const wallet = await getWalletSummary(ctx.db, ctx.tenant.id, ctx.user!.id, 1);
+        return capsulePickerMessage({
+          scopeName: ctx.tenant.name,
+          currencySymbol: wallet.currencySymbol,
+          balance: wallet.balance,
+          capsules: choices.map((preview) => ({
+            slug: preview.pool.slug,
+            name: preview.pool.name,
+            price: preview.price,
+            eligibleCount: preview.eligible_count,
+          })),
+          packsCustomId: "foilbury:packs",
+          browseUrl: absoluteUrl(ctx.config.publicOrigin, "/play/draw"),
+        });
       }
     }
     throw new ApiError(
@@ -260,7 +251,29 @@ async function openCard(
     channelKey: installation.channel_key ?? undefined,
     idempotency: { key: idempotencyKey, digest },
   })) as unknown as DrawReceipt;
-  const image = absoluteUrl(ctx.config.publicOrigin, result.render_url);
+
+  // Persist the domain result before any presentation lookup. If a render or
+  // Discord call fails from here on, the handler can retrieve this exact
+  // receipt and tell the player the draw completed. It must never trigger a
+  // second draw or claim that nothing changed.
+  await recordInteractionReceipt(ctx.db, interaction.id, {
+    kind: "draw",
+    draw_id: result.draw_id,
+    instance_id: result.instance_id,
+    card_id: result.card_id,
+    variant_id: result.variant_id,
+    card_name: result.card_name,
+    edition_name: result.edition_name,
+    variant_name: result.variant_name,
+    serial: result.serial,
+    pool_name: result.pool_name,
+    price: result.price,
+    currency_symbol: result.currency.symbol,
+    balance_after: result.balance_after,
+    drawn_at: result.drawn_at,
+    replayed: result.replayed,
+  });
+
   const render = await first<{ width: number; height: number; r2_key: string; mime: string }>(
     ctx.db,
     `SELECT vr.width, vr.height, a.r2_key, a.mime
@@ -268,89 +281,110 @@ async function openCard(
       WHERE vr.tenant_id = ? AND vr.variant_id = ? AND vr.status = 'published' LIMIT 1`,
     ctx.tenant.id,
     result.variant_id,
-  );
-  const rarityName = await cardRarity(ctx, result.card_id);
-  const rarityKey = await cardRarityKey(ctx, result.card_id);
-  const cardAudience = await effectiveCardAudience(ctx, result.card_id);
+  ).catch(() => null);
+  const rarityName = await cardRarity(ctx, result.card_id).catch(() => null);
+  const rarityKey = await cardRarityKey(ctx, result.card_id).catch(() => null);
+  // Audience lookup failure must fail closed: no share control and a private
+  // reveal. The draw itself is already committed and safe in the cabinet.
+  const cardAudience = await effectiveCardAudience(ctx, result.card_id).catch(() => "private" as const);
   const channelAudience = channelAudienceFor(installation, interaction.channel_id);
   const shareInChannel =
     cardAudience !== "private" && audienceRank(channelAudience) >= audienceRank(cardAudience);
-  const resultPrintTitle = editionPrintTitle(result.edition_name);
-  const fields = [
-    ...(resultPrintTitle
-      ? [{ name: "Print", value: resultPrintTitle, inline: true }]
-      : []),
-    { name: "Rarity", value: rarityName ?? "Unclassified", inline: true },
-    {
-      name: "Variant",
-      value: displayFinish(result.variant_name, result.material_key, result.effect_key),
-      inline: true,
-    },
-    { name: "Serial", value: `\`${result.serial}\``, inline: true },
-    {
-      name: "Pool",
-      value: `${result.pool_name} · ${result.price} ${result.currency.symbol}`,
-      inline: true,
-    },
-    { name: "Balance", value: `${result.balance_after} ${result.currency.symbol}`, inline: true },
-    {
-      name: "Odds",
-      value: `${(result.probability_bps / 100).toFixed(2)}% for this copy`,
-      inline: true,
-    },
-  ];
-  if (!shareInChannel) {
-    fields.push({
-      name: "Private reveal",
-      value: `This collection is ${cardAudience === "private" ? "private" : "members-only"}. The card is yours, but this channel has not been verified for that audience, so the artwork is visible only to you.`,
-      inline: false,
-    });
-  }
-  if (result.replayed) {
-    fields.push({
-      name: "Retry",
-      value: "This is the recorded result of the original request; no second pull was made.",
-      inline: false,
-    });
-  }
-  const embed: DiscordEmbed = {
-    title: resultPrintTitle
-      ? `${result.card_name} — ${resultPrintTitle}`
-      : `${result.card_name} — ${result.variant_name}`,
-    description: resultPrintTitle
-      ? `Pulled from **${result.pool_name}**. Print ${resultPrintTitle}, ${displayFinish(result.variant_name, result.material_key, result.effect_key)} finish. This copy is in your collection immediately.`
-      : `Pulled from **${result.pool_name}**. This copy is in your collection immediately.`,
-    color: colorFor(rarityKey),
-    fields,
-    footer: { text: `Foilbury · ${ctx.tenant.name} · inventory is Bot-scoped` },
-    timestamp: result.drawn_at,
-    ...(render?.r2_key
+  return revealReceiptMessage({
+    ...result,
+    rarity_name: rarityName,
+    scope_name: ctx.tenant.name,
+    audience: cardAudience,
+    channel_audience: channelAudience,
+    channel_approved: shareInChannel,
+    force_private: true,
+    render: render?.r2_key
       ? {
-          image: {
-            url: "attachment://foilbury-card.webp",
-            width: render.width,
-            height: render.height,
-          },
+          r2Key: render.r2_key,
+          mime: render.mime,
+          width: render.width,
+          height: render.height,
         }
-      : image
-        ? { image: { url: image } }
-        : {}),
-  };
-  const resultCallback = callback(
+      : null,
+    open_custom_id: `foilbury:open:${poolSlug}`,
+    collection_custom_id: "foilbury:collection",
+    tour_custom_id: "foilbury:tour:progress",
+    album_url: absoluteUrl(ctx.config.publicOrigin, "/play"),
+    public_origin: ctx.config.publicOrigin,
+    share_custom_id: shareInChannel
+      ? `foilbury:tourshare:card:${result.instance_id}`
+      : undefined,
+    balance_after_debit: result.balance_after_debit,
+    credits_total: result.credits_total,
+    achievement_credits: result.achievement_credits,
+  });
+}
+
+/**
+ * Re-send the exact receipt that was committed by an earlier interaction. This
+ * never calls executeDraw, so a delivery retry cannot spend again or roll a new
+ * card. The original interaction ID is part of the signed component and is
+ * resolved against the durable interaction record.
+ */
+async function redeliverReceipt(
+  ctx: Ctx,
+  interaction: DiscordInteraction,
+  originalInteractionId: string,
+): Promise<DiscordCallback> {
+  const receipt = await readInteractionReceipt(ctx.db, originalInteractionId);
+  if (!receipt) {
+    throw new ApiError(
+      404,
+      "receipt_not_found",
+      "No committed draw receipt was found for that button. Nothing was charged; open the cabinet to inspect your cards.",
+    );
+  }
+  const render = await first<{ width: number; height: number; r2_key: string; mime: string }>(
+    ctx.db,
+    `SELECT vr.width, vr.height, a.r2_key, a.mime
+       FROM fb_variant_renders vr JOIN fb_assets a ON a.id = vr.asset_id AND a.tenant_id = vr.tenant_id
+      WHERE vr.tenant_id = ? AND vr.variant_id = ? AND vr.status = 'published' LIMIT 1`,
+    ctx.tenant.id,
+    receipt.variant_id,
+  ).catch(() => null);
+  const print = editionPrintTitle(receipt.edition_name);
+  const result = callback(
     {
-      embeds: [embed],
+      embeds: [
+        {
+          title: print
+            ? `${receipt.card_name} — ${print}`
+            : `${receipt.card_name} — ${receipt.variant_name}`,
+          description: [
+            "This is the recorded result of your original draw. No second pull was made and no second debit was recorded.",
+            `**${receipt.price} ${receipt.currency_symbol}** was charged from **${receipt.pool_name}**. Current balance: **${receipt.balance_after} ${receipt.currency_symbol}**.`,
+          ].join("\n\n"),
+          color: 0x245c4b,
+          fields: [
+            { name: "Serial", value: `\`${receipt.serial}\``, inline: true },
+            { name: "Receipt", value: `\`${receipt.draw_id}\``, inline: false },
+          ],
+          footer: { text: "Foilbury · delivered from the committed receipt · reference " + interaction.id.slice(0, 24) },
+          timestamp: receipt.drawn_at,
+          ...(render?.r2_key
+            ? {
+                image: {
+                  url: "attachment://foilbury-card.webp",
+                  width: render.width,
+                  height: render.height,
+                },
+              }
+            : {}),
+        },
+      ],
       components: components([
-        [
-          button("Open again", `foilbury:open:${poolSlug}`, 1),
-          button("Collection", "foilbury:collection", 2),
-          button("Tour", "foilbury:tour:progress", 2),
-        ],
+        [button("Collection", "foilbury:collection", 2), button("Packs", "foilbury:packs", 2)],
       ]),
     },
-    !shareInChannel,
+    true,
   );
   if (render?.r2_key) {
-    resultCallback.attachments = [
+    result.attachments = [
       {
         r2Key: render.r2_key,
         filename: "foilbury-card.webp",
@@ -358,7 +392,7 @@ async function openCard(
       },
     ];
   }
-  return resultCallback;
+  return result;
 }
 
 async function cardRarity(ctx: Ctx, cardId: string): Promise<string | null> {
@@ -389,116 +423,56 @@ async function daily(ctx: Ctx, interaction: DiscordInteraction): Promise<Discord
     key: `discord:${interaction.id}:daily`,
     digest,
   })) as unknown as DailyReceipt;
-  return callback(
-    {
-      embeds: [
-        {
-          title: result.replayed ? "Allowance already claimed" : "Daily allowance claimed",
-          description: `**+${result.amount}** ${result.currency.symbol} ${result.currency.name} added to your balance.${result.replayed ? "\nThis is the recorded result of the original request; no second credit was made." : ""}`,
-          color: 0x3f9d5a,
-          fields: [
-            {
-              name: "Balance",
-              value: `${result.balance_after} ${result.currency.symbol}`,
-              inline: true,
-            },
-            {
-              name: "Next allowance",
-              value: `<t:${Math.floor(new Date(result.next_eligible_at).getTime() / 1000)}:R>`,
-              inline: true,
-            },
-            {
-              name: "Reset policy",
-              value: "Daily, shared for this Bot across servers, website and API. Periods use UTC.",
-              inline: false,
-            },
-          ],
-        },
-      ],
-      components: components([
-        [
-          button("Open a capsule", "foilbury:open:cabinet-draw", 1),
-          button("Packs", "foilbury:packs", 2),
-        ],
-      ]),
-    },
-    true,
-  );
+  return dailyClaimMessage({
+    amount: result.amount,
+    currencySymbol: result.currency.symbol,
+    balanceAfter: result.balance_after,
+    nextEligibleAt: result.next_eligible_at,
+    replayed: result.replayed,
+    scopeName: ctx.tenant.name,
+    openCustomId: "foilbury:open:cabinet-draw",
+    packsCustomId: "foilbury:packs",
+  });
 }
 
 async function collection(ctx: Ctx): Promise<DiscordCallback> {
   const inventory = await getInventory(ctx, { limit: 200 });
   const wallet = await getWalletSummary(ctx.db, ctx.tenant.id, ctx.user!.id, 1);
   if (inventory.length === 0) {
-    return callback(
-      {
-        embeds: [
-          {
-            title: "Your cabinet is empty",
-            description:
-              "Claim `/foilbury daily`, then open a capsule. Your cards are tied to this Bot and will be here on every server where it is installed.",
-            color: 0x8a8f98,
-            fields: [
-              {
-                name: "Balance",
-                value: `${wallet.balance} ${wallet.currencySymbol}`,
-                inline: true,
-              },
-            ],
-          },
-        ],
-        components: components([
-          [
-            button("Open a capsule", "foilbury:open:cabinet-draw", 1),
-            button("Packs", "foilbury:packs", 2),
-          ],
-        ]),
-      },
-      true,
-    );
+    return cabinetSummaryMessage({
+      scopeName: ctx.tenant.name,
+      currencySymbol: wallet.currencySymbol,
+      balance: wallet.balance,
+      owned: 0,
+      unique: 0,
+      duplicates: 0,
+      items: [],
+      albumUrl: absoluteUrl(ctx.config.publicOrigin, "/play/collection")!,
+      openCustomId: "foilbury:open:cabinet-draw",
+      packsCustomId: "foilbury:packs",
+    });
   }
   const counts = new Map<string, number>();
   for (const item of inventory) counts.set(item.card_id, (counts.get(item.card_id) ?? 0) + 1);
   const duplicates = [...counts.values()].filter((count) => count > 1).length;
-  const lines = inventory
-    .slice(0, 8)
-    .map(
-      (item) => {
-        const print = editionPrintTitle(item.edition_name);
-        return `• **${item.card_name}** — ${print ? `${print} · ` : ""}${item.variant_name} · ${item.rarity_name ?? "Unclassified"} · \`${item.serial}\``;
-      },
-    );
-  return callback(
-    {
-      embeds: [
-        {
-          title: "Your collection",
-          description: lines.join("\n"),
-          color: 0xc9a227,
-          fields: [
-            { name: "Owned", value: String(inventory.length), inline: true },
-            { name: "Unique", value: String(counts.size), inline: true },
-            { name: "Duplicates", value: String(duplicates), inline: true },
-            { name: "Balance", value: `${wallet.balance} ${wallet.currencySymbol}`, inline: true },
-            { name: "Scope", value: `Bot: **${ctx.tenant.name}**`, inline: true },
-            {
-              name: "More",
-              value: "Open the website collection for filters, favourites and full provenance.",
-              inline: false,
-            },
-          ],
-          footer: { text: "Showing the 8 most recent copies" },
-        },
-      ],
-      components: components([
-        [
-          button("Open again", "foilbury:open:cabinet-draw", 1),
-          button("Packs", "foilbury:packs", 2),
-        ],
-      ]),
-    },
-    true,
-  );
+  return cabinetSummaryMessage({
+    scopeName: ctx.tenant.name,
+    currencySymbol: wallet.currencySymbol,
+    balance: wallet.balance,
+    owned: inventory.length,
+    unique: counts.size,
+    duplicates,
+    items: inventory.slice(0, 8).map((item) => ({
+      name: item.card_name,
+      print: editionPrintTitle(item.edition_name),
+      variant: displayFinish(item.variant_name, item.material_key, item.effect_key),
+      rarity: item.rarity_name,
+      serial: item.serial,
+    })),
+    albumUrl: absoluteUrl(ctx.config.publicOrigin, "/play/collection")!,
+    openCustomId: "foilbury:open:cabinet-draw",
+    packsCustomId: "foilbury:packs",
+  });
 }
 
 async function card(ctx: Ctx, query: string): Promise<DiscordCallback> {
@@ -533,79 +507,33 @@ async function card(ctx: Ctx, query: string): Promise<DiscordCallback> {
         imageVariant.id,
       )
     : null;
-  const fields = [
-    { name: "Rarity", value: found.rarity?.name ?? "Unclassified", inline: true },
-    { name: "Category", value: found.category?.name ?? "Uncategorised", inline: true },
-    { name: "Variants", value: String(variants.length), inline: true },
-    {
-      name: "Tags",
-      value: found.tags.length ? found.tags.map((tag) => tag.name).join(", ") : "None",
-      inline: false,
+  if (!imageVariant || !render) {
+    throw new ApiError(
+      404,
+      "render_missing",
+      "That card has no finished render yet. Viewing never spends Foil or awards a copy.",
+    );
+  }
+  return cardFaceMessage({
+    cardName: found.name,
+    variantName: imageVariant.name,
+    materialKey: imageVariant.material_key ?? "plain",
+    effectKey: imageVariant.effect_key ?? null,
+    side: "front",
+    description: truncate(found.description, 1500),
+    collectionName: found.collections[0]?.name ?? "Cabinet",
+    source: found.source_work ?? found.sets[0]?.name ?? "Foilbury",
+    rarityName: found.rarity?.name ?? null,
+    render: {
+      r2Key: render.r2_key,
+      mime: render.mime,
+      width: render.width,
+      height: render.height,
     },
-    {
-      name: "Sets",
-      value: found.sets.length ? found.sets.map((set) => set.name).join(", ") : "None",
-      inline: false,
-    },
-  ];
-  const resultCallback = callback(
-    {
-      embeds: [
-        {
-          title: found.name,
-          description: truncate(found.description, 1800),
-          color: colorFor(found.rarity?.key),
-          fields,
-          footer: { text: `Foilbury catalogue · ${ctx.tenant.name}` },
-          ...(render
-            ? {
-                image: {
-                  url: "attachment://foilbury-card.webp",
-                  width: render.width,
-                  height: render.height,
-                },
-              }
-            : {}),
-        },
-        ...(variants.length
-          ? [
-              {
-                title: "Private next steps",
-                description:
-                  "Viewing another side or reading details never spends Foil or awards another copy.",
-                color: 0x7c6b4f,
-              },
-            ]
-          : []),
-      ],
-      components: components([
-        ...(imageVariant
-          ? [
-              [
-                button("View back", `foilbury:card:${found.id}:${imageVariant.id}:back`, 2),
-                button("Details", `foilbury:card:${found.id}:${imageVariant.id}:details`, 2),
-                {
-                  type: 2,
-                  style: 5,
-                  label: "Open my album",
-                  url: absoluteUrl(ctx.config.publicOrigin, "/play/collection")!,
-                },
-              ],
-            ]
-          : []),
-      ]),
-    },
-    true,
-  );
-  if (render)
-    resultCallback.attachments = [
-      {
-        r2Key: render.r2_key,
-        filename: "foilbury-card.webp",
-        contentType: render.mime || "image/webp",
-      },
-    ];
-  return resultCallback;
+    swapCustomId: `foilbury:card:${found.id}:${imageVariant.id}:back`,
+    detailsCustomId: `foilbury:card:${found.id}:${imageVariant.id}:details`,
+    albumUrl: absoluteUrl(ctx.config.publicOrigin, "/play/collection")!,
+  });
 }
 
 async function cardFace(
@@ -638,59 +566,29 @@ async function cardFace(
   if (!render)
     throw new ApiError(404, "render_missing", `That card has no finished ${side} render yet.`);
   const collection = found.collections[0];
-  const embed: DiscordEmbed = {
-    title: `${found.name} — ${variant.name}`,
+  return cardFaceMessage({
+    cardName: found.name,
+    variantName: variant.name,
+    materialKey: variant.material_key ?? "plain",
+    effectKey: variant.effect_key ?? null,
+    side,
     description: truncate(
       side === "front" ? found.description : (found.bio_safe ?? found.bio ?? found.description),
       1500,
     ),
-    color: colorFor(found.rarity?.key),
-    fields: [
-      { name: "Collection", value: collection?.name ?? "Cabinet", inline: true },
-      { name: "Side", value: side === "front" ? "Front" : "Back", inline: true },
-      {
-        name: "Source",
-        value: found.source_work ?? found.sets[0]?.name ?? "Foilbury",
-        inline: true,
-      },
-    ],
-    footer: { text: "Private member view · viewing does not spend Foil or award another copy" },
-    image: {
-      url: `attachment://foilbury-${side}.webp`,
+    collectionName: collection?.name ?? "Cabinet",
+    source: found.source_work ?? found.sets[0]?.name ?? "Foilbury",
+    rarityName: found.rarity?.name ?? null,
+    render: {
+      r2Key: render.r2_key,
+      mime: render.mime,
       width: render.width,
       height: render.height,
     },
-  };
-  const resultCallback = callback(
-    {
-      embeds: [embed],
-      components: components([
-        [
-          button(
-            side === "front" ? "View back" : "View front",
-            `foilbury:card:${found.id}:${variant.id}:${side === "front" ? "back" : "front"}`,
-            2,
-          ),
-          button("Details", `foilbury:card:${found.id}:${variant.id}:details`, 2),
-          {
-            type: 2,
-            style: 5,
-            label: "Open my album",
-            url: absoluteUrl(ctx.config.publicOrigin, "/play/collection")!,
-          },
-        ],
-      ]),
-    },
-    true,
-  );
-  resultCallback.attachments = [
-    {
-      r2Key: render.r2_key,
-      filename: `foilbury-${side}.webp`,
-      contentType: render.mime || "image/webp",
-    },
-  ];
-  return resultCallback;
+    swapCustomId: `foilbury:card:${found.id}:${variant.id}:${side === "front" ? "back" : "front"}`,
+    detailsCustomId: `foilbury:card:${found.id}:${variant.id}:details`,
+    albumUrl: absoluteUrl(ctx.config.publicOrigin, "/play/collection")!,
+  });
 }
 
 async function cardDetails(ctx: Ctx, cardId: string): Promise<DiscordCallback> {
@@ -762,74 +660,39 @@ async function achievements(ctx: Ctx): Promise<DiscordCallback> {
     .filter((item) => item.state !== "earned")
     .sort((a, b) => b.progress / Math.max(1, b.target) - a.progress / Math.max(1, a.target))
     .slice(0, 5);
-  return callback(
-    {
-      embeds: [
-        {
-          title: "Achievements",
-          description: earned.length
-            ? `You have earned **${earned.length}** of ${items.length}. Rewards are credited once and never removed when a collection grows.`
-            : "Your first card is the first badge. Every milestone below uses your committed collection history.",
-          color: 0xc9a227,
-          fields: [
-            {
-              name: "Earned",
-              value: earned.length
-                ? earned
-                    .slice(0, 8)
-                    .map(
-                      (item) =>
-                        `• **${item.name}** — ${item.reward_amount ? `+${item.reward_amount} Foil` : "badge"}`,
-                    )
-                    .join("\n")
-                : "No badges yet.",
-              inline: false,
-            },
-            {
-              name: "Closest next",
-              value: close.length
-                ? close
-                    .map(
-                      (item) =>
-                        `• **${item.name}** — ${Math.min(item.progress, item.target)}/${item.target}`,
-                    )
-                    .join("\n")
-                : "Everything visible is complete.",
-              inline: false,
-            },
-            {
-              name: "Privacy",
-              value: "This private response only shows achievements for albums you can access.",
-              inline: false,
-            },
-          ],
-          footer: { text: "Open the website album for full progress, criteria and earned dates" },
-        },
-      ],
-      components: components([
-        [
-          {
-            type: 2,
-            style: 5,
-            label: "Open achievements",
-            url: absoluteUrl(ctx.config.publicOrigin, "/play/achievements")!,
-          },
-        ],
-      ]),
-    },
-    true,
-  );
+  const wallet = await getWalletSummary(ctx.db, ctx.tenant.id, ctx.user!.id, 1);
+  return achievementsOverviewMessage({
+    currencySymbol: wallet.currencySymbol,
+    items: [
+      ...earned.map((item) => ({
+        name: item.name,
+        state: "earned" as const,
+        progress: item.target,
+        target: item.target,
+        reward: item.reward_amount,
+      })),
+      ...close.map((item) => ({
+        name: item.name,
+        state: item.state,
+        progress: item.progress,
+        target: item.target,
+        reward: item.reward_amount,
+      })),
+    ],
+    achievementsUrl: absoluteUrl(ctx.config.publicOrigin, "/play/achievements")!,
+  });
 }
 
 async function packs(ctx: Ctx, installation: DiscordInstallation): Promise<DiscordCallback> {
-  const pools = await listPools(ctx);
+  const pools = await listEligiblePools(ctx, installation.channel_key ?? undefined);
   if (pools.length === 0) {
     return callback(
       {
         embeds: [
           {
-            title: "No packs available",
-            description: "This Bot has no active capsule pools yet.",
+            title: "No packs available to you",
+            description:
+              "No active capsule has an eligible card for this account right now. A Bot Admin may have disabled the relevant collection, or your collection preferences may hide every card. Nothing can be charged. Check /foilbury preferences on the website, then try again.",
             color: 0x8a8f98,
           },
         ],
@@ -837,33 +700,32 @@ async function packs(ctx: Ctx, installation: DiscordInstallation): Promise<Disco
       true,
     );
   }
-  const lines: string[] = [];
-  for (const pool of pools.slice(0, 10)) {
-    try {
-      const preview = await getPoolPreview(ctx, pool.slug, installation.channel_key ?? undefined);
-      lines.push(
-        `**${pool.name}** · \`${pool.slug}\`\n${pool.description}\n${preview.price} ✦ · ${preview.eligible_count} eligible · revision ${pool.revision}`,
-      );
-    } catch {
-      lines.push(
-        `**${pool.name}** · \`${pool.slug}\`\n${pool.description}\nCurrently unavailable.`,
-      );
+  const wallet = await getWalletSummary(ctx.db, ctx.tenant.id, ctx.user!.id, 1);
+  const capsules = pools.slice(0, 10).map((preview) => {
+    const odds = new Map<string, number>();
+    for (const entry of preview.entries) {
+      const key = displayFinish(entry.variant_name, entry.material_key, entry.effect_key);
+      odds.set(key, (odds.get(key) ?? 0) + entry.probability_bps);
     }
-  }
-  return callback(
-    {
-      embeds: [
-        {
-          title: "Eligible capsule pools",
-          description: lines.join("\n\n"),
-          color: 0xc9a227,
-          footer: { text: "Use /foilbury open <pool> or the button below" },
-        },
-      ],
-      components: components([[button("Open cabinet-draw", "foilbury:open:cabinet-draw", 1)]]),
-    },
-    true,
-  );
+    return {
+      slug: preview.pool.slug,
+      name: preview.pool.name,
+      price: preview.price,
+      eligibleCount: preview.eligible_count,
+      odds: [...odds.entries()]
+        .sort((left, right) => right[1] - left[1])
+        .slice(0, 4)
+        .map(([label, probabilityBps]) => ({ label, probabilityBps })),
+    };
+  });
+  return capsulePickerMessage({
+    scopeName: ctx.tenant.name,
+    currencySymbol: wallet.currencySymbol,
+    balance: wallet.balance,
+    capsules,
+    packsCustomId: "foilbury:packs",
+    browseUrl: absoluteUrl(ctx.config.publicOrigin, "/play/draw"),
+  });
 }
 
 async function profile(ctx: Ctx, installation: DiscordInstallation): Promise<DiscordCallback> {
@@ -879,41 +741,26 @@ async function profile(ctx: Ctx, installation: DiscordInstallation): Promise<Dis
   const next = lastReward
     ? new Date(new Date(lastReward.created_at).getTime() + economy.daily_cooldown_seconds * 1000)
     : null;
-  return callback(
-    {
-      embeds: [
-        {
-          title: ctx.user!.displayName,
-          description: `Player in **${ctx.tenant.name}**${isBotAdmin(ctx.user!) ? " · Bot administration available" : ""}`,
-          color: 0x7c6b4f,
-          fields: [
-            { name: "Balance", value: `${wallet.balance} ${wallet.currencySymbol}`, inline: true },
-            { name: "Owned cards", value: String(inventory.length), inline: true },
-            {
-              name: "Daily",
-              value: next
-                ? next.getTime() > Date.now()
-                  ? `<t:${Math.floor(next.getTime() / 1000)}:R>`
-                  : "Ready now"
-                : "Ready now",
-              inline: true,
-            },
-            {
-              name: "Server",
-              value: installation.guild_name ?? installation.guild_id,
-              inline: true,
-            },
-            { name: "Inventory scope", value: "This Bot across every server", inline: true },
-            { name: "Privacy", value: "This response is only visible to you.", inline: false },
-          ],
-        },
-      ],
-      components: components([
-        [button("Daily", "foilbury:daily", 2), button("Collection", "foilbury:collection", 2)],
-      ]),
-    },
-    true,
-  );
+  const achievements = await listAchievements(ctx, ctx.user!.id);
+  const earned = achievements.filter((achievement) => achievement.state === "earned").length;
+  return profileMessage({
+    displayName: ctx.user!.displayName,
+    scopeName: ctx.tenant.name,
+    currencySymbol: wallet.currencySymbol,
+    balance: wallet.balance,
+    ownedCards: inventory.length,
+    uniqueCards: new Set(inventory.map((item) => item.card_id)).size,
+    dailyAvailable: !next || next.getTime() <= Date.now(),
+    nextDailyAt: next?.toISOString() ?? null,
+    achievementsEarned: earned,
+    publicBadgeCount: achievements.filter(
+      (achievement) => achievement.visibility === "public" && achievement.state === "earned",
+    ).length,
+    isBotAdmin: isBotAdmin(ctx.user!),
+    profileUrl: absoluteUrl(ctx.config.publicOrigin, "/play")!,
+    dailyCustomId: "foilbury:daily",
+    collectionCustomId: "foilbury:collection",
+  });
 }
 
 async function npcView(ctx: Ctx, query: string): Promise<DiscordCallback> {
@@ -1010,28 +857,35 @@ async function missionsView(ctx: Ctx, notice?: string): Promise<DiscordCallback>
   });
 }
 
-function help(ctx: Ctx): DiscordCallback {
-  return callback(
-    {
-      embeds: [
-        {
-          title: "Foilbury commands",
-          description: HELP_TEXT,
-          color: 0xc9a227,
-          fields: [
-            { name: "This installation", value: `${ctx.tenant.name}`, inline: true },
-            {
-              name: "Need a website account?",
-              value:
-                "Only Bot Owners and Admins need one. Players collect immediately with Discord.",
-              inline: false,
-            },
-          ],
-        },
-      ],
-    },
-    true,
+async function help(ctx: Ctx): Promise<DiscordCallback> {
+  const wallet = await getWalletSummary(ctx.db, ctx.tenant.id, ctx.user!.id, 1);
+  const economy = await getEconomy(ctx);
+  const lastReward = await first<{ created_at: string }>(
+    ctx.db,
+    "SELECT created_at FROM fb_reward_claims WHERE tenant_id = ? AND user_id = ? AND rule_key = 'daily-allowance' ORDER BY created_at DESC LIMIT 1",
+    ctx.tenant.id,
+    ctx.user!.id,
   );
+  const next = lastReward
+    ? new Date(new Date(lastReward.created_at).getTime() + economy.daily_cooldown_seconds * 1000)
+    : null;
+  return welcomeMessage({
+    displayName: ctx.user!.displayName,
+    scopeName: ctx.tenant.name,
+    balance: wallet.balance,
+    currencySymbol: wallet.currencySymbol,
+    dailyAvailable: !next || next.getTime() <= Date.now(),
+    nextDailyAt: next?.toISOString() ?? null,
+    starterGrant: economy.starter_grant,
+    dailyReward: economy.daily_reward,
+    guide: HELP_TEXT,
+    actions: {
+      daily: "foilbury:daily",
+      open: "foilbury:open:cabinet-draw",
+      packs: "foilbury:packs",
+    },
+    helpUrl: absoluteUrl(ctx.config.publicOrigin, "/play/tour")!,
+  });
 }
 
 async function adminStatus(ctx: Ctx, installation: DiscordInstallation): Promise<DiscordCallback> {
@@ -1494,29 +1348,22 @@ async function tour(
   }
 
   if (stage === "fresh") {
-    const pools = await listPools(ctx);
+    const pools = await listEligiblePools(ctx, installation.channel_key ?? undefined);
     const lines: string[] = [];
-    for (const pool of pools.slice(0, 4)) {
-      try {
-        const preview = await getPoolPreview(ctx, pool.slug, installation.channel_key ?? undefined);
-        const odds = new Map<string, number>();
-        for (const entry of preview.entries) {
-          const key = displayFinish(entry.variant_name, entry.material_key, entry.effect_key);
-          odds.set(key, (odds.get(key) ?? 0) + entry.probability_bps);
-        }
-        const oddsText = [...odds.entries()]
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 4)
-          .map(([key, bps]) => `${key} ${(bps / 100).toFixed(2)}%`)
-          .join(" · ");
-        lines.push(
-          `**${pool.name}** · ${preview.price} ${wallet.currencySymbol} · ${preview.eligible_count} eligible\n${oddsText || "No eligible odds"}`,
-        );
-      } catch (error) {
-        lines.push(
-          `**${pool.name}** · currently unavailable. ${error instanceof ApiError ? truncate(error.message, 180) : ""}`,
-        );
+    for (const preview of pools.slice(0, 4)) {
+      const odds = new Map<string, number>();
+      for (const entry of preview.entries) {
+        const key = displayFinish(entry.variant_name, entry.material_key, entry.effect_key);
+        odds.set(key, (odds.get(key) ?? 0) + entry.probability_bps);
       }
+      const oddsText = [...odds.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 4)
+        .map(([key, bps]) => `${key} ${(bps / 100).toFixed(2)}%`)
+        .join(" · ");
+      lines.push(
+        `**${preview.pool.name}** · ${preview.price} ${wallet.currencySymbol} · ${preview.eligible_count} eligible\n${oddsText || "No eligible odds"}`,
+      );
     }
     return callback(
       {
@@ -1561,24 +1408,14 @@ async function tour(
   if (stage === "open") {
     let poolLine = "No eligible pool right now. Nothing can be charged.";
     let poolButton: DiscordComponent[] = [];
-    const pools = await listPools(ctx);
-    const pool = pools[0];
-    if (pool) {
-      try {
-        const preview = await getPoolPreview(ctx, pool.slug, installation.channel_key ?? undefined);
-        if (preview.eligible_count > 0 && wallet.balance >= preview.price) {
-          poolLine = `**${pool.name}** · ${preview.price} ${wallet.currencySymbol} · ${preview.eligible_count} eligible variant${preview.eligible_count === 1 ? "" : "s"}. Your balance is ${wallet.balance} ${wallet.currencySymbol}.`;
-          poolButton = [button(`Open ${pool.name}`, `foilbury:open:${pool.slug}`, 1)];
-        } else if (preview.eligible_count === 0) {
-          poolLine = `${pool.name} is currently empty. ${preview.filters.empty_reason ?? "Nothing was charged."}`;
-        } else {
-          poolLine = `${pool.name} costs ${preview.price} ${wallet.currencySymbol}; your balance is ${wallet.balance} ${wallet.currencySymbol}. Claim the daily allowance first.`;
-        }
-      } catch (error) {
-        poolLine =
-          error instanceof ApiError
-            ? error.message
-            : "The pool could not be read. Nothing was charged.";
+    const pools = await listEligiblePools(ctx, installation.channel_key ?? undefined);
+    const preview = pools[0];
+    if (preview) {
+      if (wallet.balance >= preview.price) {
+        poolLine = `**${preview.pool.name}** · ${preview.price} ${wallet.currencySymbol} · ${preview.eligible_count} eligible variant${preview.eligible_count === 1 ? "" : "s"}. Your balance is ${wallet.balance} ${wallet.currencySymbol}.`;
+        poolButton = [button(`Open ${preview.pool.name}`, `foilbury:open:${preview.pool.slug}`, 1)];
+      } else {
+        poolLine = `${preview.pool.name} costs ${preview.price} ${wallet.currencySymbol}; your balance is ${wallet.balance} ${wallet.currencySymbol}. Claim the daily allowance first.`;
       }
     }
     return callback(
@@ -1603,7 +1440,7 @@ async function tour(
               },
               {
                 name: "Spend",
-                value: pool ? `${pool.price} ${wallet.currencySymbol}` : "—",
+                value: preview ? `${preview.price} ${wallet.currencySymbol}` : "—",
                 inline: true,
               },
               { name: "Passive navigation", value: "Free", inline: true },
@@ -1932,7 +1769,7 @@ async function tour(
           {
             title: "Administration appendix · private",
             description: [
-              "**Bot administration** is scoped to this Bot. Use `/foilbury admin status|settings|pools|enable|disable|grant` or the web console.",
+              "**Bot administration** is scoped to this Bot. Use `/foilbury admin status|settings|pools|enable|disable|grant` or your signed-in Foilbury Studio. A scoped Admin never needs the owner's Cloudflare entrance.",
               "**Platform administration** and the native EmDash console are separate Cloudflare Access areas. Neither is granted by Discord guild ownership or a Bot role.",
             ].join("\n"),
             color: 0x245c4b,
@@ -1956,15 +1793,31 @@ async function tour(
             {
               type: 2,
               style: 5,
-              label: "Open Bot Admin",
-              url: absoluteUrl(ctx.config.publicOrigin, "/admin")!,
+              label: "Open Foilbury Studio",
+              url: absoluteUrl(ctx.config.publicOrigin, "/studio")!,
             },
+            ...(ctx.user!.capabilities?.includes("grants") || ctx.user!.capabilities?.includes("economy")
+              ? [
+                  {
+                    type: 2,
+                    style: 5,
+                    label: "Foil & grants",
+                    url: absoluteUrl(ctx.config.publicOrigin, "/studio/economy")!,
+                  },
+                ]
+              : []),
             ...(ctx.user!.platformAdmin
               ? [
                   {
                     type: 2,
                     style: 5,
-                    label: "Open Platform Admin",
+                    label: "Owner operator console",
+                    url: absoluteUrl(ctx.config.publicOrigin, "/admin")!,
+                  },
+                  {
+                    type: 2,
+                    style: 5,
+                    label: "Platform Admin",
                     url: absoluteUrl(ctx.config.publicOrigin, "/platform-admin")!,
                   },
                   {
@@ -2389,6 +2242,16 @@ export async function runComponent(
   if (customId.startsWith("foilbury:open:")) {
     const pool = validatePoolSlug(customId.slice("foilbury:open:".length));
     return openCard(ctx, interaction, installation, pool, `discord:${interaction.id}:open`);
+  }
+  if (customId.startsWith("foilbury:redeliver:")) {
+    const originalInteractionId = customId
+      .slice("foilbury:redeliver:".length)
+      .split(":")[0]
+      ?.trim();
+    if (!originalInteractionId || !/^[A-Za-z0-9_-]{4,80}$/.test(originalInteractionId)) {
+      throw new ApiError(422, "redeliver_invalid", "That receipt retry control is incomplete.");
+    }
+    return redeliverReceipt(ctx, interaction, originalInteractionId);
   }
   if (customId === "foilbury:collection") return collection(ctx);
   if (customId === "foilbury:daily") return daily(ctx, interaction);

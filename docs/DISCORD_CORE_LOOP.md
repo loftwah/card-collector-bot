@@ -9,9 +9,15 @@
 - One intentional opening produces one committed draw, one serial, one ledger
   debit at the quoted price and a retrievable receipt. Retries and repeated
   button presses reuse the interaction/domain idempotency key.
-- The reveal is ephemeral for restricted member art unless the channel audience
-  is verified. Public-safe originals may be shareable; member-only art stays
-  ephemeral in the current test channel.
+- Every deferred acknowledgement is private (`flags: 64`). Discord fixes the
+  visibility of the original response; a later flag cannot make it public.
+- A public result is only delivered through a deliberate follow-up after the
+  original is settled with the private receipt. The `/foilbury open` reveal is
+  private by default; a permitted card gets an explicit **Share to channel**
+  button instead of an automatic public post.
+- Restricted art never creates a channel-visible follow-up. The test channel
+  currently has no verified member audience, so only explicit public-original
+  shares are eligible.
 
 ## First-run and recovery behaviour
 
@@ -79,7 +85,12 @@ The delivery path is now bounded and terminal:
   more than 10 minutes as `failed / delivery_timeout`, without touching the
   committed card or ledger;
 - tests cover a missing render, a dead Discord webhook and stale-processing
-  expiry.
+  expiry;
+- every failed request is logged with an allowlisted route template, a safe
+  correlation ID and scrubbed detail; interaction tokens never survive;
+- a committed draw with failed delivery is recorded as completed with
+  `delivery_failed`, keeps its persisted receipt, and offers a re-send path that
+  cannot draw or debit again.
 
 The two empty bot messages were deleted from `#card-collector-test` as
 housekeeping; the awarded cards and ledger rows were not changed.

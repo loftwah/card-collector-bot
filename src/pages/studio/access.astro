@@ -22,6 +22,17 @@ const inScope = scope
     <span class="studio-stamp">{user.platformAdmin ? "Super Admin" : scope ? "Global Collection Admin" : "Bot-scoped"}</span>
   </div>
 
+  {user.capabilities?.includes("grants") || user.capabilities?.includes("economy") ? (
+    <div class="success-box mt-4" role="status">
+      <p class="text-sm">
+        <strong>Foil grant authority is enabled for this Bot.</strong>{" "}
+        {user.selfGrantsEnabled ? "Self-grants are allowed" : "Self-grants are disabled"} within a
+        visible ceiling of ✦ {user.grantLimit ?? 0} per grant. Use{" "}
+        <a href="/studio/economy">Foil &amp; grants</a>; the owner's Cloudflare entrance is not
+        required.
+      </p>
+    </div>
+  ) : null}
   <div class="mt-6 grid gap-3 md:grid-cols-2">
     <div class="border border-[var(--line)] p-5">
       <p class="studio-stat__label">Scope</p>
@@ -33,7 +44,11 @@ const inScope = scope
       <ul class="mt-2 grid gap-1 text-sm text-[var(--muted)]">
         <li>Platform root and Super Admin provisioning</li>
         <li>Cloudflare Access, secrets and deployment credentials</li>
-        <li>Wallets, Foil grants and another member's inventory</li>
+        <li>
+          {user.capabilities?.includes("grants") || user.capabilities?.includes("economy")
+            ? "Another Bot's wallets, or any grant above the visible policy ceiling"
+            : "Wallets, Foil grants and another member's inventory"}
+        </li>
         <li>Bots outside your own ownership or invitation</li>
       </ul>
     </div>

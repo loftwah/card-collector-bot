@@ -37,8 +37,8 @@ const TRANSITIONS: Record<Machine, Record<string, readonly string[]>> = {
   },
   render_job: {
     pending: ["running", "cancelled"],
-    running: ["succeeded", "failed"],
-    failed: ["pending"],
+    running: ["succeeded", "failed", "cancelled"],
+    failed: ["pending", "running"],
     succeeded: [],
     cancelled: [],
   },

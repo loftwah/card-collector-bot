@@ -424,7 +424,8 @@ describe("reveal receipt parity", () => {
     expect(fieldValue(callback, "Finish")).toBe("Plain");
     expect(fieldValue(callback, "Serial")).toBe("`FB-1-DE-513D6B`");
     expect(fieldValue(callback, "Opened from")).toBe("Cabinet Draw · 80 ✦");
-    expect(fieldValue(callback, "Balance")).toBe("390 ✦");
+    expect(fieldValue(callback, "Opening debit")).toBe("−80 ✦");
+    expect(fieldValue(callback, "Settled balance")).toBe("390 ✦");
     expect(fieldValue(callback, "Odds")).toBe("12.50% for this copy");
     expect(embed.timestamp).toBe(revealBase.drawn_at);
     expect(embed.footer?.text).toBe("Foilbury · committed receipt");

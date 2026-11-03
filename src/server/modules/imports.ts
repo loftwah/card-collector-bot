@@ -692,51 +692,85 @@ export async function listRenderJobs(ctx: Ctx, status?: string) {
 export async function claimRenderJob(ctx: Ctx, jobId?: string) {
   const job = await first<{
     id: string;
+    status: string;
     payload_json: string;
     attempts: number;
     max_attempts: number;
   }>(
     ctx.db,
     jobId
-      ? "SELECT id, payload_json, attempts, max_attempts FROM fb_jobs WHERE id = ? AND tenant_id = ? AND status IN ('pending','failed') AND available_at <= ?"
-      : "SELECT id, payload_json, attempts, max_attempts FROM fb_jobs WHERE tenant_id = ? AND kind = 'render_card' AND status = 'pending' AND available_at <= ? ORDER BY created_at LIMIT 1",
+      ? "SELECT id, status, payload_json, attempts, max_attempts FROM fb_jobs WHERE id = ? AND tenant_id = ? AND status IN ('pending','failed') AND available_at <= ?"
+      : "SELECT id, status, payload_json, attempts, max_attempts FROM fb_jobs WHERE tenant_id = ? AND kind = 'render_card' AND status = 'pending' AND available_at <= ? ORDER BY created_at LIMIT 1",
     ...(jobId ? [jobId, ctx.tenant.id, nowIso()] : [ctx.tenant.id, nowIso()]),
   );
-  // Kept explicit: a job id selection needs both the status and availability guard parameters.
   if (!job) return null;
+  if (job.attempts >= job.max_attempts) {
+    throw new ApiError(409, "job_attempts_exhausted", "This render job has exhausted its retry limit.");
+  }
+  assertTransition("render_job", job.status, "running");
   const claimed = await first<{ id: string }>(
     ctx.db,
-    "UPDATE fb_jobs SET status = 'running', locked_at = ?, attempts = attempts + 1, updated_at = ? WHERE id = ? AND status = 'pending' RETURNING id",
+    `UPDATE fb_jobs
+        SET status = 'running', locked_at = ?, attempts = attempts + 1, updated_at = ?
+      WHERE id = ? AND status = ? AND attempts = ?
+      RETURNING id`,
     nowIso(),
     nowIso(),
     job.id,
+    job.status,
+    job.attempts,
   );
   if (!claimed) return null;
-  return { ...job, payload: JSON.parse(job.payload_json) as Record<string, unknown> };
+  return {
+    ...job,
+    status: "running",
+    attempts: job.attempts + 1,
+    payload: JSON.parse(job.payload_json) as Record<string, unknown>,
+  };
 }
 
-export async function failRenderJob(ctx: Ctx, jobId: string, message: string) {
-  const job = await first<{ attempts: number; max_attempts: number }>(
+export async function failRenderJob(
+  ctx: Ctx,
+  jobId: string,
+  message: string,
+  expectedAttempt: number,
+) {
+  const job = await first<{ status: string; attempts: number; max_attempts: number }>(
     ctx.db,
-    "SELECT attempts, max_attempts FROM fb_jobs WHERE id = ? AND tenant_id = ?",
+    "SELECT status, attempts, max_attempts FROM fb_jobs WHERE id = ? AND tenant_id = ?",
     jobId,
     ctx.tenant.id,
   );
   if (!job) throw new ApiError(404, "job_not_found", "Job not found.");
+  if (job.status !== "running") {
+    throw new ApiError(
+      409,
+      "job_not_running",
+      `A render job in ${job.status} cannot be failed by a late attempt.`,
+    );
+  }
   const retry = job.attempts < job.max_attempts;
-  await ctx.db
+  const next = retry ? "pending" : "failed";
+  assertTransition("render_job", "running", "failed");
+  const updated = await ctx.db
     .prepare(
-      "UPDATE fb_jobs SET status = ?, available_at = ?, last_error = ?, updated_at = ? WHERE id = ? AND tenant_id = ?",
+      `UPDATE fb_jobs
+          SET status = ?, available_at = ?, last_error = ?, updated_at = ?
+        WHERE id = ? AND tenant_id = ? AND status = 'running' AND attempts = ?`,
     )
     .bind(
-      retry ? "pending" : "failed",
+      next,
       new Date(Date.now() + 15_000).toISOString(),
       message.slice(0, 500),
       nowIso(),
       jobId,
       ctx.tenant.id,
+      expectedAttempt,
     )
     .run();
+  if ((updated.meta?.changes ?? 0) !== 1) {
+    throw new ApiError(409, "job_attempt_superseded", "A newer render attempt owns this job.");
+  }
   return { retry };
 }
 
@@ -744,11 +778,12 @@ export async function completeRenderJob(
   ctx: Ctx,
   jobId: string,
   bytes: Uint8Array,
-  backBytes?: Uint8Array,
+  backBytes: Uint8Array | undefined,
+  expectedAttempt: number,
 ) {
-  const job = await first<{ payload_json: string; status: string }>(
+  const job = await first<{ payload_json: string; status: string; attempts: number }>(
     ctx.db,
-    "SELECT payload_json, status FROM fb_jobs WHERE id = ? AND tenant_id = ?",
+    "SELECT payload_json, status, attempts FROM fb_jobs WHERE id = ? AND tenant_id = ?",
     jobId,
     ctx.tenant.id,
   );
@@ -757,6 +792,9 @@ export async function completeRenderJob(
     throw new ApiError(409, "job_already_complete", "This render job already completed.");
   if (job.status !== "running")
     throw new ApiError(409, "job_not_running", "Claim the render job before completing it.");
+  if (job.attempts !== expectedAttempt) {
+    throw new ApiError(409, "job_attempt_superseded", "A newer render attempt owns this job.");
+  }
   const payload = JSON.parse(job.payload_json) as {
     variant_id: string;
     recipe_id: string;
@@ -777,12 +815,18 @@ export async function completeRenderJob(
       bytes: backBytes,
     });
   }
+  const completed = await ctx.db
+    .prepare(
+      `UPDATE fb_jobs
+          SET status = 'succeeded', result_json = ?, last_error = NULL, updated_at = ?
+        WHERE id = ? AND tenant_id = ? AND status = 'running' AND attempts = ?`,
+    )
+    .bind(JSON.stringify({ ...render, back }), nowIso(), jobId, ctx.tenant.id, expectedAttempt)
+    .run();
+  if ((completed.meta?.changes ?? 0) !== 1) {
+    throw new ApiError(409, "job_not_running", "A terminal render job cannot be completed again.");
+  }
   await ctx.db.batch([
-    ctx.db
-      .prepare(
-        "UPDATE fb_jobs SET status = 'succeeded', result_json = ?, last_error = NULL, updated_at = ? WHERE id = ? AND tenant_id = ?",
-      )
-      .bind(JSON.stringify({ ...render, back }), nowIso(), jobId, ctx.tenant.id),
     ctx.db
       .prepare(
         "INSERT INTO fb_outbox (id, tenant_id, topic, payload_json, status, attempts, available_at, created_at) VALUES (?, ?, 'render.completed', ?, 'pending', 0, ?, ?)",

@@ -38,6 +38,10 @@ export interface CurrentUser {
   platformAdmin: boolean;
   emailVerified?: boolean;
   capabilities?: string[];
+  /** Scoped money authority. Only controls the explicitly granted `grants` capability. */
+  selfGrantsEnabled?: boolean;
+  grantLimit?: number;
+  capabilityRevision?: number;
   /** Explicit platform-role assignments. Never inferred from Access or guild ownership. */
   platformRoles?: string[];
   /** Present only for an active global_collection_admin assignment. */
@@ -345,6 +349,9 @@ export async function resolveSession(
     platform_admin: number;
     email_verified_at: string | null;
     capabilities_json: string;
+    self_grants_enabled: number;
+    grant_limit: number;
+    capability_revision: number;
     role: Role;
     disabled_at: string | null;
     tenant_id: string;
@@ -354,7 +361,8 @@ export async function resolveSession(
     db,
     `SELECT s.id, s.user_id, s.csrf_token, s.expires_at, s.revoked_at, s.assurance, s.auth_time,
             u.email, u.display_name, u.platform_admin, u.email_verified_at, u.disabled_at,
-            m.role, m.capabilities_json, t.id AS tenant_id, t.slug AS tenant_slug, t.name AS tenant_name
+            m.role, m.capabilities_json, m.self_grants_enabled, m.grant_limit, m.capability_revision,
+            t.id AS tenant_id, t.slug AS tenant_slug, t.name AS tenant_name
        FROM fb_sessions s
        JOIN fb_users u ON u.id = s.user_id
        JOIN fb_memberships m ON m.user_id = u.id AND m.tenant_id = s.tenant_id AND m.status = 'active'
@@ -391,6 +399,9 @@ export async function resolveSession(
       platformAdmin: Boolean(row.platform_admin),
       emailVerified: Boolean(row.email_verified_at),
       capabilities,
+      selfGrantsEnabled: Boolean(row.self_grants_enabled),
+      grantLimit: Number(row.grant_limit ?? 0),
+      capabilityRevision: Number(row.capability_revision ?? 1),
     },
   };
 }
@@ -417,6 +428,9 @@ export async function resolveAgent(
     platform_admin: number;
     email_verified_at: string | null;
     capabilities_json: string;
+    self_grants_enabled: number;
+    grant_limit: number;
+    capability_revision: number;
     role: Role;
     disabled_at: string | null;
     tenant_id: string;
@@ -427,7 +441,8 @@ export async function resolveAgent(
     `SELECT t.id, t.grant_id, g.agent_name, g.agent_id, g.represented_user_id,
             g.scopes_json, g.status, g.expires_at, g.revoked_at,
             u.email, u.display_name, u.platform_admin, u.email_verified_at, u.disabled_at,
-            m.role, m.capabilities_json, t2.id AS tenant_id, t2.slug AS tenant_slug, t2.name AS tenant_name
+            m.role, m.capabilities_json, m.self_grants_enabled, m.grant_limit, m.capability_revision,
+            t2.id AS tenant_id, t2.slug AS tenant_slug, t2.name AS tenant_name
        FROM fb_agent_tokens t
        JOIN fb_agent_grants g ON g.id = t.grant_id
        JOIN fb_users u ON u.id = g.represented_user_id
@@ -473,6 +488,9 @@ export async function resolveAgent(
       platformAdmin: Boolean(row.platform_admin),
       emailVerified: Boolean(row.email_verified_at),
       capabilities,
+      selfGrantsEnabled: Boolean(row.self_grants_enabled),
+      grantLimit: Number(row.grant_limit ?? 0),
+      capabilityRevision: Number(row.capability_revision ?? 1),
     },
     actor: {
       type: "agent",
@@ -551,8 +569,57 @@ export function parseCookies(header: string | null): Record<string, string> {
 
 export function hasCapability(user: CurrentUser | null, capability: string): boolean {
   if (!user) return false;
-  if (user.role === "owner") return true;
-  return Array.isArray(user.capabilities) && user.capabilities.includes(capability);
+  if (user.role === "owner" || user.platformAdmin) return true;
+  if (Array.isArray(user.capabilities) && user.capabilities.includes(capability)) return true;
+  // Legacy roles remain a compatibility mapping, never a wider money right.
+  if (capability === "content" && (user.role === "editor" || user.role === "economy_admin")) {
+    return true;
+  }
+  if (capability === "economy" && user.role === "economy_admin") return true;
+  return false;
+}
+
+/**
+ * The scoped money authority. `grants` is a Bot capability; the self/other
+ * flag and ceiling are separate, revocable controls read from the live
+ * membership on every request.
+ */
+export function canIssueScopedGrant(
+  user: CurrentUser | null,
+  input: { targetUserId: string; amount: number },
+): { allowed: true } | { allowed: false; code: string; message: string } {
+  if (!user) return { allowed: false, code: "authentication_required", message: "Sign in first." };
+  if (user.role === "owner" || user.platformAdmin) return { allowed: true };
+  if (!hasCapability(user, "grants")) {
+    return {
+      allowed: false,
+      code: "grants_capability_required",
+      message: "This Bot role does not include the grant capability.",
+    };
+  }
+  if (!Number.isInteger(input.amount) || input.amount <= 0) {
+    return {
+      allowed: false,
+      code: "amount_invalid",
+      message: "A scoped grant must be a positive whole number.",
+    };
+  }
+  const limit = Number.isInteger(user.grantLimit) ? Math.max(0, user.grantLimit!) : 0;
+  if (input.amount > limit) {
+    return {
+      allowed: false,
+      code: "grant_limit_exceeded",
+      message: `This role may grant at most ${limit} Foil per operation.`,
+    };
+  }
+  if (input.targetUserId === user.id && !user.selfGrantsEnabled) {
+    return {
+      allowed: false,
+      code: "self_grants_disabled",
+      message: "Self-grants are disabled for this role. Ask the Super Admin or Bot Owner.",
+    };
+  }
+  return { allowed: true };
 }
 
 export function hasPlatformRole(user: CurrentUser | null, role: string): boolean {

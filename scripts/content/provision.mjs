@@ -4,6 +4,7 @@
  *
  * Usage:
  *   node scripts/content/provision.mjs --dry-run
+ *   node scripts/content/provision.mjs --enable-collections  (explicitly re-enable newly imported collections)
  *   node scripts/content/provision.mjs
  *   FOILBURY_URL=https://foilbury.loftwah.com FOILBURY_AGENT_TOKEN=fba_... \
  *     node scripts/content/provision.mjs --skip-render
@@ -74,8 +75,19 @@ function loadManifests() {
     .sort();
   if (!files.length) failure("No content manifests found.");
   const seen = new Map();
-  return files.map((file) => {
-    const manifest = JSON.parse(fs.readFileSync(path.join(contentDir, file), "utf8"));
+  return files
+    .map((file) => {
+      const manifest = JSON.parse(fs.readFileSync(path.join(contentDir, file), "utf8"));
+      // Print-set manifests live in the same private directory but are not
+      // collection manifests. Skip them explicitly rather than failing the
+      // collection import.
+      if (!manifest.collection && (manifest.prints || manifest.selections || manifest.print_set || manifest.subjects)) {
+        return null;
+      }
+      return { file, manifest };
+    })
+    .filter(Boolean)
+    .map(({ file, manifest }) => {
     validateManifest(manifest, file);
     for (const card of manifest.cards) {
       const existing = seen.get(card.slug);
@@ -120,13 +132,13 @@ async function ensureCollection(manifest, logoUrl, bannerUrl, backUrl) {
   };
   if (existing) {
     const updated = await apiJson(`/api/v1/admin/collections/${existing.id}`, { method: "PATCH", body });
-    return updated.collection;
+    return { collection: updated.collection, created: false };
   }
   const created = await apiJson("/api/v1/admin/collections", {
     method: "POST",
     body: { ...body, slug: manifest.collection.slug, scope: "global" },
   });
-  return created.collection;
+  return { collection: created.collection, created: true };
 }
 
 async function ensureCategories(manifest) {
@@ -252,9 +264,13 @@ async function renderQueue(cards, generated) {
     const claimed = await apiJson(`/api/v1/admin/jobs/${job.id}/claim`, { method: "POST", body: {} });
     if (!claimed.job) break;
     const payload = claimed.job.payload;
+    const attempt = claimed.job.attempts;
     const entry = index.get(payload.variant_id);
     if (!entry) {
-      await apiJson(`/api/v1/admin/jobs/${job.id}/fail`, { method: "POST", body: { message: "Variant is no longer in the catalogue." } });
+      await apiJson(`/api/v1/admin/jobs/${job.id}/fail`, {
+        method: "POST",
+        body: { message: "Variant is no longer in the catalogue.", attempt },
+      });
       failed += 1;
       continue;
     }
@@ -303,6 +319,7 @@ async function renderQueue(cards, generated) {
       const form = new FormData();
       form.append("file", new Blob([fs.readFileSync(outputPath)], { type: "image/webp" }), `${payload.variant_id}.webp`);
       if (backBytes) form.append("back", new Blob([backBytes], { type: "image/webp" }), `${payload.variant_id}-back.webp`);
+      form.append("attempt", String(attempt));
       const completed = await apiForm(`/api/v1/admin/jobs/${job.id}/complete`, form);
       if (makeDerivatives && completed?.assetId) {
         const thumb = await sharp(outputPath).resize(300, 420, { fit: "cover", position: "attention" }).webp({ quality: 82, effort: 5 }).toBuffer();
@@ -324,7 +341,10 @@ async function renderQueue(cards, generated) {
     } catch (error) {
       failed += 1;
       const message = error instanceof Error ? error.message : String(error);
-      await apiJson(`/api/v1/admin/jobs/${job.id}/fail`, { method: "POST", body: { message } }).catch(() => undefined);
+      await apiJson(`/api/v1/admin/jobs/${job.id}/fail`, {
+        method: "POST",
+        body: { message, attempt },
+      }).catch(() => undefined);
       log(`  failed ${entry.card.name} — ${entry.variant.name}: ${message}`);
     }
   }
@@ -467,9 +487,21 @@ async function main() {
         })
       : null;
 
-    const collection = await ensureCollection(manifest, `/media/asset/${mark.id}`, `/media/asset/${cover.id}`, back ? `/media/asset/${back.id}` : null);
-    await apiJson(`/api/v1/admin/collections/${collection.id}/enable`, { method: "POST", body: { enabled: true } });
-    log(`  collection ${collection.id} · enabled for this Bot`);
+    const { collection, created: collectionCreated } = await ensureCollection(
+      manifest,
+      `/media/asset/${mark.id}`,
+      `/media/asset/${cover.id}`,
+      back ? `/media/asset/${back.id}` : null,
+    );
+    if (collectionCreated || args.has("--enable-collections")) {
+      await apiJson(`/api/v1/admin/collections/${collection.id}/enable`, {
+        method: "POST",
+        body: { enabled: true },
+      });
+      log(`  collection ${collection.id} · enabled for this Bot`);
+    } else {
+      log(`  collection ${collection.id} · existing distribution preserved`);
+    }
     await ensureCategories(manifest);
 
     const assets = new Map();

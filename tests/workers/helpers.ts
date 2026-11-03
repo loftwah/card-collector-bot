@@ -53,10 +53,14 @@ export async function ctxFor(slug: string, email: string): Promise<Ctx> {
     platform_admin: number;
     email_verified_at: string | null;
     capabilities_json: string | null;
+    self_grants_enabled: number;
+    grant_limit: number;
+    capability_revision: number;
     role: "owner" | "editor" | "economy_admin" | "player";
   }>(
     runtime.DB,
-    `SELECT u.id, u.email, u.display_name, u.platform_admin, u.email_verified_at, m.capabilities_json, m.role
+    `SELECT u.id, u.email, u.display_name, u.platform_admin, u.email_verified_at, m.capabilities_json, m.role,
+            m.self_grants_enabled, m.grant_limit, m.capability_revision
        FROM fb_users u JOIN fb_memberships m ON m.user_id = u.id
       WHERE u.email = ? AND m.tenant_id = ?`,
     email,
@@ -78,6 +82,9 @@ export async function ctxFor(slug: string, email: string): Promise<Ctx> {
       platformAdmin: Boolean(row.platform_admin),
       emailVerified: Boolean(row.email_verified_at),
       capabilities: row.capabilities_json ? (JSON.parse(row.capabilities_json) as string[]) : [],
+      selfGrantsEnabled: Boolean(row.self_grants_enabled),
+      grantLimit: Number(row.grant_limit ?? 0),
+      capabilityRevision: Number(row.capability_revision ?? 1),
     },
     actor: { type: "user", id: row.id, representedUserId: row.id, label: row.display_name },
     scopes: null,

@@ -1,9 +1,14 @@
-import { ApiError, type Ctx } from "../context";
+import {
+  ApiError,
+  canIssueScopedGrant,
+  checkRateLimit,
+  type Ctx,
+  type CurrentUser,
+} from "../context";
 import { all, first, nowIso } from "../db";
 import { newId, token } from "../ids";
 import { auditStatement, findIdempotent, idempotencyStatement, type IdempotencyInput } from "../http";
 import { getWalletSummary, correctWallet } from "./wallet";
-import { checkRateLimit } from "../context";
 import { nextDailyEligibleAt } from "./daily-time";
 import { listCollections } from "./collections";
 
@@ -103,7 +108,26 @@ export async function claimDailyReward(ctx: Ctx, idempotency: IdempotencyInput) 
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in to claim your allowance.");
   const replay = await findIdempotent(ctx, "reward.claim", idempotency);
-  if (replay) return { ...(replay.response as object), replayed: true };
+  if (replay) {
+    const settings = await getEconomy(ctx);
+    const wallet = await getWalletSummary(ctx.db, ctx.tenant.id, user.id, 1);
+    const last = await first<{ created_at: string }>(
+      ctx.db,
+      "SELECT created_at FROM fb_reward_claims WHERE tenant_id = ? AND user_id = ? AND rule_key = 'daily-allowance' ORDER BY created_at DESC LIMIT 1",
+      ctx.tenant.id,
+      user.id,
+    );
+    return {
+      ...(replay.response as object),
+      balance_after: wallet.balance,
+      next_eligible_at: nextDailyEligibleAt(
+        new Date(),
+        settings.daily_cooldown_seconds,
+        last?.created_at,
+      ),
+      replayed: true,
+    };
+  }
   const settings = await getEconomy(ctx);
   if (settings.daily_reward <= 0) throw new ApiError(409, "reward_disabled", "The daily allowance is disabled.");
   await checkRateLimit(ctx.db, `reward:${ctx.tenant.id}:${user.id}`, 12, 3600);
@@ -175,23 +199,69 @@ export async function adjustWallet(
     idempotency: IdempotencyInput;
   },
 ) {
-  const actorRole = ctx.user?.role;
+  const user = ctx.user;
+  if (!user) throw new ApiError(401, "authentication_required", "Sign in first.");
+  // Re-read authority at the mutation boundary. A session or stale form that
+  // loaded before a revocation must not keep the removed capability.
+  const live = await first<{
+    role: CurrentUser["role"];
+    capabilities_json: string;
+    self_grants_enabled: number;
+    grant_limit: number;
+    capability_revision: number;
+    status: string;
+  }>(
+    ctx.db,
+    `SELECT role, capabilities_json, self_grants_enabled, grant_limit, capability_revision, status
+       FROM fb_memberships WHERE tenant_id = ? AND user_id = ?`,
+    ctx.tenant.id,
+    user.id,
+  );
+  if (!live || live.status !== "active") {
+    throw new ApiError(403, "membership_revoked", "This membership is no longer active.");
+  }
+  let liveCapabilities: string[] = [];
+  try {
+    const parsed = JSON.parse(live.capabilities_json ?? "[]") as unknown;
+    if (Array.isArray(parsed)) {
+      liveCapabilities = parsed.filter((item): item is string => typeof item === "string");
+    }
+  } catch {
+    liveCapabilities = [];
+  }
+  const liveUser = {
+    ...user,
+    role: live.role,
+    capabilities: liveCapabilities,
+    selfGrantsEnabled: Boolean(live.self_grants_enabled),
+    grantLimit: Number(live.grant_limit ?? 0),
+    capabilityRevision: Number(live.capability_revision ?? 1),
+  };
+  const ownerLike = liveUser.role === "owner" || liveUser.platformAdmin;
   if (ctx.actor.type === "agent") {
     if (!ctx.scopes?.includes("economy:grant")) {
       throw new ApiError(403, "insufficient_scope", "The agent grant does not include economy:grant.");
     }
-    if (!["owner", "economy_admin"].includes(actorRole ?? "")) {
-      throw new ApiError(403, "insufficient_role", "The represented user cannot adjust wallets.");
+    if (!ownerLike) {
+      const policy = canIssueScopedGrant(liveUser, {
+        targetUserId: input.userId,
+        amount: input.amount,
+      });
+      if (!policy.allowed) throw new ApiError(403, policy.code, policy.message);
     }
     if (Math.abs(input.amount) > 500) {
       throw new ApiError(403, "adjustment_limit", "Agents may adjust at most 500 Foil per command.");
     }
-  } else if (actorRole === "economy_admin") {
-    if (Math.abs(input.amount) > 5000) throw new ApiError(403, "adjustment_limit", "Economy administrators may adjust at most 5,000 Foil per command.");
-  } else if (actorRole !== "owner") {
-    throw new ApiError(403, "insufficient_role", "Only the owner or an economy administrator can adjust wallets.");
-  } else if (Math.abs(input.amount) > 50000) {
-    throw new ApiError(403, "adjustment_limit", "Owner adjustments are limited to 50,000 Foil per command.");
+  } else if (ownerLike) {
+    if (Math.abs(input.amount) > 50000) {
+      throw new ApiError(403, "adjustment_limit", "Owner adjustments are limited to 50,000 Foil per command.");
+    }
+  } else {
+    const policy = canIssueScopedGrant(liveUser, {
+      targetUserId: input.userId,
+      amount: input.amount,
+    });
+    if (!policy.allowed) throw new ApiError(403, policy.code, policy.message);
   }
   if (!Number.isInteger(input.amount) || input.amount === 0) {
     throw new ApiError(422, "amount_invalid", "Adjustment amount must be a non-zero integer.");
@@ -388,6 +458,42 @@ export async function operationsStatus(ctx: Ctx) {
     "SELECT version, checksum, published_at FROM fb_catalogue_releases WHERE tenant_id = ? AND status = 'active' ORDER BY version DESC LIMIT 1",
     ctx.tenant.id,
   );
+  const since = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
+  const delivery = await first<{
+    total: number;
+    completed: number;
+    failed: number;
+    delivery_failures: number;
+    stuck: number;
+    last_success: string | null;
+    last_failure: string | null;
+  }>(
+    ctx.db,
+    `SELECT COUNT(*) AS total,
+            COALESCE(SUM(status = 'completed'), 0) AS completed,
+            COALESCE(SUM(status = 'failed'), 0) AS failed,
+            COALESCE(SUM(error_code IN ('delivery_failed', 'public_delivery_failed')), 0) AS delivery_failures,
+            COALESCE(SUM(status = 'processing' AND created_at < ?), 0) AS stuck,
+            MAX(CASE WHEN status = 'completed' AND (error_code IS NULL OR error_code NOT IN ('delivery_failed', 'public_delivery_failed')) THEN completed_at END) AS last_success,
+            MAX(CASE WHEN status = 'failed' OR error_code IN ('delivery_failed', 'public_delivery_failed') THEN completed_at END) AS last_failure
+       FROM fb_discord_interactions
+      WHERE created_at >= ?`,
+    new Date(Date.now() - 10 * 60_000).toISOString(),
+    since,
+  );
+  const deliveryState: "healthy" | "degraded" | "unavailable" | "configured_unverified" =
+    !ctx.config.providers.discordApplication
+      ? "unavailable"
+      : !delivery || delivery.total === 0
+        ? "configured_unverified"
+        : (delivery.stuck ?? 0) > 0 ||
+            ((delivery.delivery_failures ?? 0) > 0 &&
+              (!delivery.last_success ||
+                (delivery.last_failure !== null && delivery.last_failure > delivery.last_success)))
+          ? "degraded"
+          : (delivery.completed ?? 0) === 0 && (delivery.failed ?? 0) > 0
+            ? "unavailable"
+            : "healthy";
   return {
     tenant: ctx.tenant,
     accounts: { members: counts[9]?.count ?? 0 },
@@ -405,11 +511,27 @@ export async function operationsStatus(ctx: Ctx) {
     release,
     providers: ctx.config.providers,
     discord: {
-      status: ctx.config.providers.discordApplication ? "interactions_ready" : "disabled",
+      status: deliveryState,
       connected: Boolean(ctx.config.providers.discordApplication),
-      reason: ctx.config.providers.discordApplication
-        ? "Signed HTTP interactions are implemented; guild installations and channel allowlists are authoritative."
-        : "The Discord application ID and public key are not configured.",
+      configured: Boolean(ctx.config.providers.discordApplication),
+      recent: {
+        window_hours: 24,
+        total: delivery?.total ?? 0,
+        completed: delivery?.completed ?? 0,
+        failed: delivery?.failed ?? 0,
+        delivery_failures: delivery?.delivery_failures ?? 0,
+        stuck_processing: delivery?.stuck ?? 0,
+        last_success_at: delivery?.last_success ?? null,
+        last_failure_at: delivery?.last_failure ?? null,
+      },
+      reason:
+        deliveryState === "healthy"
+          ? "Recent interactions reached a terminal delivery state without a newer delivery failure."
+          : deliveryState === "degraded"
+            ? "Recent delivery failures or stuck interactions need inspection; committed receipts remain in the cabinet."
+            : deliveryState === "unavailable"
+              ? "The application is not configured, or only failed interactions were recorded."
+              : "Credentials are present but no interaction has been verified in the last 24 hours. This is not a green health claim.",
     },
     email: {
       status: ctx.config.providers.resend ? "live_configured" : "outbox_only",
@@ -434,9 +556,19 @@ export async function createShareLink(
   if (!prefs.sharing_enabled) {
     throw new ApiError(409, "sharing_disabled", "Enable explicit sharing in preferences before creating a public link.");
   }
-  const kind = options.kind ?? "cabinet";
+  const kind = options.kind;
   const targetId = options.targetId ?? null;
-  if (!["cabinet", "wishlist", "profile"].includes(kind) && !targetId) {
+  if (!kind) {
+    throw new ApiError(422, "share_target_required", "Choose one exact card, collection, badge, wishlist or profile to share.");
+  }
+  if (kind === "cabinet") {
+    throw new ApiError(
+      422,
+      "share_kind_retired",
+      "Whole-cabinet links are retired. Share one exact card, collection, badge, wishlist or profile instead.",
+    );
+  }
+  if (!["wishlist", "profile"].includes(kind) && !targetId) {
     throw new ApiError(422, "share_target_required", "Choose the exact object to share.");
   }
   let audience: "public" | "member" | "private" = "private";

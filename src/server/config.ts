@@ -45,6 +45,8 @@ export interface RawEnv {
   FOILBURY_CSRF_SECRET?: string;
   FOILBURY_AGENT_TOKEN_PEPPER?: string;
   FOILBURY_BOOTSTRAP_TOKEN?: string;
+  /** Set at deploy time from the exact source commit; safe public build identity. */
+  FOILBURY_BUILD_SHA?: string;
   EMDASH_SITE_URL?: string;
   FAL_AI_API_KEY?: string;
   ELEVENLABS_API_KEY?: string;

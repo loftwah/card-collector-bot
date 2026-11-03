@@ -227,6 +227,11 @@ const audienceLabel = (audience: string) =>
               )}
               {cover ? <div class="world-card__wash" aria-hidden="true"></div> : null}
               <div class="world-card__head" aria-hidden="true">
+                {mark ? (
+                  <span class="world-card__logo" title={`${collection.name} mark`}>
+                    <img src={mark} alt="" width="36" height="36" loading="lazy" />
+                  </span>
+                ) : null}
                 <span class="world-card__audience">{audienceLabel(collection.view_audience)}</span>
               </div>
             </div>

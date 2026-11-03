@@ -362,11 +362,18 @@ export async function listBotAdmins(ctx: Ctx, botId: string) {
     status: string;
     created_at: string;
     accepted_at: string | null;
+    self_grants_enabled: number;
+    grant_limit: number;
+    capability_revision: number;
   }>(
     ctx.db,
-    `SELECT ba.user_id, u.display_name, u.email, ba.role, ba.capabilities_json, ba.status, ba.created_at, ba.accepted_at
+    `SELECT ba.user_id, u.display_name, u.email, ba.role, ba.capabilities_json, ba.status, ba.created_at, ba.accepted_at,
+            COALESCE(m.self_grants_enabled, 0) AS self_grants_enabled,
+            COALESCE(m.grant_limit, 500) AS grant_limit,
+            COALESCE(m.capability_revision, 1) AS capability_revision
        FROM fb_bot_admins ba JOIN fb_users u ON u.id = ba.user_id
        JOIN fb_bots b ON b.id = ba.bot_id
+       LEFT JOIN fb_memberships m ON m.tenant_id = b.tenant_id AND m.user_id = ba.user_id
       WHERE ba.bot_id = ? AND b.tenant_id = ? ORDER BY ba.role DESC, ba.created_at`,
     botId,
     ctx.tenant.id,

@@ -10,6 +10,7 @@ const CAPABILITIES = [
   { key: "content", label: "Edit cards and artwork" },
   { key: "publish", label: "Publish catalogue" },
   { key: "economy", label: "Manage economy" },
+  { key: "grants", label: "Grant Foil (within the visible limit)" },
   { key: "inventory", label: "Inspect inventory" },
   { key: "members", label: "Invite and revoke admins" },
   { key: "settings", label: "Bot settings" },
@@ -18,7 +19,18 @@ const CAPABILITIES = [
 
 interface TeamData {
   bot: { id: string; name: string; slug: string; tenant_id: string };
-  admins: Array<{ user_id: string; display_name: string; email: string; role: string; capabilities_json: string; status: string; accepted_at: string | null }>;
+  admins: Array<{
+    user_id: string;
+    display_name: string;
+    email: string;
+    role: string;
+    capabilities_json: string;
+    status: string;
+    accepted_at: string | null;
+    self_grants_enabled: number;
+    grant_limit: number;
+    capability_revision: number;
+  }>;
   invitations: Array<{ id: string; email: string; capabilities_json: string; status: string; created_at: string; expires_at: string }>;
   current_role: string;
 }
@@ -31,6 +43,43 @@ export default function AdminTeam() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState("");
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draftCaps, setDraftCaps] = useState<string[]>([]);
+  const [draftSelf, setDraftSelf] = useState(false);
+  const [draftLimit, setDraftLimit] = useState(500);
+  const [draftReason, setDraftReason] = useState("Reviewed scoped Admin capability change.");
+
+  function beginEdit(admin: TeamData["admins"][number]) {
+    setEditing(admin.user_id);
+    setDraftCaps(JSON.parse(admin.capabilities_json || "[]") as string[]);
+    setDraftSelf(Boolean(admin.self_grants_enabled));
+    setDraftLimit(admin.grant_limit ?? 500);
+    setDraftReason("Reviewed scoped Admin capability change.");
+  }
+
+  async function saveCapabilities(userId: string) {
+    setBusy(userId);
+    setError("");
+    setMessage("");
+    try {
+      await api(`/api/v1/admin/bot/admins/${userId}`, {
+        method: "PATCH",
+        body: {
+          capabilities: draftCaps,
+          selfGrantsEnabled: draftSelf,
+          grantLimit: draftLimit,
+          reason: draftReason,
+        },
+      });
+      setMessage("Scoped Admin capability updated. The next request uses the new policy; stale confirmations fail.");
+      setEditing(null);
+      await load();
+    } catch (cause) {
+      setError(describeError(cause));
+    } finally {
+      setBusy("");
+    }
+  }
 
   async function load() {
     try {
@@ -83,8 +132,63 @@ export default function AdminTeam() {
                     <span className="badge badge-rare"><ShieldCheck size={12} /> {admin.role === "owner" ? "Bot Owner" : "Bot Admin"}</span>
                   </div>
                   <p className="mt-2 text-xs text-[var(--muted)]">Capabilities: {caps.join(", ") || "none"}</p>
+                  {admin.role !== "owner" ? (
+                    <p className="mt-1 text-xs text-[var(--muted)]">
+                      Money policy: {caps.includes("grants") ? "grant capability" : "no grant capability"} ·
+                      {admin.self_grants_enabled ? " self-grants enabled" : " self-grants disabled"} ·
+                      limit ✦ {admin.grant_limit} per grant · revision {admin.capability_revision}
+                    </p>
+                  ) : null}
                   <p className="mt-1 text-xs text-[var(--muted)]">Granted {admin.accepted_at ? new Date(admin.accepted_at).toLocaleDateString("en-AU") : "—"}</p>
-                  {admin.role !== "owner" ? <Button className="mt-3" size="sm" variant="danger" onClick={() => revoke(admin.user_id)} disabled={Boolean(busy)}><Trash2 size={13} /> Revoke access</Button> : null}
+                  {editing === admin.user_id ? (
+                    <div className="mt-3 grid gap-3 border-t border-[var(--line)] pt-3">
+                      <fieldset>
+                        <legend className="label">Capabilities</legend>
+                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                          {CAPABILITIES.map((capability) => (
+                            <label key={capability.key} className="flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={draftCaps.includes(capability.key)}
+                                onChange={(event) =>
+                                  setDraftCaps((items) =>
+                                    event.target.checked
+                                      ? [...items, capability.key]
+                                      : items.filter((item) => item !== capability.key),
+                                  )
+                                }
+                              />
+                              {capability.label}
+                            </label>
+                          ))}
+                        </div>
+                      </fieldset>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" checked={draftSelf} disabled={!draftCaps.includes("grants")} onChange={(event) => setDraftSelf(event.target.checked)} />
+                        Allow this Admin to grant Foil to themselves
+                      </label>
+                      <Field label="Grant limit (Foil per operation)" hint="0–5,000; visible and enforced by the same policy.">
+                        <Input type="number" min={0} max={5000} value={draftLimit} onChange={(event) => setDraftLimit(Number(event.target.value))} />
+                      </Field>
+                      <Field label="Reason for the change" hint="Recorded in the audit log.">
+                        <Input value={draftReason} onChange={(event) => setDraftReason(event.target.value)} />
+                      </Field>
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" onClick={() => saveCapabilities(admin.user_id)} disabled={Boolean(busy) || draftCaps.length === 0 || draftReason.trim().length < 3}>
+                          Save policy
+                        </Button>
+                        <Button size="sm" variant="secondary" onClick={() => setEditing(null)} disabled={Boolean(busy)}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+                  {admin.role !== "owner" ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button size="sm" variant="secondary" onClick={() => beginEdit(admin)} disabled={Boolean(busy)}>Edit capability</Button>
+                      <Button size="sm" variant="danger" onClick={() => revoke(admin.user_id)} disabled={Boolean(busy)}><Trash2 size={13} /> Revoke access</Button>
+                    </div>
+                  ) : null}
                 </div>
               );
             })}

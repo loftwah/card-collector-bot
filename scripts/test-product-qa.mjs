@@ -580,20 +580,17 @@ try {
         () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
       ),
     );
-    const flip = phone.getByRole("button", { name: /show .* back/i }).first();
+    const firstCard = phone.locator(".published-card-shell").first();
+    const flip = firstCard.getByRole("button", { name: /show .* back/i }).first();
     check("mobile flip control is visible and reachable", await flip.isVisible());
     await flip.click();
-    await phone
-      .waitForFunction(
-        () => document.querySelector(".published-card__back")?.getAttribute("data-hidden") === "false",
-        null,
-        { timeout: 3000 },
-      )
+    await firstCard
+      .locator(".published-card__back")
+      .waitFor({ state: "visible", timeout: 3000 })
       .catch(() => undefined);
     check(
       "mobile flip changes the face",
-      (await phone.locator(".published-card__back").first().getAttribute("data-hidden")) ===
-        "false",
+      (await firstCard.locator(".published-card__back").getAttribute("data-hidden")) === "false",
     );
     await phone.goto("/play/collections");
     await phone.getByRole("heading", { name: /every world you can enter/i }).waitFor();

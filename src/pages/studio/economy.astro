@@ -1,0 +1,39 @@
+---
+import StudioLayout from "../../layouts/StudioLayout.astro";
+import StudioWallet from "../../components/studio/StudioWallet";
+import { pageContext } from "../../server/page";
+import { hasCapability } from "../../server/context";
+
+const ctx = await pageContext(Astro.request);
+const user = ctx.user!;
+const capabilities = user.capabilities ?? [];
+const canRead =
+  user.role === "owner" ||
+  user.platformAdmin ||
+  hasCapability(user, "grants") ||
+  hasCapability(user, "economy");
+---
+<StudioLayout>
+  {canRead ? (
+    <StudioWallet
+      client:load
+      userId={user.id}
+      canSelfGrant={Boolean(user.selfGrantsEnabled) || user.role === "owner" || Boolean(user.platformAdmin)}
+      grantLimit={user.role === "owner" || user.platformAdmin ? 50000 : (user.grantLimit ?? 0)}
+      capabilities={capabilities}
+    />
+  ) : (
+    <div class="notice">
+      <h2 class="display-sm text-2xl uppercase">No Foil grant authority</h2>
+      <p class="mt-2 text-sm text-[var(--muted)]">
+        This account can use its permitted Studio collections but cannot read wallets or issue Foil.
+        Ask the Super Admin or Bot Owner to enable the <strong>grants</strong> capability. This page
+        never redirects you to the owner's Cloudflare entrance.
+      </p>
+      <div class="mt-4 flex flex-wrap gap-2">
+        <a class="btn btn-secondary btn-sm" href="/studio">Back to Studio</a>
+        <a class="btn btn-secondary btn-sm" href="/studio/access">See your access</a>
+      </div>
+    </div>
+  )}
+</StudioLayout>

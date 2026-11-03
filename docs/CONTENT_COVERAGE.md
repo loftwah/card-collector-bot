@@ -44,12 +44,12 @@ approved.
 | NBA — Opening Night | 12 | 12 / 0 | 2025/26 season, one player per club, not a full league roster | Wikipedia / Wikimedia Commons |
 | Chainsaw Man — Public Safety, Part 1 | 8 | 8 / 0 | Manga Part 1; 2022 anime visual reference; Part 2 out | Chainsaw Man Wiki (Fandom) |
 | Madoka Magica — Mitakihara | 8 | 7 / 1 | 2011 TV + 2013 Rebellion; later films out | Puella Magi Wiki (Fandom) |
-| Danganronpa — Three Killing Games | 8 | 8 / 0 | Three main games; spin-offs/anime out | Danganronpa Wiki (Fandom) |
+| Danganronpa — Three Killing Games | 9 | 9 / 0 | Three main games; spin-offs/anime out. Release 2 adds Gonta Gokuhara. | Danganronpa Wiki (Fandom) |
 | NANA — Two Nanas, One Tokyo | 8 | 8 / 0 | Manga + 2006–07 anime; films out | NANA Wiki (Fandom) |
 | Project Sekai — Unit Stage | 8 | 8 / 0 | Unit/game context, not in-game card editions | Project SEKAI Wiki (Fandom) |
 | South Park — Town Album | 8 | 8 / 0 | Main/supporting townsfolk; content advisory | South Park Archives (Fandom) |
 | Rick and Morty — Portal | 8 | 8 / 0 | Main animated continuity; spin-offs out | Rick and Morty Wiki (Fandom) |
-| Vocaloid — Voicebanks | 8 | 8 / 0 | Persona vs software vs voice provider | Vocaloid Wiki (Fandom) |
+| Vocaloid — Voicebanks | 9 | 9 / 0 | Persona vs software vs voice provider. Release 2 adds Kamui Gakupo / Camui Gackpo. | Vocaloid Wiki (Fandom) |
 | The Summer Hikaru Died | 8 | 6 / 2 | Manga; 2025 anime reference; spoiler gates | The Summer Hikaru Died Wiki (Fandom) |
 | Total Drama Island — 2007 | 8 | 8 / 0 | First season only; season-one stills, not the 2023 reboot | Total Drama Wiki (Fandom) |
 | Doki Doki Literature Club! | 8 | 5 / 3 | Original 2017 VN; early-safe profiles | DDLC Wiki (Fandom) |
@@ -119,3 +119,20 @@ artwork. When a source image is missing or unsuitable, the card uses a neutral
 - Asset permission review is separate from the private/non-commercial product
   status. Sourced images do not make Foilbury official or licensed.
 - NBA facts are dated to 2025/26; later trades and the 2026/27 season are out.
+
+
+## Roster expansion — 2026-11-04 (local proof)
+
+- `Gonta Gokuhara` (Danganronpa V3) and `Kamui Gakupo` / `Camui Gackpo`
+  (Internet Co. Gackpoid) are added as release 2 of their collections.
+- Both resolve to one logical identity each, with reviewed profiles, source
+  references, typed attributes and sourced subject images. Local renders decode
+  at 750×1050 and show the sourced subject layer, not the fallback monogram.
+- The named, versioned roster brief is `docs/COLLECTION_ROSTERS.md`. NBA remains
+  deliberately 12; other properties are not forced to a universal eight-card
+  ceiling.
+- Local catalogue read-back after import: 9/9 Danganronpa roster and 9/9
+  Vocaloid roster, 36/36 published fronts/backs for the Danganronpa album.
+- **Production import is not yet performed.** The production catalogue remains
+  on the last deployed release until a reviewed content provisioning run with
+  backup and rollback. Local proof is not deployed acceptance.

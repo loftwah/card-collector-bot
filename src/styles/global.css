@@ -1775,6 +1775,24 @@ html[data-motion="reduced"] .layered-card__effect {
   background: linear-gradient(180deg, rgba(20, 21, 18, 0.06), rgba(20, 21, 18, 0.72));
 }
 
+.world-card__logo {
+  display: grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  padding: 0.28rem;
+  border: 1px solid rgba(244, 240, 230, 0.55);
+  border-radius: 0.45rem;
+  background: rgba(20, 21, 18, 0.82);
+  backdrop-filter: blur(6px);
+}
+
+.world-card__logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 .world-card__head {
   position: absolute;
   inset: 0.85rem 0.9rem auto;

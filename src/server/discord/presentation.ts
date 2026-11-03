@@ -853,6 +853,7 @@ export interface WelcomeInput {
   nextDailyAt?: string | null;
   starterGrant?: number;
   dailyReward?: number;
+  guide?: string;
   actions: { daily: string; open: string; packs: string };
   helpUrl: string;
 }
@@ -895,6 +896,9 @@ export function welcomeMessage(input: WelcomeInput): DiscordCallback {
             "Inspect either face, open your album and read every detail without spending Foil or receiving another copy.",
           inline: false,
         },
+        ...(input.guide
+          ? [{ name: "Commands", value: clipText(input.guide, 1000), inline: false }]
+          : []),
       ],
       footer: `Foilbury · ${scopeName} · private response`,
     },
@@ -905,6 +909,55 @@ export function welcomeMessage(input: WelcomeInput): DiscordCallback {
         { label: "Browse capsules", customId: input.actions.packs, style: 2 },
       ],
       [{ label: "Read the field guide", url: input.helpUrl }],
+    ],
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Template: daily allowance                                           */
+/* ------------------------------------------------------------------ */
+
+export interface DailyClaimInput {
+  amount: number;
+  currencySymbol: string;
+  balanceAfter: number;
+  nextEligibleAt: string;
+  replayed: boolean;
+  scopeName: string;
+  openCustomId: string;
+  packsCustomId: string;
+}
+
+export function dailyClaimMessage(input: DailyClaimInput): DiscordCallback {
+  const amount = assertNonNegative(input.amount, "amount");
+  const symbol = assertCurrencySymbol(input.currencySymbol);
+  const balance = assertNonNegative(input.balanceAfter, "balanceAfter");
+  const next = assertIsoTimestamp(input.nextEligibleAt, "nextEligibleAt");
+  return buildMessage({
+    visibility: "private",
+    embed: {
+      title: input.replayed ? "Allowance already claimed" : "Daily allowance claimed",
+      description: input.replayed
+        ? "This is the recorded result of the original request. No second credit was made."
+        : "The allowance is shared by this Bot across Discord, the website and the API.",
+      accent: FOILBURY_PALETTE.lime,
+      fields: [
+        { name: "Credited", value: `+${amount} ${symbol}`, inline: true },
+        { name: "Settled balance", value: `${balance} ${symbol}`, inline: true },
+        { name: "Next allowance", value: formatDiscordTimestamp(next), inline: true },
+        {
+          name: "Reset policy",
+          value: "Daily, shared for this Bot across servers, website and API. Periods use UTC.",
+          inline: false,
+        },
+      ],
+      footer: `Foilbury · ${visibleText(input.scopeName, "scopeName")} · one credit per period`,
+    },
+    rows: [
+      [
+        { label: "Open a capsule", customId: input.openCustomId, style: 1 },
+        { label: "Packs", customId: input.packsCustomId, style: 2 },
+      ],
     ],
   });
 }
@@ -1090,6 +1143,12 @@ export interface RevealReceiptInput extends RevealReceiptDomainFields {
   tour_custom_id?: string;
   album_url?: string;
   public_origin?: string;
+  /** The reveal acknowledgement is private even when a share is permitted. */
+  force_private?: boolean;
+  share_custom_id?: string;
+  balance_after_debit?: number;
+  credits_total?: number;
+  achievement_credits?: Array<{ name: string; amount: number }>;
 }
 
 function publicRenderUrl(input: RevealReceiptInput): string | undefined {
@@ -1120,12 +1179,34 @@ export function revealReceiptMessage(input: RevealReceiptInput): DiscordCallback
   });
   const attachment = input.render ? cardAttachment(input.render, "reveal") : null;
   const fallbackImage = publicRenderUrl(input);
+  const debitBalance =
+    input.balance_after_debit === undefined
+      ? null
+      : assertNonNegative(input.balance_after_debit, "balance_after_debit");
+  const credits = input.credits_total === undefined ? 0 : assertNonNegative(input.credits_total, "credits_total");
   const fields: FieldInput[] = [
     { name: "Rarity", value: input.rarity_name || "Unclassified", inline: true },
     { name: "Finish", value: finish, inline: true },
     { name: "Serial", value: `\`${serial}\``, inline: true },
     { name: "Opened from", value: `${poolName} · ${price} ${symbol}`, inline: true },
-    { name: "Balance", value: `${balance} ${symbol}`, inline: true },
+    { name: "Opening debit", value: `−${price} ${symbol}`, inline: true },
+    ...(debitBalance === null
+      ? []
+      : [{ name: "After debit", value: `${debitBalance} ${symbol}`, inline: true }]),
+    ...(credits > 0
+      ? [
+          {
+            name: "Reward credited",
+            value: `+${credits} ${symbol}${
+              input.achievement_credits?.length
+                ? ` · ${input.achievement_credits.map((item) => item.name).join(", ")}`
+                : ""
+            }`,
+            inline: false,
+          },
+        ]
+      : []),
+    { name: "Settled balance", value: `${balance} ${symbol}`, inline: true },
     { name: "Odds", value: `${(probability / 100).toFixed(2)}% for this copy`, inline: false },
   ];
   if (!canShare) {
@@ -1166,8 +1247,13 @@ export function revealReceiptMessage(input: RevealReceiptInput): DiscordCallback
       ...(input.album_url ? [{ label: "Open album", url: input.album_url } as ButtonInput] : []),
     ],
   ];
+  if (canShare && input.share_custom_id) {
+    rows.push([
+      { label: "Share to channel", customId: input.share_custom_id, style: 1 },
+    ]);
+  }
   return buildMessage({
-    visibility: canShare ? "channel" : "private",
+    visibility: input.force_private === true ? "private" : canShare ? "channel" : "private",
     audience: input.audience,
     channelAudience: input.channel_audience,
     channelApproved: input.channel_approved,
@@ -1193,6 +1279,85 @@ export function revealReceiptMessage(input: RevealReceiptInput): DiscordCallback
           : {}),
     },
     rows,
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Template: cabinet overview                                          */
+/* ------------------------------------------------------------------ */
+
+export interface CabinetItem {
+  name: string;
+  print?: string | null;
+  variant: string;
+  rarity?: string | null;
+  serial: string;
+}
+
+export interface CabinetSummaryInput {
+  scopeName: string;
+  currencySymbol: string;
+  balance: number;
+  owned: number;
+  unique: number;
+  duplicates: number;
+  items: CabinetItem[];
+  albumUrl: string;
+  openCustomId: string;
+  packsCustomId: string;
+}
+
+export function cabinetSummaryMessage(input: CabinetSummaryInput): DiscordCallback {
+  const symbol = assertCurrencySymbol(input.currencySymbol);
+  const owned = assertNonNegative(input.owned, "owned");
+  const unique = assertNonNegative(input.unique, "unique");
+  const duplicates = assertNonNegative(input.duplicates, "duplicates");
+  const items = input.items.slice(0, 8).map((item) => ({
+    name: visibleText(item.name, "cabinet.item.name"),
+    print: item.print ? visibleText(item.print, "cabinet.item.print", { required: false }) : null,
+    variant: visibleText(item.variant, "cabinet.item.variant"),
+    rarity: item.rarity ? visibleText(item.rarity, "cabinet.item.rarity", { required: false }) : null,
+    serial: visibleText(item.serial, "cabinet.item.serial"),
+  }));
+  return buildMessage({
+    visibility: "private",
+    embed: {
+      title: input.owned === 0 ? "Your cabinet is empty" : "Your cabinet",
+      description:
+        input.owned === 0
+          ? "Claim the daily allowance, then open a capsule. Your cards are tied to this Bot and appear on every server where it is installed."
+          : items
+              .map(
+                (item) =>
+                  `• **${item.name}**${item.print ? ` — ${item.print}` : ""} · ${item.variant}${item.rarity ? ` · ${item.rarity}` : ""} · \`${item.serial}\``,
+              )
+              .join("\n"),
+      accent: FOILBURY_PALETTE.deepAqua,
+      fields: [
+        { name: "Owned", value: String(owned), inline: true },
+        { name: "Unique", value: String(unique), inline: true },
+        { name: "Duplicates", value: String(duplicates), inline: true },
+        { name: "Balance", value: `${assertNonNegative(input.balance, "balance")} ${symbol}`, inline: true },
+        { name: "Scope", value: visibleText(input.scopeName, "scopeName"), inline: true },
+        {
+          name: "More",
+          value:
+            "Open the website cabinet for filters, favourites and full provenance. Viewing a card never spends Foil or awards another copy.",
+          inline: false,
+        },
+      ],
+      footer:
+        input.owned > items.length
+          ? `Showing ${items.length} of ${owned} copies · private response`
+          : "Private response · viewing never spends Foil",
+    },
+    rows: [
+      [
+        { label: "Open a capsule", customId: input.openCustomId, style: 1 },
+        { label: "Packs", customId: input.packsCustomId, style: 2 },
+        { label: "Open cabinet on the web", url: input.albumUrl },
+      ],
+    ],
   });
 }
 
@@ -1461,6 +1626,89 @@ export function achievementMessage(input: AchievementInput): DiscordCallback {
       footer: "Earned badges are never removed. Rewards are credited once.",
     },
     rows,
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Template: achievements overview                                     */
+/* ------------------------------------------------------------------ */
+
+export interface AchievementOverviewItem {
+  name: string;
+  state: "earned" | "in_progress" | "locked";
+  progress: number;
+  target: number;
+  reward: number;
+}
+
+export interface AchievementsOverviewInput {
+  currencySymbol: string;
+  items: AchievementOverviewItem[];
+  achievementsUrl: string;
+}
+
+export function achievementsOverviewMessage(
+  input: AchievementsOverviewInput,
+): DiscordCallback {
+  const symbol = assertCurrencySymbol(input.currencySymbol);
+  const items = input.items.map((item) => ({
+    ...item,
+    name: visibleText(item.name, "achievement.name"),
+    target: assertNonNegative(item.target, "achievement.target"),
+    progress: assertNonNegative(item.progress, "achievement.progress"),
+    reward: assertNonNegative(item.reward, "achievement.reward"),
+  }));
+  const earned = items.filter((item) => item.state === "earned");
+  const close = items
+    .filter((item) => item.state !== "earned")
+    .sort(
+      (left, right) =>
+        right.progress / Math.max(1, right.target) - left.progress / Math.max(1, left.target),
+    )
+    .slice(0, 5);
+  return buildMessage({
+    visibility: "private",
+    embed: {
+      title: "Achievements",
+      description: earned.length
+        ? `You have earned **${earned.length}** of ${items.length}. Rewards are credited once and never removed when a collection grows.`
+        : "Your first card is the first badge. Every milestone below uses your committed collection history.",
+      accent: FOILBURY_PALETTE.lime,
+      fields: [
+        {
+          name: "Earned",
+          value: earned.length
+            ? earned
+                .slice(0, 8)
+                .map(
+                  (item) =>
+                    `• **${item.name}** — ${item.reward ? `+${item.reward} ${symbol}` : "badge"}`,
+                )
+                .join("\n")
+            : "No badges yet. Viewing the catalogue does not earn one.",
+          inline: false,
+        },
+        {
+          name: "Closest next",
+          value: close.length
+            ? close
+                .map(
+                  (item) =>
+                    `• **${item.name}** — ${Math.min(item.progress, item.target)}/${item.target}`,
+                )
+                .join("\n")
+            : "Everything visible is complete.",
+          inline: false,
+        },
+        {
+          name: "Privacy",
+          value: "This private response only shows achievements for albums you can access.",
+          inline: false,
+        },
+      ],
+      footer: "Open the website album for full progress, criteria and earned dates",
+    },
+    rows: [[{ label: "Open achievements", url: input.achievementsUrl }]],
   });
 }
 
@@ -1910,6 +2158,25 @@ export const SAFE_ERROR_COPY: Record<string, SafeErrorCopy> = {
     message: "Foilbury only works in a server where this Bot is installed.",
     nextStep: "Return to the configured play channel.",
   },
+  membership_revoked: {
+    kind: "denied",
+    title: "Membership is not active",
+    message: "This player is no longer an active member of this Bot. Nothing was changed.",
+    nextStep: "Ask the Bot Owner or an authorised Bot Admin to restore membership deliberately.",
+  },
+  discord_identity_revoked: {
+    kind: "denied",
+    title: "This Discord identity was revoked",
+    message: "This Discord identity is no longer linked for this Bot. Nothing was changed.",
+    nextStep: "Ask the Bot Owner to restore the identity. Signing in again does not restore it.",
+  },
+  account_disabled: {
+    kind: "denied",
+    title: "Account disabled",
+    message: "This player account is disabled. Nothing was changed.",
+    nextStep: "Contact the Bot Owner.",
+  },
+
   share_channel_audience: {
     kind: "denied",
     title: "This channel is not verified for that artwork",
@@ -2030,9 +2297,11 @@ export const SAFE_ERROR_COPY: Record<string, SafeErrorCopy> = {
   },
   internal_error: {
     kind: "error",
-    title: "Foilbury could not complete that",
-    message: "The interaction stopped before a committed outcome. Nothing was charged or changed.",
-    nextStep: "Try again. If it repeats, quote the reference only to Foilbury staff.",
+    title: "Foilbury could not confirm the outcome",
+    message:
+      "The interaction stopped before Foilbury could confirm a display result. Check your cabinet and wallet before retrying; a committed draw remains recorded.",
+    nextStep:
+      "Open your cabinet first. If the card or credit is present, do not draw again. Quote the private reference only to Foilbury staff.",
   },
 };
 

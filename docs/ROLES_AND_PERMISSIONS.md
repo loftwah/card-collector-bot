@@ -23,6 +23,8 @@ Foilbury keeps five authorities separate. None is inferred from another.
 | Enable/disable a shared collection for a Bot | Yes | Only a Bot they own/administer | Yes | With `content` | No |
 | Edit a Bot collection | All | Only their own Bot | Their Bot | With `content` | No |
 | Invite/revoke a Bot Admin | Yes | Only their own Bot | Yes | With `members` | No |
+| Grant Foil with `grants` capability | Yes (existing audited limits) | No | Yes | Scoped: positive only, within visible self/other policy | No |
+| Enable/disable self-grants and set ceiling | Yes | No | Yes (Super Admin or Bot Owner) | No | No |
 | Grant Super Admin | Provisioning script only | No | No | No | No |
 | Manage Access / secrets / deployment | Cloudflare owner path | No | No | No | No |
 | Mint cards, spend Foil, alter another inventory | No direct UI; domain services only | No | Scoped grants only | Scoped grants only | Own play only |
@@ -89,3 +91,26 @@ the same records.
 - A Bot Admin invitation cannot escape its Bot or its capability set.
 - Public approval is never delegated to a scoped collection administrator.
 - `scope`, `status`, `view_audience` and distribution remain separate dimensions.
+
+
+## Scoped Foil grants (2026-11-04)
+
+A Bot Admin's money authority is explicit and separable from content work:
+
+- capability `grants` is required; it does not come from Discord roles, guild
+  ownership or Cloudflare Access;
+- `self_grants_enabled` and `grant_limit` are stored on the live membership and
+  reread at the mutation boundary;
+- a scoped grant is a positive whole number only, within the visible ceiling;
+- self-grants fail when disabled; another person's grant still requires the
+  capability and ceiling;
+- revocation, expiry and stale forms fail on the next request because the live
+  membership is rechecked;
+- the Super Admin/Bot Owner can edit an existing account's capabilities and
+  policy without deleting or reinviting it; every change is audited with reason
+  and increments `capability_revision`;
+- the scoped workspace is `/studio`; `/studio/economy` is the Foil page where
+  permitted. `/admin` and `/platform-admin` remain owner/Super Admin entrances,
+  not destinations for scoped Admins;
+- an agent token intersects the represented person's live authority; it cannot
+  restore a revoked capability.

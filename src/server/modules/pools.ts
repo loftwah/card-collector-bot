@@ -70,6 +70,32 @@ export async function listPools(ctx: Ctx, includeDrafts = false) {
   return rows;
 }
 
+/**
+ * The authoritative player-facing pool list. A pool is offered only when the
+ * same preview used by the commit path has at least one eligible entry for
+ * this player, Bot distribution and channel. This prevents a disabled
+ * collection from lingering in a selector, deep link or Discord picker merely
+ * because the pool row is still active.
+ */
+export async function listEligiblePools(
+  ctx: Ctx,
+  channelKey?: string,
+): Promise<PoolPreview[]> {
+  const pools = await listPools(ctx);
+  const previews = await Promise.all(
+    pools.map((pool) =>
+      getPoolPreview(ctx, pool.slug, channelKey).catch(() => null),
+    ),
+  );
+  return previews
+    .filter((preview): preview is PoolPreview => Boolean(preview && preview.eligible_count > 0))
+    .sort((left, right) => {
+      if (left.pool.slug === "cabinet-draw") return -1;
+      if (right.pool.slug === "cabinet-draw") return 1;
+      return left.pool.name.localeCompare(right.pool.name);
+    });
+}
+
 export async function getPoolPreview(
   ctx: Ctx,
   slugOrId: string,
@@ -282,7 +308,17 @@ export async function executeDraw(
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in to draw.");
   const replay = await findIdempotent(ctx, "draw.execute", input.idempotency);
-  if (replay) return { ...(replay.response as object), replayed: true };
+  if (replay) {
+    // The stored receipt is the transaction-time record. The current balance
+    // may have moved since then (another tab, mission or grant), so expose it
+    // separately rather than overwriting history.
+    const current = await getWallet(ctx.db, ctx.tenant.id, user.id);
+    return {
+      ...(replay.response as object),
+      replayed: true,
+      current_balance: current.balance,
+    };
+  }
   const preview = await getPoolPreview(ctx, input.pool, input.channelKey);
   if (preview.revision !== input.expectedRevision) {
     throw new ApiError(409, "stale_pool_revision", "The pool changed. Review the new odds before drawing.", {
@@ -438,8 +474,13 @@ export async function executeDraw(
     }
     throw error;
   }
-  const after = await getWallet(ctx.db, ctx.tenant.id, user.id);
-  let achievements: Array<{ id: string; name: string; reward_amount: number }> = [];
+  const afterDebit = await getWallet(ctx.db, ctx.tenant.id, user.id);
+  let achievements: Array<{
+    id: string;
+    name: string;
+    reward_amount: number;
+    reward_state: string | null;
+  }> = [];
   try {
     const { evaluateAchievements, recordDomainEvent } = await import("./achievements");
     const eventId = await recordDomainEvent(ctx, {
@@ -451,11 +492,55 @@ export async function executeDraw(
       payload: { card_id: selected.card_id, variant_id: selected.variant_id, instance_id: instanceId },
     });
     const result = await evaluateAchievements(ctx, { userId: user.id, eventId });
-    achievements = result.unlocked.map((item) => ({ id: item.id, name: item.name, reward_amount: item.reward_amount }));
+    achievements = result.unlocked.map((item) => ({
+      id: item.id,
+      name: item.name,
+      reward_amount: item.reward_amount,
+      reward_state: item.reward_state,
+    }));
   } catch (error) {
     console.error(JSON.stringify({ level: "error", message: "achievement evaluation after draw failed", draw_id: drawId, error: String(error) }));
   }
-  return { ...receipt, balance_after: after.balance, achievements, replayed: false };
+  // Reward fulfilment may have credited Foil after the debit. Read the wallet
+  // again and expose each part separately: the opening debit, settled credits,
+  // and the authoritative settled balance. Never show pre-reward money as the
+  // result of a reward-paying opening.
+  const afterSettlement = await getWallet(ctx.db, ctx.tenant.id, user.id);
+  const achievementCredits = achievements
+    .filter((item) => item.reward_state === "granted" && item.reward_amount > 0)
+    .map((item) => ({
+      id: item.id,
+      name: item.name,
+      amount: item.reward_amount,
+    }));
+  const creditsTotal = achievementCredits.reduce((sum, item) => sum + item.amount, 0);
+  const settledReceipt = {
+    ...receipt,
+    balance_after_debit: afterDebit.balance,
+    balance_after: afterSettlement.balance,
+    credits_total: creditsTotal,
+    achievement_credits: achievementCredits,
+  };
+  await ctx.db
+    .prepare(
+      `UPDATE fb_idempotency_keys SET response_json = ?
+        WHERE tenant_id = ? AND actor_type = ? AND actor_id = ? AND operation = 'draw.execute' AND idempotency_key = ?`,
+    )
+    .bind(
+      JSON.stringify(settledReceipt),
+      ctx.tenant.id,
+      ctx.actor.type,
+      ctx.actor.id,
+      input.idempotency.key,
+    )
+    .run()
+    .catch(() => undefined);
+  return {
+    ...settledReceipt,
+    achievements,
+    current_balance: afterSettlement.balance,
+    replayed: false,
+  };
 }
 
 function pickWeighted(entries: EligibleEntry[], random: number, totalWeight: number): EligibleEntry {

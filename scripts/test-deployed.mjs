@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const base = process.env.FOILBURY_URL ?? "https://foilbury.loftwah.com";
+const expectedBuild = process.env.FOILBURY_EXPECTED_BUILD?.trim() || null;
 const evidence = path.join(".foilbury", "evidence");
 fs.mkdirSync(evidence, { recursive: true });
 const results = [];
@@ -18,6 +19,16 @@ async function get(url, options = {}) {
 }
 
 try {
+  const homeResponse = await get("/");
+  if (expectedBuild) {
+    const actual = homeResponse.headers["x-foilbury-build"];
+    if (actual !== expectedBuild) {
+      throw new Error(
+        `Production build identity is ${actual ?? "missing"}, expected ${expectedBuild}.`,
+      );
+    }
+    pass("production answers with the expected source build identity", expectedBuild.slice(0, 12));
+  }
   for (const route of ["/", "/cabinet", "/cabinet/tux", "/login", "/tour", "/brand-kit", "/showcase", "/sitemap-public.xml", "/robots.txt"]) {
     const response = await get(route);
     if (response.status !== 200) throw new Error(`${route} returned ${response.status}`);
@@ -76,10 +87,10 @@ try {
   if (!sitemap.body.includes("cabinet/tux")) throw new Error("Production sitemap is missing a public card.");
   pass("production sitemap is public-only");
 
-  fs.writeFileSync(path.join(evidence, "deployed-smoke.json"), JSON.stringify({ generated_at: new Date().toISOString(), base, results }, null, 2));
+  fs.writeFileSync(path.join(evidence, "deployed-smoke.json"), JSON.stringify({ generated_at: new Date().toISOString(), base, expected_build: expectedBuild, results }, null, 2));
 } catch (error) {
   console.error(error?.stack ?? error);
   fail("deployed smoke", error);
-  fs.writeFileSync(path.join(evidence, "deployed-smoke.json"), JSON.stringify({ generated_at: new Date().toISOString(), base, results }, null, 2));
+  fs.writeFileSync(path.join(evidence, "deployed-smoke.json"), JSON.stringify({ generated_at: new Date().toISOString(), base, expected_build: expectedBuild, results }, null, 2));
   process.exitCode = 1;
 }

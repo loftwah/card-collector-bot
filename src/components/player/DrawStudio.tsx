@@ -15,6 +15,7 @@ interface PoolSummary {
   revision: number;
   price: number;
   status: string;
+  eligibleCount?: number;
 }
 
 interface Entry {
@@ -67,12 +68,21 @@ interface DrawResult {
   owned_copies: number;
   price: number;
   balance_after: number;
+  balance_after_debit: number;
+  current_balance?: number;
+  credits_total: number;
+  achievement_credits: Array<{ id: string; name: string; amount: number }>;
   probability_bps: number;
   pool_revision: number;
   random_commitment: string;
   filters: Preview["filters"];
   odds: Array<{ card_name: string; variant_name: string; probability_bps: number; weight: number }>;
-  achievements: Array<{ id: string; name: string; reward_amount: number }>;
+  achievements: Array<{
+    id: string;
+    name: string;
+    reward_amount: number;
+    reward_state?: string | null;
+  }>;
   replayed: boolean;
 }
 
@@ -171,9 +181,10 @@ export default function DrawStudio({
         idempotencyKey: pendingKey,
       });
       setResult(data);
-      setBalance(data.balance_after);
+      const authoritative = data.current_balance ?? data.balance_after;
+      setBalance(authoritative);
       document.querySelectorAll<HTMLElement>("[data-foil-balance]").forEach((node) => {
-        node.textContent = `${data.balance_after} Foil`;
+        node.textContent = `${authoritative} Foil`;
       });
       setPendingKey(idempotencyKey("draw"));
       void loadPreview(slug, channel);
@@ -216,7 +227,12 @@ export default function DrawStudio({
   if (!pools.length) {
     return (
       <div className="empty">
-        <p>No active pools. The owner can publish one in Administration.</p>
+        <p>
+          No capsule is available for your account right now. A Bot Admin may have
+          disabled the relevant collection, or your collection preferences may hide
+          every eligible card. Check Preferences, then reload. Nothing can be
+          charged while no capsule is available.
+        </p>
       </div>
     );
   }
@@ -264,6 +280,12 @@ export default function DrawStudio({
               <div className="mt-4 border-t border-[var(--line)] pt-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-semibold">{selectedPool.name}</p>
+                  {selectedPool.eligibleCount !== undefined ? (
+                    <p className="text-xs text-[var(--muted)]">
+                      {selectedPool.eligibleCount} eligible card
+                      {selectedPool.eligibleCount === 1 ? "" : "s"} for you
+                    </p>
+                  ) : null}
                   <span className="font-mono text-sm text-[var(--brass)]">
                     ✦ {selectedPool.price}
                   </span>
@@ -471,8 +493,12 @@ export default function DrawStudio({
                     <span className={cn("badge", result.new_finish && "badge-signal")}>
                       {result.new_finish ? "New finish" : "Finish already held"}
                     </span>
-                    <span className="badge">Paid ✦ {result.price}</span>
-                    <span className="badge">Balance ✦ {result.balance_after}</span>
+                    <span className="badge">Opening −✦ {result.price}</span>
+                    <span className="badge">After debit ✦ {result.balance_after_debit}</span>
+                    {result.credits_total > 0 ? (
+                      <span className="badge badge-signal">Reward +✦ {result.credits_total}</span>
+                    ) : null}
+                    <span className="badge">Settled balance ✦ {result.balance_after}</span>
                     <span className="badge">{pct(result.probability_bps)} shown chance</span>
                   </div>
                   <div
@@ -493,9 +519,15 @@ export default function DrawStudio({
                           {result.achievements.slice(0, 4).map((achievement) => (
                             <li key={achievement.id}>
                               <strong>{achievement.name}</strong>
-                              {achievement.reward_amount
-                                ? ` · +${achievement.reward_amount} Foil`
-                                : " · cosmetic badge"}
+                              {achievement.reward_state === "failed"
+                                ? " · reward pending retry (not yet credited)"
+                                : achievement.reward_state &&
+                                    achievement.reward_state !== "granted" &&
+                                    achievement.reward_amount > 0
+                                  ? " · reward not yet credited"
+                                  : achievement.reward_amount
+                                    ? ` · +${achievement.reward_amount} Foil`
+                                    : " · cosmetic badge"}
                             </li>
                           ))}
                           {result.achievements.length > 4 ? (

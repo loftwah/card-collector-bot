@@ -7,6 +7,13 @@ import {
   interactionUser,
   resolveInstallation,
 } from "./context";
+import {
+  drawRecoveryMessage,
+  markDeliveryVisibility,
+  readInteractionReceipt,
+} from "./receipts";
+import { runDiscordRequest } from "../effect/discord-transport";
+import { discordFailureLog, redactDiscordText } from "./redaction";
 import { verifyDiscordSignature } from "./signature";
 import type {
   DiscordCallback,
@@ -14,6 +21,8 @@ import type {
   DiscordInteraction,
   DiscordMessage,
 } from "./types";
+
+const EPHEMERAL_FLAG = 64;
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
@@ -65,16 +74,6 @@ async function recordFinish(
     .catch(() => undefined);
 }
 
-function isEphemeralInteraction(interaction: DiscordInteraction): boolean {
-  if (interaction.type === 3) {
-    const customId = interaction.data?.custom_id ?? "";
-    if (customId.startsWith("foilbury:tourshare:")) return false;
-    return !customId.startsWith("foilbury:open:");
-  }
-  const top = interaction.data?.options?.find((option) => option.type === 1 || option.type === 2);
-  return top?.name !== "open";
-}
-
 /**
  * Admin controls must remain reachable while Discord gameplay is disabled, so
  * an authorised Bot Owner can turn the installation back on. Authorisation is
@@ -100,20 +99,64 @@ function isAdminInteraction(interaction: DiscordInteraction): boolean {
  */
 const DISCORD_DELIVERY_TIMEOUT_MS = 8_000;
 
-async function discordFetch(url: string, init: RequestInit): Promise<Response | null> {
-  try {
-    return await fetch(url, { ...init, signal: AbortSignal.timeout(DISCORD_DELIVERY_TIMEOUT_MS) });
-  } catch (error) {
-    console.error(
-      JSON.stringify({
-        level: "error",
+interface DiscordRequestContext {
+  interactionId: string;
+  token?: string;
+}
+
+/**
+ * GET/PATCH/DELETE webhook calls are idempotent and safe to retry within the
+ * interaction lifetime. POST is deliberately not retried automatically: an
+ * ambiguous create could post the same reveal twice. The caller keeps the
+ * committed private receipt and offers a deliberate re-send instead.
+ *
+ * The execution, timeout, typed failure and bounded retry live in the Effect
+ * service (`src/server/effect/discord-transport.ts`), so the production path
+ * exercises more than a dependency addition.
+ */
+async function discordFetch(
+  url: string,
+  init: RequestInit,
+  requestContext: DiscordRequestContext,
+): Promise<Response | null> {
+  const method = String(init.method ?? "GET").toUpperCase();
+  const result = await runDiscordRequest(
+    {
+      url,
+      init,
+      timeoutMs: DISCORD_DELIVERY_TIMEOUT_MS,
+      idempotent: method !== "POST",
+      maxAttempts: 3,
+    },
+    {
+      http: {
+        request: (target, requestInit, signal) =>
+          fetch(target, { ...requestInit, signal }),
+      },
+      logger: {
+        error: () => {
+          // The boundary below emits the single redacted operational event.
+        },
+      },
+    },
+  );
+  if (result.response) return result.response;
+  console.error(
+    JSON.stringify(
+      discordFailureLog({
+        correlationId: `discord:${requestContext.interactionId}`,
+        method,
+        url,
+        status: result.error?.status ?? null,
+        detail: result.error
+          ? `${result.error.message}${result.error.timedOut ? " (timeout)" : ""} after ${result.attempts} attempt(s)`
+          : `Discord request failed after ${result.attempts} attempt(s)`,
+        secrets: requestContext.token ? [requestContext.token] : [],
         message: "Discord request failed or timed out",
-        url: url.replace(/\/[^/]+$/, "/…"),
-        detail: error instanceof Error ? error.message : String(error),
       }),
-    );
-    return null;
-  }
+    ),
+  );
+  return null;
 }
 
 function stripUnavailableAttachments(data: DiscordMessage): DiscordMessage {
@@ -185,17 +228,22 @@ async function editOriginal(
   const response = await discordFetch(
     `https://discord.com/api/v10/webhooks/${encodeURIComponent(interaction.application_id)}/${encodeURIComponent(interaction.token)}/messages/@original`,
     { method: "PATCH", headers: request.headers, body: request.body },
+    { interactionId: interaction.id, token: interaction.token },
   );
   if (!response?.ok) {
     const detail = response ? await response.text().catch(() => "") : "request timed out";
     console.error(
-      JSON.stringify({
-        level: "error",
-        request_id: `discord:${interaction.id}`,
-        message: "Discord follow-up delivery failed",
-        status: response?.status ?? null,
-        detail: detail.slice(0, 800),
-      }),
+      JSON.stringify(
+        discordFailureLog({
+          correlationId: `discord:${interaction.id}`,
+          method: "PATCH",
+          url: `https://discord.com/api/v10/webhooks/${interaction.application_id}/${interaction.token}/messages/@original`,
+          status: response?.status ?? null,
+          detail,
+          secrets: [interaction.token],
+          message: "Discord original-response edit failed",
+        }),
+      ),
     );
     return false;
   }
@@ -209,19 +257,24 @@ async function sendFollowUp(
 ): Promise<string | null> {
   const request = await discordBody(env, callback);
   const response = await discordFetch(
-    `https://discord.com/api/v10/webhooks/${encodeURIComponent(interaction.application_id)}/${encodeURIComponent(interaction.token)}?wait=true`,
+    `https://discord.com/api/v10/webhooks/${encodeURIComponent(interaction.application_id)}/${encodeURIComponent(interaction.token)}`,
     { method: "POST", headers: request.headers, body: request.body },
+    { interactionId: interaction.id, token: interaction.token },
   );
   if (!response?.ok) {
     const detail = response ? await response.text().catch(() => "") : "request timed out";
     console.error(
-      JSON.stringify({
-        level: "error",
-        request_id: `discord:${interaction.id}`,
-        message: "Discord follow-up message failed",
-        status: response?.status ?? null,
-        detail: detail.slice(0, 800),
-      }),
+      JSON.stringify(
+        discordFailureLog({
+          correlationId: `discord:${interaction.id}`,
+          method: "POST",
+          url: `https://discord.com/api/v10/webhooks/${interaction.application_id}/${interaction.token}`,
+          status: response?.status ?? null,
+          detail,
+          secrets: [interaction.token],
+          message: "Discord follow-up message failed",
+        }),
+      ),
     );
     return null;
   }
@@ -229,21 +282,84 @@ async function sendFollowUp(
   return message?.id ?? null;
 }
 
-async function originalMessageId(interaction: DiscordInteraction): Promise<string | null> {
-  const response = await discordFetch(
-    `https://discord.com/api/v10/webhooks/${encodeURIComponent(interaction.application_id)}/${encodeURIComponent(interaction.token)}/messages/@original`,
-    { method: "GET" },
-  );
-  if (!response?.ok) return null;
-  const message = (await response.json().catch(() => null)) as { id?: string } | null;
-  return message?.id ?? null;
+function isPrivateCallback(callback: DiscordCallback): boolean {
+  return Boolean((callback.data?.flags ?? 0) & EPHEMERAL_FLAG);
 }
 
-async function deleteOriginal(interaction: DiscordInteraction): Promise<void> {
-  await discordFetch(
-    `https://discord.com/api/v10/webhooks/${encodeURIComponent(interaction.application_id)}/${encodeURIComponent(interaction.token)}/messages/@original`,
-    { method: "DELETE" },
-  );
+function privateCallback(callback: DiscordCallback, note?: string): DiscordCallback {
+  const data = callback.data ?? {};
+  return {
+    type: 4,
+    data: {
+      ...data,
+      content: note ? (data.content ? `${data.content}\n${note}` : note) : data.content,
+      flags: (data.flags ?? 0) | EPHEMERAL_FLAG,
+    },
+    attachments: callback.attachments,
+  };
+}
+
+function publicDeliveryFailedNote(callback: DiscordCallback): DiscordCallback {
+  const data = privateCallback(callback);
+  const note =
+    "The public channel copy could not be posted. This private receipt is the recorded result. Press Share to channel to try the public post again; do not start a new draw.";
+  return {
+    ...data,
+    data: {
+      ...data.data!,
+      content: data.data?.content ? `${data.data.content}\n${note}` : note,
+    },
+  };
+}
+
+interface DeliveryOutcome {
+  delivered: boolean;
+  visibility: "private" | "public" | "private_fallback";
+}
+
+/**
+ * Deliver a completed interaction. The initial deferred acknowledgement is
+ * always private, because element-level audience checks happen after the draw.
+ * Discord preserves that visibility for the original message; it cannot be
+ * changed later.
+ *
+ * A public result therefore uses a deliberate second delivery: settle the
+ * original with the private receipt, then create a public follow-up. The first
+ * POST after a deferred response is documented to edit the original instead of
+ * creating a message, so the PATCH must happen first.
+ */
+async function deliverDeferred(
+  env: DiscordEnv,
+  interaction: DiscordInteraction,
+  callback: DiscordCallback,
+): Promise<DeliveryOutcome> {
+  if (isPrivateCallback(callback)) {
+    const delivered = await editOriginal(env, interaction, callback);
+    return { delivered, visibility: "private" };
+  }
+
+  const privateReceipt = privateCallback(callback);
+  const settled = await editOriginal(env, interaction, privateReceipt);
+  if (!settled) return { delivered: false, visibility: "private_fallback" };
+
+  const publicMessageId = await sendFollowUp(env, interaction, callback);
+  if (publicMessageId) return { delivered: true, visibility: "public" };
+
+  // The user still has a complete private receipt. Re-edit it with an honest
+  // explanation and a safe retry path rather than claiming success or silence.
+  await editOriginal(env, interaction, publicDeliveryFailedNote(callback));
+  return { delivered: true, visibility: "private_fallback" };
+}
+
+function safeRecoveryReason(error: unknown): string {
+  const api = error instanceof ApiError ? error : null;
+  if (!api) {
+    return "The result is recorded; the display step hit an unexpected error. No second draw was started.";
+  }
+  if (api.code === "card_render_unavailable" || api.code === "render_missing") {
+    return "The saved card render was unavailable, but the draw and serial are recorded.";
+  }
+  return `The display step stopped after the draw: ${redactDiscordText(api.message)}.`;
 }
 
 async function processDeferred(
@@ -255,35 +371,20 @@ async function processDeferred(
   const finish = async (
     status: "completed" | "failed",
     errorCode?: string,
+    visibility?: DeliveryOutcome["visibility"],
   ): Promise<void> => {
     if (finished) return;
     finished = true;
     await recordFinish(env, interaction.id, status, errorCode);
-  };
-
-  const deliver = async (callback: DiscordCallback): Promise<boolean> => {
-    if (!callback.attachments?.length) {
-      return editOriginal(env, interaction, callback);
-    }
-    // Card reveals are delivered as a normal follow-up with the render
-    // attached, so the artwork is visible even when Discord's external image
-    // proxy has not populated dimensions. The temporary deferred message is
-    // removed only when it is a different message from the delivered card.
-    const delivered = await sendFollowUp(env, interaction, callback);
-    if (delivered) {
-      const original = await originalMessageId(interaction);
-      if (original && original !== delivered) await deleteOriginal(interaction);
-      return true;
-    }
-    // Never leave the deferred placeholder blank. The text receipt is always
-    // safe to show and the missing-artwork note names the recovery path.
-    return editOriginal(env, interaction, callback);
+    if (visibility) await markDeliveryVisibility(env.DB, interaction.id, visibility);
   };
 
   try {
     const guildId = interaction.guild_id;
     if (!guildId) {
-      await deliver(
+      const outcome = await deliverDeferred(
+        env,
+        interaction,
         errorCallback(
           new ApiError(
             403,
@@ -292,7 +393,7 @@ async function processDeferred(
           ),
         ),
       );
-      await finish("failed", "discord_guild_required");
+      await finish(outcome.delivered ? "completed" : "failed", "discord_guild_required", outcome.visibility);
       return;
     }
     const resolved = await resolveInstallation(env, interaction, applicationId, {
@@ -306,8 +407,19 @@ async function processDeferred(
       interaction.type === 2
         ? await runCommand(ctx, interaction, resolved.installation)
         : await runComponent(ctx, interaction, resolved.installation);
-    const delivered = await deliver(callback);
-    await finish(delivered ? "completed" : "failed", delivered ? undefined : "delivery_failed");
+    const outcome = await deliverDeferred(env, interaction, callback);
+    if (!outcome.delivered) {
+      // The domain may already have committed. Keep the interaction completed
+      // with a delivery-specific error code; the receipt is retrievable.
+      const receipt = await readInteractionReceipt(env.DB, interaction.id);
+      await finish(receipt ? "completed" : "failed", "delivery_failed", outcome.visibility);
+      return;
+    }
+    await finish(
+      "completed",
+      outcome.visibility === "private_fallback" ? "public_delivery_failed" : undefined,
+      outcome.visibility,
+    );
   } catch (error) {
     const api = error instanceof ApiError ? error : null;
     if (!api) {
@@ -315,20 +427,33 @@ async function processDeferred(
         JSON.stringify({
           level: "error",
           request_id: `discord:${interaction.id}`,
-          message: error instanceof Error ? error.message : "Unexpected Discord interaction error",
+          message: redactDiscordText(
+            error instanceof Error ? error.message : "Unexpected Discord interaction error",
+            [interaction.token],
+          ),
         }),
       );
     }
-    await finish("failed", api?.code ?? "internal_error");
-    await deliver(
-      errorCallback(
-        api ??
-          new ApiError(
-            500,
-            "internal_error",
-            "Foilbury could not complete that interaction. Nothing was changed.",
-          ),
-      ),
+
+    // A draw may have committed before the failure. Recover the persisted
+    // receipt and tell the truth; never offer a second paid draw as "retry".
+    const receipt = await readInteractionReceipt(env.DB, interaction.id);
+    const recovery = receipt
+      ? {
+          type: 4 as const,
+          data: drawRecoveryMessage({
+            receipt,
+            origin: env.FOILBURY_PUBLIC_ORIGIN ?? "https://foilbury.loftwah.com",
+            interactionId: interaction.id,
+            reason: safeRecoveryReason(error),
+          }) as DiscordMessage,
+        }
+      : errorCallback(api);
+    const outcome = await deliverDeferred(env, interaction, recovery);
+    await finish(
+      outcome.delivered || Boolean(receipt) ? "completed" : "failed",
+      outcome.delivered ? (receipt ? "delivery_recovered" : api?.code) : "delivery_failed",
+      outcome.visibility,
     );
   }
 }
@@ -434,14 +559,11 @@ export async function handleDiscordInteraction(
   }
 
   if (options?.waitUntil) {
-    // Acknowledge within Discord's three-second deadline. D1 work, player
-    // creation and the card reveal continue after the acknowledgement and are
-    // delivered by editing the original interaction response.
+    // Acknowledge within Discord's three-second deadline. Every deferred
+    // acknowledgement is private, because a later audience check cannot change
+    // the visibility Discord has already fixed for this message.
     options.waitUntil(processDeferred(env, interaction, applicationId));
-    return jsonResponse({
-      type: 5,
-      data: isEphemeralInteraction(interaction) ? { flags: 64 } : {},
-    });
+    return jsonResponse({ type: 5, data: { flags: EPHEMERAL_FLAG } });
   }
 
   try {
@@ -471,6 +593,11 @@ export async function handleDiscordInteraction(
       callback = await runComponent(ctx, interaction, resolved.installation);
     }
     await recordFinish(env, interaction.id, "completed");
+    await markDeliveryVisibility(
+      env.DB,
+      interaction.id,
+      isPrivateCallback(callback) ? "private" : "public",
+    );
     return jsonResponse(callback);
   } catch (error) {
     const api = error instanceof ApiError ? error : null;
@@ -481,7 +608,10 @@ export async function handleDiscordInteraction(
         JSON.stringify({
           level: "error",
           request_id: `discord:${interaction.id}`,
-          message: error instanceof Error ? error.message : "Unexpected Discord interaction error",
+          message: redactDiscordText(
+            error instanceof Error ? error.message : "Unexpected Discord interaction error",
+            [interaction.token],
+          ),
         }),
       );
       await recordFinish(env, interaction.id, "failed", "internal_error");
@@ -492,7 +622,7 @@ export async function handleDiscordInteraction(
           new ApiError(
             500,
             "internal_error",
-            "Foilbury could not complete that interaction. Nothing was changed.",
+            "Foilbury could not confirm the outcome of that action. Check your cabinet and wallet before trying again; a committed draw remains recorded.",
           ),
       ),
     );

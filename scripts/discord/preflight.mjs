@@ -14,9 +14,11 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { DISCORD_COMMANDS } from "../../src/server/discord/command-definitions.ts";
 
 const args = new Set(process.argv.slice(2));
 const local = args.has("--local");
+const acceptance = args.has("--acceptance");
 const jsonOutput = args.has("--json");
 const root = process.cwd();
 const env = readEnv(path.join(root, ".env"));
@@ -98,6 +100,84 @@ function rows(sql) {
   return remoteRows(sql);
 }
 
+function compareCommandSchema(actual, expected) {
+  if (!expected) return ["source command definition is missing"];
+  const problems = [];
+  const walk = (actualOptions = [], expectedOptions = [], path = "") => {
+    if (actualOptions.length !== expectedOptions.length) {
+      problems.push(`${path || "options"} count ${actualOptions.length}/${expectedOptions.length}`);
+    }
+    for (const expectedOption of expectedOptions) {
+      const actualOption = actualOptions.find((option) => option.name === expectedOption.name);
+      const label = `${path}${path ? "." : ""}${expectedOption.name}`;
+      if (!actualOption) {
+        problems.push(`${label} missing`);
+        continue;
+      }
+      if (actualOption.type !== expectedOption.type) {
+        problems.push(`${label} type ${actualOption.type}/${expectedOption.type}`);
+      }
+      if (Boolean(actualOption.required) !== Boolean(expectedOption.required)) {
+        problems.push(`${label} required ${Boolean(actualOption.required)}/${Boolean(expectedOption.required)}`);
+      }
+      walk(actualOption.options ?? [], expectedOption.options ?? [], label);
+    }
+  };
+  if (actual?.description !== expected.description) problems.push("description differs");
+  walk(actual?.options ?? [], expected.options ?? []);
+  return problems;
+}
+
+const PERMISSIONS = {
+  VIEW_CHANNEL: 1n << 10n,
+  SEND_MESSAGES: 1n << 11n,
+  MANAGE_MESSAGES: 1n << 13n,
+  EMBED_LINKS: 1n << 14n,
+  ATTACH_FILES: 1n << 15n,
+  READ_MESSAGE_HISTORY: 1n << 16n,
+  PIN_MESSAGES: 1n << 51n,
+  ADMINISTRATOR: 1n << 3n,
+};
+
+function computePermissions({ guild, channel, member, roles, botUserId }) {
+  if (member?.user?.id === guild.owner_id) return (1n << 64n) - 1n;
+  const everyone = roles.find((role) => role.id === guild.id);
+  let permissions = BigInt(everyone?.permissions ?? "0");
+  for (const roleId of member?.roles ?? []) {
+    const role = roles.find((item) => item.id === roleId);
+    if (role) permissions |= BigInt(role.permissions ?? "0");
+  }
+  if ((permissions & PERMISSIONS.ADMINISTRATOR) === PERMISSIONS.ADMINISTRATOR) {
+    return (1n << 64n) - 1n;
+  }
+  const overwriteEveryone = (channel.permission_overwrites ?? []).find((item) => item.id === guild.id);
+  if (overwriteEveryone) {
+    permissions &= ~BigInt(overwriteEveryone.deny ?? "0");
+    permissions |= BigInt(overwriteEveryone.allow ?? "0");
+  }
+  let allow = 0n;
+  let deny = 0n;
+  for (const roleId of member?.roles ?? []) {
+    const overwrite = (channel.permission_overwrites ?? []).find((item) => item.id === roleId);
+    if (overwrite) {
+      allow |= BigInt(overwrite.allow ?? "0");
+      deny |= BigInt(overwrite.deny ?? "0");
+    }
+  }
+  permissions &= ~deny;
+  permissions |= allow;
+  const memberOverwrite = (channel.permission_overwrites ?? []).find((item) => item.id === botUserId);
+  if (memberOverwrite) {
+    permissions &= ~BigInt(memberOverwrite.deny ?? "0");
+    permissions |= BigInt(memberOverwrite.allow ?? "0");
+  }
+  return permissions;
+}
+
+function hasPermission(permissions, bit) {
+  return (permissions & bit) === bit;
+}
+
 async function discord(pathname) {
   const token = env.DISCORD_BOT_TOKEN;
   if (!token) throw new Error("DISCORD_BOT_TOKEN is not configured.");
@@ -165,12 +245,13 @@ if (!applicationId || !guildId || !channelId) {
       `#${channel.name} · ${channel.id}`,
     );
     const command = commands.find((item) => item.name === "foilbury");
-    const optionNames = (command?.options ?? []).map((option) => option.name);
+    const expected = DISCORD_COMMANDS.find((item) => item.name === "foilbury");
+    const mismatches = compareCommandSchema(command, expected);
     add(
-      "command registration",
-      command && optionNames.includes("tour") && optionNames.includes("admin") ? "PASS" : "FAIL",
+      "command schema",
+      command && mismatches.length === 0 ? "PASS" : "FAIL",
       command
-        ? `foilbury ${command.id} · ${optionNames.join(", ")}`
+        ? `foilbury ${command.id} · ${mismatches.length === 0 ? "complete schema matches the source definition" : `mismatch: ${mismatches.slice(0, 6).join("; ")}`}`
         : "The /foilbury guild command is not registered.",
     );
 
@@ -183,21 +264,59 @@ if (!applicationId || !guildId || !channelId) {
       everyoneOverwrite && (BigInt(everyoneOverwrite.allow) & viewBit) !== 0n,
     );
     channelDenied = denied;
+
+    const botUserId = application.bot?.id ?? applicationId;
+    const [roles, member] = await Promise.all([
+      discord(`/guilds/${guildId}/roles`),
+      discord(`/guilds/${guildId}/members/${botUserId}`),
+    ]);
+    const permissions = computePermissions({ guild, channel, member, roles, botUserId });
+    const required = ["VIEW_CHANNEL", "SEND_MESSAGES", "EMBED_LINKS", "ATTACH_FILES", "READ_MESSAGE_HISTORY"];
+    const missing = required.filter((name) => !hasPermission(permissions, PERMISSIONS[name]));
+    add(
+      "bot effective permissions",
+      missing.length === 0 ? "PASS" : "FAIL",
+      missing.length === 0
+        ? `${botUserId} can view, send, embed, attach and read history in #${channel.name}`
+        : `missing in #${channel.name}: ${missing.join(", ")}`,
+    );
+    const canPin =
+      hasPermission(permissions, PERMISSIONS.PIN_MESSAGES) ||
+      hasPermission(permissions, PERMISSIONS.MANAGE_MESSAGES) ||
+      hasPermission(permissions, PERMISSIONS.ADMINISTRATOR);
+    add(
+      "pin capability",
+      canPin ? "PASS" : "BLOCKED",
+      hasPermission(permissions, PERMISSIONS.PIN_MESSAGES)
+        ? "PIN_MESSAGES is effective; pinning does not require MANAGE_MESSAGES."
+        : canPin
+          ? "PIN_MESSAGES is absent but another granted permission covers pinning; do not request MANAGE_MESSAGES merely to pin."
+          : "The bot cannot pin. This blocks pinning only, not command integration or local transport tests.",
+    );
     add(
       "channel visibility",
       denied ? "PASS" : "BLOCKED",
       denied
-        ? "@everyone is denied View Channel; this can be treated as a restricted member destination after policy review."
+        ? "@everyone is explicitly denied View Channel. This is a channel policy signal, not proof that every role/member is excluded."
         : allowed
           ? "An @everyone overwrite explicitly allows View Channel; the channel is public to guild members."
           : "No @everyone View Channel override: every guild member can read the channel.",
     );
+    const spectatorEvidenceFile = process.env.FOILBURY_SPECTATOR_EVIDENCE;
+    let spectator = null;
+    if (spectatorEvidenceFile) {
+      try {
+        spectator = JSON.parse(fs.readFileSync(spectatorEvidenceFile, "utf8"));
+      } catch {
+        spectator = null;
+      }
+    }
     add(
-      "spectator setup",
-      denied ? "PASS" : "BLOCKED",
-      denied
-        ? "A genuinely non-member spectator cannot read this channel; use a second controlled account that is not a Foilbury member for the outsider test."
-        : "The channel is readable by every guild member. Member-only artwork must stay ephemeral here; public original-IP content may be shared.",
+      "spectator observation",
+      spectator?.observed === true && spectator?.actor_id ? "PASS" : "BLOCKED",
+      spectator?.observed === true && spectator?.actor_id
+        ? `Independent actor ${spectator.actor_id} observed the delivered message at ${spectator.observed_at ?? "a recorded time"}.`
+        : "No independent authorised identity has observed anything. A second tab of the same account is not a spectator. Use the assisted acceptance runner and record the observation artifact.",
     );
   } catch (error) {
     add("Discord API", "BLOCKED", error instanceof Error ? error.message : String(error));
@@ -264,8 +383,8 @@ try {
     )[0];
     add(
       "album roster",
-      Number(cards?.cards) === 8 ? "PASS" : "FAIL",
-      `${cards?.cards ?? 0}/8 published cards`,
+      Number(cards?.cards) > 0 ? "PASS" : "FAIL",
+      `${cards?.cards ?? 0} published cards · collection release ${collection.release_version ?? 1} (no universal eight-card ceiling)`,
     );
     const renders = rows(
       `SELECT
@@ -289,22 +408,33 @@ try {
         : "FAIL",
       `${renders?.fronts ?? 0}/${renders?.variants ?? 0} fronts · ${renders?.backs ?? 0}/${renders?.variants ?? 0} backs`,
     );
-    const achievement = rows(
+    const achievements = rows(
       `SELECT key, name, criteria_json FROM fb_achievement_definitions
-        WHERE status = 'active' AND criteria_json LIKE '%${collection.id}%' AND criteria_json LIKE '%"target":8%' LIMIT 1`,
+        WHERE status = 'active' AND criteria_json LIKE '%${collection.id}%'`,
+    );
+    const parsedAchievements = achievements
+      .map((achievement) => {
+        try {
+          return { ...achievement, criteria: JSON.parse(achievement.criteria_json) };
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+    const completion = parsedAchievements.sort(
+      (left, right) =>
+        Number(right.criteria?.target ?? 0) - Number(left.criteria?.target ?? 0),
     )[0];
-    let roster = 0;
-    try {
-      roster = JSON.parse(achievement?.criteria_json ?? "{}").roster_card_ids?.length ?? 0;
-    } catch {
-      roster = 0;
-    }
+    const roster = completion?.criteria?.roster_card_ids?.length ?? 0;
+    const target = Number(completion?.criteria?.target ?? 0);
     add(
       "completion achievement",
-      achievement && roster === 8 ? "PASS" : "FAIL",
-      achievement
-        ? `${achievement.name} · frozen roster ${roster}/8`
-        : "No target-8 collection achievement.",
+      completion && roster > 0 && target > 0 && roster === target
+        ? "PASS"
+        : "FAIL",
+      completion
+        ? `${completion.name} · frozen roster ${roster} · target ${target} · current published cards ${Number(cards?.cards ?? 0)} · collection release ${collection.release_version ?? 1}. Additions do not rewrite the frozen roster.`
+        : "No collection achievement.",
     );
   }
 
@@ -324,11 +454,26 @@ try {
       WHERE di.revoked_at IS NULL`,
   )[0];
   add(
-    "test identities",
+    "linked identity presence",
     local ? "BLOCKED" : Number(identities?.count) > 0 ? "PASS" : "FAIL",
     local
       ? "Local D1 has no production Discord identities. Verify the owner identity on the deployed installation instead."
       : `${identities?.count ?? 0} linked Discord identities · ${identities?.platform_admins ?? 0} platform admin links`,
+  );
+  let actorEvidence = null;
+  if (process.env.FOILBURY_ACTOR_EVIDENCE) {
+    try {
+      actorEvidence = JSON.parse(fs.readFileSync(process.env.FOILBURY_ACTOR_EVIDENCE, "utf8"));
+    } catch {
+      actorEvidence = null;
+    }
+  }
+  add(
+    "authenticated actor session",
+    actorEvidence?.authenticated === true && actorEvidence?.actor_id ? "PASS" : "BLOCKED",
+    actorEvidence?.authenticated === true && actorEvidence?.actor_id
+      ? `Recorded authenticated actor ${actorEvidence.actor_id}.`
+      : "A linked identity row is not a usable authenticated actor session. Run the assisted runner with a real authorised sign-in; do not infer a session from D1.",
   );
 } catch (error) {
   add("database", "BLOCKED", error instanceof Error ? error.message : String(error));
@@ -336,24 +481,41 @@ try {
 
 const failed = checks.filter((check) => check.status === "FAIL");
 const blocked = checks.filter((check) => check.status === "BLOCKED");
+const passed = checks.filter((check) => check.status === "PASS");
+const acceptanceVerdict =
+  failed.length > 0 || blocked.length > 0 ? "INCOMPLETE" : "PASS";
 const result = {
   generated_at: new Date().toISOString(),
   mode: local ? "local" : "production",
+  kind: acceptance ? "acceptance" : "readiness",
   origin,
   checks,
+  passed: passed.length,
   failed: failed.length,
   blocked: blocked.length,
+  verdict: acceptance ? acceptanceVerdict : failed.length ? "NOT_READY" : "READY_UNTESTED",
+  note:
+    "This is a readiness probe, not product acceptance. A BLOCKED or unperformed scenario is not a pass.",
 };
 
 if (jsonOutput) {
   console.log(JSON.stringify(result, null, 2));
 } else {
-  console.log(`Foilbury Discord preflight · ${result.mode} · ${origin}`);
-  for (const check of checks)
-    console.log(`${check.status.padEnd(7)} ${check.id.padEnd(24)} ${check.detail}`);
   console.log(
-    `\n${checks.length - failed.length - blocked.length} PASS · ${failed.length} FAIL · ${blocked.length} BLOCKED`,
+    `Foilbury Discord ${acceptance ? "acceptance" : "readiness"} probe · ${result.mode} · ${origin}`,
   );
+  for (const check of checks)
+    console.log(`${check.status.padEnd(7)} ${check.id.padEnd(28)} ${check.detail}`);
+  console.log(
+    `\n${passed.length} PASS · ${failed.length} FAIL · ${blocked.length} BLOCKED · ${result.verdict}`,
+  );
+  if (!acceptance) {
+    console.log(
+      "Readiness only: BLOCKED scenarios are unperformed, not accepted. Re-run with --acceptance only after completing them.",
+    );
+  }
   console.log("No draw, grant, spend, message or paid provider was used.");
 }
-process.exit(failed.length ? 1 : 0);
+if (failed.length) process.exit(1);
+if (acceptance && blocked.length) process.exit(2);
+process.exit(0);

@@ -1,4 +1,9 @@
-# Foilbury follow-on acceptance: deployed Discord pilot
+# Foilbury follow-on acceptance: deployed Discord pilot (historical)
+
+> Historical archive. It is not current release authority. The current
+> tree-bound matrix is `docs/release-acceptance.json`, with the readable index
+> in `docs/ACCEPTANCE_CURRENT.md`. Rows below describe their recorded revision
+> and must not be read as evidence for a later build.
 
 Generated from the working tree on 2026-11-02. Follow-on code revision: `ff581de` (Discord OAuth sign-in), building on `80b851d` and `531756f`. Deployed Worker version: `dfb77cf4-8539-4676-971b-9e4017131e4b`. This is the follow-on report; the original local-first acceptance record remains in `docs/LOCAL_ACCEPTANCE.md`.
 

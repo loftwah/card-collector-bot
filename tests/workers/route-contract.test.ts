@@ -232,7 +232,7 @@ describe("exact API dispatch and least-privilege player scopes", () => {
     const profileWrite = agentFor(player, ["profile:write"]);
     const prefs = await sendJson(profileWrite, "/api/v1/me/preferences", "PATCH", { sharingEnabled: true });
     expect(prefs.response.status).toBe(200);
-    const share = await sendJson(profileWrite, "/api/v1/shares", "POST", { kind: "cabinet", expiresInDays: 7 });
+    const share = await sendJson(profileWrite, "/api/v1/shares", "POST", { kind: "profile", expiresInDays: 7 });
     expect(share.response.status).toBe(200);
     expect(typeof share.json.url).toBe("string");
   });

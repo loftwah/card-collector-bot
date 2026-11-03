@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-03T15:29:15.971Z",
+  "generated_at": "2026-11-03T17:35:40.760Z",
   "base_url": "http://localhost:5173",
   "results": [
     {
@@ -79,6 +79,16 @@
     },
     {
       "name": "light Studio NPC collectors: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light Studio Foil grants: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light Studio team policy: axe + overflow",
       "status": "PASS",
       "detail": "0 total axe findings, none serious/critical"
     },
@@ -189,6 +199,16 @@
     },
     {
       "name": "dark Studio NPC collectors: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark Studio Foil grants: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark Studio team policy: axe + overflow",
       "status": "PASS",
       "detail": "0 total axe findings, none serious/critical"
     },

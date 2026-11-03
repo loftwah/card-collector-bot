@@ -71,8 +71,16 @@ describe("persistent NPC collectors", () => {
     const first = await playNpcOnce(owner, npc.id, "npc-action-test-001");
     expect(first.status).toBe("completed");
     expect(first.receipt.card_name).toBe("Test One");
-    const receipt = first.receipt as { instance_id: string; serial: string; balance_after: number };
-    expect(receipt.balance_after).toBe(270);
+    const receipt = first.receipt as {
+      instance_id: string;
+      serial: string;
+      balance_after: number;
+      balance_after_debit: number;
+      credits_total: number;
+    };
+    expect(receipt.balance_after_debit).toBe(270);
+    expect(receipt.credits_total).toBe(160);
+    expect(receipt.balance_after).toBe(430);
     const instance = await runtime.DB
       .prepare("SELECT i.user_id, i.status, i.serial, u.is_synthetic FROM fb_card_instances i JOIN fb_users u ON u.id = i.user_id WHERE i.id = ?")
       .bind(receipt.instance_id)

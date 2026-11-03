@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, describeError } from "@/lib/client";
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
@@ -36,6 +36,61 @@ export default function PreferenceForm({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [shareLinks, setShareLinks] = useState<
+    Array<{
+      id: string;
+      kind: string;
+      status: string;
+      created_at: string;
+      expires_at: string;
+      preview: Record<string, unknown>;
+    }>
+  >([]);
+  const [sharesBusy, setSharesBusy] = useState("");
+
+  async function loadShares() {
+    try {
+      const result = await api<{ items: typeof shareLinks }>("/api/v1/shares");
+      setShareLinks(result.items);
+    } catch (cause) {
+      setError(describeError(cause));
+    }
+  }
+
+  useEffect(() => {
+    void loadShares();
+  }, []);
+
+  async function revokeShare(id: string) {
+    setSharesBusy(id);
+    setError("");
+    try {
+      await api(`/api/v1/shares/${id}/revoke`, { method: "POST", body: {} });
+      setMessage("Share revoked. The link stops resolving; already-copied bytes cannot be recalled.");
+      await loadShares();
+    } catch (cause) {
+      setError(describeError(cause));
+    } finally {
+      setSharesBusy("");
+    }
+  }
+
+  async function revokeAllShares() {
+    setSharesBusy("all");
+    setError("");
+    try {
+      const active = shareLinks.filter((link) => link.status === "active");
+      for (const link of active) {
+        await api(`/api/v1/shares/${link.id}/revoke`, { method: "POST", body: {} });
+      }
+      setMessage(`${active.length} active share link${active.length === 1 ? "" : "s"} revoked.`);
+      await loadShares();
+    } catch (cause) {
+      setError(describeError(cause));
+    } finally {
+      setSharesBusy("");
+    }
+  }
 
   function setCollection(id: string, included: boolean) {
     setHiddenCollections((current) => (included ? current.filter((item) => item !== id) : [...new Set([...current, id])]));
@@ -165,12 +220,53 @@ export default function PreferenceForm({
       <aside className="grid gap-5">
         <section className="surface-flat p-5">
           <p className="eyebrow">Explicit sharing</p>
-          <p className="mt-2 text-sm text-[var(--muted)]">This master switch only allows you to create links. Nothing is shared until you choose one exact card, collection or badge, preview it, and confirm. Turning it off does not revoke existing links; manage those from your showcase.</p>
+          <p className="mt-2 text-sm text-[var(--muted)]">This master switch only allows you to create links. Nothing is shared until you choose one exact card, collection, badge, wishlist or profile, choose an expiry and confirm. Turning it off blocks new links; existing links stay active until you revoke them below.</p>
           <label className="mt-4 flex items-center justify-between gap-4">
             <span className="text-sm font-semibold">Allow me to create share links</span>
             <Switch checked={sharingEnabled} onCheckedChange={setSharingEnabled} aria-label="Enable share link creation" />
           </label>
           <p className="mt-3 text-xs leading-relaxed text-[var(--muted)]">Every link is a snapshot with an expiry. It never silently expands to cards you obtain later, and a secret URL never substitutes for membership.</p>
+        </section>
+        <section className="border border-[var(--line)] p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="eyebrow">Manage shares</p>
+            {shareLinks.some((link) => link.status === "active") ? (
+              <Button size="sm" variant="ghost" onClick={revokeAllShares} disabled={Boolean(sharesBusy)}>
+                {sharesBusy === "all" ? "Revoking…" : "Revoke all active"}
+              </Button>
+            ) : null}
+          </div>
+          <div className="mt-3 grid gap-2">
+            {shareLinks.length === 0 ? (
+              <p className="text-sm text-[var(--muted)]">No share links have been created.</p>
+            ) : (
+              shareLinks.map((link) => {
+                const label =
+                  String(link.preview.card_name ?? link.preview.collection_name ?? link.preview.achievement_name ?? link.preview.display_name ?? link.kind);
+                return (
+                  <div key={link.id} className="border border-[var(--line)] p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold">{label}</p>
+                        <p className="font-mono text-[0.54rem] uppercase tracking-[0.08em] text-[var(--muted)]">
+                          {link.kind} · {link.status} · expires {new Date(link.expires_at).toLocaleDateString("en-AU")}
+                        </p>
+                      </div>
+                      {link.status === "active" ? (
+                        <Button size="sm" variant="danger" onClick={() => revokeShare(link.id)} disabled={Boolean(sharesBusy)}>
+                          {sharesBusy === link.id ? "Revoking…" : "Revoke"}
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+          <p className="mt-3 text-xs leading-relaxed text-[var(--muted)]">
+            A link is a fixed snapshot. It never silently grows to include cards you obtain later, and a
+            secret URL never substitutes for membership on member-only content.
+          </p>
         </section>
         <section className="border border-[var(--line)] p-5">
           <p className="eyebrow">What changes odds</p>

@@ -10,12 +10,13 @@ export default function ShareLinkButton({ kind, targetId, label = "Share" }: { k
   const [error, setError] = useState("");
   const [url, setUrl] = useState("");
   const [confirming, setConfirming] = useState(false);
+  const [expiresInDays, setExpiresInDays] = useState(7);
 
   async function create() {
     setBusy(true);
     setError("");
     try {
-      const result = await api<{ url: string }>("/api/v1/shares", { method: "POST", body: { kind, targetId, expiresInDays: 7 } });
+      const result = await api<{ url: string }>("/api/v1/shares", { method: "POST", body: { kind, targetId, expiresInDays } });
       setUrl(result.url);
       setConfirming(false);
       try {
@@ -35,7 +36,20 @@ export default function ShareLinkButton({ kind, targetId, label = "Share" }: { k
   if (confirming) {
     return (
       <span className="inline-flex flex-wrap items-center gap-2 border border-[var(--line)] bg-[var(--paper)] px-2 py-1.5" role="group" aria-label="Confirm share">
-        <span className="text-[0.65rem] text-[var(--muted)]">Create a 7-day snapshot of this exact object?</span>
+        <span className="text-[0.65rem] text-[var(--muted)]">Create a snapshot of this exact object?</span>
+        <label className="text-[0.62rem] text-[var(--muted)]">
+          Expires
+          <select
+            className="ml-1 border border-[var(--line)] bg-[var(--paper)] px-1 py-0.5"
+            value={expiresInDays}
+            onChange={(event) => setExpiresInDays(Number(event.target.value))}
+            aria-label="Share link expiry"
+          >
+            <option value={1}>in 1 day</option>
+            <option value={7}>in 7 days</option>
+            <option value={30}>in 30 days</option>
+          </select>
+        </label>
         <button type="button" className="btn btn-primary btn-sm" onClick={create} disabled={busy}>
           {busy ? <Loader2 size={13} className="animate-spin" /> : <Link2 size={13} />} Confirm
         </button>

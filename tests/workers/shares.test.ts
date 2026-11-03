@@ -19,6 +19,17 @@ describe("deliberate sharing", () => {
     expect(revoked.status).toBe("revoked");
   });
 
+  it("retires new whole-cabinet links without invalidating safe existing snapshots", async () => {
+    await bootstrap();
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    await updatePreferences(owner, { sharingEnabled: true });
+    await expect(createShareLink(owner, { kind: "cabinet" })).rejects.toMatchObject({
+      code: "share_kind_retired",
+    });
+    const profile = await createShareLink(owner, { kind: "profile", expiresInDays: 7 });
+    expect(profile.kind).toBe("profile");
+  });
+
   it("does not let a player share another member's copy", async () => {
     await bootstrap();
     const owner = await ctxFor("cabinet", "owner@foilbury.local");

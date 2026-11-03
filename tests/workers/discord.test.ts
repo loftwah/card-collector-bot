@@ -1,13 +1,14 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   expireStaleDiscordInteractions,
   handleDiscordInteraction,
 } from "../../src/server/discord/handler";
 import { signDiscordRequest } from "../../src/server/discord/signature";
 import type { DiscordEnv } from "../../src/server/discord/types";
-import { bootstrap, ctxFor, fixturePool, runtime, setBalance } from "./helpers";
+import { bootstrap, ctxFor, fixturePool, makeInstance, runtime, setBalance } from "./helpers";
 import { addCollectionCards, createCollection } from "../../src/server/modules/collections";
 import { createNpc } from "../../src/server/modules/npcs";
+import { DiscordTransport } from "./discord-transport";
 
 const APPLICATION_ID = "1566702936615026769";
 const GUILD_ID = "997734945206313041";
@@ -213,6 +214,84 @@ describe("Discord HTTP interactions", () => {
     expect(instances?.count).toBe(1);
   });
 
+  it("routes every user-facing command through the shared presentation builders", async () => {
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const fixture = await fixturePool(player);
+    await setBalance(player, player.user!.id, 1000);
+    await send(interaction(command("daily"), { id: "presentation-bootstrap" }));
+    // Clear the bootstrap claim so this test exercises the successful daily
+    // builder rather than the cooldown state.
+    await runtime.DB.prepare(
+      "DELETE FROM fb_reward_claims WHERE user_id = (SELECT user_id FROM fb_discord_identities WHERE discord_user_id = ?)",
+    )
+      .bind(DISCORD_USER_ID)
+      .run();
+    const identity = await runtime.DB.prepare(
+      "SELECT user_id FROM fb_discord_identities WHERE discord_user_id = ?",
+    )
+      .bind(DISCORD_USER_ID)
+      .first<{ user_id: string }>();
+    await makeInstance(player, identity!.user_id, fixture, "TEST-PRESENT-01");
+
+    const help = await send(interaction(command("help"), { id: "presentation-help" }));
+    expect(help.payload.data?.embeds?.[0]?.title).toBe("Welcome to Foilbury");
+    expect(JSON.stringify(help.payload.data)).toContain("Commands");
+
+    const daily = await send(interaction(command("daily"), { id: "presentation-daily" }));
+    expect(daily.payload.data?.embeds?.[0]?.fields?.map((field) => field.name)).toContain(
+      "Credited",
+    );
+    expect(daily.payload.data?.flags).toBe(64);
+
+    const packs = await send(interaction(command("packs"), { id: "presentation-packs" }));
+    expect(packs.payload.data?.embeds?.[0]?.title).toBe("Choose a capsule");
+    expect(JSON.stringify(packs.payload.data)).toContain("eligible card");
+    expect(packs.payload.data?.flags).toBe(64);
+
+    const open = await send(
+      interaction(command("open", [{ name: "pool", type: 3, value: "test-pool" }]), {
+        id: "presentation-open",
+      }),
+    );
+    const openFields = open.payload.data?.embeds?.[0]?.fields?.map((field) => field.name) ?? [];
+    expect(openFields).toEqual(
+      expect.arrayContaining(["Opening debit", "Settled balance", "Serial"]),
+    );
+    expect(open.payload.data?.flags).toBe(64);
+
+    const card = await send(
+      interaction(command("card", [{ name: "query", type: 3, value: "Test One" }]), {
+        id: "presentation-card",
+      }),
+    );
+    expect(card.payload.data?.embeds?.[0]?.fields?.map((field) => field.name)).toEqual(
+      expect.arrayContaining(["Collection", "Side", "Source"]),
+    );
+    expect(JSON.stringify(card.payload.data)).toContain("View back");
+
+    const collection = await send(interaction(command("collection"), { id: "presentation-collection" }));
+    expect(collection.payload.data?.embeds?.[0]?.title).toBe("Your cabinet");
+    expect(JSON.stringify(collection.payload.data)).toContain("Open cabinet on the web");
+
+    const achievements = await send(
+      interaction(command("achievements"), { id: "presentation-achievements" }),
+    );
+    expect(achievements.payload.data?.embeds?.[0]?.title).toBe("Achievements");
+    expect(JSON.stringify(achievements.payload.data)).toContain("Closest next");
+
+    const profile = await send(interaction(command("profile"), { id: "presentation-profile" }));
+    expect(profile.payload.data?.embeds?.[0]?.title).toContain("Dean");
+    expect(JSON.stringify(profile.payload.data)).toContain("This Bot across every server");
+
+    const denied = await send(
+      interaction(command("admin", [{ name: "status", type: 1, options: [] }]), {
+        id: "presentation-denied",
+      }),
+    );
+    expect(denied.payload.data?.embeds?.[0]?.title).toBe("Administration is private");
+    expect(denied.payload.data?.flags).toBe(64);
+  });
+
   it("shows the same awarded instance in a later collection lookup", async () => {
     const player = await ctxFor("cabinet", "player@foilbury.local");
     await fixturePool(player);
@@ -224,7 +303,7 @@ describe("Discord HTTP interactions", () => {
     const title = draw.payload.data?.embeds?.[0]?.title ?? "";
     const collection = await send(interaction(command("collection"), { id: "collection-1" }));
     const text = JSON.stringify(collection.payload.data);
-    expect(text).toContain("Your collection");
+    expect(text).toContain("Your cabinet");
     expect(text).toContain("Test One");
     expect(title).toContain("Test One");
     const card = await send(
@@ -259,7 +338,7 @@ describe("Discord HTTP interactions", () => {
     const now = new Date().toISOString();
     await runtime.DB.prepare("INSERT INTO fb_pools (id, tenant_id, slug, name, description, status, revision, price, created_at, updated_at, published_at) VALUES ('pool_empty_default', (SELECT tenant_id FROM fb_pools WHERE id = 'pool_test_open'), 'cabinet-draw', 'Cabinet draw', 'Default capsule with no entries', 'active', 1, 80, ?, ?, ?)").bind(now, now, now).run();
     const picker = await send(interaction(command("open"), { id: "default-empty" }));
-    expect(JSON.stringify(picker.payload.data)).toContain("Choose your capsule");
+    expect(JSON.stringify(picker.payload.data)).toContain("Choose a capsule");
     const ids = (picker.payload.data?.components ?? []).flatMap((row) => row.components ?? []).map((component) => component.custom_id);
     expect(ids).toContain("foilbury:open:test-pool");
     expect(picker.payload.data?.flags).toBe(64);
@@ -323,7 +402,7 @@ describe("Discord HTTP interactions", () => {
     expect(allowed.payload.data?.embeds?.[0]?.title).toContain("Bot status");
   });
 
-  it("acknowledges immediately and edits the original response after deferred work", async () => {
+  it("defers privately and delivers the committed reveal through the private original", async () => {
     const player = await ctxFor("cabinet", "player@foilbury.local");
     await fixturePool(player);
     await runtime.MEDIA.put("test/render.webp", new Uint8Array([82, 73, 70, 70, 1, 2, 3]));
@@ -343,53 +422,336 @@ describe("Discord HTTP interactions", () => {
       body: raw,
     });
 
+    const transport = new DiscordTransport();
     const pending: Promise<unknown>[] = [];
-    const calls: Array<{ url: string; body: string; method: string; files: number }> = [];
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      const method = String(init?.method ?? "GET");
-      const form = init?.body instanceof FormData ? init.body : null;
-      calls.push({
-        url,
-        body: form ? String(form.get("payload_json") ?? "") : String(init?.body ?? ""),
-        method,
-        files: form ? form.getAll("files[0]").length : 0,
-      });
-      const id =
-        method === "GET" && url.includes("/messages/@original")
-          ? "original-message"
-          : "follow-up-message";
-      return new Response(JSON.stringify({ id }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    }) as typeof fetch;
+    globalThis.fetch = transport.fetch as typeof fetch;
+    let ackFlags: number | undefined;
     try {
       const response = await handleDiscordInteraction(request, env(), {
         publicKey: publicKeyHex,
         waitUntil: (promise) => pending.push(promise),
       });
       const ack = (await response.json()) as { type?: number; data?: { flags?: number } };
+      ackFlags = ack.data?.flags;
       expect(ack.type).toBe(5);
-      expect(ack.data?.flags).toBeUndefined();
+      transport.acknowledge("test-interaction-token", ackFlags);
       await Promise.all(pending);
     } finally {
       globalThis.fetch = originalFetch;
     }
-    expect(calls).toHaveLength(3);
-    expect(calls[0]!.url).toContain(
-      "/webhooks/1566702936615026769/test-interaction-token?wait=true",
+
+    expect(ackFlags).toBe(64);
+    const original = transport.original("test-interaction-token")!;
+    expect(original.visibility).toBe("ephemeral");
+    expect(original.loading).toBe(false);
+    expect(original.files).toBe(1);
+    expect(JSON.stringify(original.payload)).toContain("Test One");
+    expect(JSON.stringify(original.payload)).toContain("attachment://foilbury-reveal-card.webp");
+    expect(JSON.stringify(original.payload)).toContain('"width":750');
+    // A private reveal must not create a channel-visible follow-up.
+    expect(transport.publicMessages()).toHaveLength(0);
+    expect(transport.requests.map((entry) => `${entry.method} ${entry.target}`)).toEqual([
+      "PATCH original",
+    ]);
+    const record = await runtime.DB.prepare(
+      "SELECT status, error_code, delivery_visibility, receipt_json FROM fb_discord_interactions WHERE interaction_id = ?",
+    )
+      .bind("deferred-draw")
+      .first<{
+        status: string;
+        error_code: string | null;
+        delivery_visibility: string | null;
+        receipt_json: string | null;
+      }>();
+    expect(record?.status).toBe("completed");
+    expect(record?.error_code).toBeNull();
+    expect(record?.delivery_visibility).toBe("private");
+    expect(record?.receipt_json).toContain("Test One");
+  });
+
+  it("posts a public share only after the private original is settled", async () => {
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const fixture = await fixturePool(player);
+    // The signed interaction creates or reuses the Discord-linked player, so
+    // resolve that durable identity before attaching a controlled owned card.
+    await send(interaction(command("daily"), { id: "share-bootstrap" }));
+    const identity = await runtime.DB.prepare(
+      "SELECT user_id FROM fb_discord_identities WHERE discord_user_id = ?",
+    )
+      .bind(DISCORD_USER_ID)
+      .first<{ user_id: string }>();
+    expect(identity?.user_id).toBeTruthy();
+    const instance = await makeInstance(player, identity!.user_id, fixture, "TEST-SHARE-001");
+    const body = interaction(
+      { custom_id: `foilbury:tourshare:card:${instance}`, component_type: 2 },
+      { id: "deferred-share", type: 3 },
     );
-    expect(calls[0]!.method).toBe("POST");
-    expect(calls[0]!.body).toContain("Test One");
-    expect(calls[0]!.body).toContain("attachment://foilbury-card.webp");
-    expect(calls[0]!.body).toContain('"width":750');
-    expect(calls[0]!.files).toBe(1);
-    expect(calls[1]!.url).toContain("/messages/@original");
-    expect(calls[1]!.method).toBe("GET");
-    expect(calls[2]!.url).toContain("/messages/@original");
-    expect(calls[2]!.method).toBe("DELETE");
+    const raw = JSON.stringify(body);
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = await signDiscordRequest({ body: raw, timestamp, privateKey });
+    const request = new Request("https://foilbury.test/api/discord/interactions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-signature-ed25519": signature,
+        "x-signature-timestamp": timestamp,
+      },
+      body: raw,
+    });
+
+    const transport = new DiscordTransport();
+    const pending: Promise<unknown>[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = transport.fetch as typeof fetch;
+    let ackFlags: number | undefined;
+    try {
+      const response = await handleDiscordInteraction(request, env(), {
+        publicKey: publicKeyHex,
+        waitUntil: (promise) => pending.push(promise),
+      });
+      const ack = (await response.json()) as { type?: number; data?: { flags?: number } };
+      ackFlags = ack.data?.flags;
+      transport.acknowledge("test-interaction-token", ackFlags);
+      await Promise.all(pending);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(ackFlags).toBe(64);
+    const original = transport.original("test-interaction-token")!;
+    expect(original.visibility).toBe("ephemeral");
+    expect(original.loading).toBe(false);
+    expect(JSON.stringify(original.payload)).toContain("TEST-SHARE-001");
+    const publicMessages = transport.publicMessages();
+    expect(publicMessages).toHaveLength(1);
+    expect(publicMessages[0]!.payload.flags).toBeUndefined();
+    expect(JSON.stringify(publicMessages[0]!.payload)).toContain("Shared by");
+    expect(transport.requests.map((entry) => `${entry.method} ${entry.target}`)).toEqual([
+      "PATCH original",
+      "POST followup",
+    ]);
+  });
+
+  it("never creates a public message for a restricted reveal", async () => {
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const fixture = await fixturePool(owner);
+    const collection = await createCollection(owner, {
+      name: "Restricted Deferred",
+      scope: "global",
+      status: "published",
+      viewAudience: "members",
+    });
+    await addCollectionCards(owner, collection.id, [fixture.cardId]);
+    await runtime.DB.prepare("DELETE FROM fb_collection_cards WHERE collection_id = 'col_test_public'").run();
+    await runtime.DB.prepare(
+      "INSERT OR REPLACE INTO fb_bot_collections (bot_id, collection_id, enabled, updated_at) SELECT b.id, ?, 1, ? FROM fb_bots b WHERE b.tenant_id = ?",
+    )
+      .bind(collection.id, new Date().toISOString(), owner.tenant.id)
+      .run();
+    await setBalance(owner, owner.user!.id, 1000);
+    const body = interaction(command("open", [{ name: "pool", type: 3, value: "test-pool" }]), {
+      id: "deferred-private",
+    });
+    const raw = JSON.stringify(body);
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = await signDiscordRequest({ body: raw, timestamp, privateKey });
+    const request = new Request("https://foilbury.test/api/discord/interactions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-signature-ed25519": signature,
+        "x-signature-timestamp": timestamp,
+      },
+      body: raw,
+    });
+    const transport = new DiscordTransport();
+    const pending: Promise<unknown>[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = transport.fetch as typeof fetch;
+    let ackFlags: number | undefined;
+    try {
+      const response = await handleDiscordInteraction(request, env(), {
+        publicKey: publicKeyHex,
+        waitUntil: (promise) => pending.push(promise),
+      });
+      const ack = (await response.json()) as { type?: number; data?: { flags?: number } };
+      ackFlags = ack.data?.flags;
+      transport.acknowledge("test-interaction-token", ackFlags);
+      await Promise.all(pending);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    expect(ackFlags).toBe(64);
+    expect(transport.original("test-interaction-token")!.visibility).toBe("ephemeral");
+    expect(transport.publicMessages()).toHaveLength(0);
+    expect(JSON.stringify(transport.original("test-interaction-token")!.payload)).toContain(
+      "Private reveal",
+    );
+  });
+
+  it("retries a rate-limited original edit and never logs the interaction token", async () => {
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    await fixturePool(player);
+    await runtime.MEDIA.put("test/render.webp", new Uint8Array([82, 73, 70, 70, 1, 2, 3]));
+    const body = interaction(command("open", [{ name: "pool", type: 3, value: "test-pool" }]), {
+      id: "rate-limited-draw",
+    });
+    const raw = JSON.stringify(body);
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = await signDiscordRequest({ body: raw, timestamp, privateKey });
+    const request = new Request("https://foilbury.test/api/discord/interactions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-signature-ed25519": signature,
+        "x-signature-timestamp": timestamp,
+      },
+      body: raw,
+    });
+    const token = "test-interaction-token";
+    const transport = new DiscordTransport();
+    transport.failNext({
+      method: "PATCH",
+      target: "original",
+      status: 429,
+      body: `rate limited for https://discord.com/api/v10/webhooks/${APPLICATION_ID}/${token}/messages/@original`,
+      times: 1,
+    });
+    const failures: string[] = [];
+    const errorSpy = vi.spyOn(console, "error").mockImplementation((value) => {
+      failures.push(String(value));
+    });
+    const pending: Promise<unknown>[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = transport.fetch as typeof fetch;
+    try {
+      const response = await handleDiscordInteraction(request, env(), {
+        publicKey: publicKeyHex,
+        waitUntil: (promise) => pending.push(promise),
+      });
+      const ack = (await response.json()) as { data?: { flags?: number } };
+      transport.acknowledge(token, ack.data?.flags);
+      await Promise.all(pending);
+    } finally {
+      globalThis.fetch = originalFetch;
+      errorSpy.mockRestore();
+    }
+    const original = transport.original(token)!;
+    expect(original.loading).toBe(false);
+    expect(original.edits).toBe(1);
+    const record = await runtime.DB.prepare(
+      "SELECT status, error_code FROM fb_discord_interactions WHERE interaction_id = ?",
+    )
+      .bind("rate-limited-draw")
+      .first<{ status: string; error_code: string | null }>();
+    expect(record?.status).toBe("completed");
+    expect(record?.error_code).toBeNull();
+    expect(failures.join("\n")).not.toContain(token);
+  });
+
+  it("keeps a committed draw truthful when delivery fails and re-sends only the receipt", async () => {
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    await fixturePool(player);
+    await runtime.MEDIA.put("test/render.webp", new Uint8Array([82, 73, 70, 70, 1, 2, 3]));
+    const body = interaction(command("open", [{ name: "pool", type: 3, value: "test-pool" }]), {
+      id: "commit-delivery-fail",
+    });
+    const raw = JSON.stringify(body);
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = await signDiscordRequest({ body: raw, timestamp, privateKey });
+    const request = new Request("https://foilbury.test/api/discord/interactions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-signature-ed25519": signature,
+        "x-signature-timestamp": timestamp,
+      },
+      body: raw,
+    });
+    const token = "test-interaction-token";
+    const transport = new DiscordTransport();
+    transport.failNext({ method: "PATCH", target: "original", status: 503, times: 3 });
+    const errors: string[] = [];
+    const errorSpy = vi.spyOn(console, "error").mockImplementation((value) => {
+      errors.push(String(value));
+    });
+    const pending: Promise<unknown>[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = transport.fetch as typeof fetch;
+    try {
+      const response = await handleDiscordInteraction(request, env(), {
+        publicKey: publicKeyHex,
+        waitUntil: (promise) => pending.push(promise),
+      });
+      const ack = (await response.json()) as { data?: { flags?: number } };
+      transport.acknowledge(token, ack.data?.flags);
+      await Promise.all(pending);
+    } finally {
+      globalThis.fetch = originalFetch;
+      errorSpy.mockRestore();
+    }
+    const record = await runtime.DB.prepare(
+      "SELECT status, error_code, receipt_json, delivery_visibility FROM fb_discord_interactions WHERE interaction_id = ?",
+    )
+      .bind("commit-delivery-fail")
+      .first<{
+        status: string;
+        error_code: string | null;
+        receipt_json: string | null;
+        delivery_visibility: string | null;
+      }>();
+    expect(record?.status).toBe("completed");
+    expect(record?.error_code).toBe("delivery_failed");
+    expect(record?.receipt_json).toContain("Test One");
+    const drawsBefore = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_draws").first<{
+      count: number;
+    }>();
+    expect(drawsBefore?.count).toBe(1);
+    expect(errors.join("\n")).not.toContain(token);
+
+    // A deliberate retry targets the persisted receipt, not the draw service.
+    const retryTransport = new DiscordTransport();
+    const retryBody = interaction(
+      { custom_id: "foilbury:redeliver:commit-delivery-fail", component_type: 2 },
+      { id: "redeliver-receipt", type: 3 },
+    );
+    const retryRaw = JSON.stringify(retryBody);
+    const retryTimestamp = String(Math.floor(Date.now() / 1000));
+    const retrySignature = await signDiscordRequest({
+      body: retryRaw,
+      timestamp: retryTimestamp,
+      privateKey,
+    });
+    const retryRequest = new Request("https://foilbury.test/api/discord/interactions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-signature-ed25519": retrySignature,
+        "x-signature-timestamp": retryTimestamp,
+      },
+      body: retryRaw,
+    });
+    const retryPending: Promise<unknown>[] = [];
+    globalThis.fetch = retryTransport.fetch as typeof fetch;
+    try {
+      const response = await handleDiscordInteraction(retryRequest, env(), {
+        publicKey: publicKeyHex,
+        waitUntil: (promise) => retryPending.push(promise),
+      });
+      const ack = (await response.json()) as { data?: { flags?: number } };
+      retryTransport.acknowledge("test-interaction-token", ack.data?.flags);
+      await Promise.all(retryPending);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    const retried = retryTransport.original("test-interaction-token")!;
+    expect(JSON.stringify(retried.payload)).toContain("recorded result");
+    expect(JSON.stringify(retried.payload)).toContain("No second pull");
+    const drawsAfter = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_draws").first<{
+      count: number;
+    }>();
+    expect(drawsAfter?.count).toBe(1);
   });
 
   it("delivers a visible text receipt when the card render cannot be attached", async () => {
@@ -445,7 +807,7 @@ describe("Discord HTTP interactions", () => {
     expect(record?.error_code).toBeNull();
   });
 
-  it("records a terminal failed delivery instead of leaving the interaction processing", async () => {
+  it("records a committed draw with a delivery failure instead of a false failed draw", async () => {
     const player = await ctxFor("cabinet", "player@foilbury.local");
     await fixturePool(player);
     await runtime.MEDIA.put("test/render.webp", new Uint8Array([82, 73, 70, 70, 1, 2, 3]));
@@ -480,12 +842,19 @@ describe("Discord HTTP interactions", () => {
       globalThis.fetch = originalFetch;
     }
     const record = await runtime.DB.prepare(
-      "SELECT status, error_code FROM fb_discord_interactions WHERE interaction_id = ?",
+      "SELECT status, error_code, receipt_json FROM fb_discord_interactions WHERE interaction_id = ?",
     )
       .bind("dead-webhook")
-      .first<{ status: string; error_code: string | null }>();
-    expect(record?.status).toBe("failed");
+      .first<{ status: string; error_code: string | null; receipt_json: string | null }>();
+    // The domain committed even though no message could be delivered. The
+    // operational row keeps that distinction visible.
+    expect(record?.status).toBe("completed");
     expect(record?.error_code).toBe("delivery_failed");
+    expect(record?.receipt_json).toContain("Test One");
+    const draws = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_draws").first<{
+      count: number;
+    }>();
+    expect(draws?.count).toBe(1);
   });
 
   it("expires stale processing interactions but leaves recent work alone", async () => {
@@ -552,7 +921,7 @@ describe("Discord HTTP interactions", () => {
         id: "card-by-name",
       }),
     );
-    expect(result.payload.data?.embeds?.[0]?.title).toBe("Test One");
+    expect(result.payload.data?.embeds?.[0]?.title).toContain("Test One");
   });
 
   it("requires a confirmation button for a sensitive admin grant and records it once", async () => {
@@ -612,7 +981,7 @@ describe("Discord HTTP interactions", () => {
         { id: "grant-confirm-replay", type: 3 },
       ),
     );
-    expect(replay.payload.data?.embeds?.[0]?.description).toMatch(/already been used/i);
+    expect(replay.payload.data?.embeds?.[0]?.description).toMatch(/already been used|consumed once/i);
   });
 
   it("handles a button interaction with the same idempotent draw path", async () => {
@@ -632,7 +1001,7 @@ describe("Discord HTTP interactions", () => {
         { id: "button-unknown", type: 3 },
       ),
     );
-    expect(unknown.payload.data?.embeds?.[0]?.description).toMatch(/not recognised/i);
+    expect(unknown.payload.data?.embeds?.[0]?.description).toMatch(/stale|not recognised/i);
   });
 
   it("never restores a revoked membership or lets its old confirmation act", async () => {
@@ -783,7 +1152,7 @@ describe("Discord HTTP interactions", () => {
       ),
     );
     expect(share.payload.data?.embeds?.[0]?.description).toMatch(
-      /not in your cabinet|not available/i,
+      /not owned|not in your cabinet|not available/i,
     );
 
     await runtime.DB.prepare(
@@ -796,8 +1165,11 @@ describe("Discord HTTP interactions", () => {
         id: "restricted-member-reveal",
       }),
     );
-    expect(memberReveal.payload.data?.flags).toBeUndefined();
+    // The reveal stays private even when the channel audience would allow a
+    // share. Posting is a separate, explicit Share to channel action.
+    expect(memberReveal.payload.data?.flags).toBe(64);
     expect(memberReveal.payload.data?.embeds?.[0]?.title).toContain("Test One");
+    expect(JSON.stringify(memberReveal.payload.data)).toContain("Share to channel");
 
     const instance = await runtime.DB.prepare(
       "SELECT ci.id FROM fb_card_instances ci JOIN fb_memberships m ON m.user_id = ci.user_id WHERE ci.card_id = ? AND ci.status = 'owned' LIMIT 1",
@@ -938,7 +1310,7 @@ describe("Discord HTTP interactions", () => {
     expect(after?.count).toBe((before?.count ?? 0) + 1);
     expect([4, 7]).toContain(draw.payload.type);
     expect(draw.payload.data?.embeds?.[0]?.title).toContain("Test One");
-    expect(JSON.stringify(draw.payload)).toContain("foilbury-card.webp");
+    expect(JSON.stringify(draw.payload)).toContain("foilbury-reveal-card.webp");
     const drawRow = await runtime.DB.prepare(
       "SELECT d.id, d.instance_id, ci.serial FROM fb_draws d JOIN fb_card_instances ci ON ci.id = d.instance_id ORDER BY d.rowid DESC LIMIT 1",
     ).first<{ id: string; instance_id: string; serial: string }>();
