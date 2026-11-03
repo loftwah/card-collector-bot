@@ -3,137 +3,1608 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 import manifest from "../../public/brand/kit/manifest.json";
 
 const canonical = "signal-fold";
-const mark = (manifest.marks.find((item) => item.slug === canonical) ?? manifest.marks[0])!;
+const canonicalMark = manifest.marks.find((item) => item.slug === canonical) ?? manifest.marks[0]!;
 const marks = manifest.marks;
-const banners = manifest.banners;
 const wordmarks = manifest.wordmarks;
 const social = manifest.social;
+const status = manifest.system_status;
+
+const boards = manifest.systems.map((system) => {
+  const asset = (id: string) => {
+    const found = system.assets.find((item) => item.id === id);
+    if (!found) throw new Error(`Missing ${id} in ${system.slug}`);
+    return found;
+  };
+  return {
+    ...system,
+    icon1024: asset("icon-1024"),
+    icon512: asset("icon-512"),
+    icon128: asset("icon-128"),
+    icon64: asset("icon-64"),
+    icon32: asset("icon-32"),
+    iconLight: asset("icon-light-1024"),
+    iconTransparent: asset("icon-transparent-1024"),
+    iconMonoDark: asset("icon-mono-dark-1024"),
+    iconMonoLight: asset("icon-mono-light-1024"),
+    iconSvg: asset("icon-svg"),
+    markSvg: asset("mark-svg"),
+    banner960: asset("banner-960"),
+    banner1920: asset("banner-1920"),
+    bannerSvg: asset("banner-svg"),
+  };
+});
+
+const manifestRows = boards.flatMap((system) =>
+  [system.icon1024, system.icon512, system.icon32, system.banner960, system.banner1920].map((asset) => ({
+    system,
+    asset,
+  })),
+);
+
+const formatBytes = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  return `${kb.toFixed(kb < 10 ? 1 : 0)} KB`;
+};
 ---
-<BaseLayout title="Foilbury brand kit · marks, avatars and banners" description="Download the reviewed Foilbury identity: Signal Fold marks, Discord avatars, server banners, wordmarks and social previews." shareImage="/brand/kit/social/og-1200x630.png">
+
+<BaseLayout
+  title="Foilbury brand systems · owner selection"
+  description="Three complete Foilbury identity systems with circular-crop avatars and purpose-built Discord banners. Owner selection is required; nothing has been applied."
+  shareImage="/brand/kit/social/og-1200x630.png"
+>
   <section class="signal-rule" aria-hidden="true"></section>
   <section class="container py-12 md:py-16">
-    <div class="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
+    <header class="bs-hero">
       <div>
-        <p class="studio-kicker">Brand kit · Foilbury Signal</p>
-        <h1 class="display mt-3 text-[clamp(3rem,8vw,7rem)] uppercase">A mark for the cabinet.</h1>
-        <p class="mt-5 max-w-2xl text-lg leading-relaxed text-[var(--muted)]">Deep current, electric aqua, ice and signal lime. A bold, geometric identity built around a card being folded, filed and kept. No orange, no borrowed franchise marks, no random generation.</p>
-      </div>
-      <div class="border border-[var(--line)] bg-[var(--paper-2)] p-5">
-        <p class="studio-stat__label">Canonical working identity</p>
-        <div class="mt-3 flex items-center gap-4">
-          <img src={mark.png} alt="Signal Fold mark" width="88" height="88" class="h-[88px] w-[88px]" />
-          <div><p class="display-sm text-2xl uppercase">Signal Fold</p><p class="mt-1 text-sm text-[var(--muted)]">{mark.note}</p></div>
+        <h1 class="display mt-3 text-[clamp(2.8rem,7.2vw,6rem)] uppercase">Three systems.<br />One cabinet.</h1>
+        <p class="mt-5 max-w-2xl text-lg leading-relaxed text-[var(--muted)]">
+          Three complete, original identity directions for Foilbury. Each pairs a circular Discord avatar with a
+          purpose-built 16:9 banner, a limited palette, a vector master and honest small-size proofs. Nothing on this
+          page is live: the owner has not selected a direction and no Discord application, guild or server asset has
+          been changed.
+        </p>
+        <div class="bs-hero__facts">
+          <span class="bs-stamp">Owner selection required</span>
+          <span class="bs-hero__fact">3 systems</span>
+          <span class="bs-hero__fact">18 assets per system</span>
+          <span class="bs-hero__fact">0 paid generations</span>
         </div>
-        <div class="mt-4 flex flex-wrap gap-2">
-          <a class="btn btn-signal btn-sm" href={mark.png} download>Download mark PNG</a>
-          <a class="btn btn-secondary btn-sm" href={mark.svg} download>SVG master</a>
-        </div>
       </div>
-    </div>
+      <aside class="bs-hero__panel" aria-labelledby="decision-state">
+        <p class="studio-stat__label">Decision state</p>
+        <p class="bs-hero__state" id="decision-state">Pending</p>
+        <p class="text-sm leading-relaxed text-[var(--muted)]">
+          The incumbent <strong class="text-[var(--ink)]">Signal Fold</strong> working identity remains in place until
+          the owner records a selection and gives explicit approval to apply it.
+        </p>
+        <dl class="bs-state-list">
+          <div><dt>Application avatar</dt><dd>Not changed</dd></div>
+          <div><dt>Guild icon</dt><dd>Not changed</dd></div>
+          <div><dt>Server banner</dt><dd>Entitlement not checked</dd></div>
+          <div><dt>Owner selection</dt><dd class="bs-state-list__pending">{status.owner_selection}</dd></div>
+        </dl>
+      </aside>
+    </header>
 
-    <section class="mt-12">
-      <div class="flex flex-wrap items-end justify-between gap-4 border-b-2 border-[var(--ink)] pb-3">
-        <h2 class="display-sm text-3xl uppercase">Mark options</h2>
-        <p class="font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[var(--muted)]">Four reviewed directions · choose one per destination</p>
+    <nav class="bs-jump" aria-label="Brand systems on this page">
+      {boards.map((system) => (
+        <a href={`#${system.slug}`}>
+          <span class="bs-jump__index">{system.index}</span>
+          <span>{system.label}</span>
+          <span class="bs-jump__kicker">{system.kicker}</span>
+        </a>
+      ))}
+    </nav>
+
+    <section class="bs-section" aria-labelledby="board-heading">
+      <div class="bs-section-head">
+        <div>
+          <h2 class="display-sm text-3xl uppercase" id="board-heading">Compare at the size it ships.</h2>
+        </div>
+        <p>
+          Every pair is shown as a 960×540 Discord-size banner and at 32px, 64px and 512px in a circular crop. The
+          dashed banner rule marks the top 48px area Discord asks to keep quiet. None of these are live screenshots.
+        </p>
       </div>
-      <div class="brand-grid mt-5">
-        {marks.map((item) => (
-          <article class="brand-tile">
-            <div class="brand-tile__art"><img src={item.png} alt={`${item.label} mark`} width="1024" height="1024" loading="lazy" /></div>
-            <div>
-              <div class="flex items-start justify-between gap-2"><h3 class="display-sm text-xl uppercase">{item.label}</h3>{item.slug === canonical ? <span class="badge badge-signal">Canonical</span> : <span class="badge">Option</span>}</div>
-              <p class="mt-1 text-xs leading-relaxed text-[var(--muted)]">{item.note}</p>
-              <div class="mt-3 flex flex-wrap gap-2">
-                <a class="btn btn-secondary btn-sm" href={item.png} download>1024 PNG</a>
-                <a class="btn btn-ghost btn-sm" href={item.svg} download>SVG</a>
+
+      <div class="bs-board">
+        {boards.map((system) => (
+          <article
+            class="bs-system"
+            id={system.slug}
+            style={`--sys-ground:${system.tokens.ground};--sys-accent:${system.tokens.primary};--sys-base:${system.tokens.base};`}
+          >
+            <header class="bs-system__head">
+              <span class="bs-system__index" aria-hidden="true">{system.index}</span>
+              <div class="bs-system__title">
+                <h3>{system.label}</h3>
+                <p>{system.tagline}</p>
+              </div>
+              <span class="bs-pending">Owner decision pending</span>
+            </header>
+
+            <div class="bs-stage">
+              <img
+                src={system.icon1024.path}
+                srcset={`${system.icon512.path} 1x, ${system.icon1024.path} 2x`}
+                width="512"
+                height="512"
+                alt={`${system.label} app icon, 512px circular crop`}
+                class="bs-stage__avatar"
+              />
+              <p class="bs-stage__caption">512×512 master · circular crop</p>
+            </div>
+
+            <div class="bs-crops" role="group" aria-label={`${system.label} small circular-crop proofs`}>
+              <div class="bs-crop-panel bs-crop-panel--dark">
+                <p class="bs-crop-panel__label">On dark · negative</p>
+                <div class="bs-crop-row">
+                  <figure class="bs-crop">
+                    <img
+                      src={system.icon64.path}
+                      srcset={`${system.icon64.path} 1x, ${system.icon128.path} 2x`}
+                      width="64"
+                      height="64"
+                      alt={`${system.label} negative icon at 64px on dark`}
+                      class="bs-crop__img"
+                    />
+                    <figcaption>64</figcaption>
+                  </figure>
+                  <figure class="bs-crop">
+                    <img
+                      src={system.icon32.path}
+                      srcset={`${system.icon32.path} 1x, ${system.icon64.path} 2x`}
+                      width="32"
+                      height="32"
+                      alt={`${system.label} negative icon at 32px on dark`}
+                      class="bs-crop__img"
+                    />
+                    <figcaption>32</figcaption>
+                  </figure>
+                </div>
+              </div>
+              <div class="bs-crop-panel bs-crop-panel--light">
+                <p class="bs-crop-panel__label">On light · positive</p>
+                <div class="bs-crop-row">
+                  <figure class="bs-crop">
+                    <img
+                      src={system.iconLight.path}
+                      width="64"
+                      height="64"
+                      alt={`${system.label} positive icon at 64px on light`}
+                      class="bs-crop__img bs-crop__img--light"
+                    />
+                    <figcaption>64</figcaption>
+                  </figure>
+                  <figure class="bs-crop">
+                    <img
+                      src={system.iconLight.path}
+                      width="32"
+                      height="32"
+                      alt={`${system.label} positive icon at 32px on light`}
+                      class="bs-crop__img bs-crop__img--light"
+                    />
+                    <figcaption>32</figcaption>
+                  </figure>
+                </div>
               </div>
             </div>
-          </article>
-        ))}
-      </div>
-    </section>
 
-    <section class="mt-12">
-      <div class="flex flex-wrap items-end justify-between gap-4 border-b-2 border-[var(--ink)] pb-3">
-        <h2 class="display-sm text-3xl uppercase">Discord avatars</h2>
-        <p class="font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[var(--muted)]">512×512 · four grounds</p>
-      </div>
-      <div class="brand-grid mt-5">
-        {mark.avatars.map((src, index) => (
-          <article class="brand-tile">
-            <div class="brand-tile__art"><img src={src} alt={`Signal Fold avatar, ${["deep current", "ice", "signal aqua", "carbon"][index]} ground`} width="512" height="512" loading="lazy" /></div>
-            <div class="flex items-center justify-between gap-2"><p class="text-sm font-semibold">{["Deep current", "Ice", "Signal aqua", "Carbon"][index]}</p><a class="btn btn-secondary btn-sm" href={src} download>Download</a></div>
-          </article>
-        ))}
-      </div>
-    </section>
+            <figure class="bs-banner">
+              <img
+                src={system.banner960.path}
+                width="960"
+                height="540"
+                alt={`${system.label} 960 by 540 banner`}
+                loading="lazy"
+              />
+              <span class="bs-banner__safe" aria-hidden="true"></span>
+              <span class="bs-banner__safe-tag" aria-hidden="true">48px quiet</span>
+              <figcaption>
+                <span>960×540 · Discord server banner</span>
+                <a href={system.banner1920.path}>1920 master</a>
+              </figcaption>
+            </figure>
 
-    <section class="mt-12">
-      <div class="flex flex-wrap items-end justify-between gap-4 border-b-2 border-[var(--ink)] pb-3">
-        <h2 class="display-sm text-3xl uppercase">Server banners</h2>
-        <p class="font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[var(--muted)]">960×540 Discord · 1920×1080 social</p>
-      </div>
-      <div class="mt-5 grid gap-5 md:grid-cols-2">
-        {banners.map((item) => (
-          <article class="border border-[var(--line)] bg-[var(--paper)] p-3">
-            <img src={item.discord} alt={`${item.label} banner`} width="960" height="540" loading="lazy" class="w-full border border-[var(--line)]" />
-            <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
-              <p class="font-semibold">{item.label}</p>
-              <div class="flex gap-2"><a class="btn btn-secondary btn-sm" href={item.discord} download>Discord 960</a><a class="btn btn-ghost btn-sm" href={item.social} download>Social 1920</a></div>
+            <div class="bs-mock" aria-label={`${system.label} illustrative Discord profile context`}>
+              <div class="bs-mock__top">
+                <img
+                  src={system.banner960.path}
+                  width="960"
+                  height="540"
+                  alt={`${system.label} banner in an illustrative Discord profile`}
+                  loading="lazy"
+                />
+                <span class="bs-mock__flag">Mock · not applied</span>
+              </div>
+              <div class="bs-mock__body">
+                <img src={system.icon512.path} width="64" height="64" alt="" class="bs-mock__avatar" />
+                <div>
+                  <p class="bs-mock__name">Foilbury <span class="bs-mock__tag">APP</span></p>
+                  <p class="bs-mock__meta">Collectible card cabinet</p>
+                </div>
+              </div>
+              <p class="bs-mock__caption">Illustrative profile context · banner crop approximated · not a live client capture</p>
+            </div>
+
+            <div class="bs-copy">
+              <p>{system.rationale}</p>
+              <dl class="bs-reasons">
+                <div><dt>Why 32px works</dt><dd>{system.smallSize}</dd></div>
+                <div><dt>Banner logic</dt><dd>{system.bannerLogic}</dd></div>
+              </dl>
+            </div>
+
+            <div class="bs-eval">
+              <div>
+                <h4>Strengths</h4>
+                <ul>{system.strengths.map((item) => <li>{item}</li>)}</ul>
+              </div>
+              <div>
+                <h4>Watch-outs</h4>
+                <ul>{system.watchouts.map((item) => <li>{item}</li>)}</ul>
+              </div>
+            </div>
+
+            <div class="bs-palette">
+              <div class="bs-swatches">
+                {system.palette.map((swatch) => (
+                  <div class="bs-swatch">
+                    <div class="bs-swatch__chip" style={`background:${swatch.hex}`}></div>
+                    <p class="bs-swatch__name">{swatch.name}</p>
+                    <p class="bs-swatch__hex">{swatch.hex}</p>
+                    <p class="bs-swatch__role">{swatch.role}</p>
+                  </div>
+                ))}
+              </div>
+              <div class="bs-contrast">
+                {system.contrast.map((item) => (
+                  <div><span>{item.pair}</span><strong>{item.ratio}:1</strong></div>
+                ))}
+              </div>
+            </div>
+
+            <div class="bs-variants">
+              <p class="bs-variants__label">Icon variants on record</p>
+              <div class="bs-variants__row">
+                <figure>
+                  <img src={system.iconLight.path} width="48" height="48" alt={`${system.label} positive icon on light ground`} loading="lazy" />
+                  <figcaption>Light</figcaption>
+                </figure>
+                <figure>
+                  <img src={system.iconTransparent.path} width="48" height="48" alt={`${system.label} transparent icon`} loading="lazy" />
+                  <figcaption>Transparent</figcaption>
+                </figure>
+                <figure>
+                  <img src={system.iconMonoDark.path} width="48" height="48" alt={`${system.label} dark monochrome icon`} loading="lazy" class="bs-variants__mono" />
+                  <figcaption>Mono dark</figcaption>
+                </figure>
+                <figure>
+                  <img src={system.iconMonoLight.path} width="48" height="48" alt={`${system.label} light monochrome icon`} loading="lazy" class="bs-variants__mono" />
+                  <figcaption>Mono light</figcaption>
+                </figure>
+              </div>
+            </div>
+
+            <div class="bs-downloads">
+              <a class="btn btn-secondary btn-sm" href={system.icon1024.path} download>Icon 1024</a>
+              <a class="btn btn-secondary btn-sm" href={system.banner960.path} download>Banner 960</a>
+              <a class="btn btn-ghost btn-sm" href={system.banner1920.path} download>Banner 1920</a>
+              <a class="btn btn-ghost btn-sm" href={system.iconSvg.path} download>Icon SVG</a>
+              <a class="btn btn-ghost btn-sm" href={system.bannerSvg.path} download>Banner SVG</a>
             </div>
           </article>
         ))}
       </div>
     </section>
 
-    <section class="mt-12 grid gap-8 lg:grid-cols-[1fr_1fr]">
-      <div>
-        <div class="border-b-2 border-[var(--ink)] pb-3"><h2 class="display-sm text-3xl uppercase">Wordmarks</h2></div>
-        <div class="mt-4 grid gap-3">
-          {wordmarks.map((item) => (
-            <article class="flex flex-wrap items-center justify-between gap-3 border border-[var(--line)] bg-[var(--paper)] p-3">
-              <div class="min-w-0"><p class="font-semibold">{item.label}</p><p class="font-mono text-[0.56rem] uppercase tracking-[0.08em] text-[var(--muted)]">1600×400 · transparent included</p></div>
-              <div class="flex flex-wrap gap-2"><a class="btn btn-secondary btn-sm" href={item.png} download>PNG</a><a class="btn btn-ghost btn-sm" href={item.transparent} download>Transparent</a><a class="btn btn-ghost btn-sm" href={item.svg} download>SVG</a></div>
-            </article>
-          ))}
+    <section class="bs-section" aria-labelledby="masters-heading">
+      <div class="bs-section-head">
+        <div>
+          <h2 class="display-sm text-3xl uppercase" id="masters-heading">The 1920×1080 source.</h2>
         </div>
+        <p>
+          These are the high-resolution masters, not upscaled thumbnails. Discord accepts 1920×1080 and resizes to its
+          960×540 server-banner slot. The top 48px remains quiet in every master.
+        </p>
       </div>
-      <div>
-        <div class="border-b-2 border-[var(--ink)] pb-3"><h2 class="display-sm text-3xl uppercase">Social and site</h2></div>
-        <div class="mt-4 grid gap-3">
-          {social.map((item) => (
-            <article class="border border-[var(--line)] bg-[var(--paper)] p-3">
-              <img src={item.png} alt={item.label} loading="lazy" class="w-full border border-[var(--line)]" />
-              <div class="mt-2 flex items-center justify-between gap-2"><p class="text-sm font-semibold">{item.label} · {item.dimensions}</p><a class="btn btn-secondary btn-sm" href={item.png} download>Download</a></div>
-            </article>
-          ))}
-        </div>
+      <div class="bs-masters">
+        {boards.map((system) => (
+          <figure
+            class="bs-master"
+            style={`--sys-ground:${system.tokens.ground};--sys-accent:${system.tokens.primary};`}
+          >
+            <img
+              src={system.banner1920.path}
+              width="1920"
+              height="1080"
+              alt={`${system.label} 1920 by 1080 banner master`}
+              loading="lazy"
+            />
+            <figcaption>
+              <span class="bs-master__name">{system.index} · {system.label}</span>
+              <span class="bs-master__meta">1920×1080 · {formatBytes(system.banner1920.bytes)}</span>
+              <span class="bs-master__links">
+                <a href={system.banner1920.path} download>PNG</a>
+                <a href={system.bannerSvg.path} download>SVG</a>
+              </span>
+            </figcaption>
+          </figure>
+        ))}
       </div>
     </section>
 
-    <section class="mt-12 border border-[var(--line)] bg-[var(--paper-2)]/45 p-6">
-      <div class="grid gap-6 lg:grid-cols-[1fr_1fr]">
+    <section class="bs-section" aria-labelledby="fit-heading">
+      <div class="bs-section-head">
         <div>
-          <h2 class="display-sm text-2xl uppercase">Palette</h2>
-          <div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {[["Deep current", "#044e4a"], ["Electric aqua", "#00c8b8"], ["Ice", "#c8f4ee"], ["Signal lime", "#c9f25f"], ["Carbon", "#07110f"], ["Bone", "#eff5f1"], ["Aqua bright", "#2ce3d3"], ["Marine", "#0a6b63"]].map(([label, hex]) => (
-              <div><div class="h-16 border border-[var(--line-strong)]" style={`background:${hex}`}></div><p class="mt-1 text-xs font-semibold">{label}</p><p class="font-mono text-[0.56rem] uppercase text-[var(--muted)]">{hex}</p></div>
+          <h2 class="display-sm text-3xl uppercase" id="fit-heading">Three Discord surfaces. Three permissions.</h2>
+        </div>
+        <p>
+          A bot avatar, a guild icon and a server banner are not the same asset or the same authority. This selection
+          board does not claim any of them has changed.
+        </p>
+      </div>
+
+      <div class="bs-fit-grid">
+        <article class="bs-fit">
+          <p class="bs-fit__label">Scope 01</p>
+          <h3>Bot / application avatar</h3>
+          <p>
+            The application icon is the bot's public face in every server where Foilbury is installed. It is changed
+            through the application owner or team's Developer Portal access, or an authorised application update; it
+            is not a server setting and cannot be granted by a guild role.
+          </p>
+          <p class="bs-fit__tag">Owner / application team</p>
+        </article>
+        <article class="bs-fit">
+          <p class="bs-fit__label">Scope 02</p>
+          <h3>Guild / server icon</h3>
+          <p>
+            The Loftwah guild icon belongs to that server, not to Foilbury. A server owner or a member with Manage
+            Server can change it. This needs a separate, explicit server-wide approval and is deliberately out of
+            scope here.
+          </p>
+          <p class="bs-fit__tag">Server owner or Manage Server</p>
+        </article>
+        <article class="bs-fit">
+          <p class="bs-fit__label">Scope 03</p>
+          <h3>Server banner</h3>
+          <p>
+            Discord documents server banners for servers at Boosting Level 2, with Partner servers also eligible. The
+            recommended upload is 960×540 (16:9); a 1920×1080 source is accepted and resized. Keep the top 48px quiet
+            and avoid embedding a logo or text.
+          </p>
+          <p class="bs-fit__tag">Entitlement-gated · owner / Manage Server</p>
+        </article>
+      </div>
+
+      <div class="bs-callout">
+        <p class="bs-callout__title">No entitlement check, no upload, no fake application.</p>
+        <p>
+          The Loftwah guild's current boost tier and banner entitlement were not checked for this pass, and no Discord
+          request was made. A server banner can only be applied if the server actually has the feature; otherwise the
+          static 16:9 master remains a prepared asset, not a claimed live change. The Server Profile banner is a
+          colour tile in Discord's current Server Profile settings, not the same thing as the 960×540 server banner
+          image.
+        </p>
+        <p class="bs-callout__source">
+          Sources checked 2026-11-04: Discord Support, “Server Banners” (960×540 recommended, 1920×1080 accepted,
+          top 48px quiet, avoid logo/text, Boost Level 2 or Partner) and “Server Profile” (banner is a colour tile).
+          Re-check the live entitlement and current upload limits before applying.
+        </p>
+      </div>
+    </section>
+
+    <section class="bs-section" aria-labelledby="manifest-heading">
+      <div class="bs-section-head">
+        <div>
+          <h2 class="display-sm text-3xl uppercase" id="manifest-heading">Every file, use and origin.</h2>
+        </div>
+        <p>
+          The machine-readable manifest records every rendition, byte size, intended scope and generation timestamp.
+          It is the source for this page, not a hand-maintained parallel list.
+        </p>
+      </div>
+
+      <div class="bs-manifest">
+        <div class="bs-table-wrap">
+          <table class="bs-table">
+            <caption class="sr-only">Representative assets for each system with dimensions, use and scope</caption>
+            <thead>
+              <tr><th scope="col">System</th><th scope="col">File</th><th scope="col">Pixels</th><th scope="col">Use</th><th scope="col">Scope</th><th scope="col">Size</th></tr>
+            </thead>
+            <tbody>
+              {manifestRows.map(({ system, asset }) => (
+                <tr>
+                  <th scope="row">{system.label}</th>
+                  <td class="bs-table__file"><a href={asset.path}>{asset.id}</a></td>
+                  <td>{asset.width}×{asset.height} {asset.format.toUpperCase()}</td>
+                  <td>{asset.use}</td>
+                  <td>{asset.scope}</td>
+                  <td>{formatBytes(asset.bytes)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <aside class="bs-provenance">
+          <h3>Provenance</h3>
+          <ul>
+            <li>Original vector geometry from the reviewed Foilbury marks; no third-party or franchise artwork.</li>
+            <li>Deterministic SVG composition and local Chromium rasterisation. No paid image generation, model provider or random seed.</li>
+            <li>Manrope and Geist are self-hosted under the SIL Open Font License 1.1. No new font licence is introduced.</li>
+            <li>Generated by <code>node scripts/brand/generate-brand-systems.mjs</code>. The manifest is regenerated with the assets.</li>
+            <li>Transparent, light-ground, monochrome and exact 32/64/128/512 proofs are included for each system, not only the display sizes on this page.</li>
+          </ul>
+          <div class="bs-provenance__links">
+            <a class="btn btn-primary btn-sm" href="/brand/kit/manifest.json" download>Download manifest</a>
+            <a class="btn btn-secondary btn-sm" href={canonicalMark.svg} download>Current mark SVG</a>
+          </div>
+        </aside>
+      </div>
+
+      <div class="bs-gate">
+        <h3 class="display-sm text-2xl uppercase">What remains owner-selected.</h3>
+        <ol>
+          <li>Choose one system. No choice is recorded by this page.</li>
+          <li>Request two refinements of the chosen direction, not another round of unrelated options.</li>
+          <li>Review the final exports in the real Discord desktop and mobile clients, including the circular crop and banner crop.</li>
+          <li>Give explicit approval before any application avatar, guild icon or server-wide banner is changed.</li>
+          <li>Apply only through the authorised Developer Portal or Server Settings path, preserve the old assets and record the exact revision for rollback.</li>
+        </ol>
+        <p class="bs-gate__note">
+          The selected identity must then be fed into the shared product tokens and the Discord visual work. This page
+          is a decision surface, not a second asset CMS and not a deployment.
+        </p>
+      </div>
+    </section>
+
+    <section class="bs-section bs-section--legacy" aria-labelledby="legacy-heading">
+      <div class="bs-section-head">
+        <div>
+          <h2 class="display-sm text-3xl uppercase" id="legacy-heading">The incumbent kit stays intact.</h2>
+        </div>
+        <p>
+          Signal Fold remains the canonical working identity until the owner decides. The existing mark masters,
+          wordmarks and social exports are preserved below; they are reference, not additional candidates.
+        </p>
+      </div>
+
+      <details class="bs-legacy">
+        <summary>Open the existing four-mark kit and social exports</summary>
+        <div class="bs-legacy__body">
+          <div class="bs-legacy__current">
+            <img src={canonicalMark.png} alt="Signal Fold mark" width="88" height="88" loading="lazy" />
+            <div>
+              <p class="studio-stat__label">Canonical working identity</p>
+              <p class="display-sm text-2xl uppercase">Signal Fold</p>
+              <p class="text-sm text-[var(--muted)]">{canonicalMark.note}</p>
+              <div class="mt-3 flex flex-wrap gap-2">
+                <a class="btn btn-secondary btn-sm" href={canonicalMark.png} download>Mark PNG</a>
+                <a class="btn btn-ghost btn-sm" href={canonicalMark.svg} download>Mark SVG</a>
+              </div>
+            </div>
+          </div>
+
+          <div class="brand-grid mt-6">
+            {marks.map((item) => (
+              <article class="brand-tile">
+                <div class="brand-tile__art"><img src={item.png} alt={`${item.label} mark`} width="1024" height="1024" loading="lazy" /></div>
+                <div>
+                  <div class="flex items-start justify-between gap-2">
+                    <h3 class="display-sm text-xl uppercase">{item.label}</h3>
+                    {item.slug === canonical ? <span class="badge badge-signal">Canonical</span> : <span class="badge">Reference</span>}
+                  </div>
+                  <p class="mt-1 text-xs leading-relaxed text-[var(--muted)]">{item.note}</p>
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <a class="btn btn-secondary btn-sm" href={item.png} download>1024 PNG</a>
+                    <a class="btn btn-ghost btn-sm" href={item.svg} download>SVG</a>
+                  </div>
+                </div>
+              </article>
             ))}
           </div>
+
+          <div class="bs-legacy__grid">
+            <div>
+              <h3 class="bs-legacy__subhead">Wordmarks</h3>
+              <div class="grid gap-3">
+                {wordmarks.map((item) => (
+                  <article class="flex flex-wrap items-center justify-between gap-3 border border-[var(--line)] bg-[var(--paper)] p-3">
+                    <div class="min-w-0"><p class="font-semibold">{item.label}</p><p class="font-mono text-[0.56rem] uppercase tracking-[0.08em] text-[var(--muted)]">1600×400 · transparent included</p></div>
+                    <div class="flex flex-wrap gap-2"><a class="btn btn-secondary btn-sm" href={item.png} download>PNG</a><a class="btn btn-ghost btn-sm" href={item.transparent} download>Transparent</a><a class="btn btn-ghost btn-sm" href={item.svg} download>SVG</a></div>
+                  </article>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h3 class="bs-legacy__subhead">Social and site</h3>
+              <div class="grid gap-3">
+                {social.map((item) => (
+                  <article class="border border-[var(--line)] bg-[var(--paper)] p-3">
+                    <img src={item.png} alt={item.label} loading="lazy" class="w-full border border-[var(--line)]" />
+                    <div class="mt-2 flex items-center justify-between gap-2"><p class="text-sm font-semibold">{item.label} · {item.dimensions}</p><a class="btn btn-secondary btn-sm" href={item.png} download>Download</a></div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
-        <div>
-          <h2 class="display-sm text-2xl uppercase">Use it well</h2>
-          <ul class="mt-4 grid gap-2 text-sm text-[var(--muted)]">
-            <li><strong class="text-[var(--ink)]">Canonical:</strong> Signal Fold on Deep Current, with Electric Aqua and Signal Lime as the two signals.</li>
-            <li><strong class="text-[var(--ink)]">Clear space:</strong> keep at least one quarter of the mark's width on every side.</li>
-            <li><strong class="text-[var(--ink)]">Minimum size:</strong> 32px for the mark; use the wordmark only above 240px wide.</li>
-            <li><strong class="text-[var(--ink)]">Do not:</strong> recolour a franchise emblem, add a drop shadow, stretch the mark, or place it on a busy card render.</li>
-            <li><strong class="text-[var(--ink)]">Bot owners:</strong> the generator is parameterised; duplicate the pattern with your own name, slug and palette. Foilbury's own identity stays first.</li>
-          </ul>
-          <p class="mt-4 text-xs text-[var(--muted)]">Generated from original vector geometry and the self-hosted Manrope face. The manifest records every rendition. No paid image generation was used.</p>
-          <div class="mt-4 flex flex-wrap gap-2"><a class="btn btn-primary btn-sm" href="/brand/kit/manifest.json" download>Download manifest</a><a class="btn btn-secondary btn-sm" href="/docs/agent-guide">Asset workflow</a></div>
-        </div>
-      </div>
+      </details>
     </section>
   </section>
 </BaseLayout>
+
+<style>
+  .bs-hero {
+    display: grid;
+    gap: 2rem;
+    align-items: end;
+    border-bottom: 3px solid var(--ink);
+    padding-bottom: 2rem;
+  }
+
+  .bs-hero h1 {
+    letter-spacing: -0.04em;
+  }
+
+  .bs-hero__facts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem 1rem;
+    margin-top: 1.5rem;
+  }
+
+  .bs-stamp {
+    display: inline-flex;
+    border: 1px solid var(--ink);
+    background: var(--lime);
+    color: #07110f;
+    padding: 0.45rem 0.7rem;
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  .bs-hero__fact {
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .bs-hero__panel {
+    border: 1px solid var(--line-strong);
+    border-top: 4px solid var(--signal);
+    background: var(--paper-2);
+    padding: 1.25rem;
+  }
+
+  .bs-hero__state {
+    margin-top: 0.3rem;
+    font-family: var(--font-display);
+    font-size: 3rem;
+    font-weight: 780;
+    letter-spacing: -0.05em;
+    line-height: 0.9;
+    text-transform: uppercase;
+  }
+
+  .bs-state-list {
+    margin-top: 1rem;
+    border-top: 1px solid var(--line);
+  }
+
+  .bs-state-list div {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 1px solid var(--line);
+    padding: 0.45rem 0;
+    font-size: 0.68rem;
+  }
+
+  .bs-state-list dt {
+    color: var(--muted);
+  }
+
+  .bs-state-list dd {
+    margin: 0;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .bs-state-list__pending {
+    color: var(--oxblood);
+    font-weight: 700;
+  }
+
+  .bs-jump {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-top: 1.25rem;
+    border: 1px solid var(--line-strong);
+  }
+
+  .bs-jump a {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.15rem 0.65rem;
+    padding: 0.8rem 0.9rem;
+    border-right: 1px solid var(--line-strong);
+    color: var(--ink);
+    text-decoration: none;
+  }
+
+  .bs-jump a:last-child {
+    border-right: 0;
+  }
+
+  .bs-jump a:hover {
+    background: var(--paper-2);
+  }
+
+  .bs-jump__index {
+    grid-row: span 2;
+    align-self: center;
+    font-family: var(--font-display);
+    font-size: 1.35rem;
+    font-weight: 760;
+    letter-spacing: -0.04em;
+    color: var(--muted);
+  }
+
+  .bs-jump__kicker {
+    grid-column: 2;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 0.52rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .bs-section {
+    margin-top: 3.5rem;
+  }
+
+  .bs-section-head {
+    display: grid;
+    gap: 1rem;
+    align-items: end;
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 0.9rem;
+  }
+
+  .bs-section-head > p {
+    max-width: 55ch;
+    color: var(--muted);
+    font-size: 0.82rem;
+    line-height: 1.6;
+  }
+
+  .bs-board {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-top: 1.1rem;
+    border: 1px solid var(--line-strong);
+    background: var(--paper);
+  }
+
+  .bs-system {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    min-width: 0;
+    padding: 1.1rem;
+    border-right: 1px solid var(--line-strong);
+    border-top: 4px solid var(--sys-accent);
+    background: var(--paper);
+    scroll-margin-top: 6rem;
+  }
+
+  .bs-system:last-child {
+    border-right: 0;
+  }
+
+  .bs-system__head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.65rem;
+    align-items: start;
+    min-height: 7.2rem;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 0.85rem;
+  }
+
+  .bs-system__index {
+    font-family: var(--font-display);
+    font-size: 2.6rem;
+    font-weight: 780;
+    letter-spacing: -0.06em;
+    line-height: 0.8;
+    color: var(--muted);
+  }
+
+  .bs-system__title h3 {
+    font-family: var(--font-display);
+    font-size: clamp(1.45rem, 1.7vw, 1.9rem);
+    font-weight: 780;
+    letter-spacing: -0.035em;
+    line-height: 0.95;
+    text-transform: uppercase;
+  }
+
+  .bs-system__title > p:last-child {
+    margin-top: 0.35rem;
+    color: var(--muted);
+    font-size: 0.75rem;
+    line-height: 1.45;
+  }
+
+  .bs-pending {
+    grid-column: 1 / -1;
+    justify-self: start;
+    border: 1px solid var(--line-strong);
+    padding: 0.22rem 0.4rem;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 0.48rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .bs-stage {
+    display: grid;
+    justify-items: center;
+    gap: 0.7rem;
+    border: 1px solid var(--line-strong);
+    background: var(--sys-ground);
+    padding: 1.2rem 0.8rem;
+  }
+
+  .bs-stage__avatar {
+    display: block;
+    width: min(72%, 210px);
+    height: auto;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--sys-base) 30%, transparent);
+  }
+
+  .bs-stage__caption {
+    color: color-mix(in srgb, var(--sys-base) 72%, transparent);
+    font-family: var(--font-mono);
+    font-size: 0.5rem;
+    letter-spacing: 0.1em;
+    text-align: center;
+    text-transform: uppercase;
+  }
+
+  .bs-crops {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border: 1px solid var(--line-strong);
+  }
+
+  .bs-crop-panel {
+    display: grid;
+    gap: 0.5rem;
+    padding: 0.7rem;
+  }
+
+  .bs-crop-panel--dark {
+    border-right: 1px solid var(--line-strong);
+    background: #050b09;
+    color: #dcebe5;
+  }
+
+  .bs-crop-panel--light {
+    background: #eef3ef;
+    color: #0a1714;
+  }
+
+  .bs-crop-panel__label {
+    font-family: var(--font-mono);
+    font-size: 0.48rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    opacity: 0.7;
+  }
+
+  .bs-crop-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .bs-crop {
+    display: grid;
+    gap: 0.35rem;
+    justify-items: center;
+    margin: 0;
+  }
+
+  .bs-crop__img {
+    display: block;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.28);
+  }
+
+  .bs-crop__img--light {
+    box-shadow: 0 0 0 1px rgba(10, 23, 20, 0.22);
+  }
+
+  .bs-crop figcaption {
+    font-family: var(--font-mono);
+    font-size: 0.5rem;
+    letter-spacing: 0.08em;
+    opacity: 0.65;
+  }
+
+  .bs-banner {
+    position: relative;
+    overflow: hidden;
+    margin: 0;
+    border: 1px solid var(--line-strong);
+    background: var(--sys-ground);
+  }
+
+  .bs-banner img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .bs-banner__safe {
+    position: absolute;
+    inset: 8.8889% 0 auto;
+    border-top: 1px dashed color-mix(in srgb, var(--sys-accent) 78%, #fff);
+    pointer-events: none;
+  }
+
+  .bs-banner__safe-tag {
+    position: absolute;
+    top: calc(8.8889% + 0.25rem);
+    right: 0.4rem;
+    background: rgba(0, 0, 0, 0.62);
+    color: #fff;
+    padding: 0.15rem 0.3rem;
+    font-family: var(--font-mono);
+    font-size: 0.44rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    pointer-events: none;
+  }
+
+  .bs-banner figcaption {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.35rem;
+    border-top: 1px solid var(--line);
+    background: var(--paper);
+    padding: 0.45rem 0.55rem;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 0.48rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .bs-banner figcaption a {
+    color: var(--ink);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .bs-mock {
+    overflow: hidden;
+    border: 1px solid #2b2d31;
+    background: #1e1f22;
+    color: #f2f3f5;
+  }
+
+  .bs-mock__top {
+    position: relative;
+  }
+
+  .bs-mock__top img {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 7;
+    object-fit: cover;
+  }
+
+  .bs-mock__flag {
+    position: absolute;
+    top: 0.45rem;
+    right: 0.45rem;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(0, 0, 0, 0.66);
+    color: #fff;
+    padding: 0.18rem 0.32rem;
+    font-family: var(--font-mono);
+    font-size: 0.46rem;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+  }
+
+  .bs-mock__body {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.6rem;
+    padding: 0 0.75rem 0.45rem;
+  }
+
+  .bs-mock__avatar {
+    width: 58px;
+    height: 58px;
+    flex: none;
+    margin-top: -29px;
+    border: 4px solid #1e1f22;
+    border-radius: 50%;
+    background: #1e1f22;
+  }
+
+  .bs-mock__name {
+    font-size: 0.9rem;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+
+  .bs-mock__tag {
+    display: inline-block;
+    margin-left: 0.2rem;
+    border-radius: 2px;
+    background: #5865f2;
+    color: #fff;
+    padding: 0.06rem 0.22rem;
+    font-family: var(--font-mono);
+    font-size: 0.44rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    vertical-align: 2px;
+  }
+
+  .bs-mock__meta {
+    color: #b5bac1;
+    font-size: 0.66rem;
+  }
+
+  .bs-mock__caption {
+    padding: 0 0.75rem 0.7rem;
+    color: #949ba4;
+    font-family: var(--font-mono);
+    font-size: 0.46rem;
+    letter-spacing: 0.05em;
+    line-height: 1.5;
+    text-transform: uppercase;
+  }
+
+  .bs-copy > p {
+    color: var(--muted);
+    font-size: 0.78rem;
+    line-height: 1.6;
+  }
+
+  .bs-reasons {
+    margin-top: 0.8rem;
+    border-top: 1px solid var(--line);
+  }
+
+  .bs-reasons div {
+    border-bottom: 1px solid var(--line);
+    padding: 0.55rem 0;
+  }
+
+  .bs-reasons dt {
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 0.48rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .bs-reasons dd {
+    margin: 0.25rem 0 0;
+    font-size: 0.72rem;
+    line-height: 1.5;
+  }
+
+  .bs-eval {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.9rem;
+    border-top: 1px solid var(--line);
+    padding-top: 0.75rem;
+  }
+
+  .bs-eval h4,
+  .bs-variants__label {
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 0.48rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .bs-eval ul {
+    margin-top: 0.4rem;
+    display: grid;
+    gap: 0.35rem;
+  }
+
+  .bs-eval li {
+    display: grid;
+    grid-template-columns: 0.7rem 1fr;
+    gap: 0.3rem;
+    color: var(--muted);
+    font-size: 0.67rem;
+    line-height: 1.45;
+  }
+
+  .bs-eval li::before {
+    content: "—";
+    color: var(--sys-accent);
+  }
+
+  .bs-palette {
+    display: grid;
+    gap: 0.75rem;
+    border-top: 1px solid var(--line);
+    padding-top: 0.75rem;
+  }
+
+  .bs-swatches {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.4rem;
+  }
+
+  .bs-swatch__chip {
+    height: 30px;
+    border: 1px solid var(--line-strong);
+  }
+
+  .bs-swatch__name {
+    margin-top: 0.2rem;
+    font-size: 0.57rem;
+    font-weight: 650;
+    line-height: 1.2;
+  }
+
+  .bs-swatch__hex {
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 0.47rem;
+    letter-spacing: 0.03em;
+  }
+
+  .bs-swatch__role {
+    margin-top: 0.12rem;
+    color: var(--muted);
+    font-size: 0.52rem;
+    line-height: 1.35;
+  }
+
+  .bs-contrast {
+    display: grid;
+    gap: 0.22rem;
+    border-top: 1px solid var(--line);
+    padding-top: 0.45rem;
+  }
+
+  .bs-contrast div {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    color: var(--muted);
+    font-size: 0.58rem;
+  }
+
+  .bs-contrast strong {
+    color: var(--ink);
+    font-family: var(--font-mono);
+    font-size: 0.54rem;
+    font-weight: 500;
+  }
+
+  .bs-variants {
+    border-top: 1px solid var(--line);
+    padding-top: 0.75rem;
+  }
+
+  .bs-variants__row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.35rem;
+    margin-top: 0.5rem;
+  }
+
+  .bs-variants__row figure {
+    display: grid;
+    justify-items: center;
+    gap: 0.3rem;
+    margin: 0;
+    border: 1px solid var(--line);
+    background:
+      linear-gradient(45deg, var(--paper-2) 25%, transparent 25%, transparent 75%, var(--paper-2) 75%) 0 0 / 12px 12px,
+      linear-gradient(45deg, var(--paper-2) 25%, transparent 25%, transparent 75%, var(--paper-2) 75%) 6px 6px / 12px 12px,
+      var(--paper);
+    padding: 0.4rem 0.2rem;
+  }
+
+  .bs-variants__row img {
+    display: block;
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+  }
+
+  .bs-variants__row figcaption {
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 0.42rem;
+    letter-spacing: 0.04em;
+    text-align: center;
+    text-transform: uppercase;
+  }
+
+  .bs-variants__mono {
+    opacity: 0.8;
+  }
+
+  .bs-downloads {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-top: auto;
+    border-top: 1px solid var(--line);
+    padding-top: 0.75rem;
+  }
+
+  .bs-masters {
+    display: grid;
+    gap: 1.1rem;
+    margin-top: 1.1rem;
+    max-width: 1080px;
+  }
+
+  .bs-master {
+    margin: 0;
+    border: 1px solid var(--line-strong);
+    background: var(--sys-ground);
+  }
+
+  .bs-master img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .bs-master figcaption {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.4rem;
+    border-top: 1px solid var(--line);
+    background: var(--paper);
+    padding: 0.55rem 0.7rem;
+    font-size: 0.68rem;
+  }
+
+  .bs-master__name {
+    font-family: var(--font-display);
+    font-weight: 740;
+    letter-spacing: -0.02em;
+    text-transform: uppercase;
+  }
+
+  .bs-master__meta {
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 0.54rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .bs-master__links {
+    display: flex;
+    gap: 0.6rem;
+    font-family: var(--font-mono);
+    font-size: 0.55rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .bs-fit-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-top: 1.1rem;
+    border: 1px solid var(--line-strong);
+  }
+
+  .bs-fit {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    padding: 1.1rem;
+    border-right: 1px solid var(--line-strong);
+    background: var(--paper);
+  }
+
+  .bs-fit:last-child {
+    border-right: 0;
+  }
+
+  .bs-fit__label {
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 0.5rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .bs-fit h3 {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-weight: 760;
+    letter-spacing: -0.02em;
+    text-transform: uppercase;
+  }
+
+  .bs-fit p {
+    color: var(--muted);
+    font-size: 0.74rem;
+    line-height: 1.55;
+  }
+
+  .bs-fit__tag {
+    margin-top: auto;
+    border-top: 1px solid var(--line);
+    padding-top: 0.5rem;
+    color: var(--ink) !important;
+    font-family: var(--font-mono);
+    font-size: 0.5rem !important;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .bs-callout {
+    margin-top: 1rem;
+    border: 1px solid var(--line-strong);
+    border-top: 3px solid var(--coral);
+    background: var(--paper-2);
+    padding: 1rem 1.1rem;
+  }
+
+  .bs-callout__title {
+    font-weight: 700;
+    font-size: 0.9rem;
+  }
+
+  .bs-callout p {
+    margin-top: 0.4rem;
+    color: var(--muted);
+    font-size: 0.76rem;
+    line-height: 1.6;
+  }
+
+  .bs-callout__source {
+    font-family: var(--font-mono);
+    font-size: 0.52rem !important;
+    letter-spacing: 0.02em;
+  }
+
+  .bs-manifest {
+    display: grid;
+    gap: 1.25rem;
+    margin-top: 1.1rem;
+  }
+
+  .bs-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--line-strong);
+  }
+
+  .bs-table {
+    width: 100%;
+    min-width: 680px;
+    border-collapse: collapse;
+    background: var(--paper);
+    font-size: 0.68rem;
+  }
+
+  .bs-table caption {
+    text-align: left;
+  }
+
+  .bs-table th,
+  .bs-table td {
+    border-bottom: 1px solid var(--line);
+    padding: 0.45rem 0.55rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .bs-table thead th {
+    border-bottom: 2px solid var(--ink);
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 0.48rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .bs-table tbody th {
+    font-weight: 650;
+    white-space: nowrap;
+  }
+
+  .bs-table tbody tr:last-child th,
+  .bs-table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
+  .bs-table__file {
+    font-family: var(--font-mono);
+    font-size: 0.56rem;
+    white-space: nowrap;
+  }
+
+  .bs-table__file a {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .bs-provenance {
+    border: 1px solid var(--line-strong);
+    border-top: 4px solid var(--signal);
+    background: var(--paper-2);
+    padding: 1.1rem;
+  }
+
+  .bs-provenance h3 {
+    font-family: var(--font-display);
+    font-size: 1.35rem;
+    font-weight: 780;
+    letter-spacing: -0.03em;
+    text-transform: uppercase;
+  }
+
+  .bs-provenance ul {
+    display: grid;
+    gap: 0.4rem;
+    margin-top: 0.6rem;
+  }
+
+  .bs-provenance li {
+    position: relative;
+    padding-left: 0.9rem;
+    color: var(--muted);
+    font-size: 0.7rem;
+    line-height: 1.55;
+  }
+
+  .bs-provenance li::before {
+    content: "—";
+    position: absolute;
+    left: 0;
+    color: var(--signal);
+  }
+
+  .bs-provenance code {
+    border: 1px solid var(--line);
+    background: var(--paper);
+    padding: 0.05rem 0.25rem;
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    overflow-wrap: anywhere;
+  }
+
+  .bs-provenance__links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.85rem;
+  }
+
+  .bs-gate {
+    margin-top: 1.25rem;
+    border: 2px solid var(--ink);
+    background: var(--paper-2);
+    padding: 1.15rem;
+  }
+
+  .bs-gate h3 {
+    margin-top: 0.3rem;
+  }
+
+  .bs-gate ol {
+    display: grid;
+    gap: 0.55rem;
+    margin-top: 0.85rem;
+    counter-reset: gate;
+    list-style: none;
+  }
+
+  .bs-gate li {
+    display: grid;
+    grid-template-columns: 1.8rem 1fr;
+    gap: 0.5rem;
+    color: var(--muted);
+    font-size: 0.76rem;
+    line-height: 1.55;
+    counter-increment: gate;
+  }
+
+  .bs-gate li::before {
+    content: counter(gate, decimal-leading-zero);
+    color: var(--ink);
+    font-family: var(--font-mono);
+    font-size: 0.56rem;
+    letter-spacing: 0.06em;
+  }
+
+  .bs-gate__note {
+    margin-top: 0.85rem;
+    border-top: 1px solid var(--line);
+    padding-top: 0.65rem;
+    color: var(--muted);
+    font-size: 0.7rem;
+    line-height: 1.55;
+  }
+
+  .bs-section--legacy {
+    border-top: 3px solid var(--ink);
+    padding-top: 1.1rem;
+  }
+
+  .bs-legacy {
+    margin-top: 1rem;
+    border: 1px solid var(--line-strong);
+    background: var(--paper);
+  }
+
+  .bs-legacy summary {
+    cursor: pointer;
+    padding: 0.9rem 1rem;
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 740;
+    letter-spacing: -0.02em;
+    text-transform: uppercase;
+  }
+
+  .bs-legacy summary:hover {
+    background: var(--paper-2);
+  }
+
+  .bs-legacy__body {
+    border-top: 1px solid var(--line);
+    padding: 1rem;
+  }
+
+  .bs-legacy__current {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+    border: 1px solid var(--line);
+    background: var(--paper-2);
+    padding: 0.9rem;
+  }
+
+  .bs-legacy__current img {
+    width: 88px;
+    height: 88px;
+  }
+
+  .bs-legacy__grid {
+    display: grid;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+  }
+
+  .bs-legacy__subhead {
+    border-bottom: 2px solid var(--ink);
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.4rem;
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    font-weight: 740;
+    letter-spacing: -0.02em;
+    text-transform: uppercase;
+  }
+
+  @media (min-width: 900px) {
+    .bs-hero {
+      grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.55fr);
+    }
+
+    .bs-section-head {
+      grid-template-columns: minmax(0, 1fr) minmax(240px, 0.55fr);
+    }
+
+    .bs-legacy__grid {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  @media (max-width: 1100px) {
+    .bs-board,
+    .bs-jump {
+      grid-template-columns: 1fr;
+    }
+
+    .bs-system {
+      border-right: 0;
+      border-bottom: 1px solid var(--line-strong);
+    }
+
+    .bs-system:last-child {
+      border-bottom: 0;
+    }
+
+    .bs-jump a {
+      border-right: 0;
+      border-bottom: 1px solid var(--line-strong);
+    }
+
+    .bs-jump a:last-child {
+      border-bottom: 0;
+    }
+
+    .bs-fit-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .bs-fit {
+      border-right: 0;
+      border-bottom: 1px solid var(--line-strong);
+    }
+
+    .bs-fit:last-child {
+      border-bottom: 0;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .bs-eval {
+      grid-template-columns: 1fr;
+    }
+
+    .bs-swatches {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .bs-variants__row {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .bs-crop-row {
+      gap: 0.35rem;
+    }
+
+    .bs-banner__safe-tag {
+      display: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bs-jump a,
+    .bs-legacy summary {
+      transition: none;
+    }
+  }
+</style>

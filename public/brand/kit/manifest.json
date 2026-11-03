@@ -133,5 +133,803 @@
       "png": "/brand/kit/social/hero-1920x1080.png",
       "dimensions": "1920x1080"
     }
-  ]
+  ],
+  "systems": [
+    {
+      "slug": "signal-fold",
+      "index": "01",
+      "label": "Signal Fold",
+      "kicker": "Precision field",
+      "tagline": "Folded planes, filed precisely.",
+      "note": "The reviewed Signal Fold geometry, completed as a system: carbon field, bone card planes, electric aqua signal and one lime edge.",
+      "rationale": "Signal Fold is the closest to the current working identity, but it is not a recolour. The icon is a tight circular-crop cut of the folded-card mark; the banner is a measured field of card edges crossing a grid, with no stretched avatar and no embedded type. It reads as a cabinet instrument rather than a generic game badge.",
+      "strengths": [
+        "The F-like cut-card silhouette survives 32px without microtype.",
+        "Highest contrast of the three on a dark Discord field.",
+        "Icon and banner share the same offset-plane logic, so the pair feels authored together."
+      ],
+      "watchouts": [
+        "Closest to the incumbent identity; the owner may want a sharper break.",
+        "Aqua and lime are strong signals and need discipline outside the mark.",
+        "The fine field grid is deliberately absent at thumbnail size."
+      ],
+      "smallSize": "The mark reduces to a blocky F silhouette. The one lime edge is the only colour detail required at 32px.",
+      "bannerLogic": "A horizontal fold of card edges with a single notch, held by a quiet 48px top band. No logo or text is embedded.",
+      "tokens": {
+        "ground": "#07110f",
+        "base": "#eff5f1",
+        "primary": "#2ce3d3",
+        "secondary": "#c9f25f",
+        "accent": "#044e4a",
+        "lightGround": "#eff5f1"
+      },
+      "palette": [
+        {
+          "name": "Carbon",
+          "hex": "#07110f",
+          "role": "field and banner ground"
+        },
+        {
+          "name": "Bone",
+          "hex": "#eff5f1",
+          "role": "card planes and light type"
+        },
+        {
+          "name": "Electric aqua",
+          "hex": "#2ce3d3",
+          "role": "primary signal"
+        },
+        {
+          "name": "Signal lime",
+          "hex": "#c9f25f",
+          "role": "one high-energy edge"
+        },
+        {
+          "name": "Deep current",
+          "hex": "#044e4a",
+          "role": "quiet structural plane"
+        }
+      ],
+      "contrast": [
+        {
+          "pair": "Bone on carbon",
+          "fg": "#eff5f1",
+          "bg": "#07110f",
+          "ratio": 17.34
+        },
+        {
+          "pair": "Electric aqua on carbon",
+          "fg": "#2ce3d3",
+          "bg": "#07110f",
+          "ratio": 11.89
+        },
+        {
+          "pair": "Signal lime on carbon",
+          "fg": "#c9f25f",
+          "bg": "#07110f",
+          "ratio": 14.92
+        }
+      ],
+      "typography": {
+        "display": "Manrope 780, tight tracking, uppercase for decisions only.",
+        "interface": "Geist Sans for UI; Geist Mono for dimensions, serials and provenance.",
+        "licensing": "Manrope and Geist are self-hosted under the SIL Open Font License 1.1."
+      },
+      "assets": [
+        {
+          "id": "mark-svg",
+          "path": "/brand/kit/systems/signal-fold/mark.svg",
+          "width": 256,
+          "height": 256,
+          "format": "svg",
+          "bytes": 399,
+          "use": "Vector mark master",
+          "scope": "Reference vector"
+        },
+        {
+          "id": "icon-svg",
+          "path": "/brand/kit/systems/signal-fold/icon.svg",
+          "width": 512,
+          "height": 512,
+          "format": "svg",
+          "bytes": 483,
+          "use": "Vector app icon master",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-light-svg",
+          "path": "/brand/kit/systems/signal-fold/icon-light.svg",
+          "width": 512,
+          "height": 512,
+          "format": "svg",
+          "bytes": 480,
+          "use": "Vector positive-on-light icon",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-transparent-svg",
+          "path": "/brand/kit/systems/signal-fold/icon-transparent.svg",
+          "width": 512,
+          "height": 512,
+          "format": "svg",
+          "bytes": 436,
+          "use": "Vector transparent icon",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-mono-dark-svg",
+          "path": "/brand/kit/systems/signal-fold/icon-mono-dark.svg",
+          "width": 512,
+          "height": 512,
+          "format": "svg",
+          "bytes": 433,
+          "use": "Monochrome dark vector",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-mono-light-svg",
+          "path": "/brand/kit/systems/signal-fold/icon-mono-light.svg",
+          "width": 512,
+          "height": 512,
+          "format": "svg",
+          "bytes": 433,
+          "use": "Monochrome light vector",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-1024",
+          "path": "/brand/kit/systems/signal-fold/icon-1024.png",
+          "width": 1024,
+          "height": 1024,
+          "format": "png",
+          "bytes": 5635,
+          "use": "Opaque app icon master",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-512",
+          "path": "/brand/kit/systems/signal-fold/icon-512.png",
+          "width": 512,
+          "height": 512,
+          "format": "png",
+          "bytes": 2169,
+          "use": "512px circular-crop proof",
+          "scope": "Proof only"
+        },
+        {
+          "id": "icon-128",
+          "path": "/brand/kit/systems/signal-fold/icon-128.png",
+          "width": 128,
+          "height": 128,
+          "format": "png",
+          "bytes": 627,
+          "use": "128px proof",
+          "scope": "Proof only"
+        },
+        {
+          "id": "icon-64",
+          "path": "/brand/kit/systems/signal-fold/icon-64.png",
+          "width": 64,
+          "height": 64,
+          "format": "png",
+          "bytes": 481,
+          "use": "Exact 64px proof",
+          "scope": "Proof only"
+        },
+        {
+          "id": "icon-32",
+          "path": "/brand/kit/systems/signal-fold/icon-32.png",
+          "width": 32,
+          "height": 32,
+          "format": "png",
+          "bytes": 407,
+          "use": "Exact 32px proof",
+          "scope": "Proof only"
+        },
+        {
+          "id": "icon-light-1024",
+          "path": "/brand/kit/systems/signal-fold/icon-light-1024.png",
+          "width": 1024,
+          "height": 1024,
+          "format": "png",
+          "bytes": 5637,
+          "use": "Positive variant on light ground",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-transparent-1024",
+          "path": "/brand/kit/systems/signal-fold/icon-transparent-1024.png",
+          "width": 1024,
+          "height": 1024,
+          "format": "png",
+          "bytes": 6836,
+          "use": "Transparent opaque-colour variant",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-mono-dark-1024",
+          "path": "/brand/kit/systems/signal-fold/icon-mono-dark-1024.png",
+          "width": 1024,
+          "height": 1024,
+          "format": "png",
+          "bytes": 6730,
+          "use": "Monochrome dark variant",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-mono-light-1024",
+          "path": "/brand/kit/systems/signal-fold/icon-mono-light-1024.png",
+          "width": 1024,
+          "height": 1024,
+          "format": "png",
+          "bytes": 6726,
+          "use": "Monochrome light variant",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "banner-svg",
+          "path": "/brand/kit/systems/signal-fold/banner.svg",
+          "width": 1920,
+          "height": 1080,
+          "format": "svg",
+          "bytes": 1802,
+          "use": "Vector banner master",
+          "scope": "Server banner source"
+        },
+        {
+          "id": "banner-1920",
+          "path": "/brand/kit/systems/signal-fold/banner-1920x1080.png",
+          "width": 1920,
+          "height": 1080,
+          "format": "png",
+          "bytes": 13127,
+          "use": "High-resolution banner master",
+          "scope": "Server banner source"
+        },
+        {
+          "id": "banner-960",
+          "path": "/brand/kit/systems/signal-fold/banner-960x540.png",
+          "width": 960,
+          "height": 540,
+          "format": "png",
+          "bytes": 5440,
+          "use": "Discord server banner size",
+          "scope": "Server banner — entitlement required"
+        }
+      ]
+    },
+    {
+      "slug": "bastion",
+      "index": "02",
+      "label": "Bastion",
+      "kicker": "Architectural weight",
+      "tagline": "A cabinet built to outlast the collection.",
+      "note": "A heavy architectural F, recast as a cabinet wall in oxblood, plaster and brass.",
+      "rationale": "Bastion treats the identity as furniture rather than software: plaster mass, brass seams and an oxblood field. The reviewed block geometry is kept, but the system is carried by a monumental wall in the banner instead of a repeated logo. It is the most formal option and the clearest break from the current aqua field.",
+      "strengths": [
+        "Strongest silhouette at 32px; every edge is a broad plane.",
+        "Warm archival palette is clearly distinct from the current working identity.",
+        "No hairline detail is required for recognition or compression."
+      ],
+      "watchouts": [
+        "Oxblood is heavy; member surfaces need the light variant for balance.",
+        "Brass must stay a seam, never a gloss or a metallic gradient.",
+        "The banner carries more visual weight than the other two; test it behind the server title."
+      ],
+      "smallSize": "Three heavy horizontal bars and a solid vertical stem remain unambiguous in a circular crop. No fine detail is required.",
+      "bannerLogic": "A masonry wall of offset plaster courses with brass piers, cropped at the right edge. The top 48px stays flat oxblood.",
+      "tokens": {
+        "ground": "#2a1214",
+        "base": "#efe2ca",
+        "primary": "#c99a4b",
+        "secondary": "#e0b878",
+        "accent": "#8f3a2f",
+        "lightGround": "#efe2ca"
+      },
+      "palette": [
+        {
+          "name": "Oxblood",
+          "hex": "#2a1214",
+          "role": "field and banner ground"
+        },
+        {
+          "name": "Plaster",
+          "hex": "#efe2ca",
+          "role": "structural bars and lite type"
+        },
+        {
+          "name": "Brass",
+          "hex": "#c99a4b",
+          "role": "seams and one plinth line"
+        },
+        {
+          "name": "Brick",
+          "hex": "#8f3a2f",
+          "role": "single inset accent"
+        },
+        {
+          "name": "Stone",
+          "hex": "#a08b76",
+          "role": "quiet secondary detail"
+        }
+      ],
+      "contrast": [
+        {
+          "pair": "Plaster on oxblood",
+          "fg": "#efe2ca",
+          "bg": "#2a1214",
+          "ratio": 13.72
+        },
+        {
+          "pair": "Brass on oxblood",
+          "fg": "#c99a4b",
+          "bg": "#2a1214",
+          "ratio": 6.87
+        },
+        {
+          "pair": "Oxblood on plaster",
+          "fg": "#2a1214",
+          "bg": "#efe2ca",
+          "ratio": 13.72
+        }
+      ],
+      "typography": {
+        "display": "Manrope 780, wide negative space, uppercase for decisions only.",
+        "interface": "Geist Sans for UI; Geist Mono for catalogue labels and provenance.",
+        "licensing": "Manrope and Geist are self-hosted under the SIL Open Font License 1.1."
+      },
+      "assets": [
+        {
+          "id": "mark-svg",
+          "path": "/brand/kit/systems/bastion/mark.svg",
+          "width": 256,
+          "height": 256,
+          "format": "svg",
+          "bytes": 410,
+          "use": "Vector mark master",
+          "scope": "Reference vector"
+        },
+        {
+          "id": "icon-svg",
+          "path": "/brand/kit/systems/bastion/icon.svg",
+          "width": 512,
+          "height": 512,
+          "format": "svg",
+          "bytes": 494,
+          "use": "Vector app icon master",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-light-svg",
+          "path": "/brand/kit/systems/bastion/icon-light.svg",
+          "width": 512,
+          "height": 512,
+          "format": "svg",
+          "bytes": 494,
+          "use": "Vector positive-on-light icon",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-transparent-svg",
+          "path": "/brand/kit/systems/bastion/icon-transparent.svg",
+          "width": 512,
+          "height": 512,
+          "format": "svg",
+          "bytes": 447,
+          "use": "Vector transparent icon",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-mono-dark-svg",
+          "path": "/brand/kit/systems/bastion/icon-mono-dark.svg",
+          "width": 512,
+          "height": 512,
+          "format": "svg",
+          "bytes": 447,
+          "use": "Monochrome dark vector",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-mono-light-svg",
+          "path": "/brand/kit/systems/bastion/icon-mono-light.svg",
+          "width": 512,
+          "height": 512,
+          "format": "svg",
+          "bytes": 447,
+          "use": "Monochrome light vector",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-1024",
+          "path": "/brand/kit/systems/bastion/icon-1024.png",
+          "width": 1024,
+          "height": 1024,
+          "format": "png",
+          "bytes": 5719,
+          "use": "Opaque app icon master",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-512",
+          "path": "/brand/kit/systems/bastion/icon-512.png",
+          "width": 512,
+          "height": 512,
+          "format": "png",
+          "bytes": 2179,
+          "use": "512px circular-crop proof",
+          "scope": "Proof only"
+        },
+        {
+          "id": "icon-128",
+          "path": "/brand/kit/systems/bastion/icon-128.png",
+          "width": 128,
+          "height": 128,
+          "format": "png",
+          "bytes": 641,
+          "use": "128px proof",
+          "scope": "Proof only"
+        },
+        {
+          "id": "icon-64",
+          "path": "/brand/kit/systems/bastion/icon-64.png",
+          "width": 64,
+          "height": 64,
+          "format": "png",
+          "bytes": 474,
+          "use": "Exact 64px proof",
+          "scope": "Proof only"
+        },
+        {
+          "id": "icon-32",
+          "path": "/brand/kit/systems/bastion/icon-32.png",
+          "width": 32,
+          "height": 32,
+          "format": "png",
+          "bytes": 407,
+          "use": "Exact 32px proof",
+          "scope": "Proof only"
+        },
+        {
+          "id": "icon-light-1024",
+          "path": "/brand/kit/systems/bastion/icon-light-1024.png",
+          "width": 1024,
+          "height": 1024,
+          "format": "png",
+          "bytes": 5722,
+          "use": "Positive variant on light ground",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-transparent-1024",
+          "path": "/brand/kit/systems/bastion/icon-transparent-1024.png",
+          "width": 1024,
+          "height": 1024,
+          "format": "png",
+          "bytes": 6912,
+          "use": "Transparent opaque-colour variant",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-mono-dark-1024",
+          "path": "/brand/kit/systems/bastion/icon-mono-dark-1024.png",
+          "width": 1024,
+          "height": 1024,
+          "format": "png",
+          "bytes": 6857,
+          "use": "Monochrome dark variant",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-mono-light-1024",
+          "path": "/brand/kit/systems/bastion/icon-mono-light-1024.png",
+          "width": 1024,
+          "height": 1024,
+          "format": "png",
+          "bytes": 6845,
+          "use": "Monochrome light variant",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "banner-svg",
+          "path": "/brand/kit/systems/bastion/banner.svg",
+          "width": 1920,
+          "height": 1080,
+          "format": "svg",
+          "bytes": 1484,
+          "use": "Vector banner master",
+          "scope": "Server banner source"
+        },
+        {
+          "id": "banner-1920",
+          "path": "/brand/kit/systems/bastion/banner-1920x1080.png",
+          "width": 1920,
+          "height": 1080,
+          "format": "png",
+          "bytes": 8943,
+          "use": "High-resolution banner master",
+          "scope": "Server banner source"
+        },
+        {
+          "id": "banner-960",
+          "path": "/brand/kit/systems/bastion/banner-960x540.png",
+          "width": 960,
+          "height": 540,
+          "format": "png",
+          "bytes": 3080,
+          "use": "Discord server banner size",
+          "scope": "Server banner — entitlement required"
+        }
+      ]
+    },
+    {
+      "slug": "aperture",
+      "index": "03",
+      "label": "Aperture",
+      "kicker": "Optical night",
+      "tagline": "A lens for the card you keep.",
+      "note": "The circular card window and three foil planes, moved into a midnight blueprint palette with one vermilion signal.",
+      "rationale": "Aperture is the most collectible of the three: a circular card window with three foil planes, held in a midnight blueprint field with a vermilion accent. It is the only direction whose geometry is already native to Discord's circular crop. The banner is a large cropped lens with a quiet top band, not an enlarged avatar.",
+      "strengths": [
+        "Native to the circular avatar crop; the ring defines the edge.",
+        "Distinct from Signal Fold's F and Bastion's architecture.",
+        "One warm accent cuts the night field without a glow."
+      ],
+      "watchouts": [
+        "The most detailed geometry; inspect the exported 32px proof, not only the vector.",
+        "Vermilion is an accent, never a generic warning or success colour.",
+        "The large banner lens needs clear space around the centre hole."
+      ],
+      "smallSize": "The outer ring, three wedge planes and open centre survive at 32px. The central hole keeps the silhouette from becoming a solid dot.",
+      "bannerLogic": "A large lens cropped by the right edge, built from the same three wedge planes as the icon. The left field carries only quiet arc echoes.",
+      "tokens": {
+        "ground": "#0c1626",
+        "base": "#e7edf3",
+        "primary": "#7ea8c4",
+        "secondary": "#e4573f",
+        "accent": "#9bc3d9",
+        "lightGround": "#e9eef4"
+      },
+      "palette": [
+        {
+          "name": "Midnight",
+          "hex": "#0c1626",
+          "role": "field and banner ground"
+        },
+        {
+          "name": "Frost",
+          "hex": "#e7edf3",
+          "role": "upper foil plane and lite type"
+        },
+        {
+          "name": "Blueprint",
+          "hex": "#7ea8c4",
+          "role": "ring and secondary plane"
+        },
+        {
+          "name": "Vermilion",
+          "hex": "#e4573f",
+          "role": "one warm signal plane"
+        },
+        {
+          "name": "Pale steel",
+          "hex": "#9bc3d9",
+          "role": "third plane and quiet detail"
+        }
+      ],
+      "contrast": [
+        {
+          "pair": "Frost on midnight",
+          "fg": "#e7edf3",
+          "bg": "#0c1626",
+          "ratio": 15.37
+        },
+        {
+          "pair": "Vermilion on midnight",
+          "fg": "#e4573f",
+          "bg": "#0c1626",
+          "ratio": 4.95
+        },
+        {
+          "pair": "Midnight on frost",
+          "fg": "#0c1626",
+          "bg": "#e7edf3",
+          "ratio": 15.37
+        }
+      ],
+      "typography": {
+        "display": "Manrope 780, optical spacing, uppercase for decisions only.",
+        "interface": "Geist Sans for UI; Geist Mono for catalogue labels and provenance.",
+        "licensing": "Manrope and Geist are self-hosted under the SIL Open Font License 1.1."
+      },
+      "assets": [
+        {
+          "id": "mark-svg",
+          "path": "/brand/kit/systems/aperture/mark.svg",
+          "width": 256,
+          "height": 256,
+          "format": "svg",
+          "bytes": 527,
+          "use": "Vector mark master",
+          "scope": "Reference vector"
+        },
+        {
+          "id": "icon-svg",
+          "path": "/brand/kit/systems/aperture/icon.svg",
+          "width": 512,
+          "height": 512,
+          "format": "svg",
+          "bytes": 611,
+          "use": "Vector app icon master",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-light-svg",
+          "path": "/brand/kit/systems/aperture/icon-light.svg",
+          "width": 512,
+          "height": 512,
+          "format": "svg",
+          "bytes": 611,
+          "use": "Vector positive-on-light icon",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-transparent-svg",
+          "path": "/brand/kit/systems/aperture/icon-transparent.svg",
+          "width": 512,
+          "height": 512,
+          "format": "svg",
+          "bytes": 564,
+          "use": "Vector transparent icon",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-mono-dark-svg",
+          "path": "/brand/kit/systems/aperture/icon-mono-dark.svg",
+          "width": 512,
+          "height": 512,
+          "format": "svg",
+          "bytes": 564,
+          "use": "Monochrome dark vector",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-mono-light-svg",
+          "path": "/brand/kit/systems/aperture/icon-mono-light.svg",
+          "width": 512,
+          "height": 512,
+          "format": "svg",
+          "bytes": 564,
+          "use": "Monochrome light vector",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-1024",
+          "path": "/brand/kit/systems/aperture/icon-1024.png",
+          "width": 1024,
+          "height": 1024,
+          "format": "png",
+          "bytes": 40261,
+          "use": "Opaque app icon master",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-512",
+          "path": "/brand/kit/systems/aperture/icon-512.png",
+          "width": 512,
+          "height": 512,
+          "format": "png",
+          "bytes": 19276,
+          "use": "512px circular-crop proof",
+          "scope": "Proof only"
+        },
+        {
+          "id": "icon-128",
+          "path": "/brand/kit/systems/aperture/icon-128.png",
+          "width": 128,
+          "height": 128,
+          "format": "png",
+          "bytes": 4524,
+          "use": "128px proof",
+          "scope": "Proof only"
+        },
+        {
+          "id": "icon-64",
+          "path": "/brand/kit/systems/aperture/icon-64.png",
+          "width": 64,
+          "height": 64,
+          "format": "png",
+          "bytes": 2152,
+          "use": "Exact 64px proof",
+          "scope": "Proof only"
+        },
+        {
+          "id": "icon-32",
+          "path": "/brand/kit/systems/aperture/icon-32.png",
+          "width": 32,
+          "height": 32,
+          "format": "png",
+          "bytes": 962,
+          "use": "Exact 32px proof",
+          "scope": "Proof only"
+        },
+        {
+          "id": "icon-light-1024",
+          "path": "/brand/kit/systems/aperture/icon-light-1024.png",
+          "width": 1024,
+          "height": 1024,
+          "format": "png",
+          "bytes": 39319,
+          "use": "Positive variant on light ground",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-transparent-1024",
+          "path": "/brand/kit/systems/aperture/icon-transparent-1024.png",
+          "width": 1024,
+          "height": 1024,
+          "format": "png",
+          "bytes": 44086,
+          "use": "Transparent opaque-colour variant",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-mono-dark-1024",
+          "path": "/brand/kit/systems/aperture/icon-mono-dark-1024.png",
+          "width": 1024,
+          "height": 1024,
+          "format": "png",
+          "bytes": 36177,
+          "use": "Monochrome dark variant",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "icon-mono-light-1024",
+          "path": "/brand/kit/systems/aperture/icon-mono-light-1024.png",
+          "width": 1024,
+          "height": 1024,
+          "format": "png",
+          "bytes": 33674,
+          "use": "Monochrome light variant",
+          "scope": "Application avatar"
+        },
+        {
+          "id": "banner-svg",
+          "path": "/brand/kit/systems/aperture/banner.svg",
+          "width": 1920,
+          "height": 1080,
+          "format": "svg",
+          "bytes": 1672,
+          "use": "Vector banner master",
+          "scope": "Server banner source"
+        },
+        {
+          "id": "banner-1920",
+          "path": "/brand/kit/systems/aperture/banner-1920x1080.png",
+          "width": 1920,
+          "height": 1080,
+          "format": "png",
+          "bytes": 108290,
+          "use": "High-resolution banner master",
+          "scope": "Server banner source"
+        },
+        {
+          "id": "banner-960",
+          "path": "/brand/kit/systems/aperture/banner-960x540.png",
+          "width": 960,
+          "height": 540,
+          "format": "png",
+          "bytes": 55783,
+          "use": "Discord server banner size",
+          "scope": "Server banner — entitlement required"
+        }
+      ]
+    }
+  ],
+  "system_status": {
+    "owner_selection": "pending",
+    "applied": false,
+    "canonical_working_identity": "signal-fold",
+    "generated_at": "2026-11-03T13:33:37.089Z",
+    "note": "Three complete systems are presented for owner selection. No Discord application avatar, guild icon or server banner was changed. The incumbent Signal Fold working identity remains in place until explicit owner approval."
+  }
 }
