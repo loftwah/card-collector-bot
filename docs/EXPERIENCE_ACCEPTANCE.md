@@ -120,11 +120,16 @@ pnpm content:requeue --slug ...  # dry-run a bounded render queue
 
 ## 9. Revisions
 
-- Deployed Worker: `4de8b0ac-fefa-45d8-92d9-cfe7881a62a0` (initial Signal
-  deployment). Redeploy the final commit after the last acceptance checks.
+- Deployed Worker: `928968ae-9669-4242-bb0f-5282a1de5bb1` from source
+  `8da77e0` (2026/11/03 18:49 Melbourne; 07:49 UTC).
+- Source after the release-notes commit: `1f6b1ae`; no runtime code changed
+  after the deployed source.
 - Migration applied: `0014_scoped_roles_and_shares.sql`.
 - Backup: `.foilbury/backups/prod-pre-signal-2026-11-03.json`
   (86 tables, 30,695 rows, SHA-256 `87d8f47d98f7b24abef3f372285d29e40011cee8015666a4bc6178d155affebc`).
 - Production role: `role_kaylee_mvzm5yiky28tmcyedbg20wdx`, active, `all:true`,
   granted by `usr_prod_owner`, audited.
 - Production mastery definitions: 126 inserted, 0 pending.
+- Public render refresh: 80 fronts and 80 designed backs published; read-back
+  80 public fronts, designed back `rnd_8cdf267058b0c8fa66d8` returns
+  `image/webp` with a public immutable cache.
