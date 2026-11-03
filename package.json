@@ -41,6 +41,9 @@
     "webhook:test": "node scripts/test-admin-webhook.mjs",
     "deploy:production": "node scripts/deploy-production.mjs",
     "discord:register": "tsx scripts/discord/register-commands.mjs",
+    "discord:setup:plan": "node scripts/discord/setup-plan.mjs",
+    "discord:setup:apply": "node scripts/discord/setup-apply.mjs",
+    "discord:setup:verify": "node scripts/discord/setup-apply.mjs --verify",
     "test:auth": "node scripts/test-auth-e2e.mjs",
     "test:creator": "node scripts/test-creator-e2e.mjs",
     "test:editorial": "node scripts/test-editorial-e2e.mjs",
@@ -76,7 +79,8 @@
     "demo:npcs": "node scripts/demo-npcs.mjs",
     "test:npc": "vitest run --config vitest.workers.config.ts tests/workers/npc.test.ts",
     "test:npc:ui": "node scripts/test-npc-e2e.mjs",
-    "demo:mastery": "node scripts/demo-mastery.mjs"
+    "demo:mastery": "node scripts/demo-mastery.mjs",
+    "test:missions": "vitest run --config vitest.workers.config.ts tests/workers/missions.test.ts"
   },
   "dependencies": {
     "@astrojs/cloudflare": "14.4.3",
