@@ -88,6 +88,22 @@ try {
     await page.goto("/admin/team");
     await page.getByText(/only the bot you were given/i).waitFor();
     await audit(page, `${scheme} team admin`);
+    await page.goto("/studio");
+    await page.getByRole("heading", { level: 2, name: /what you can change/i }).waitFor();
+    await audit(page, `${scheme} scoped Studio`, `ui-studio-${scheme}.png`);
+    await page.goto("/studio/collections");
+    await page.getByRole("heading", { name: /worlds with a front door/i }).waitFor();
+    await page.getByText("Bubbles").first().waitFor({ timeout: 20000 });
+    await audit(page, `${scheme} Studio collections`, `ui-studio-collections-${scheme}.png`);
+    await page.goto("/studio/npcs");
+    await page.getByRole("heading", { name: /npc collectors/i }).first().waitFor();
+    await audit(page, `${scheme} Studio NPC collectors`, `ui-studio-npcs-${scheme}.png`);
+    await page.goto("/play/preferences");
+    await page.getByRole("heading", { name: /choose what can drop for you/i }).waitFor();
+    await audit(page, `${scheme} collection preferences`, `ui-preferences-${scheme}.png`);
+    await page.goto("/play/rivals");
+    await page.getByRole("heading", { name: /the cabinet has regulars/i }).waitFor();
+    await audit(page, `${scheme} NPC lounge`, `ui-rivals-${scheme}.png`);
     await page.goto("/platform-admin");
     await page.getByText("Bots and tenants").waitFor({ timeout: 20000 }).catch(() => page.getByText("BOTS AND TENANTS").waitFor({ timeout: 20000 }));
     await audit(page, `${scheme} platform administration`, `ui-platform-${scheme}.png`);
@@ -106,6 +122,9 @@ try {
     await page.getByText(/worlds with a front door/i).waitFor();
     await page.getByText("Bubbles").first().waitFor({ timeout: 20000 });
     await audit(page, `${scheme} mobile collections`, `ui-collections-mobile-${scheme}.png`);
+    await page.goto("/play/rivals");
+    await page.getByRole("heading", { name: /the cabinet has regulars/i }).waitFor();
+    await audit(page, `${scheme} mobile NPC lounge`, `ui-rivals-mobile-${scheme}.png`);
 
     // 200% zoom of a 1440px desktop is an effective 720px CSS viewport.
     await page.setViewportSize({ width: 720, height: 500 });

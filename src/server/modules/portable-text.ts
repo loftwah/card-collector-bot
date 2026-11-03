@@ -188,7 +188,7 @@ function renderBlock(block: PortableTextBlock): string {
     }
     case "block": {
       const children = renderInline(block);
-      const align = block.textAlign ? ` style="text-align:${escapeHtml(block.textAlign)}"` : "";
+      const align = block.textAlign ? ` style="text-align:${escapeHtml(String(block.textAlign))}"` : "";
       switch (block.style) {
         case "h1":
           return `<h1${align}>${children}</h1>`;

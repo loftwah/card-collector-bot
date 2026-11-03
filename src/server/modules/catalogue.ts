@@ -1571,6 +1571,7 @@ export async function createEditionForCard(
     effects?: string[];
     variants?: Array<{ material: string; effect?: string | null }>;
     status?: "draft" | "published";
+    parentEditionId?: string | null;
     composition?: {
       mode?: "contain" | "fill" | "medallion";
       zoom?: number;
@@ -1642,6 +1643,18 @@ export async function createEditionForCard(
   );
   if (effectRows.length !== effectKeys.length)
     throw new ApiError(422, "effect_invalid", "One or more effects are not available.");
+  let parentEditionId: string | null = null;
+  if (input.parentEditionId) {
+    const parent = await first<{ id: string }>(
+      ctx.db,
+      "SELECT id FROM fb_artwork_editions WHERE id = ? AND card_id = ? AND tenant_id = ? AND archived_at IS NULL",
+      input.parentEditionId,
+      card.id,
+      ctx.tenant.id,
+    );
+    if (!parent) throw new ApiError(422, "parent_edition_invalid", "The edition being revised is not available on this card.");
+    parentEditionId = parent.id;
+  }
   const editionId = newId("edt");
   const now = nowIso();
   const composition = input.composition
@@ -1658,8 +1671,8 @@ export async function createEditionForCard(
     ctx.db
       .prepare(
         `INSERT INTO fb_artwork_editions
-          (id, tenant_id, card_id, name, subject_asset_id, background_asset_id, recipe_id, status, created_at, composition_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (id, tenant_id, card_id, name, subject_asset_id, background_asset_id, recipe_id, status, created_at, composition_json, parent_edition_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         editionId,
@@ -1672,6 +1685,7 @@ export async function createEditionForCard(
         input.status ?? "published",
         now,
         composition ? JSON.stringify(composition) : null,
+        parentEditionId,
       ),
     ...requestedVariants.map((variant) => {
       const material = materialRows.find((row) => row.key === variant.material)!;

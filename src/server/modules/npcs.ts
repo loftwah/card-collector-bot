@@ -567,6 +567,9 @@ export async function playNpcOnce(ctx: Ctx, id: string, idempotencyKey?: string)
       expectedDistribution: preview.distribution_fingerprint,
       idempotency: { key: `npc:${id}:${key}`, digest: await sha256Hex(`npc:${id}:${key}`) },
     });
+    if (!("instance_id" in receipt)) {
+      throw new Error("The idempotent draw replay did not include its original receipt.");
+    }
     const after = {
       balance: receipt.balance_after,
       balance_after: receipt.balance_after,

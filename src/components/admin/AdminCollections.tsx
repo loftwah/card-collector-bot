@@ -53,6 +53,9 @@ export default function AdminCollections({ platformAdmin, globalCollectionAdmin 
   const [form, setForm] = useState({ name: "", slug: "", description: "", scope: canCreateGlobal ? "global" : "bot", logoUrl: "", accent: "aqua", status: "draft", viewAudience: "members", sourceWork: "" });
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
 
   async function uploadBrand(file: File, role: "logo" | "cover", access: string, scope: string) {
     const data = new FormData();
@@ -93,6 +96,18 @@ export default function AdminCollections({ platformAdmin, globalCollectionAdmin 
   useEffect(() => { void loadCollection(selectedId); }, [selectedId]);
 
   const availableCards = useMemo(() => cards.filter((card) => !collectionCards.some((item) => item.id === card.id) && card.status !== "retired"), [cards, collectionCards]);
+  const filteredCollections = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return collections.filter((collection) => {
+      if (statusFilter !== "all" && collection.status !== statusFilter) return false;
+      if (!needle) return true;
+      return `${collection.name} ${collection.slug} ${collection.source_work ?? ""} ${collection.owner_name}`.toLowerCase().includes(needle);
+    });
+  }, [collections, query, statusFilter]);
+  const pageSize = 8;
+  const pageCount = Math.max(1, Math.ceil(filteredCollections.length / pageSize));
+  const safePage = Math.min(page, pageCount);
+  const pagedCollections = filteredCollections.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   async function create() {
     setBusy("create"); setError(""); setMessage("");
@@ -177,9 +192,13 @@ export default function AdminCollections({ platformAdmin, globalCollectionAdmin 
 
       <div className="mt-6 grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
         <section>
-          <div className="flex items-center justify-between gap-3"><p className="eyebrow">Visible to this Bot</p><span className="font-mono text-[0.6rem] text-[var(--muted)]">{collections.filter((collection) => collection.enabled).length} on</span></div>
+          <div className="flex flex-wrap items-center justify-between gap-3"><p className="eyebrow">Visible to this Bot</p><span className="font-mono text-[0.6rem] text-[var(--muted)]">{collections.filter((collection) => collection.enabled).length} on · {filteredCollections.length} shown</span></div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+            <Input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Search world, source or owner" aria-label="Search collections" />
+            <Select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }} aria-label="Filter by status"><option value="all">All statuses</option><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></Select>
+          </div>
           <div className="mt-3 grid gap-2">
-            {collections.map((collection) => (
+            {pagedCollections.map((collection) => (
               <div key={collection.id} className={`border p-3 transition-colors ${selectedId === collection.id ? "border-[var(--brass)] bg-[var(--paper-2)]" : "border-[var(--line)]"}`}>
                 <div className="flex items-start gap-3">
                   <CollectionMark collection={collection} />
@@ -196,8 +215,17 @@ export default function AdminCollections({ platformAdmin, globalCollectionAdmin 
                 </div>
               </div>
             ))}
-            {collections.length === 0 ? <p className="empty">No collections are visible yet.</p> : null}
+            {filteredCollections.length === 0 ? <p className="empty">No collections match this search and status.</p> : null}
           </div>
+          {pageCount > 1 ? (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--line)] pt-3">
+              <p className="font-mono text-[0.58rem] uppercase tracking-[0.08em] text-[var(--muted)]">Page {safePage} of {pageCount}</p>
+              <div className="flex gap-2">
+                <Button size="sm" variant="secondary" onClick={() => setPage(Math.max(1, safePage - 1))} disabled={safePage === 1}>Previous</Button>
+                <Button size="sm" variant="secondary" onClick={() => setPage(Math.min(pageCount, safePage + 1))} disabled={safePage === pageCount}>Next</Button>
+              </div>
+            </div>
+          ) : null}
         </section>
 
         <section className="surface-flat p-5">

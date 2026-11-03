@@ -17,13 +17,14 @@ export default {
     }
     return handler.fetch!(request as never, env as never, ctx);
   },
-  scheduled: async (controller: ScheduledController, env: Record<string, unknown>, ctx: ExecutionContext) => {
+  scheduled: async (controller: ScheduledController, env: unknown, ctx: ExecutionContext) => {
     // Bounded synthetic progression shares the existing cron. Failures are
     // logged and never block the editorial/scheduled-publication handler.
     try {
+      const bindings = env as { DB: never; MEDIA: never };
       await runScheduledNpcProgression(
-        env.DB as never,
-        env.MEDIA as never,
+        bindings.DB,
+        bindings.MEDIA,
         (await import("./server/config")).readConfig(env as never),
       );
     } catch (error) {

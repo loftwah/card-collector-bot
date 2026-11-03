@@ -1039,6 +1039,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
           .max(12)
           .optional(),
         status: z.enum(["draft", "published"]).optional(),
+        parentEditionId: idSchema.nullable().optional(),
         composition: z
           .object({
             mode: z.enum(["contain", "fill", "medallion"]).optional(),
@@ -2369,11 +2370,13 @@ function publicPoolPreview(preview: Awaited<ReturnType<typeof getPoolPreview>>) 
       weight: entry.weight,
       probability_bps: entry.probability_bps,
       tags: entry.tags,
+      collections: entry.collections,
     })),
     filters: preview.filters,
     pity: preview.pity,
     currency: preview.currency,
     expected_revision: preview.expected_revision,
+    distribution_fingerprint: preview.distribution_fingerprint,
   };
 }
 

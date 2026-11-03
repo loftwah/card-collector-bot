@@ -176,6 +176,25 @@ describe("exact API dispatch and least-privilege player scopes", () => {
     expect(joinDenied.response.status).toBe(403);
   });
 
+  it("exposes the exact approved distribution and accepts that fingerprint", async () => {
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    await fixturePool(owner);
+    const preview = await sendJson(player, "/api/v1/pools/test-pool", "GET");
+    expect(preview.response.status).toBe(200);
+    expect(typeof preview.json.distribution_fingerprint).toBe("string");
+    const entries = preview.json.entries as Array<Record<string, unknown>>;
+    expect(Array.isArray(entries[0]?.collections)).toBe(true);
+    const draw = await sendJson(player, "/api/v1/draws", "POST", {
+      pool: "test-pool",
+      expectedRevision: preview.json.expected_revision,
+      expectedDistribution: preview.json.distribution_fingerprint,
+    });
+    expect(draw.response.status).toBe(200);
+    expect(draw.json.card_name).toBe("Test One");
+    expect(draw.json.distribution_fingerprint).toBe(preview.json.distribution_fingerprint);
+  });
+
   it("allows the minimum explicit scope for each write", async () => {
     const owner = await ctxFor("cabinet", "owner@foilbury.local");
     const player = await ctxFor("cabinet", "player@foilbury.local");

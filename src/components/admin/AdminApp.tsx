@@ -77,7 +77,17 @@ interface Card {
   rarity: { key: string; name: string; tone: string } | null;
   tags: Array<{ slug: string; name: string }>;
   collections: Array<{ id: string; slug: string; name: string; scope: string }>;
-  editions: Array<{ id: string; name: string; status: string; variants: Variant[] }>;
+  editions: Array<{
+    id: string;
+    name: string;
+    status: string;
+    variants: Variant[];
+    subject_asset_id?: string;
+    background_asset_id?: string | null;
+    recipe_id?: string;
+    composition_json?: string | null;
+    parent_edition_id?: string | null;
+  }>;
   sets: Array<{ slug: string; name: string }>;
 }
 
@@ -438,6 +448,7 @@ function AdminCatalogue() {
   const [backgrounds, setBackgrounds] = useState<AssetRow[]>([]);
   const [recipes, setRecipes] = useState<RecipeRow[]>([]);
   const [artworkFor, setArtworkFor] = useState<Card | null>(null);
+  const [revising, setRevising] = useState<{ editionId: string; variants: Array<{ material: string; effect: string | null }> } | null>(null);
   const [artwork, setArtwork] = useState({
     name: "",
     subjectAssetId: "",
@@ -638,7 +649,7 @@ function AdminCatalogue() {
           recipeId: artwork.recipeId || null,
           materials: artwork.materials.filter((material) => material !== "holographic"),
           effects: ["none"],
-          variants: [
+          variants: revising?.variants ?? [
             ...artwork.materials
               .filter((material) => material !== "holographic")
               .map((material) => ({ material, effect: null })),
@@ -659,7 +670,8 @@ function AdminCatalogue() {
         materials: ["plain"],
       });
       setComposition({ mode: "contain", zoom: 1, offsetX: 0, offsetY: 0 });
-      setMessage("Artwork edition created. Queue missing renders, then publish the card.");
+      setRevising(null);
+      setMessage(revising ? "Revised edition created. The original edition and its issued copies are unchanged. Queue renders, then publish." : "Artwork edition created. Queue missing renders, then publish the card.");
       await load();
     } catch (cause) {
       setError(describeError(cause));
@@ -838,6 +850,7 @@ function AdminCatalogue() {
                         variant="secondary"
                         onClick={() => {
                           setError("");
+                          setRevising(null);
                           setArtworkFor(card);
                           setArtwork({
                             name: `${card.name} edition`,
@@ -1274,11 +1287,11 @@ function AdminCatalogue() {
       <Dialog
         open={Boolean(artworkFor)}
         onOpenChange={(open) => {
-          if (!open) setArtworkFor(null);
+          if (!open) { setArtworkFor(null); setRevising(null); }
         }}
       >
         <DialogContent>
-          <DialogTitle>Add artwork to {artworkFor?.name}</DialogTitle>
+          <DialogTitle>{revising ? "Revise artwork for" : "Add artwork to"} {artworkFor?.name}</DialogTitle>
           <DialogDescription>
             Choose an uploaded subject and optional background, then create explicit finish
             variants. The render queue composes the public image.
@@ -1295,6 +1308,52 @@ function AdminCatalogue() {
                   </a>
                 ) : null}
               </div>
+            ) : null}
+            {artworkFor && artworkFor.editions.length ? (
+              <Field label="Start from an existing edition" hint="Optional. Creates a new immutable revision; the source edition and issued copies are untouched.">
+                <Select
+                  value={revising?.editionId ?? ""}
+                  onChange={(event) => {
+                    const edition = artworkFor.editions.find((item) => item.id === event.target.value);
+                    if (!edition) {
+                      setRevising(null);
+                      return;
+                    }
+                    let parsedComposition: typeof composition = { mode: "contain", zoom: 1, offsetX: 0, offsetY: 0 };
+                    try {
+                      const value = JSON.parse(edition.composition_json ?? "{}") as Partial<typeof composition>;
+                      parsedComposition = {
+                        mode: value.mode === "fill" || value.mode === "medallion" ? value.mode : "contain",
+                        zoom: Math.min(1.6, Math.max(0.6, Number(value.zoom ?? 1))),
+                        offsetX: Math.min(20, Math.max(-20, Number(value.offsetX ?? 0))),
+                        offsetY: Math.min(20, Math.max(-20, Number(value.offsetY ?? 0))),
+                      };
+                    } catch {
+                      parsedComposition = { mode: "contain", zoom: 1, offsetX: 0, offsetY: 0 };
+                    }
+                    setComposition(parsedComposition);
+                    setArtwork({
+                      name: `Revision of ${edition.name}`,
+                      subjectAssetId: edition.subject_asset_id ?? "",
+                      backgroundAssetId: edition.background_asset_id ?? "",
+                      recipeId: edition.recipe_id ?? "",
+                      materials: [...new Set(edition.variants.map((variant) => variant.material_key))],
+                    });
+                    setRevising({
+                      editionId: edition.id,
+                      variants: edition.variants.map((variant) => ({
+                        material: variant.material_key,
+                        effect: variant.effect_key && variant.effect_key !== "none" ? variant.effect_key : null,
+                      })),
+                    });
+                  }}
+                >
+                  <option value="">New edition from scratch</option>
+                  {artworkFor.editions.filter((edition) => edition.status !== "archived").map((edition) => (
+                    <option key={edition.id} value={edition.id}>{edition.name} · {edition.status}</option>
+                  ))}
+                </Select>
+              </Field>
             ) : null}
             <Field label="Edition name">
               <Input
@@ -1529,9 +1588,9 @@ function AdminCatalogue() {
                   busy === "artwork" || !artwork.subjectAssetId || artwork.materials.length === 0
                 }
               >
-                {busy === "artwork" ? "Adding…" : "Add artwork edition"}
+                {busy === "artwork" ? "Saving…" : revising ? "Create revised edition" : "Add artwork edition"}
               </Button>
-              <Button variant="secondary" onClick={() => setArtworkFor(null)}>
+              <Button variant="secondary" onClick={() => { setArtworkFor(null); setRevising(null); }}>
                 Cancel
               </Button>
               <p className="w-full text-xs text-[var(--muted)]">

@@ -4,6 +4,7 @@ import { signDiscordRequest } from "../../src/server/discord/signature";
 import type { DiscordEnv } from "../../src/server/discord/types";
 import { bootstrap, ctxFor, fixturePool, runtime, setBalance } from "./helpers";
 import { addCollectionCards, createCollection } from "../../src/server/modules/collections";
+import { createNpc } from "../../src/server/modules/npcs";
 
 const APPLICATION_ID = "1566702936615026769";
 const GUILD_ID = "997734945206313041";
@@ -675,6 +676,20 @@ describe("Discord HTTP interactions", () => {
       count: number;
     }>();
     expect(draws?.count).toBe(0);
+  });
+
+  it("shows a labelled NPC profile and comparison on demand", async () => {
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const npc = await createNpc(owner, { name: "Discord Rival", presetKey: "variety_collector", bio: "A clearly synthetic collector used only for the Discord inspection test." });
+    const listed = await send(interaction(command("npc"), { id: "npc-list" }));
+    expect(listed.payload.data?.embeds?.[0]?.title).toContain("NPC collectors");
+    expect(JSON.stringify(listed.payload.data)).toContain("Discord Rival");
+    expect(JSON.stringify(listed.payload.data)).toContain("synthetic collector");
+    const detail = await send(interaction(command("npc", [{ name: "name", type: 3, value: npc.slug }]), { id: "npc-detail" }));
+    expect(detail.payload.data?.embeds?.[0]?.title).toContain("Discord Rival");
+    expect(JSON.stringify(detail.payload.data)).toContain("NPC");
+    expect(JSON.stringify(detail.payload.data)).toContain("Your album");
+    expect(detail.payload.data?.flags).toBe(64);
   });
 
   it("walks the guided tour from discovery through a genuine opening and private inspection", async () => {
