@@ -1,4 +1,4 @@
-import { ApiError, requireRecentStrongAuth, type Ctx } from "../context";
+import { ApiError, hasCapability, requireRecentStrongAuth, type Ctx } from "../context";
 import { all, first, nowIso } from "../db";
 import { newId } from "../ids";
 import { auditStatement } from "../http";
@@ -62,8 +62,12 @@ export async function joinMainAlbum(ctx: Ctx): Promise<{ joined: boolean; member
     const memberships = await getMyMemberships(ctx);
     return { joined: false, membership: memberships.find((item) => item.tenant_id === ctx.tenant.id)! };
   }
-  if (existing && existing.status === "revoked") {
-    throw new ApiError(403, "membership_revoked", "This album membership was revoked. Ask an administrator to restore it.");
+  if (existing && existing.status !== "active") {
+    throw new ApiError(
+      403,
+      "membership_inactive",
+      "This album membership is suspended, revoked or still awaiting approval. An administrator must restore it deliberately; signing in cannot do so.",
+    );
   }
   await addMembership(ctx.db, ctx.tenant.id, user.id, "player", { status: "active", acceptedAt: nowIso() });
   await ensureWallet(ctx.db, ctx.tenant.id, user.id);
@@ -172,8 +176,14 @@ async function recordMembershipEvent(
 function requireMemberAdmin(ctx: Ctx) {
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in to manage members.");
-  if (!user.platformAdmin && !["owner", "editor", "economy_admin"].includes(user.role)) {
-    throw new ApiError(403, "insufficient_role", "Only album administrators can manage members.");
+  // Coarse legacy roles are not enough: the capability set is the authority.
+  // An economy administrator without `members` must not rewrite membership
+  // state, and an agent never gains a human-only lifecycle decision.
+  if (ctx.actor.type === "agent") {
+    throw new ApiError(403, "human_admin_required", "Agent grants cannot change album membership.");
+  }
+  if (!user.platformAdmin && !hasCapability(user, "members")) {
+    throw new ApiError(403, "insufficient_capability", "Your role does not include member management.");
   }
 }
 

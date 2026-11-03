@@ -6,7 +6,9 @@ import { auditStatement } from "../http";
 export async function createTrade(
   ctx: Ctx,
   input: {
-    recipientEmail: string;
+    recipientId?: string;
+    /** Retained for explicit-address compatibility; directory discovery no longer exposes it. */
+    recipientEmail?: string;
     proposerInstanceIds: string[];
     recipientInstanceIds: string[];
     expiresInHours?: number;
@@ -14,14 +16,25 @@ export async function createTrade(
   },
 ) {
   const user = ctx.user!;
-  const recipient = await first<{ id: string; display_name: string; email: string }>(
-    ctx.db,
-    `SELECT u.id, u.display_name, u.email FROM fb_users u JOIN fb_memberships m ON m.user_id = u.id
-      WHERE u.email = ? AND m.tenant_id = ?`,
-    input.recipientEmail.trim().toLowerCase(),
-    ctx.tenant.id,
-  );
-  if (!recipient) throw new ApiError(404, "recipient_not_found", "That member is not in this cabinet.");
+  if (!input.recipientId && !input.recipientEmail) {
+    throw new ApiError(422, "recipient_required", "Choose the member who receives this offer.");
+  }
+  const recipient = input.recipientId
+    ? await first<{ id: string; display_name: string; email: string }>(
+        ctx.db,
+        `SELECT u.id, u.display_name, u.email FROM fb_users u JOIN fb_memberships m ON m.user_id = u.id
+          WHERE u.id = ? AND m.tenant_id = ? AND m.status = 'active' AND u.disabled_at IS NULL`,
+        input.recipientId,
+        ctx.tenant.id,
+      )
+    : await first<{ id: string; display_name: string; email: string }>(
+        ctx.db,
+        `SELECT u.id, u.display_name, u.email FROM fb_users u JOIN fb_memberships m ON m.user_id = u.id
+          WHERE u.email = ? AND m.tenant_id = ? AND m.status = 'active' AND u.disabled_at IS NULL`,
+        input.recipientEmail!.trim().toLowerCase(),
+        ctx.tenant.id,
+      );
+  if (!recipient) throw new ApiError(404, "recipient_not_found", "That member is not an active member of this cabinet.");
   if (recipient.id === user.id) throw new ApiError(422, "self_trade", "A trade needs a different member on each side.");
   if (input.proposerInstanceIds.length + input.recipientInstanceIds.length === 0) {
     throw new ApiError(422, "trade_empty", "Add at least one card to the offer.");

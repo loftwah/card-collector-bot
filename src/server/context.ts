@@ -56,6 +56,12 @@ export interface Ctx {
   media: R2Bucket;
   config: RuntimeConfig;
   requestId: string;
+  /**
+   * Privacy-preserving, stable key for the trusted caller network. Derived from
+   * Cloudflare's edge-set CF-Connecting-IP; never from a client-supplied
+   * forwarding header. Correlation IDs stay separate in `requestId`.
+   */
+  clientKey: string;
   tenant: Tenant;
   user: CurrentUser | null;
   actor: Actor;
@@ -103,6 +109,7 @@ export async function buildContext(
   const config = readConfig(raw);
   const db = raw.DB;
   const requestId = request.headers.get("cf-ray") ?? newId("req");
+  const clientKey = await trustedClientKey(request, config);
   const cookie = parseCookies(request.headers.get("cookie"));
   const sessionToken = cookie.fb_session;
   const path = new URL(request.url).pathname;
@@ -276,6 +283,7 @@ export async function buildContext(
     media: raw.MEDIA,
     config,
     requestId,
+    clientKey,
     tenant,
     user,
     actor,
@@ -287,6 +295,27 @@ export async function buildContext(
     accessIdentity,
     accessStatus,
   };
+}
+
+/**
+ * Resolve the caller network without trusting arbitrary headers.
+ *
+ * Cloudflare sets `CF-Connecting-IP` at its edge and strips client-supplied
+ * copies. In local development there is no trustworthy edge address, so every
+ * local caller shares one explicitly local bucket rather than inventing an
+ * identity from `X-Forwarded-For`/`cf-ray`. The raw address is never stored:
+ * only an HMAC keyed by the deployment secret is used as the limit key.
+ */
+export async function trustedClientKey(
+  request: Request,
+  config: RuntimeConfig,
+): Promise<string> {
+  const edgeAddress =
+    config.environment === "production" || config.environment === "test"
+      ? request.headers.get("cf-connecting-ip")?.trim() ?? null
+      : null;
+  const raw = edgeAddress || "local-caller";
+  return hmacHex(config.sessionSecret || "foilbury-local-rate-limit", raw);
 }
 
 export async function resolveSession(

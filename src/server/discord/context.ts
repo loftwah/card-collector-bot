@@ -462,6 +462,7 @@ export function buildDiscordContext(
     media: env.MEDIA,
     config: readConfig(env),
     requestId: `discord:${interaction.id}`,
+    clientKey: `discord:${interaction.user?.id ?? interaction.id}`,
     tenant,
     user,
     actor: {

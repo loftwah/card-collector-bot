@@ -397,12 +397,18 @@ export async function setCounts(ctx: Ctx) {
   );
 }
 
+/**
+ * Ordinary peer discovery. Deliberately excludes email, capabilities, wallet
+ * and last-seen data: those belong to the privileged member-administration
+ * route. Only active members are discoverable as trade partners.
+ */
 export async function listTenantMembers(ctx: Ctx) {
-  return all<{ id: string; display_name: string; email: string; role: string }>(
+  return all<{ id: string; display_name: string; role: string }>(
     ctx.db,
-    `SELECT u.id, u.display_name, u.email, m.role
+    `SELECT u.id, u.display_name, m.role
        FROM fb_memberships m JOIN fb_users u ON u.id = m.user_id
-      WHERE m.tenant_id = ? ORDER BY u.display_name`,
+      WHERE m.tenant_id = ? AND m.status = 'active' AND u.disabled_at IS NULL
+      ORDER BY u.display_name`,
     ctx.tenant.id,
   );
 }

@@ -68,6 +68,7 @@ export async function ctxFor(slug: string, email: string): Promise<Ctx> {
     media: runtime.MEDIA,
     config: readConfig(runtime),
     requestId: newId("test"),
+    clientKey: "test-client",
     tenant: tenantRow,
     user: {
       id: row.id,

@@ -22,7 +22,6 @@ interface OwnItem {
 interface Member {
   id: string;
   display_name: string;
-  email: string;
   role: string;
 }
 
@@ -65,7 +64,7 @@ export default function TradeDesk({
 }) {
   const [trades, setTrades] = useState(initialTrades);
   const [detail, setDetail] = useState<TradeDetail | null>(null);
-  const [recipientEmail, setRecipientEmail] = useState("");
+  const [recipientId, setRecipientId] = useState("");
   const [recipientItems, setRecipientItems] = useState<OwnItem[] | null>(null);
   const [proposerIds, setProposerIds] = useState<string[]>([]);
   const [recipientIds, setRecipientIds] = useState<string[]>([]);
@@ -84,8 +83,8 @@ export default function TradeDesk({
     setBusy("recipient");
     setError("");
     try {
-      const member = members.find((item) => item.email.toLowerCase() === recipientEmail.trim().toLowerCase());
-      if (!member) throw new Error("That member is not in this cabinet. Check the email.");
+      const member = members.find((item) => item.id === recipientId);
+      if (!member) throw new Error("Choose a member from this cabinet.");
       const result = await api<{ items: OwnItem[] }>(`/api/v1/members/${member.id}/trade-items`);
       setRecipientItems(result.items);
     } catch (cause) {
@@ -102,7 +101,7 @@ export default function TradeDesk({
     try {
       await api("/api/v1/trades", {
         method: "POST",
-        body: { recipientEmail, proposerInstanceIds: proposerIds, recipientInstanceIds: recipientIds },
+        body: { recipientId, proposerInstanceIds: proposerIds, recipientInstanceIds: recipientIds },
       });
       setNotice("Offer sent. Both sides must accept the same revision before anything moves.");
       setProposerIds([]);
@@ -201,8 +200,11 @@ export default function TradeDesk({
           <div className="flex items-center gap-2"><Handshake size={18} className="text-[var(--brass)]" /><p className="eyebrow">New reciprocal offer</p></div>
           <p className="mt-2 text-sm text-[var(--muted)]">Choose what you offer and what you would like from the other member. Reservations are atomic; neither side can spend the same card twice.</p>
           <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto]">
-            <Input type="email" placeholder="member@example.com" value={recipientEmail} onChange={(event) => setRecipientEmail(event.target.value)} aria-label="Recipient email" />
-            <Button variant="secondary" onClick={loadRecipient} disabled={busy === "recipient" || !recipientEmail}>{busy === "recipient" ? "Loading…" : "Load their shelf"}</Button>
+            <select className="select" value={recipientId} onChange={(event) => { setRecipientId(event.target.value); setRecipientItems(null); setRecipientIds([]); }} aria-label="Choose a member">
+              <option value="">Choose a member</option>
+              {members.filter((member) => member.id !== currentUserId).map((member) => <option key={member.id} value={member.id}>{member.display_name}</option>)}
+            </select>
+            <Button variant="secondary" onClick={loadRecipient} disabled={busy === "recipient" || !recipientId}>{busy === "recipient" ? "Loading…" : "Load their shelf"}</Button>
           </div>
           <div className="mt-5 grid gap-5 md:grid-cols-2">
             <div>
@@ -228,7 +230,7 @@ export default function TradeDesk({
               </div>
             </div>
           </div>
-          <div className="mt-4"><Button onClick={createTrade} disabled={busy === "trade" || !recipientEmail || proposerIds.length + recipientIds.length === 0}>{busy === "trade" ? "Sending…" : "Send offer"}</Button></div>
+          <div className="mt-4"><Button onClick={createTrade} disabled={busy === "trade" || !recipientId || proposerIds.length + recipientIds.length === 0}>{busy === "trade" ? "Sending…" : "Send offer"}</Button></div>
         </section>
 
         <section className="surface-flat p-5">

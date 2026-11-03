@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { bootstrap, ctxFor, fixturePool, runtime, tenant } from "./helpers";
-import { createUser, addMembership, findUserByEmail, createSession } from "../../src/server/modules/identity";
+import { createUser, addMembership, findUserByEmail, createSession, ensureWallet } from "../../src/server/modules/identity";
+import { joinMainAlbum } from "../../src/server/modules/membership";
 import { requestMagicLink, redeemMagicLink } from "../../src/server/modules/magic-links";
 import { findAccessTenantForIdentity, resolveAccessIdentity } from "../../src/server/access";
 import { createBot, createBotInvitation, acceptBotInvitation, revokeBotAdmin } from "../../src/server/modules/bots";
@@ -25,6 +26,72 @@ describe("passwordless identity, Access linking, bots and collections", () => {
     const account = await findUserByEmail(runtime.DB, "new.player@example.com");
     expect(account?.email_verified_at).toBeTruthy();
     await expect(redeemMagicLink(ctx, requested.devToken!)).rejects.toMatchObject({ code: "magic_link_invalid" });
+  });
+
+  it("never restores a revoked or suspended membership through a magic link", async () => {
+    const ctx = await ctxFor("cabinet", "owner@foilbury.local");
+    const player = await createUser(runtime.DB, { email: "revoked@example.com", displayName: "Revoked", password: "a-long-test-password" });
+    await addMembership(runtime.DB, ctx.tenant.id, player.id, "player");
+    await ensureWallet(runtime.DB, ctx.tenant.id, player.id);
+
+    for (const status of ["revoked", "suspended"] as const) {
+      await runtime.DB
+        .prepare("UPDATE fb_memberships SET status = ?, revoked_at = ? WHERE tenant_id = ? AND user_id = ?")
+        .bind(status, nowIso(), ctx.tenant.id, player.id)
+        .run();
+      const sessionsBefore = await runtime.DB
+        .prepare("SELECT COUNT(*) AS count FROM fb_sessions WHERE tenant_id = ? AND user_id = ?")
+        .bind(ctx.tenant.id, player.id)
+        .first<{ count: number }>();
+      const requested = await requestMagicLink(ctx, { email: "revoked@example.com", purpose: "signin" });
+      await expect(redeemMagicLink(ctx, requested.devToken!)).rejects.toMatchObject({
+        status: 403,
+        code: "membership_inactive",
+      });
+      const membership = await runtime.DB
+        .prepare("SELECT status, revoked_at, role, capabilities_json FROM fb_memberships WHERE tenant_id = ? AND user_id = ?")
+        .bind(ctx.tenant.id, player.id)
+        .first<{ status: string; revoked_at: string | null; role: string; capabilities_json: string }>();
+      expect(membership?.status).toBe(status);
+      expect(membership?.revoked_at).toBeTruthy();
+      expect(membership?.role).toBe("player");
+      const sessionsAfter = await runtime.DB
+        .prepare("SELECT COUNT(*) AS count FROM fb_sessions WHERE tenant_id = ? AND user_id = ?")
+        .bind(ctx.tenant.id, player.id)
+        .first<{ count: number }>();
+      expect(sessionsAfter?.count ?? 0).toBe(sessionsBefore?.count ?? 0);
+    }
+  });
+
+  it("does not activate an unaccepted invitation during sign-in", async () => {
+    const ctx = await ctxFor("cabinet", "owner@foilbury.local");
+    const invited = await createUser(runtime.DB, { email: "pending-invite@example.com", displayName: "Pending", password: "a-long-test-password" });
+    await addMembership(runtime.DB, ctx.tenant.id, invited.id, "editor", { status: "invited" });
+    const requested = await requestMagicLink(ctx, { email: "pending-invite@example.com", purpose: "signin" });
+    await expect(redeemMagicLink(ctx, requested.devToken!)).rejects.toMatchObject({ code: "membership_inactive" });
+    const membership = await runtime.DB
+      .prepare("SELECT status, accepted_at FROM fb_memberships WHERE tenant_id = ? AND user_id = ?")
+      .bind(ctx.tenant.id, invited.id)
+      .first<{ status: string; accepted_at: string | null }>();
+    expect(membership?.status).toBe("invited");
+    expect(membership?.accepted_at).toBeNull();
+  });
+
+  it("does not restore a suspended membership through explicit join", async () => {
+    const ctx = await ctxFor("cabinet", "owner@foilbury.local");
+    const player = await createUser(runtime.DB, { email: "suspended-join@example.com", displayName: "Suspended", password: "a-long-test-password" });
+    await addMembership(runtime.DB, ctx.tenant.id, player.id, "player");
+    await runtime.DB
+      .prepare("UPDATE fb_memberships SET status = 'suspended', revoked_at = ? WHERE tenant_id = ? AND user_id = ?")
+      .bind(nowIso(), ctx.tenant.id, player.id)
+      .run();
+    const playerCtx = { ...ctx, user: { ...ctx.user!, id: player.id, email: "suspended-join@example.com" } };
+    await expect(joinMainAlbum(playerCtx)).rejects.toMatchObject({ code: "membership_inactive" });
+    const membership = await runtime.DB
+      .prepare("SELECT status FROM fb_memberships WHERE tenant_id = ? AND user_id = ?")
+      .bind(ctx.tenant.id, player.id)
+      .first<{ status: string }>();
+    expect(membership?.status).toBe("suspended");
   });
 
   it("rejects an expired magic link and keeps it single-use", async () => {

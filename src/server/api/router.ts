@@ -169,7 +169,6 @@ import {
 import {
   getMyMemberships,
   joinMainAlbum,
-  listAlbumMembers,
   setMemberStatus,
 } from "../modules/membership";
 
@@ -499,10 +498,13 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
 
   // Player and agent-authenticated collection workflows
   if (segments[0] === "me" && segments[1] === "preferences" && method === "GET") {
+    playerWrite(ctx);
+    requireScope(ctx, "profile:read");
     return json(await getPreferences(ctx));
   }
   if (segments[0] === "me" && segments[1] === "preferences" && method === "PATCH") {
     playerWrite(ctx);
+    requireScope(ctx, "profile:write");
     const body = await readJson(
       request,
       z.object({
@@ -514,16 +516,19 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json(await updatePreferences(ctx, body));
   }
-  if (segments[0] === "wallet" && method === "GET") {
+  if (segments[0] === "wallet" && segments.length === 1 && method === "GET") {
     const user = requireUser(ctx);
+    requireScope(ctx, "economy:read");
     return json(await getWalletSummary(ctx.db, ctx.tenant.id, user.id));
   }
-  if (segments[0] === "ledger" && method === "GET") {
+  if (segments[0] === "ledger" && segments.length === 1 && method === "GET") {
     const user = requireUser(ctx);
+    requireScope(ctx, "economy:read");
     return json(await getLedger(ctx, user.id, Number(url.searchParams.get("limit") ?? 100)));
   }
-  if (segments[0] === "inventory" && method === "GET") {
+  if (segments[0] === "inventory" && segments.length === 1 && method === "GET") {
     playerWrite(ctx);
+    requireScope(ctx, "inventory:read");
     const limit = Math.min(120, Math.max(1, Number(url.searchParams.get("limit") ?? 48) || 48));
     const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0) || 0);
     const query = {
@@ -543,42 +548,51 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
   if (segments[0] === "instances" && segments[1] && segments.length === 2 && method === "GET") {
     playerWrite(ctx);
+    requireScope(ctx, "inventory:read");
     return json(await getInstance(ctx, segments[1]));
   }
   if (
     segments[0] === "instances" &&
     segments[1] &&
+    segments.length === 3 &&
     segments[2] === "favourite" &&
     method === "POST"
   ) {
     playerWrite(ctx);
+    requireScope(ctx, "inventory:write");
     const body = await readJson(request, z.object({ favourite: z.boolean() }));
     return json(await toggleFavourite(ctx, segments[1], body.favourite));
   }
-  if (segments[0] === "instances" && segments[1] && segments[2] === "lock" && method === "POST") {
+  if (segments[0] === "instances" && segments[1] && segments.length === 3 && segments[2] === "lock" && method === "POST") {
     playerWrite(ctx);
+    requireScope(ctx, "inventory:write");
     const body = await readJson(request, z.object({ locked: z.boolean() }));
     return json(await setLocked(ctx, segments[1], body.locked));
   }
   if (segments[0] === "members" && segments.length === 1 && method === "GET") {
     playerWrite(ctx);
+    requireScope(ctx, "inventory:read");
     return json({ items: await listTenantMembers(ctx) });
   }
   if (
     segments[0] === "members" &&
     segments[1] &&
+    segments.length === 3 &&
     segments[2] === "trade-items" &&
     method === "GET"
   ) {
     playerWrite(ctx);
+    requireScope(ctx, "inventory:read");
     return json({ items: await getMemberTradeInventory(ctx, segments[1]) });
   }
-  if (segments[0] === "wishlist" && method === "GET") {
+  if (segments[0] === "wishlist" && segments.length === 1 && method === "GET") {
     playerWrite(ctx);
+    requireScope(ctx, "inventory:read");
     return json({ items: await getWishlist(ctx) });
   }
-  if (segments[0] === "wishlist" && method === "POST") {
+  if (segments[0] === "wishlist" && segments.length === 1 && method === "POST") {
     playerWrite(ctx);
+    requireScope(ctx, "inventory:write");
     const body = await readJson(request, z.object({ cardId: idSchema, wanted: z.boolean() }));
     return json(await toggleWishlist(ctx, body.cardId, body.wanted));
   }
@@ -610,8 +624,9 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       }),
     );
   }
-  if (segments[0] === "recycle" && segments[1] === "preview" && method === "POST") {
+  if (segments[0] === "recycle" && segments[1] === "preview" && segments.length === 2 && method === "POST") {
     playerWrite(ctx);
+    requireScope(ctx, "inventory:read");
     const body = await readJson(request, z.object({ instanceId: idSchema }));
     return json(await recyclePreview(ctx, body.instanceId));
   }
@@ -631,14 +646,16 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       }),
     );
   }
-  if (segments[0] === "sets" && segments[1] && segments[2] === "claim" && method === "POST") {
+  if (segments[0] === "sets" && segments[1] && segments[2] === "claim" && segments.length === 3 && method === "POST") {
     playerWrite(ctx);
+    requireScope(ctx, "reward:claim");
     const body = await readJson(request, z.object({}));
     const idempotency = await idempotencyInput(request, body);
     return json(await claimSetCompletion(ctx, segments[1], idempotency.key));
   }
-  if (segments[0] === "trades" && method === "GET") {
+  if (segments[0] === "trades" && segments.length === 1 && method === "GET") {
     playerWrite(ctx);
+    requireScope(ctx, "trade:write");
     return json({ items: await listTrades(ctx) });
   }
   if (segments[0] === "trades" && segments.length === 1 && method === "POST") {
@@ -647,7 +664,8 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     const body = await readJson(
       request,
       z.object({
-        recipientEmail: z.string().email().max(320),
+        recipientId: idSchema.optional(),
+        recipientEmail: z.string().email().max(320).optional(),
         proposerInstanceIds: z.array(idSchema).max(30),
         recipientInstanceIds: z.array(idSchema).max(30),
         expiresInHours: z.number().int().min(1).max(168).optional(),
@@ -658,6 +676,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
   if (segments[0] === "trades" && segments[1] && segments.length === 2 && method === "GET") {
     playerWrite(ctx);
+    requireScope(ctx, "trade:write");
     return json(await getTrade(ctx, segments[1]));
   }
   if (
@@ -677,11 +696,12 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     ensureOps(ctx);
     return json(await expireTrades(ctx));
   }
-  if (segments[0] === "gifts" && method === "GET") {
+  if (segments[0] === "gifts" && segments.length === 1 && method === "GET") {
     playerWrite(ctx);
+    requireScope(ctx, "trade:write");
     return json({ items: await listGifts(ctx) });
   }
-  if (segments[0] === "gifts" && method === "POST") {
+  if (segments[0] === "gifts" && segments.length === 1 && method === "POST") {
     playerWrite(ctx);
     requireScope(ctx, "trade:write");
     const body = await readJson(
@@ -695,16 +715,16 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     const idempotency = await idempotencyInput(request, body);
     return json(await createGift(ctx, { ...body, idempotencyKey: idempotency.key }));
   }
-  if (segments[0] === "me" && segments[1] === "memberships" && method === "GET") {
+  if (segments[0] === "me" && segments[1] === "memberships" && segments.length === 2 && method === "GET") {
+    playerWrite(ctx);
+    requireScope(ctx, "profile:read");
     return json({ items: await getMyMemberships(ctx) });
   }
-  if (segments[0] === "me" && segments[1] === "join" && method === "POST") {
+  if (segments[0] === "me" && segments[1] === "join" && segments.length === 2 && method === "POST") {
+    if (ctx.actor.type === "agent") {
+      throw new ApiError(403, "human_required", "Album admission is a human decision and cannot be made by an agent grant.");
+    }
     return json(await joinMainAlbum(ctx));
-  }
-  if (segments[0] === "members" && segments.length === 1 && method === "GET") {
-    requireUser(ctx);
-    requireSuperAdmin(ctx);
-    return json({ items: await listAlbumMembers(ctx) });
   }
   if (
     segments[0] === "admin" &&
@@ -725,22 +745,27 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
   if (segments[0] === "achievements" && segments.length === 1 && method === "GET") {
     playerWrite(ctx);
+    requireScope(ctx, "profile:read");
     return json({ items: await listAchievements(ctx) });
   }
-  if (segments[0] === "achievements" && segments[1] === "evaluate" && method === "POST") {
+  if (segments[0] === "achievements" && segments[1] === "evaluate" && segments.length === 2 && method === "POST") {
     playerWrite(ctx);
+    requireScope(ctx, "reward:claim");
     return json(await evaluateAchievements(ctx));
   }
-  if (segments[0] === "gifts" && segments[1] === "received" && method === "GET") {
+  if (segments[0] === "gifts" && segments[1] === "received" && segments.length === 2 && method === "GET") {
     playerWrite(ctx);
+    requireScope(ctx, "trade:write");
     return json({ items: await listMyGiftReceipts(ctx) });
   }
   if (segments[0] === "shares" && segments.length === 1 && method === "GET") {
     playerWrite(ctx);
+    requireScope(ctx, "profile:read");
     return json({ items: await listShareLinks(ctx) });
   }
   if (segments[0] === "shares" && segments.length === 1 && method === "POST") {
     playerWrite(ctx);
+    requireScope(ctx, "profile:write");
     const body = await readJson(
       request,
       z.object({
@@ -753,8 +778,9 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json(await createShareLink(ctx, body));
   }
-  if (segments[0] === "shares" && segments[1] && segments[2] === "revoke" && method === "POST") {
+  if (segments[0] === "shares" && segments[1] && segments[2] === "revoke" && segments.length === 3 && method === "POST") {
     playerWrite(ctx);
+    requireScope(ctx, "profile:write");
     return json(await revokeShareLink(ctx, segments[1]));
   }
 

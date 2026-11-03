@@ -649,7 +649,9 @@ export async function listAchievements(ctx: Ctx, userId?: string): Promise<Achie
 
 export async function recordCollectionExploration(ctx: Ctx, collectionId: string): Promise<void> {
   const user = ctx.user;
-  if (!user) return;
+  // Machine reads must stay free of write-on-read side effects. Exploration is
+  // recorded only for an intentional human view; it never awards currency.
+  if (!user || ctx.actor.type !== "user") return;
   const now = nowIso();
   await ctx.db
     .prepare(

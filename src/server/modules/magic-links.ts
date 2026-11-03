@@ -24,8 +24,12 @@ export async function requestMagicLink(
 ): Promise<MagicLinkRequestResult> {
   const email = input.email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ApiError(422, "email_invalid", "Enter a valid email address.");
+  // Layered abuse limits. The per-address and service ceilings bound delivery
+  // and cost; the per-client bucket comes from a trusted, privacy-preserving
+  // network identity, never from the request correlation ID.
   await checkRateLimit(ctx.db, `magic:email:${await sha256Hex(email)}`, 5, 900);
-  await checkRateLimit(ctx.db, `magic:ip:${ctx.requestId.slice(0, 32)}`, 20, 900);
+  await checkRateLimit(ctx.db, `magic:client:${ctx.clientKey}`, 20, 900);
+  await checkRateLimit(ctx.db, "magic:service", 120, 900);
 
   const account = await findUserByEmail(ctx.db, email);
   if (account?.disabled_at) return { ok: true };
@@ -211,14 +215,30 @@ export async function redeemMagicLink(
     : await createEmailUser(ctx.db, { email: row.email });
   await markEmailVerified(ctx.db, user.id);
 
-  const membership = await first<{ role: string }>(
+  // Authentication is not admission. Read the membership in EVERY state before
+  // deciding anything: an inactive row means a human administrator changed the
+  // relationship, so a new email token must never recreate it as active.
+  const membership = await first<{ status: string; revoked_at: string | null }>(
     ctx.db,
-    "SELECT role FROM fb_memberships WHERE user_id = ? AND tenant_id = ? AND status = 'active'",
+    "SELECT status, revoked_at FROM fb_memberships WHERE user_id = ? AND tenant_id = ?",
     user.id,
     ctx.tenant.id,
   );
+  if (membership && (membership.status !== "active" || membership.revoked_at)) {
+    throw new ApiError(
+      403,
+      "membership_inactive",
+      membership.status === "invited"
+        ? "This album invitation has not been accepted by an administrator. Nothing was changed."
+        : "This album membership is suspended or revoked. Ask an administrator to restore it deliberately. Nothing was changed.",
+    );
+  }
   if (!membership) {
-    await addMembership(ctx.db, ctx.tenant.id, user.id, "player");
+    // Approved admission for this installation: a brand-new verified-email
+    // account explicitly joins the public album. Deferred registration here is
+    // indistinguishable from the explicit /me/join path and never restores an
+    // existing row.
+    await addMembership(ctx.db, ctx.tenant.id, user.id, "player", { acceptedAt: now });
     await ensureWallet(ctx.db, ctx.tenant.id, user.id);
   }
 

@@ -29,7 +29,8 @@ pnpm exec astro dev status</code></pre>
         <li><strong>player</strong> — represented member <code>player@foilbury.local</code>, player scopes only.</li>
       </ul>
       <p>The tokens are in <code>.foilbury/agents.json</code>. An agent token is scoped, revocable, hashed at rest, and records both the agent and the represented member in audit events. An agent cannot create, expand or revoke grants. A human owner creates grants in Administration → Agents or through the API.</p>
-      <p>Available scopes: <code>content:read</code>, <code>content:write</code>, <code>catalogue:publish</code>, <code>import:write</code>, <code>render:write</code>, <code>economy:read</code>, <code>economy:write</code>, <code>economy:grant</code>, <code>inventory:read</code>, <code>draw:execute</code>, <code>reward:claim</code>, <code>trade:write</code>, <code>recycle:write</code>, <code>settings:write</code>, <code>ops:read</code>.</p>
+      <p>Available scopes: <code>content:read</code>, <code>content:write</code>, <code>catalogue:publish</code>, <code>import:write</code>, <code>render:write</code>, <code>economy:read</code>, <code>economy:write</code>, <code>economy:grant</code>, <code>inventory:read</code>, <code>inventory:write</code>, <code>profile:read</code>, <code>profile:write</code>, <code>draw:execute</code>, <code>reward:claim</code>, <code>trade:write</code>, <code>recycle:write</code>, <code>settings:write</code>, <code>ops:read</code>.</p>
+      <p>Every player route checks the named scope for that operation. A token with only <code>inventory:read</code> cannot change favourites, wishlists, sharing, preferences or rewards; denied calls make no state change.</p>
       <p>Money-like and destructive commands require an idempotency key scoped to tenant, actor and operation. Reuse the same key when retrying a transport failure. A changed body with the same key returns <code>409 idempotency_conflict</code>.</p>
 
       <h2>3. CLI</h2>
