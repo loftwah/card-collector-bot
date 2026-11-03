@@ -56,6 +56,7 @@ while (true) {
   const claimed = await apiJson(`/api/v1/admin/jobs/${job.id}/claim`, { method: "POST", body: {} });
   if (!claimed.job) continue;
   const payload = claimed.job.payload;
+  const attempt = claimed.job.attempts;
   try {
     const subjectPath = path.join(tmpDir, `${payload.variant_id}-subject-${worker}.png`);
     const backgroundPath = path.join(tmpDir, `${payload.variant_id}-background-${worker}.png`);
@@ -99,6 +100,7 @@ while (true) {
     const form = new FormData();
     form.append("file", new Blob([fs.readFileSync(outputPath)], { type: "image/webp" }), `${payload.variant_id}.webp`);
     if (backBytes) form.append("back", new Blob([backBytes], { type: "image/webp" }), `${payload.variant_id}-back.webp`);
+    form.append("attempt", String(attempt));
     await apiForm(`/api/v1/admin/jobs/${job.id}/complete`, form);
     rendered += 1;
     for (const temp of [subjectPath, backgroundPath, outputPath]) fs.rmSync(temp, { force: true });
@@ -106,7 +108,7 @@ while (true) {
   } catch (error) {
     failed += 1;
     const message = error instanceof Error ? error.message : String(error);
-    await apiJson(`/api/v1/admin/jobs/${job.id}/fail`, { method: "POST", body: { message } }).catch(() => undefined);
+    await apiJson(`/api/v1/admin/jobs/${job.id}/fail`, { method: "POST", body: { message, attempt } }).catch(() => undefined);
     log(`failed ${payload.variant_id}: ${message}`);
   }
 }
