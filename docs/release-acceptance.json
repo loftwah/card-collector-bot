@@ -1,0 +1,267 @@
+{
+  "schema_version": 1,
+  "environment": "production",
+  "generated_at": "2026-11-03T17:46:15.587Z",
+  "source_tree_hash": "4b72934b18c153f1c7e113be44f2a28ea424afe136020649314cbbbbd31cca6e",
+  "source_sha": "eaafa17326b3afe5580351bbf1d65e6ed38c681a",
+  "checks": [
+    {
+      "command": "pnpm check",
+      "started_at": "2026-11-03T17:46:15.588Z",
+      "completed_at": "2026-11-03T17:46:39.097Z",
+      "exit_code": 0,
+      "tree_hash": "4b72934b18c153f1c7e113be44f2a28ea424afe136020649314cbbbbd31cca6e"
+    },
+    {
+      "command": "pnpm test:production-path",
+      "started_at": "2026-11-03T17:46:39.097Z",
+      "completed_at": "2026-11-03T17:46:58.054Z",
+      "exit_code": 0,
+      "tree_hash": "4b72934b18c153f1c7e113be44f2a28ea424afe136020649314cbbbbd31cca6e"
+    },
+    {
+      "command": "pnpm test:access-config",
+      "started_at": "2026-11-03T17:46:58.054Z",
+      "completed_at": "2026-11-03T17:46:58.278Z",
+      "exit_code": 0,
+      "tree_hash": "4b72934b18c153f1c7e113be44f2a28ea424afe136020649314cbbbbd31cca6e"
+    },
+    {
+      "command": "pnpm test:ui",
+      "started_at": "2026-11-03T17:46:58.278Z",
+      "completed_at": "2026-11-03T17:47:27.686Z",
+      "exit_code": 0,
+      "tree_hash": "4b72934b18c153f1c7e113be44f2a28ea424afe136020649314cbbbbd31cca6e"
+    },
+    {
+      "command": "pnpm test:product",
+      "started_at": "2026-11-03T17:47:27.686Z",
+      "completed_at": "2026-11-03T17:47:43.142Z",
+      "exit_code": 0,
+      "tree_hash": "4b72934b18c153f1c7e113be44f2a28ea424afe136020649314cbbbbd31cca6e"
+    }
+  ],
+  "criteria": [
+    {
+      "id": "discord.deferred-private",
+      "issue": [
+        22,
+        24,
+        15,
+        13
+      ],
+      "required": true,
+      "result": "pass",
+      "test_command": "pnpm test:workers --run tests/workers/discord.test.ts",
+      "tested_tree_hash": "4b72934b18c153f1c7e113be44f2a28ea424afe136020649314cbbbbd31cca6e",
+      "evidence": "Deferred acknowledgement is always ephemeral; restricted and member reveals never create a public follow-up. The stateful transport models Discord's original-response/first-follow-up contract.",
+      "residual": "A real second-account spectator observation is a separate optional criterion."
+    },
+    {
+      "id": "discord.token-redaction",
+      "issue": [
+        33,
+        22
+      ],
+      "required": true,
+      "result": "pass",
+      "test_command": "pnpm test:workers --run tests/workers/discord.test.ts tests/workers/discord-redaction.test.ts",
+      "tested_tree_hash": "4b72934b18c153f1c7e113be44f2a28ea424afe136020649314cbbbbd31cca6e",
+      "evidence": "Allowlisted route templates, scrubbed details and no interaction token in timeout/provider-error output."
+    },
+    {
+      "id": "discord.committed-receipt-recovery",
+      "issue": [
+        22,
+        33,
+        34
+      ],
+      "required": true,
+      "result": "pass",
+      "test_command": "pnpm test:workers --run tests/workers/discord.test.ts",
+      "tested_tree_hash": "4b72934b18c153f1c7e113be44f2a28ea424afe136020649314cbbbbd31cca6e",
+      "evidence": "A committed draw with failed delivery remains completed/delivery_failed with a persisted receipt; re-send reads the receipt and does not call executeDraw."
+    },
+    {
+      "id": "discord.production-entry-lifecycle",
+      "issue": [
+        22,
+        19
+      ],
+      "required": true,
+      "result": "pass",
+      "test_command": "pnpm test:production-path",
+      "tested_tree_hash": "4b72934b18c153f1c7e113be44f2a28ea424afe136020649314cbbbbd31cca6e",
+      "evidence": "Signed fixture -> emitted dist/server/entry.mjs Worker -> D1 migrations/R2 fixture -> private deferred acknowledgement -> durable receipt. Invalid signatures fail before domain work."
+    },
+    {
+      "id": "discord.presentation-adoption",
+      "issue": [
+        24
+      ],
+      "required": true,
+      "result": "pass",
+      "test_command": "pnpm test:workers --run tests/workers/discord.test.ts",
+      "tested_tree_hash": "4b72934b18c153f1c7e113be44f2a28ea424afe136020649314cbbbbd31cca6e",
+      "evidence": "Actual handlers for help, daily, packs, open/reveal, card, collection, achievements and profile assert shared-builder field/title contracts; denied errors use the shared safe-copy builder.",
+      "residual": "Real desktop/mobile client screenshots remain an optional observation."
+    },
+    {
+      "id": "eligibility.authoritative-list",
+      "issue": [
+        14,
+        22
+      ],
+      "required": true,
+      "result": "pass",
+      "test_command": "pnpm test:workers --run tests/workers/preferences.test.ts",
+      "tested_tree_hash": "4b72934b18c153f1c7e113be44f2a28ea424afe136020649314cbbbbd31cca6e",
+      "evidence": "listEligiblePools uses the same effective preview/commit policy; hidden, disabled and draft pools disappear from the web/API/Discord selector. Reimport preserves an existing disabled collection."
+    },
+    {
+      "id": "economy.settled-balance",
+      "issue": [
+        30
+      ],
+      "required": true,
+      "result": "pass",
+      "test_command": "pnpm test:workers --run tests/workers/draws.test.ts",
+      "tested_tree_hash": "4b72934b18c153f1c7e113be44f2a28ea424afe136020649314cbbbbd31cca6e",
+      "evidence": "500 − 80 opening + 100 settled achievement = 520; receipt exposes debit, credits and settled/current balances separately and writes both ledger rows."
+    },
+    {
+      "id": "admin.scoped-grants",
+      "issue": [
+        31,
+        32
+      ],
+      "required": true,
+      "result": "pass",
+      "test_command": "pnpm test:workers --run tests/workers/admin-grants.test.ts",
+      "tested_tree_hash": "4b72934b18c153f1c7e113be44f2a28ea424afe136020649314cbbbbd31cca6e",
+      "evidence": "Super Admin edits an existing account's capabilities/self-grant/limit; live policy is reread at the mutation boundary; revocation, stale session and self-grant disablement fail without mutation; Studio has a scoped Foil page.",
+      "residual": "The live designated account grant still needs the owner's authorised strong-auth session."
+    },
+    {
+      "id": "state.render-fencing",
+      "issue": [
+        34
+      ],
+      "required": true,
+      "result": "pass",
+      "test_command": "pnpm test:workers --run tests/workers/state-machines.test.ts",
+      "tested_tree_hash": "4b72934b18c153f1c7e113be44f2a28ea424afe136020649314cbbbbd31cca6e",
+      "evidence": "Terminal render jobs cannot be failed/completed again; claims fence attempts; stale attempts are rejected."
+    },
+    {
+      "id": "effect.discord-transport",
+      "issue": [
+        35
+      ],
+      "required": true,
+      "result": "pass",
+      "test_command": "pnpm test:workers --run tests/workers/effect-transport.test.ts",
+      "tested_tree_hash": "4b72934b18c153f1c7e113be44f2a28ea424afe136020649314cbbbbd31cca6e",
+      "evidence": "Effect 4.1.2 runtime with injected HTTP/logger services, typed failures, finite timeout and bounded idempotent retry; POST is single-attempt. The production Discord fetch path uses it."
+    },
+    {
+      "id": "share.privacy-lifecycle",
+      "issue": [
+        15
+      ],
+      "required": true,
+      "result": "pass",
+      "test_command": "pnpm test:workers --run tests/workers/share-privacy.test.ts tests/workers/shares.test.ts",
+      "tested_tree_hash": "4b72934b18c153f1c7e113be44f2a28ea424afe136020649314cbbbbd31cca6e",
+      "evidence": "Snapshot audience is rechecked on every read; anonymous/member/cross-Bot/revoked/expired cases have negative coverage; new whole-cabinet links are retired; Preferences has expiry and revoke controls."
+    },
+    {
+      "id": "ui.rendered-a11y",
+      "issue": [
+        13,
+        11,
+        12
+      ],
+      "required": true,
+      "result": "pass",
+      "test_command": "pnpm test:ui",
+      "tested_tree_hash": "4b72934b18c153f1c7e113be44f2a28ea424afe136020649314cbbbbd31cca6e",
+      "evidence": "Rendered public/member/Studio surfaces, light/dark, mobile, 200% zoom, axe and overflow checks."
+    },
+    {
+      "id": "product.browser-journeys",
+      "issue": [
+        13,
+        11,
+        12
+      ],
+      "required": true,
+      "result": "pass",
+      "test_command": "pnpm test:product",
+      "tested_tree_hash": "4b72934b18c153f1c7e113be44f2a28ea424afe136020649314cbbbbd31cca6e",
+      "evidence": "56/56 bounded browser checks including real totals, 5:7 geometry, failure/retry, admin boundaries, mobile flip and deliberate negative controls."
+    },
+    {
+      "id": "release.gate",
+      "issue": [
+        19
+      ],
+      "required": true,
+      "result": "pass",
+      "test_command": "node --test tests/scripts/release-gate.test.mjs",
+      "tested_tree_hash": "4b72934b18c153f1c7e113be44f2a28ea424afe136020649314cbbbbd31cca6e",
+      "evidence": "Stale manifest, wrong tree, missing/failed required checks, wrong artifact hash and stale build stamp are rejected; deploy refuses unreadable migrations and unverified smoke."
+    },
+    {
+      "id": "content.gonta-gakupo-local",
+      "issue": [
+        28
+      ],
+      "required": false,
+      "result": "pass",
+      "test_command": "pnpm content:validate",
+      "tested_tree_hash": "4b72934b18c153f1c7e113be44f2a28ea424afe136020649314cbbbbd31cca6e",
+      "evidence": "Local manifests resolve Gonta Gokuhara and Kamui Gakupo to one canonical identity each, with reviewed profiles, sourced artwork, 9-card versioned rosters and decoded 750×1050 front renders. Production import is a separate residual.",
+      "residual": "Production catalogue import and a reviewed collection-logo rollout remain."
+    },
+    {
+      "id": "live.client-and-spectator",
+      "issue": [
+        22,
+        24,
+        7,
+        25
+      ],
+      "required": false,
+      "result": "blocked",
+      "test_command": "pnpm demo:discord:check --acceptance",
+      "tested_tree_hash": "4b72934b18c153f1c7e113be44f2a28ea424afe136020649314cbbbbd31cca6e",
+      "evidence": "Readiness probe: full command schema and effective bot permissions verified; no independent authorised identity or client observation was recorded.",
+      "residual": "A real authorisation holder must invoke the commands in Discord desktop/mobile; an independent spectator must observe the result. The probe exits INCOMPLETE in acceptance mode."
+    },
+    {
+      "id": "guild.setup-mutations",
+      "issue": [
+        25
+      ],
+      "required": false,
+      "result": "blocked",
+      "test_command": "pnpm discord:setup:plan",
+      "tested_tree_hash": "4b72934b18c153f1c7e113be44f2a28ea424afe136020649314cbbbbd31cca6e",
+      "evidence": "Read-only plan is current; bot lacks MANAGE_CHANNELS/MANAGE_ROLES, so the category/showcase subset cannot be applied without a minimum role grant.",
+      "residual": "Owner grants the minimum role or applies the exact plan subset; unrelated channels remain untouched."
+    },
+    {
+      "id": "collection.logos",
+      "issue": [
+        29
+      ],
+      "required": false,
+      "result": "partial",
+      "test_command": "pnpm test:ui",
+      "tested_tree_hash": "4b72934b18c153f1c7e113be44f2a28ea424afe136020649314cbbbbd31cca6e",
+      "evidence": "Collection marks now remain visible when a cover is present; current marks are reviewed Foilbury interpretations, not sourced official publisher marks.",
+      "residual": "Source and review official wordmarks/icons per collection, then regenerate affected derivatives."
+    }
+  ]
+}
