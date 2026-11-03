@@ -57,7 +57,7 @@ declare namespace App {
       actor: { type: "user" | "agent" | "system"; id: string; representedUserId: string | null; label: string } | null;
       wallet: number | null;
       accessStatus?: string | null;
-      accessIdentity?: { email: string; subject: string; idpType: string } | null;
+      accessIdentity?: import("./server/access").AccessIdentity | null;
     };
     requestId: string;
     theme: "light" | "dark" | "system";
@@ -67,3 +67,4 @@ declare namespace App {
 declare module "cloudflare:workers" {
   interface Env extends FoilburyEnv {}
 }
+

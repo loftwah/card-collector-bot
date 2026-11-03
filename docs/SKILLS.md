@@ -75,6 +75,7 @@ subjects, 0 duplicate launch editions. The temporary content agent grant and
 Access service token were revoked/removed after the import. The `/foilbury`
 guild command was re-registered with the `achievements` option.
 
+
 ## 2026-11-03 Impeccable 4.8.0 upgrade and Worlds polish
 
 This supersedes the earlier Impeccable 4.0.4 row for future sessions.
@@ -92,3 +93,14 @@ This supersedes the earlier Impeccable 4.0.4 row for future sessions.
 | Evidence | `docs/evidence/ui-worlds-light.png`, `ui-worlds-dark.png`, `ui-worlds-mobile-light.png`, `ui-worlds-mobile-dark.png`; `docs/evidence/ui-a11y.json`; `/tmp/fb-evidence/` (Assessment B working evidence). |
 | Remaining | Mobile first card still begins below the first 844 px because the hero + search controls are substantial; mobile sub-nav remains horizontally scrollable (now with a visible thin scrollbar); the collection progress loop is still N+1 (~one aggregate pair per collection); local proof-world fixtures appear in local screenshots and must not be used as production evidence. |
 | Unrelated work left untouched | `src/server/discord/handler.ts`, `src/server/discord/commands.ts` and `tests/workers/discord.test.ts` had uncommitted changes from another pass during this session. One Discord test currently fails (`link?.type` expected 2 but undefined); this is outside the Impeccable UI change and was not overwritten. |
+
+## Authentication correction prepared after the live comparison
+
+This section records a code/configuration correction, not a production release.
+
+| Skill | Source and loaded location | Actual use and findings | Changes and evidence |
+|---|---|---|---|
+| Cloudflare One | Existing `.agents/skills/cloudflare-one`; current Cloudflare application-token and MFA requirements documentation | Compared live App Composer and Foilbury applications and owner policies. Composer inherits global MFA off; Foilbury adds an app override. Standard application JWTs do not guarantee an IdP claim; the supported identity endpoint reports provider details. | MFA inheritance reconciliation and read-back guard; standard token validation; bound provider lookup. `node --test tests/scripts/cloudflare-access-app.test.mjs`: 9/9. Live reset is pending approval and verification. |
+| Wrangler / Workers best practices | Existing `.agents/skills/wrangler` and `.agents/skills/workers-best-practices` | Inspected pinned runtime, bindings and deployment script. Preserved the current Worker/resource identities. Kept Access proof request-scoped and existing account roles authoritative. | Request-context and cookie-assurance corrections; regression coverage. Syntax checks pass; full pinned-runtime checks run through the PR workflow and are a release gate. No deployment or production data mutation performed in this review. |
+| EmDash site / CLI / plugins | Existing `.agents/skills/building-emdash-site`, `.agents/skills/creating-plugins`, `.agents/skills/emdash-cli`; official EmDash authentication guide | Confirmed the supported runtime `audienceEnvVar` configuration and local-development fallback. A build-time audience gate could silently omit the adapter. | `astro.config.mjs` always configures Access using `FOILBURY_ACCESS_EDITORIAL_AUD`; existing provisioning and role settings preserved. Syntax check passes; authenticated native console remains a live acceptance gate. |
+

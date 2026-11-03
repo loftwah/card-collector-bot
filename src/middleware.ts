@@ -67,12 +67,6 @@ export const onRequest = defineMiddleware(async (context, next) => {
       });
     }
     if (isPlatformPage) {
-      if (access && access.idpType !== "cloudflare") {
-        return new Response(accessGateHtml({ status: "strong_required", email: access.email, path }), {
-          status: 403,
-          headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
-        });
-      }
       if (!ctx.user?.platformAdmin) {
         return new Response(accessGateHtml({ status: "not_super_admin", email: access?.email, path }), {
           status: 403,
@@ -109,21 +103,27 @@ export const onRequest = defineMiddleware(async (context, next) => {
     );
   }
 
-  const response = await next();
-
   // A verified Access identity can establish the application session. The
   // session is a CSRF/UI convenience only; Access is re-verified every request.
+  // Create it before rendering so the CSRF meta tag matches the new cookie on
+  // the very first page load, not only after a reload.
+  let accessCookies: string[] = [];
   if (isProtectedPage && ctx.config.access.enabled && ctx.accessIdentity && ctx.accessStatus === "linked" && ctx.user && !ctx.sessionId) {
     const session = await createSession(ctx.db, ctx.tenant, ctx.user, {
       authMethod: "cloudflare_access",
-      assurance: ctx.accessIdentity.idpType === "cloudflare" ? "access" : "email",
+      // The cookie carries the linked account and CSRF state. Strong Access
+      // assurance is re-established from the verified assertion on each request.
+      assurance: "email",
       accessSubject: ctx.accessIdentity.subject,
       userAgent: context.request.headers.get("user-agent"),
     });
-    for (const cookie of sessionCookies(session.token, session.csrf, session.expiresAt, true)) {
-      response.headers.append("set-cookie", cookie);
-    }
+    ctx.csrfToken = session.csrf;
+    if (context.locals.foilbury) context.locals.foilbury.csrfToken = session.csrf;
+    accessCookies = sessionCookies(session.token, session.csrf, session.expiresAt, true);
   }
+
+  const response = await next();
+  for (const cookie of accessCookies) response.headers.append("set-cookie", cookie);
 
   response.headers.set("x-content-type-options", "nosniff");
   response.headers.set("referrer-policy", "strict-origin-when-cross-origin");
@@ -184,3 +184,4 @@ function setupHtml(): string {
   const config = readConfig(runtimeEnv());
   return `<!doctype html><html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Foilbury setup</title><style>body{font-family:ui-sans-serif,system-ui;background:#f4f0e6;color:#141512;margin:0;display:grid;place-items:center;min-height:100vh}.card{max-width:34rem;padding:3rem;border:1px solid #d6cdbc;background:#fffdf8}h1{font-family:Georgia,serif;font-size:2.5rem;margin:0 0 1rem}p{line-height:1.6}code{background:#eae3d5;padding:.15rem .35rem}</style></head><body><main class="card"><h1>Foilbury needs its local setup.</h1><p>This installation has no tenant yet. Run <code>pnpm setup:local</code> in the repository, then reload this page.</p><p>Environment: ${config.environment}. Local URL: <code>${config.publicOrigin}</code>.</p></main></body></html>`;
 }
+

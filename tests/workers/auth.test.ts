@@ -42,7 +42,7 @@ describe("passwordless identity, Access linking, bots and collections", () => {
       .bind("dean@deanlofts.xyz", ctx.user!.id, nowIso())
       .run();
     const config = { ...ctx.config, access: { ...ctx.config.access, teamDomain: "test.cloudflareaccess.com" } };
-    const identity = { subject: "subject-1", email: "dean@deanlofts.xyz", audience: "aud", idpType: "cloudflare", payload: {} };
+    const identity = { subject: "subject-1", email: "dean@deanlofts.xyz", audience: "aud", payload: {} };
     const linked = await resolveAccessIdentity(runtime.DB, config, ctx.tenant, identity);
     expect(linked.status).toBe("linked");
     expect(linked.user?.id).toBe(ctx.user!.id);
@@ -152,7 +152,7 @@ describe("passwordless identity, Access linking, bots and collections", () => {
     await runtime.DB.prepare("UPDATE fb_users SET email_verified_at = ? WHERE id = ?").bind(nowIso(), invited.id).run();
     await runtime.DB.prepare("INSERT INTO fb_access_emails (email, user_id, added_by, created_at) VALUES (?, ?, 'test', ?)").bind("tenant-creator@example.com", invited.id, nowIso()).run();
     const config = { ...ctx.config, access: { ...ctx.config.access, teamDomain: "test.cloudflareaccess.com" } };
-    const identity = { subject: "tenant-subject", email: "tenant-creator@example.com", audience: "aud", idpType: "cloudflare", payload: {} };
+    const identity = { subject: "tenant-subject", email: "tenant-creator@example.com", audience: "aud", payload: {} };
     const found = await findAccessTenantForIdentity(runtime.DB, config, identity, ctx.tenant.id);
     expect(found?.id).toBe(harbour.id);
     const resolved = await resolveAccessIdentity(runtime.DB, config, found!, identity);
@@ -162,8 +162,10 @@ describe("passwordless identity, Access linking, bots and collections", () => {
   it("requires recent strong authentication for stepped-up operations", () => {
     const passwordCtx = { sessionAssurance: "password", sessionAuthTime: nowIso(), actor: { type: "user" } } as never;
     expect(() => requireRecentStrongAuth(passwordCtx, 30)).toThrow(/passkey|authenticator|Cloudflare Access/);
-    const accessCtx = { sessionAssurance: "access", sessionAuthTime: nowIso(), actor: { type: "user" } } as never;
+    const accessCtx = { sessionAssurance: "access", sessionAuthTime: nowIso(), actor: { type: "user" }, accessIdentity: { subject: "subject-1" }, accessStatus: "linked" } as never;
     expect(() => requireRecentStrongAuth(accessCtx, 30)).not.toThrow();
+    const oldAccessCookie = { sessionAssurance: "access", sessionAuthTime: nowIso(), actor: { type: "user" }, accessIdentity: null } as never;
+    expect(() => requireRecentStrongAuth(oldAccessCookie, 30)).toThrow(/passkey|authenticator|Cloudflare Access/);
     const oldMfaCtx = { sessionAssurance: "mfa", sessionAuthTime: new Date(Date.now() - 60 * 60_000).toISOString(), actor: { type: "user" } } as never;
     expect(() => requireRecentStrongAuth(oldMfaCtx, 30)).toThrow(/stale/);
   });
@@ -177,3 +179,4 @@ describe("passwordless identity, Access linking, bots and collections", () => {
     expect(ctx.accessIdentity).toBeNull();
   });
 });
+

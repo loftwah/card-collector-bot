@@ -1,5 +1,71 @@
 # Identity, passwordless authentication and administration acceptance
 
+## Authentication correction awaiting deployment
+
+The acceptance record below is historical. Its statement that only human MFA
+enrolment remained was incomplete. A live dashboard comparison established that
+App Composer inherits the organisation's Access MFA setting (currently off),
+whereas Foilbury's Platform Administration, Platform Admin API and Editorial
+applications explicitly require an independent Access factor every eight hours.
+Dean requested the existing Cloudflare-account sign-in without this second
+enrolment requirement.
+
+This correction:
+
+- Removes the three application MFA overrides and inherits the organisation's
+  setting. It does not set `mfa_disabled: true`, modify the organisation, replace
+  the applications or broaden the owner policy. The provisioning script reads
+  the complete app configuration before writing and verifies the same app ID,
+  audience and domain plus absence of the override afterwards.
+- Validates standard signed Access application tokens without relying on an
+  undocumented `payload.idp.type`. Signature, issuer, exact route audience,
+  expiry, application-token type, subject and email remain mandatory. Dedicated
+  platform audiences still require the explicitly provisioned Foilbury Super
+  Admin; admission alone never creates that role.
+- Uses verified Access assurance for the current linked request even if a
+  matching OAuth/email session already exists. The session and CSRF token are
+  reused, and no stronger assurance is written into that existing session.
+  Fresh convenience cookies carry email assurance; old Access-assured cookies
+  cannot substitute for a current verified Access request.
+- Keeps email-PIN Bot Admin entry separate. Sensitive Bot admin mutations may
+  use a recent local passkey/MFA proof or a matching Cloudflare-account provider
+  response from the official Access identity endpoint. Unavailable, mismatched
+  or OTP responses grant no extra assurance. Provider identity is not represented
+  as proof that a second factor occurred.
+- Always installs EmDash's supported Access adapter, reads
+  `FOILBURY_ACCESS_EDITORIAL_AUD` at Worker runtime, and preserves existing CMS
+  user provisioning and role settings.
+
+### Validation and release gates
+
+The dependency-free configuration suite passes 9/9 checks, and changed JavaScript
+and TypeScript files pass Node syntax checks. Token, provider and request-context
+regressions are covered in the Vitest suite. The review environment has Node
+24.22.1 and pnpm 11.25.0 without project dependencies, so a full `pnpm check`, build
+and browser suite have not been claimed there. The pull-request workflow uses
+the repository's required Node 22.23.4 and pnpm 10.34.4 and runs `pnpm check`.
+
+Before release, the full check and relevant local auth/editorial browser tests
+must pass. After the approved Access change and Worker deployment, use an
+authorised fresh browser session to verify `/platform-admin`, its API,
+`/admin`, its API and `/_emdash/admin`. Explicitly verify page-to-API admission
+without manual API warm-up; successful redirects alone do not establish this.
+Verify the existing Dean identities and roles, successful permitted operations,
+cross-user denial, non-owner denial and expired-token denial. Do not mark these
+live cases passed from a fixture, mock, a 302 or a screenshot of the gate.
+
+The API reset encoding is checked by read-back: if an omitted `mfa_config` does
+not remove the override, the script stops and requires the supported dashboard
+setting **Respect global enforcement setting**. It must not silently substitute
+an explicit exemption from organisation MFA.
+
+No production data migration is required. Rollback restores the previous Worker
+and the saved application configurations; the previous three application MFA
+overrides used TOTP/biometrics/security key with an eight-hour duration. Never
+recreate the applications or change their audience tags to roll back this fix.
+
+## Historical acceptance record
+
 Pass run: 2026-11-02. Production Worker: `e188ea0e-e73c-4c37-a62b-b5134cc2abc3`. Repository base: `0077fb3` plus this working tree. Test baseline before the pass: 44 passing tests. Current: 64 passing tests (19 unit + 45 Workers).
 
 ## Preserved production identity
@@ -80,3 +146,4 @@ The Worker validates the Access JWT itself (`src/server/access.ts`): signature t
 4. A second human creator/invitee is needed for the two-person acceptance matrix; do not create or act as Kaylee without permission.
 
 These are human consent/MFA steps, not missing implementation.
+

@@ -7,8 +7,6 @@ import { defineConfig } from "astro/config";
 import { loadEnv } from "vite";
 
 const fileEnv = loadEnv(process.env.NODE_ENV || "development", process.cwd(), "");
-
-const emdashAccessAudience = (process.env.EMDASH_ACCESS_AUD || fileEnv.EMDASH_ACCESS_AUD || "").trim();
 const emdashAccessTeamDomain = (process.env.EMDASH_ACCESS_TEAM_DOMAIN || fileEnv.EMDASH_ACCESS_TEAM_DOMAIN || "jolly-cake-2b85.cloudflareaccess.com").trim();
 
 export default defineConfig({
@@ -45,18 +43,16 @@ export default defineConfig({
         favicon: "/brand/favicon-32.png",
         footerLabel: "Foilbury · editorial operator console",
       },
-      ...(emdashAccessAudience
-        ? {
-            auth: cloudflareAccess({
-              teamDomain: emdashAccessTeamDomain,
-              audience: emdashAccessAudience,
-              autoProvision: false,
-              syncRoles: false,
-              syncName: true,
-              defaultRole: 50,
-            }),
-          }
-        : {}),
+      // Access stays enabled even when the build has no private environment file.
+      // EmDash reads the deployed Worker binding and handles local dev passkeys.
+      auth: cloudflareAccess({
+        teamDomain: emdashAccessTeamDomain,
+        audienceEnvVar: "FOILBURY_ACCESS_EDITORIAL_AUD",
+        autoProvision: false,
+        syncRoles: false,
+        syncName: true,
+        defaultRole: 50,
+      }),
       maxUploadSize: 8 * 1024 * 1024,
       toolbar: false,
     }),
@@ -64,3 +60,4 @@ export default defineConfig({
   vite: { plugins: [tailwindcss()] },
   devToolbar: { enabled: false },
 });
+

@@ -9,10 +9,12 @@ import { hmacHex, sha256Hex } from "./ids";
 import { newId } from "./ids";
 import {
   audienceForPath,
+  assertPlatformAccessIdentity,
   getAccessAssertion,
   isAccessProtectedPath,
   findAccessTenantForIdentity,
   resolveAccessIdentity,
+  resolveAccessIdentityProvider,
   verifyAccessToken,
   type AccessIdentity,
 } from "./access";
@@ -138,6 +140,9 @@ export async function buildContext(request: Request, options?: { requireTenant?:
       const audience = audienceForPath(config, path);
       if (!assertion) throw new ApiError(401, "access_required", "Sign in through Cloudflare Access to continue.");
       accessIdentity = await verifyAccessToken(assertion, config, audience ?? "");
+      const platformPath = path === "/platform-admin" || path.startsWith("/platform-admin/") ||
+        path === "/api/v1/platform" || path.startsWith("/api/v1/platform/");
+      if (platformPath) assertPlatformAccessIdentity(accessIdentity, config);
       let resolved = await resolveAccessIdentity(db, config, tenant, accessIdentity, requestId);
       if (resolved.status === "not_member") {
         const alternate = await findAccessTenantForIdentity(db, config, accessIdentity, tenant.id);
@@ -167,6 +172,22 @@ export async function buildContext(request: Request, options?: { requireTenant?:
           };
           // Reuse a matching app session only if it is still active.
           accessStatus = "linked";
+          // Access assurance belongs to this verified request, not to a long-lived
+          // Foilbury cookie. Dedicated platform audiences admit Cloudflare-account
+          // sign-in only. The Bot admin applications also admit email PINs, so
+          // their provider must be confirmed by Access's identity endpoint.
+          const strongSessionAge = sessionAuthTime ? Date.now() - new Date(sessionAuthTime).getTime() : Infinity;
+          // Gifts use the strictest local proof window (15 minutes).
+          const hasRecentLocalProof = ["passkey", "mfa"].includes(sessionAssurance ?? "") &&
+            strongSessionAge >= 0 && strongSessionAge <= 15 * 60_000;
+          const needsProviderProof = !["GET", "HEAD", "OPTIONS"].includes(request.method) && !hasRecentLocalProof;
+          if (platformPath || (needsProviderProof && await resolveAccessIdentityProvider(assertion, accessIdentity, config) === "cloudflare")) {
+            sessionAssurance = "access";
+            sessionAuthTime = nowIso();
+          } else if (sessionAssurance === "access" || !sessionAssurance) {
+            sessionAssurance = "email";
+            sessionAuthTime = null;
+          }
         }
       } else {
         user = null;
@@ -471,6 +492,9 @@ export function requireRecentStrongAuth(ctx: Ctx, maxAgeMinutes = 20): void {
     throw new ApiError(403, "human_strong_auth_required", "This action requires a signed-in human with recent strong authentication.");
   }
   const method = ctx.sessionAssurance ?? "";
+  if (method === "access" && (!ctx.accessIdentity || ctx.accessStatus !== "linked")) {
+    throw new ApiError(403, "strong_auth_required", "Confirm with a passkey, authenticator code or Cloudflare Access to continue.");
+  }
   if (!["access", "passkey", "mfa"].includes(method)) {
     throw new ApiError(403, "strong_auth_required", "Confirm with a passkey, authenticator code or Cloudflare Access to continue.");
   }
@@ -528,3 +552,4 @@ export async function checkRateLimit(
     throw new ApiError(429, "rate_limited", "Too many attempts. Try again shortly.");
   }
 }
+

@@ -13,7 +13,7 @@
     "build": "astro check && astro build",
     "preview": "astro preview --host 127.0.0.1 --port 5173",
     "start": "node scripts/dev.mjs",
-    "check": "pnpm check:types && pnpm test",
+    "check": "pnpm test:access-config && pnpm check:types && pnpm test",
     "check:types": "astro check",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -22,6 +22,7 @@
     "test:workers": "vitest run --config vitest.workers.config.ts",
     "test:e2e": "node scripts/test-e2e.mjs",
     "test:agent": "node scripts/test-agent.mjs",
+    "test:access-config": "node --test tests/scripts/cloudflare-access-app.test.mjs",
     "setup:local": "node scripts/setup-local.mjs",
     "doctor": "node scripts/doctor.mjs",
     "db:migrate:local": "node scripts/migrate-local.mjs",
@@ -127,3 +128,4 @@
     ]
   }
 }
+
