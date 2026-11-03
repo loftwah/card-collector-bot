@@ -9,10 +9,17 @@ import { cn } from "@/lib/utils";
 interface Variant {
   id: string;
   name: string;
+  edition_name?: string;
   material_key: string;
   effect_key: string | null;
   render_url: string | null;
   back_render_url: string | null;
+}
+
+function printTitleOf(variant?: Variant): string | null {
+  return variant?.edition_name?.includes(" — ")
+    ? variant.edition_name.split(" — ").slice(1).join(" — ")
+    : null;
 }
 
 export default function PublicVariantViewer({
@@ -52,6 +59,8 @@ export default function PublicVariantViewer({
   const [showBack, setShowBack] = useState(false);
   const [inspect, setInspect] = useState(false);
   const variant = variants[selected] ?? variants[0];
+  const printTitle = printTitleOf(variant);
+  const multiplePrints = new Set(variants.map((item) => item.edition_name).filter(Boolean)).size > 1;
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-start">
       <div>
@@ -84,7 +93,7 @@ export default function PublicVariantViewer({
         </div>
         )}
         {inspect ? null : (
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><p className="font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[var(--muted)]">{showBack ? "Card back" : `Published render · ${variant?.name ?? "Awaiting render"}`}</p><div className="flex gap-1"><button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowBack((value) => !value)}><RotateCcw size={13} /> {showBack ? "Show front" : "Show back"}</button><button type="button" className="btn btn-secondary btn-sm" onClick={() => setInspect(true)}><Box size={13} /> Inspect in 3D</button></div></div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><p className="font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[var(--muted)]">{showBack ? `Card back${printTitle ? ` · ${printTitle}` : ""}` : `Published render · ${printTitle ? `${printTitle} · ` : ""}${variant?.name ?? "Awaiting render"}`}</p><div className="flex gap-1"><button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowBack((value) => !value)}><RotateCcw size={13} /> {showBack ? "Show front" : "Show back"}</button><button type="button" className="btn btn-secondary btn-sm" onClick={() => setInspect(true)}><Box size={13} /> Inspect in 3D</button></div></div>
         )}
       </div>
       <div>
@@ -94,7 +103,11 @@ export default function PublicVariantViewer({
           {tags.map((tag) => <span key={tag} className="chip">{tag}</span>)}
         </div>
         <h1 className="display mt-5 text-[clamp(2.8rem,7vw,5.5rem)]">{name}</h1>
-        {subtitle ? <p className="mt-2 text-lg text-[var(--brass)]">{subtitle}</p> : null}
+        {printTitle ? (
+          <p className="mt-2 text-lg text-[var(--brass)]">Print · {printTitle}</p>
+        ) : subtitle ? (
+          <p className="mt-2 text-lg text-[var(--brass)]">{subtitle}</p>
+        ) : null}
         <p className="prose mt-6 text-[var(--muted)]">{bio || description}</p>
         {quote ? <blockquote className="mt-5 border-l-2 border-[var(--brass)] pl-4 font-display text-2xl leading-snug text-[var(--ink)]">“{quote}”</blockquote> : null}
 
@@ -131,8 +144,21 @@ export default function PublicVariantViewer({
                     : "border-[var(--line)] text-[var(--muted)] hover:border-[var(--brass)] hover:text-[var(--ink)]",
                 )}
               >
-                <span className="block font-mono text-[0.58rem] uppercase tracking-[0.1em]">{item.material_key === "diamond" ? "holographic" : item.material_key}</span>
-                <span className="mt-0.5 block text-sm font-semibold">{displayFinish(item.name, item.material_key, item.effect_key)}</span>
+                <span className="block font-mono text-[0.58rem] uppercase tracking-[0.1em]">
+                  {multiplePrints && printTitleOf(item)
+                    ? printTitleOf(item)
+                    : item.material_key === "diamond"
+                      ? "holographic"
+                      : item.material_key}
+                </span>
+                <span className="mt-0.5 block text-sm font-semibold">
+                  {displayFinish(item.name, item.material_key, item.effect_key)}
+                </span>
+                {multiplePrints && printTitleOf(item) ? (
+                  <span className="mt-0.5 block font-mono text-[0.5rem] uppercase tracking-[0.08em] text-[var(--muted)]">
+                    {item.material_key === "diamond" ? "holographic" : item.material_key}
+                  </span>
+                ) : null}
               </button>
             ))}
           </div>

@@ -16,7 +16,9 @@ try {
 const published = (await listCards(ctx, { publicOnly: true, id: card!.id, limit: 1 }))[0];
 if (!published) return Astro.redirect("/cabinet");
 const clean = publicCard(published);
-const variants = clean.editions.flatMap((edition) => edition.variants);
+const variants = clean.editions.flatMap((edition) =>
+  edition.variants.map((variant) => ({ ...variant, edition_name: edition.name })),
+);
 const setName = clean.sets[0]?.name ?? null;
 ---
 <BaseLayout title={`${clean.name} · Foilbury`} description={clean.description} shareImage={variants[0]?.render_url ?? "/brand/social-preview.jpg"}>

@@ -959,10 +959,18 @@ export async function createPrintProposal(
       ctx.db
         .prepare(
           `INSERT INTO fb_print_proposal_reviews
-            (id, tenant_id, proposal_id, revision, decision, reviewer_id, note, created_at)
-           VALUES (?, ?, ?, 1, 'submitted', ?, ?, ?)`,
+            (id, tenant_id, proposal_id, revision, decision, reviewer_id, reviewer_kind, note, created_at)
+           VALUES (?, ?, ?, 1, 'submitted', ?, ?, ?, ?)`,
         )
-        .bind(newId("prv"), ctx.tenant.id, id, user.id, "Submitted for print review.", now),
+        .bind(
+          newId("prv"),
+          ctx.tenant.id,
+          id,
+          user.id,
+          ctx.actor.type === "agent" ? "agent" : "human",
+          "Submitted for print review.",
+          now,
+        ),
     );
   }
   statements.push(

@@ -144,8 +144,7 @@ function insertStatement(table, row) {
 const lines = [
   "-- Foilbury reviewed original-IP print set.",
   "-- Additive and idempotent. Generated from the locally reviewed D1 catalogue.",
-  "PRAGMA foreign_keys = ON;",
-  "BEGIN;",
+  "-- D1's file executor rejects explicit BEGIN/COMMIT; each statement is independently idempotent.",
   ...assets.map((row) => insertStatement("fb_assets", row)),
   ...editions.map((row) => insertStatement("fb_artwork_editions", row)),
   ...variants.map((row) => insertStatement("fb_variants", row)),
@@ -161,7 +160,6 @@ for (const edition of editions) {
     `INSERT OR IGNORE INTO fb_audit_events (id, tenant_id, actor_type, actor_id, represented_user_id, action, object_type, object_id, metadata_json, request_id, created_at) VALUES (${quote(`aud_${crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`)}, ${quote(edition.tenant_id)}, 'agent', ${quote(ownerId)}, ${quote(ownerId)}, 'print.set.published', 'artwork_edition', ${quote(edition.id)}, ${quote(JSON.stringify({ source: "agent-delegated print set", edition: edition.name }))}, NULL, ${quote(new Date().toISOString())});`,
   );
 }
-lines.push("COMMIT;");
 fs.writeFileSync(path.join(outDir, "production.sql"), `${lines.join("\n")}\n`, { mode: 0o600 });
 
 const manifest = {
