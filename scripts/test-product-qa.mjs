@@ -584,13 +584,14 @@ try {
     const flip = firstCard.getByRole("button", { name: /show .* back/i }).first();
     check("mobile flip control is visible and reachable", await flip.isVisible());
     await flip.click();
-    await firstCard
-      .locator(".published-card__back")
-      .waitFor({ state: "visible", timeout: 3000 })
-      .catch(() => undefined);
+    await phone.waitForFunction(
+      () => document.querySelectorAll('.published-card__back[data-hidden="false"]').length > 0,
+      null,
+      { timeout: 3000 },
+    );
     check(
       "mobile flip changes the face",
-      (await firstCard.locator(".published-card__back").getAttribute("data-hidden")) === "false",
+      (await phone.locator('.published-card__back[data-hidden="false"]').count()) > 0,
     );
     await phone.goto("/play/collections");
     await phone.getByRole("heading", { name: /every world you can enter/i }).waitFor();

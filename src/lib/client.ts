@@ -10,6 +10,7 @@ export class ApiClientError extends Error {
     public code: string,
     message: string,
     public details?: Record<string, unknown>,
+    public requestId?: string,
   ) {
     super(message);
   }
@@ -67,6 +68,7 @@ export async function api<T>(
       error?.code ?? "request_failed",
       error?.message ?? FALLBACK,
       error?.details,
+      (payload as { request_id?: string } | null)?.request_id,
     );
   }
   return payload as T;
@@ -100,6 +102,7 @@ export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
       error?.code ?? "request_failed",
       error?.message ?? FALLBACK,
       error?.details,
+      (payload as { request_id?: string } | null)?.request_id,
     );
   }
   return payload as T;
@@ -110,7 +113,9 @@ export function idempotencyKey(prefix = "ui"): string {
 }
 
 export function describeError(error: unknown): string {
-  if (error instanceof ApiClientError) return error.message;
+  if (error instanceof ApiClientError) {
+    return error.requestId ? `${error.message} Reference: ${error.requestId}` : error.message;
+  }
   if (error instanceof Error) return error.message;
   return FALLBACK;
 }

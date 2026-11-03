@@ -285,6 +285,10 @@ function AdminOverview() {
     published_at: string;
   } | null;
   const providers = (status?.providers ?? {}) as Record<string, boolean>;
+  const discordHealth = (status?.discord ?? {}) as {
+    status?: string;
+    recent?: { total?: number; completed?: number; failed?: number; delivery_failures?: number; stuck_processing?: number; last_success_at?: string | null };
+  };
   return (
     <div>
       <SectionHead
@@ -361,7 +365,7 @@ function AdminOverview() {
                 <div className="flex justify-between gap-3">
                   <dt>Discord</dt>
                   <dd className="text-[var(--muted)]">
-                    {providers.discordApplication ? "interactions ready · guild-bound" : "disabled"}
+                    {discordHealth.status ?? (providers.discordApplication ? "configured_unverified" : "disabled")} · {discordHealth.recent?.completed ?? 0} recent delivered · {discordHealth.recent?.delivery_failures ?? 0} delivery failures
                   </dd>
                 </div>
                 <div className="flex justify-between gap-3">
@@ -2818,6 +2822,10 @@ function AdminIntegrations() {
       .catch((cause) => setError(describeError(cause)));
   }, []);
   const providers = (status?.providers ?? {}) as Record<string, boolean>;
+  const discordHealth = (status?.discord ?? {}) as {
+    status?: string;
+    recent?: { total?: number; completed?: number; failed?: number; delivery_failures?: number; stuck_processing?: number; last_success_at?: string | null };
+  };
   return (
     <div>
       <SectionHead
@@ -2831,13 +2839,14 @@ function AdminIntegrations() {
           <div className="flex items-center justify-between gap-3">
             <p className="eyebrow">Discord</p>
             <span className="badge">
-              {providers.discordApplication ? "interactions ready" : "disabled"}
+              {discordHealth.status ?? (providers.discordApplication ? "configured_unverified" : "disabled")}
             </span>
           </div>
           <p className="mt-2 text-sm text-[var(--muted)]">
             Foilbury verifies Ed25519 signatures against the raw interaction body, resolves the
             installation server-side, and reuses the same inventory and award ledger as the website.
-            No privileged intents are enabled.
+            No privileged intents are enabled. A configured key is not health: the status above
+            reports verified recent outcomes, stuck processing and delivery failures.
           </p>
           <div className="mt-4 flex gap-2">
             <Button size="sm" variant="secondary" disabled title="Not run in this phase">
