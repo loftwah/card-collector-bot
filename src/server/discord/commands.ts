@@ -1654,7 +1654,7 @@ async function tour(
     const inventory = await getInventory(ctx, { limit: 500 });
     const channelAudience = channelAudienceFor(installation, channelId);
     let publicCard: (typeof inventory)[number] | null = null;
-    for (const item of inventory.slice(0, 40)) {
+    for (const item of inventory.slice(0, 20)) {
       if ((await effectiveCardAudience(ctx, item.card_id)) === "public") {
         publicCard = item;
         break;
@@ -1952,7 +1952,7 @@ async function tourShare(
     const inventory = await getInventory(ctx, { limit: 200 });
     const achievements = await listAchievements(ctx, ctx.user!.id);
     const publicCards: string[] = [];
-    for (const item of inventory.slice(0, 100)) {
+    for (const item of inventory.slice(0, 20)) {
       if ((await effectiveCardAudience(ctx, item.card_id)) === "public") publicCards.push(item.card_id);
     }
     const publicBadges = achievements.filter(
