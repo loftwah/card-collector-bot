@@ -9,6 +9,11 @@ export const RELEASE_METADATA_FILES = new Set([
   "docs/acceptance-report.json",
 ]);
 
+/** Screenshots/logs are evidence output, not source that changes behaviour. */
+export function isReleaseMetadataPath(file) {
+  return RELEASE_METADATA_FILES.has(file) || file.startsWith("docs/evidence/");
+}
+
 export function capture(command, args, options = {}) {
   return execFileSync(command, args, {
     cwd: ROOT,
@@ -38,7 +43,7 @@ export function sourceTreeHash() {
       const [, blob] = meta.split(/\s+/);
       return { file, blob };
     })
-    .filter((entry) => !RELEASE_METADATA_FILES.has(entry.file))
+    .filter((entry) => !isReleaseMetadataPath(entry.file))
     .sort((left, right) => left.file.localeCompare(right.file));
   const hash = crypto.createHash("sha256");
   for (const entry of entries) hash.update(`${entry.file}\0${entry.blob}\n`);
