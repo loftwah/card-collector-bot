@@ -509,6 +509,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       request,
       z.object({
         hideTags: z.array(z.string().max(80)).max(30).optional(),
+        hiddenCollectionIds: z.array(idSchema).max(80).optional(),
         reducedMotion: z.boolean().optional(),
         soundEnabled: z.boolean().optional(),
         sharingEnabled: z.boolean().optional(),
@@ -611,6 +612,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       z.object({
         pool: z.string().min(1).max(80),
         expectedRevision: z.number().int().positive(),
+        expectedDistribution: z.string().min(16).max(128),
         channelKey: z.string().max(80).optional(),
       }),
     );
@@ -619,6 +621,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       await executeDraw(ctx, {
         pool: body.pool,
         expectedRevision: body.expectedRevision,
+        expectedDistribution: body.expectedDistribution,
         channelKey: body.channelKey,
         idempotency,
       }),

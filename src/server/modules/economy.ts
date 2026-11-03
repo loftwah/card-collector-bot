@@ -5,6 +5,7 @@ import { auditStatement, findIdempotent, idempotencyStatement, type IdempotencyI
 import { getWalletSummary, correctWallet } from "./wallet";
 import { checkRateLimit } from "../context";
 import { nextDailyEligibleAt } from "./daily-time";
+import { listCollections } from "./collections";
 
 export interface EconomySettings {
   currency_name: string;
@@ -248,18 +249,20 @@ export async function getPreferences(ctx: Ctx) {
   if (!user) throw new ApiError(401, "authentication_required", "Sign in to change preferences.");
   const row = await first<{
     hide_tags_json: string;
+    hidden_collection_ids_json: string;
     reduced_motion: number;
     sound_enabled: number;
     sharing_enabled: number;
     updated_at: string;
   }>(
     ctx.db,
-    "SELECT hide_tags_json, reduced_motion, sound_enabled, sharing_enabled, updated_at FROM fb_player_preferences WHERE tenant_id = ? AND user_id = ?",
+    "SELECT hide_tags_json, hidden_collection_ids_json, reduced_motion, sound_enabled, sharing_enabled, updated_at FROM fb_player_preferences WHERE tenant_id = ? AND user_id = ?",
     ctx.tenant.id,
     user.id,
   );
   return {
-    hide_tags: row ? (JSON.parse(row.hide_tags_json) as string[]) : [],
+    hide_tags: row ? safeStringArray(row.hide_tags_json) : [],
+    hidden_collection_ids: row ? safeStringArray(row.hidden_collection_ids_json) : [],
     reduced_motion: Boolean(row?.reduced_motion),
     sound_enabled: Boolean(row?.sound_enabled),
     sharing_enabled: Boolean(row?.sharing_enabled),
@@ -267,9 +270,25 @@ export async function getPreferences(ctx: Ctx) {
   };
 }
 
+function safeStringArray(value: string | null | undefined): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function updatePreferences(
   ctx: Ctx,
-  input: { hideTags?: string[]; reducedMotion?: boolean; soundEnabled?: boolean; sharingEnabled?: boolean },
+  input: {
+    hideTags?: string[];
+    hiddenCollectionIds?: string[];
+    reducedMotion?: boolean;
+    soundEnabled?: boolean;
+    sharingEnabled?: boolean;
+  },
 ) {
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in to change preferences.");
@@ -285,14 +304,26 @@ export async function updatePreferences(
       if (found.length !== unique.length) throw new ApiError(422, "tag_invalid", "One or more preference tags are unknown.");
     }
   }
+  let hiddenCollectionIds = input.hiddenCollectionIds;
+  if (hiddenCollectionIds) {
+    hiddenCollectionIds = [...new Set(hiddenCollectionIds)];
+    if (hiddenCollectionIds.length) {
+      const visible = new Set((await listCollections(ctx)).map((collection) => collection.id));
+      const unknown = hiddenCollectionIds.filter((id) => !visible.has(id));
+      if (unknown.length) {
+        throw new ApiError(422, "collection_invalid", "One or more collections are not available to this account.");
+      }
+    }
+  }
   const current = await getPreferences(ctx);
   await ctx.db.batch([
     ctx.db
       .prepare(
-        `INSERT INTO fb_player_preferences (tenant_id, user_id, hide_tags_json, reduced_motion, sound_enabled, sharing_enabled, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO fb_player_preferences (tenant_id, user_id, hide_tags_json, hidden_collection_ids_json, reduced_motion, sound_enabled, sharing_enabled, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(tenant_id, user_id) DO UPDATE SET
            hide_tags_json = excluded.hide_tags_json,
+           hidden_collection_ids_json = excluded.hidden_collection_ids_json,
            reduced_motion = excluded.reduced_motion,
            sound_enabled = excluded.sound_enabled,
            sharing_enabled = excluded.sharing_enabled,
@@ -302,6 +333,7 @@ export async function updatePreferences(
         ctx.tenant.id,
         user.id,
         JSON.stringify(input.hideTags ?? current.hide_tags),
+        JSON.stringify(hiddenCollectionIds ?? current.hidden_collection_ids),
         (input.reducedMotion ?? current.reduced_motion) ? 1 : 0,
         (input.soundEnabled ?? current.sound_enabled) ? 1 : 0,
         (input.sharingEnabled ?? current.sharing_enabled) ? 1 : 0,
@@ -309,6 +341,7 @@ export async function updatePreferences(
       ),
     auditStatement(ctx, "preferences.updated", "preferences", user.id, {
       hide_tags: input.hideTags ?? current.hide_tags,
+      hidden_collection_ids: hiddenCollectionIds ?? current.hidden_collection_ids,
       reduced_motion: input.reducedMotion ?? current.reduced_motion,
       sound_enabled: input.soundEnabled ?? current.sound_enabled,
       sharing_enabled: input.sharingEnabled ?? current.sharing_enabled,

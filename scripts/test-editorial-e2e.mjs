@@ -111,11 +111,12 @@ try {
 
   const draw = await page.evaluate(async ({ slug }) => {
     const csrf = document.querySelector('meta[name="foilbury-csrf"]')?.getAttribute("content") ?? "";
+    const preview = await fetch(`/api/v1/pools/${slug}`, { credentials: "same-origin" }).then((response) => response.json());
     const response = await fetch("/api/v1/draws", {
       method: "POST",
       credentials: "same-origin",
       headers: { "content-type": "application/json", "x-foilbury-csrf": csrf, "idempotency-key": `editorial-draw-${crypto.randomUUID()}` },
-      body: JSON.stringify({ pool: slug, expectedRevision: 1 }),
+      body: JSON.stringify({ pool: slug, expectedRevision: preview.expected_revision, expectedDistribution: preview.distribution_fingerprint }),
     });
     return { status: response.status, body: await response.json().catch(() => null) };
   }, { slug: `editorial-pool-${stamp}` });
@@ -130,11 +131,12 @@ try {
   if (preview.status !== 200 || preview.body.eligible_count !== 0) throw new Error(`Retired card still appears in pool: ${JSON.stringify(preview.body)}`);
   const secondDraw = await page.evaluate(async ({ slug }) => {
     const csrf = document.querySelector('meta[name="foilbury-csrf"]')?.getAttribute("content") ?? "";
+    const poolPreview = await fetch(`/api/v1/pools/${slug}`, { credentials: "same-origin" }).then((response) => response.json());
     const response = await fetch("/api/v1/draws", {
       method: "POST",
       credentials: "same-origin",
       headers: { "content-type": "application/json", "x-foilbury-csrf": csrf, "idempotency-key": `editorial-draw-blocked-${crypto.randomUUID()}` },
-      body: JSON.stringify({ pool: slug, expectedRevision: 1 }),
+      body: JSON.stringify({ pool: slug, expectedRevision: poolPreview.expected_revision, expectedDistribution: poolPreview.distribution_fingerprint }),
     });
     return { status: response.status, body: await response.json().catch(() => null) };
   }, { slug: `editorial-pool-${stamp}` });

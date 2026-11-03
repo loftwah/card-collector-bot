@@ -201,7 +201,18 @@ async function main() {
     if (sub === "execute") {
       const revision = Number(flags.get("revision"));
       if (!revision) fail("draw execute needs --revision", 2);
-      return out(await apiJson("/api/v1/draws", { method: "POST", token, body: { pool: slug, expectedRevision: revision, channelKey: flags.get("channel") || undefined }, idempotencyKey: flags.get("idempotency-key") ? String(flags.get("idempotency-key")) : `cli-draw-${crypto.randomUUID()}` }));
+      const preview = await apiJson(`/api/v1/pools/${slug}${flags.get("channel") ? `?channel=${encodeURIComponent(String(flags.get("channel")))}` : ""}`, { token });
+      return out(await apiJson("/api/v1/draws", {
+        method: "POST",
+        token,
+        body: {
+          pool: slug,
+          expectedRevision: revision,
+          expectedDistribution: preview.distribution_fingerprint,
+          channelKey: flags.get("channel") || undefined,
+        },
+        idempotencyKey: flags.get("idempotency-key") ? String(flags.get("idempotency-key")) : `cli-draw-${crypto.randomUUID()}`,
+      }));
     }
     return fail("unknown draw command", 2);
   }

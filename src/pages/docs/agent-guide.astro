@@ -62,7 +62,8 @@ curl -s -X POST http://127.0.0.1:4321/api/v1/draws \
   -H "authorization: Bearer $FOILBURY_AGENT_TOKEN" \
   -H "content-type: application/json" \
   -H "idempotency-key: draw-demo-001" \
-  -d '&#123;"pool":"cabinet-draw","expectedRevision":1&#125;' | jq</code></pre>
+  -d '&#123;"pool":"cabinet-draw","expectedRevision":1,"expectedDistribution":"&lt;distribution_fingerprint from the preview&gt;"&#125;' | jq</code></pre>
+    <p>Read <code>GET /api/v1/pools/cabinet-draw</code> first and pass its exact <code>distribution_fingerprint</code>. Any change to eligible cards, odds, collection availability or your preferences returns <code>409 stale_distribution</code> without charging.</p>
       <p>Errors are machine-readable: <code>&#123; "error": &#123; "code", "message", "details" &#125;, "request_id" &#125;</code>. A stale pool revision returns <code>409 stale_pool_revision</code> before charging. An empty or fully filtered pool returns <code>409 empty_pool</code> and does not charge. Retrying a successful draw key returns the stored receipt, not a reroll.</p>
 
       <h2>5. MCP server (stdio)</h2>

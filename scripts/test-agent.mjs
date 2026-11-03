@@ -87,8 +87,8 @@ try {
     });
   }
   const idempotency = `mcp-draw-${stamp}`;
-  const draw = await call(player, "foilbury_draw_execute", { pool: "cabinet-draw", expectedRevision: preview.revision, idempotencyKey: idempotency });
-  const replay = await call(player, "foilbury_draw_execute", { pool: "cabinet-draw", expectedRevision: preview.revision, idempotencyKey: idempotency });
+  const draw = await call(player, "foilbury_draw_execute", { pool: "cabinet-draw", expectedRevision: preview.revision, expectedDistribution: preview.distribution_fingerprint, idempotencyKey: idempotency });
+  const replay = await call(player, "foilbury_draw_execute", { pool: "cabinet-draw", expectedRevision: preview.revision, expectedDistribution: preview.distribution_fingerprint, idempotencyKey: idempotency });
   const inventoryAfter = await call(player, "foilbury_inventory_list");
   record("MCP player draw", "foilbury_draw_execute", `${draw.card_name} · ${draw.serial}`, { instanceId: draw.instance_id, balanceAfter: draw.balance_after, poolRevision: draw.pool_revision, probabilityBps: draw.probability_bps });
   record("MCP draw retry", "foilbury_draw_execute (same key)", replay.replayed && replay.instance_id === draw.instance_id ? "same receipt" : "MISMATCH", { instanceId: replay.instance_id });

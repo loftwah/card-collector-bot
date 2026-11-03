@@ -172,7 +172,8 @@ describe("passwordless identity, Access linking, bots and collections", () => {
     const secondCtx = await ctxFor(second.tenant.slug, "owner@foilbury.local");
     const pool = await createPool(secondCtx, { slug: "cross-pool", name: "Cross pool", description: "Global card pool", price: 0, entries: [{ variantId: fixture.variantId, weight: 1 }] });
     await publishPool(secondCtx, pool.id);
-    const draw = await executeDraw(secondCtx, { pool: "cross-pool", expectedRevision: 1, idempotency: { key: "cross-draw-1", digest: await sha256Hex("cross-draw-1") } });
+    const crossPreview = await getPoolPreview(secondCtx, "cross-pool");
+    const draw = await executeDraw(secondCtx, { pool: "cross-pool", expectedRevision: crossPreview.revision, expectedDistribution: crossPreview.distribution_fingerprint, idempotency: { key: "cross-draw-1", digest: await sha256Hex("cross-draw-1") } });
     expect(draw.card_id).toBe(fixture.cardId);
     const instance = await runtime.DB.prepare("SELECT tenant_id, card_id, status FROM fb_card_instances WHERE id = ?").bind(draw.instance_id).first<{ tenant_id: string; card_id: string; status: string }>();
     expect(instance?.tenant_id).toBe(second.tenant.id);

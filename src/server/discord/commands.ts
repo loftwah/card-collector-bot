@@ -199,6 +199,7 @@ async function openCard(
   const result = (await executeDraw(ctx, {
     pool: poolSlug,
     expectedRevision: preview.revision,
+    expectedDistribution: preview.distribution_fingerprint,
     channelKey: installation.channel_key ?? undefined,
     idempotency: { key: idempotencyKey, digest },
   })) as unknown as DrawReceipt;

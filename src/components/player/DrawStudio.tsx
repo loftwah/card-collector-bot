@@ -28,6 +28,7 @@ interface Entry {
   weight: number;
   probability_bps: number;
   tags: string[];
+  collections: Array<{ id: string; name: string }>;
 }
 
 interface Preview {
@@ -42,11 +43,14 @@ interface Preview {
     excluded_tags: string[];
     tenant_excluded_tags: string[];
     player_excluded_tags: string[];
+    player_hidden_collection_ids: string[];
+    unfiled_count: number;
     empty_reason: string | null;
   };
   pity: string;
   currency: { name: string; symbol: string };
   expected_revision: number;
+  distribution_fingerprint: string;
 }
 
 interface DrawResult {
@@ -157,6 +161,7 @@ export default function DrawStudio({
         body: {
           pool: slug,
           expectedRevision: preview.expected_revision,
+          expectedDistribution: preview.distribution_fingerprint,
           channelKey: channel || undefined,
         },
         idempotencyKey: pendingKey,
@@ -346,12 +351,30 @@ export default function DrawStudio({
               </div>
             </div>
 
+            {preview.filters.player_hidden_collection_ids.length ? (
+              <div className="notice mt-4 text-sm">
+                You turned off {preview.filters.player_hidden_collection_ids.length} collection
+                {preview.filters.player_hidden_collection_ids.length === 1 ? "" : "s"} for your draws.
+                Their cards are removed from this distribution.{" "}
+                <a className="underline underline-offset-4" href="/play/preferences">
+                  Change collection preferences
+                </a>
+                .
+              </div>
+            ) : null}
             {preview.filters.excluded_tags.length ? (
               <div className="notice mt-4 text-sm">
                 Excluded by the active policy or your preferences:{" "}
                 {preview.filters.excluded_tags.join(", ")}. The probabilities below are recalculated
                 from the remaining pool.
               </div>
+            ) : null}
+            {preview.filters.unfiled_count > 0 ? (
+              <p className="mt-3 text-xs text-[var(--muted)]">
+                {preview.filters.unfiled_count} eligible card
+                {preview.filters.unfiled_count === 1 ? " is" : "s are"} not filed in a collection and
+                remain in the capsule. They are never silently removed by collection preferences.
+              </p>
             ) : null}
             {empty ? (
               <div className="empty mt-5">
@@ -532,7 +555,16 @@ export default function DrawStudio({
                   <tbody>
                     {sorted.map((entry) => (
                       <tr key={entry.variant_id}>
-                        <td className="font-medium">{entry.card_name}</td>
+                        <td className="font-medium">
+                          {entry.card_name}
+                          {entry.collections.length ? (
+                            <span className="block text-[0.62rem] font-normal text-[var(--muted)]">
+                              {entry.collections.map((collection) => collection.name).join(" · ")}
+                            </span>
+                          ) : (
+                            <span className="block text-[0.62rem] font-normal text-[var(--muted)]">Unfiled</span>
+                          )}
+                        </td>
                         <td className="text-[var(--muted)]">
                           {entry.material_key === "diamond" ? "Holographic" : entry.variant_name}
                         </td>

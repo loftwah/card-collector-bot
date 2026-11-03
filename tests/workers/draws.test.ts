@@ -41,7 +41,7 @@ describe("draw transaction", () => {
     expect(preview.price).toBe(80);
 
     const input = { key: "draw-test-001", digest: "draw-digest-a" };
-    const result = await executeDraw(player, { pool: "test-pool", expectedRevision: preview.revision, idempotency: input });
+    const result = await executeDraw(player, { pool: "test-pool", expectedRevision: preview.revision, expectedDistribution: preview.distribution_fingerprint, idempotency: input });
     expect(result.card_name).toBe("Test One");
     expect(result.balance_after).toBe(270);
     const achievementFoil = result.achievements.reduce((sum, item) => sum + item.reward_amount, 0);
@@ -50,7 +50,7 @@ describe("draw transaction", () => {
     expect(inventory).toHaveLength(1);
     expect(inventory[0]!.id).toBe(result.instance_id);
 
-    const replay = await executeDraw(player, { pool: "test-pool", expectedRevision: preview.revision, idempotency: input });
+    const replay = await executeDraw(player, { pool: "test-pool", expectedRevision: preview.revision, expectedDistribution: preview.distribution_fingerprint, idempotency: input });
     expect(replay.replayed).toBe(true);
     expect(replay.instance_id).toBe(result.instance_id);
     expect(await walletBalance(player, player.user!.id)).toBe(270 + achievementFoil);
@@ -58,7 +58,7 @@ describe("draw transaction", () => {
 
     await runtime.DB.prepare("UPDATE fb_pools SET revision = 2 WHERE id = ?").bind(fixture.poolId).run();
     await expect(
-      executeDraw(player, { pool: "test-pool", expectedRevision: 1, idempotency: { key: "draw-test-002", digest: "draw-digest-b" } }),
+      executeDraw(player, { pool: "test-pool", expectedRevision: 1, expectedDistribution: preview.distribution_fingerprint, idempotency: { key: "draw-test-002", digest: "draw-digest-b" } }),
     ).rejects.toMatchObject({ code: "stale_pool_revision" });
     expect(await walletBalance(player, player.user!.id)).toBe(270 + achievementFoil);
   });
@@ -74,14 +74,14 @@ describe("draw transaction", () => {
     const empty = await getPoolPreview(player, "test-empty");
     expect(empty.eligible_count).toBe(0);
     await expect(
-      executeDraw(player, { pool: "test-empty", expectedRevision: 1, idempotency: { key: "draw-empty-001", digest: "digest-empty" } }),
+      executeDraw(player, { pool: "test-empty", expectedRevision: 1, expectedDistribution: empty.distribution_fingerprint, idempotency: { key: "draw-empty-001", digest: "digest-empty" } }),
     ).rejects.toMatchObject({ code: "empty_pool" });
     expect(await walletBalance(player, player.user!.id)).toBe(350);
 
     const preview = await getPoolPreview(player, "test-pool");
     await runtime.DB.prepare("UPDATE fb_variants SET status = 'retired' WHERE id = ?").bind(fixture.variantId).run();
     await expect(
-      executeDraw(player, { pool: "test-pool", expectedRevision: preview.revision, idempotency: { key: "draw-empty-002", digest: "digest-empty-2" } }),
+      executeDraw(player, { pool: "test-pool", expectedRevision: preview.revision, expectedDistribution: preview.distribution_fingerprint, idempotency: { key: "draw-empty-002", digest: "digest-empty-2" } }),
     ).rejects.toMatchObject({ code: "empty_pool" });
     expect(await walletBalance(player, player.user!.id)).toBe(350);
   });
@@ -93,8 +93,8 @@ describe("draw transaction", () => {
     await setBalance(player, player.user!.id, 100);
     const preview = await getPoolPreview(player, "test-pool");
     const settled = await Promise.allSettled([
-      executeDraw(player, { pool: "test-pool", expectedRevision: preview.revision, idempotency: { key: "draw-race-a", digest: "race-a" } }),
-      executeDraw(player, { pool: "test-pool", expectedRevision: preview.revision, idempotency: { key: "draw-race-b", digest: "race-b" } }),
+      executeDraw(player, { pool: "test-pool", expectedRevision: preview.revision, expectedDistribution: preview.distribution_fingerprint, idempotency: { key: "draw-race-a", digest: "race-a" } }),
+      executeDraw(player, { pool: "test-pool", expectedRevision: preview.revision, expectedDistribution: preview.distribution_fingerprint, idempotency: { key: "draw-race-b", digest: "race-b" } }),
     ]);
     const fulfilled = settled.filter((item) => item.status === "fulfilled");
     const rejected = settled.filter((item) => item.status === "rejected");
@@ -122,7 +122,7 @@ describe("draw transaction", () => {
     expect(filtered.eligible_count).toBe(0);
     expect(filtered.filters.empty_reason).toContain("topic policy");
     await expect(
-      executeDraw(ctx, { pool: "test-pool", expectedRevision: filtered.revision, channelKey: "family-table", idempotency: { key: "draw-filter-001", digest: "filter-1" } }),
+      executeDraw(ctx, { pool: "test-pool", expectedRevision: filtered.revision, expectedDistribution: filtered.distribution_fingerprint, channelKey: "family-table", idempotency: { key: "draw-filter-001", digest: "filter-1" } }),
     ).rejects.toMatchObject({ code: "empty_pool" });
     expect(await walletBalance(ctx, ctx.user!.id)).toBe(350);
 

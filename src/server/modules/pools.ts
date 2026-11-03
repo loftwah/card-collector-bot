@@ -30,6 +30,7 @@ export interface EligibleEntry {
   weight: number;
   probability_bps: number;
   tags: string[];
+  collections: Array<{ id: string; name: string }>;
 }
 
 export interface PoolPreview {
@@ -44,10 +45,18 @@ export interface PoolPreview {
     excluded_tags: string[];
     tenant_excluded_tags: string[];
     player_excluded_tags: string[];
+    player_hidden_collection_ids: string[];
+    unfiled_count: number;
     empty_reason: string | null;
   };
   pity: "disabled";
   expected_revision: number;
+  /**
+   * Identity of the exact eligible distribution the player is approving. A
+   * pool revision alone cannot represent personal preferences, channel policy
+   * or Bot collection availability changing under an unchanged pool.
+   */
+  distribution_fingerprint: string;
   currency: { name: string; symbol: string };
 }
 
@@ -94,16 +103,21 @@ export async function getPoolPreview(
     for (const tag of channelExcluded) excluded.add(tag);
   }
   let playerExcluded: string[] = [];
+  let playerHiddenCollections: string[] = [];
   if (user) {
-    const prefs = await first<{ hide_tags_json: string }>(
+    const prefs = await first<{ hide_tags_json: string; hidden_collection_ids_json?: string }>(
       ctx.db,
-      "SELECT hide_tags_json FROM fb_player_preferences WHERE tenant_id = ? AND user_id = ?",
+      "SELECT hide_tags_json, hidden_collection_ids_json FROM fb_player_preferences WHERE tenant_id = ? AND user_id = ?",
       ctx.tenant.id,
       user.id,
     );
     playerExcluded = prefs ? (JSON.parse(prefs.hide_tags_json) as string[]) : [];
+    playerHiddenCollections = prefs?.hidden_collection_ids_json
+      ? (JSON.parse(prefs.hidden_collection_ids_json) as string[])
+      : [];
     for (const tag of playerExcluded) excluded.add(tag);
   }
+  const hiddenCollections = new Set(playerHiddenCollections);
   if (!ctx.user) throw new ApiError(401, "authentication_required", "Sign in to see the capsule pool.");
   const access = await viewerAccess(ctx);
   const visibility = cardVisibilitySql(access, "cd");
@@ -117,11 +131,26 @@ export async function getPoolPreview(
     render_url: string | null;
     weight: number;
     tags_json: string;
+    collections_json: string;
   }>(
     ctx.db,
     `SELECT v.id AS variant_id, v.card_id, cd.name AS card_name, v.name AS variant_name,
             m.key AS material_key, fx.key AS effect_key, ('/media/render/' || r.asset_id) AS render_url, pe.weight,
-            COALESCE((SELECT json_group_array(t.slug) FROM fb_card_tags ct JOIN fb_tags t ON t.id = ct.tag_id WHERE ct.card_id = cd.id), '[]') AS tags_json
+            COALESCE((SELECT json_group_array(t.slug) FROM fb_card_tags ct JOIN fb_tags t ON t.id = ct.tag_id WHERE ct.card_id = cd.id), '[]') AS tags_json,
+            COALESCE((
+              SELECT json_group_array(json_object('id', c.id, 'name', c.name))
+                FROM fb_collection_cards cc
+                JOIN fb_collections c ON c.id = cc.collection_id
+               WHERE cc.card_id = cd.id AND c.status = 'published' AND c.archived_at IS NULL
+                 AND (
+                   (c.scope = 'bot' AND c.owner_tenant_id = pe.tenant_id)
+                   OR EXISTS (
+                     SELECT 1 FROM fb_bot_collections bc
+                      JOIN fb_bots b ON b.id = bc.bot_id
+                     WHERE bc.collection_id = c.id AND bc.enabled = 1 AND b.tenant_id = pe.tenant_id
+                   )
+                 )
+            ), '[]') AS collections_json
        FROM fb_pool_entries pe
        JOIN fb_variants v ON v.id = pe.variant_id
        JOIN fb_card_definitions cd ON cd.id = v.card_id
@@ -154,9 +183,20 @@ export async function getPoolPreview(
     ...visibility.params,
   );
   const eligible: EligibleEntry[] = [];
+  let unfiledCount = 0;
   for (const entry of entries) {
     const tags = JSON.parse(entry.tags_json) as string[];
     if (tags.some((tag) => excluded.has(tag))) continue;
+    const collections = JSON.parse(entry.collections_json) as Array<{ id: string; name: string }>;
+    if (collections.length === 0) {
+      // Legacy/unfiled cards stay eligible and are counted explicitly rather
+      // than becoming an invisible residual pool.
+      unfiledCount += 1;
+    } else if (hiddenCollections.size && collections.every((collection) => hiddenCollections.has(collection.id))) {
+      // Multi-collection cards remain eligible while any member collection is
+      // included; hiding every owning collection removes the card.
+      continue;
+    }
     eligible.push({
       variant_id: entry.variant_id,
       card_id: entry.card_id,
@@ -168,12 +208,26 @@ export async function getPoolPreview(
       weight: entry.weight,
       probability_bps: 0,
       tags,
+      collections,
     });
   }
   const totalWeight = eligible.reduce((sum, entry) => sum + entry.weight, 0);
   for (const entry of eligible) {
     entry.probability_bps = totalWeight > 0 ? Math.round((entry.weight / totalWeight) * 10000) : 0;
   }
+  const distributionFingerprint = await sha256Hex(
+    JSON.stringify({
+      pool_id: pool.id,
+      pool_revision: pool.revision,
+      price: pool.price,
+      channel_key: channelKey ?? null,
+      excluded_tags: [...excluded].sort(),
+      hidden_collection_ids: [...hiddenCollections].sort(),
+      entries: eligible
+        .map((entry) => ({ variant_id: entry.variant_id, weight: entry.weight }))
+        .sort((left, right) => left.variant_id.localeCompare(right.variant_id)),
+    }),
+  );
   const economy = await first<{ currency_name: string; currency_symbol: string }>(
     ctx.db,
     "SELECT currency_name, currency_symbol FROM fb_economy_settings WHERE tenant_id = ?",
@@ -183,8 +237,10 @@ export async function getPoolPreview(
     eligible.length > 0
       ? null
       : entries.length > 0
-        ? "Every entry in this pool is hidden by the active topic policy or your preferences."
-        : "This pool has no published variants with a finished render.";
+        ? hiddenCollections.size
+          ? "Every card in this capsule belongs to a collection you turned off in your draw preferences. Nothing will be charged."
+          : "Every entry in this pool is hidden by the active topic policy or your preferences. Nothing will be charged."
+        : "This pool has no published variants with a finished render. Nothing will be charged.";
   return {
     pool,
     revision: pool.revision,
@@ -197,17 +253,27 @@ export async function getPoolPreview(
       excluded_tags: [...excluded],
       tenant_excluded_tags: tenantPublication,
       player_excluded_tags: playerExcluded,
+      player_hidden_collection_ids: playerHiddenCollections,
+      unfiled_count: unfiledCount,
       empty_reason: emptyReason,
     },
     pity: "disabled",
     expected_revision: pool.revision,
+    distribution_fingerprint: distributionFingerprint,
     currency: { name: economy?.currency_name ?? "Foil", symbol: economy?.currency_symbol ?? "✦" },
   };
 }
 
 export async function executeDraw(
   ctx: Ctx,
-  input: { pool: string; expectedRevision: number; channelKey?: string; idempotency: IdempotencyInput },
+  input: {
+    pool: string;
+    expectedRevision: number;
+    /** The exact distribution fingerprint returned by the preview the player approved. */
+    expectedDistribution: string;
+    channelKey?: string;
+    idempotency: IdempotencyInput;
+  },
 ) {
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in to draw.");
@@ -217,10 +283,22 @@ export async function executeDraw(
   if (preview.revision !== input.expectedRevision) {
     throw new ApiError(409, "stale_pool_revision", "The pool changed. Review the new odds before drawing.", {
       expected_revision: preview.revision,
+      expected_distribution: preview.distribution_fingerprint,
     });
   }
   if (preview.eligible_count === 0) {
     throw new ApiError(409, "empty_pool", preview.filters.empty_reason ?? "This pool has no eligible cards. You were not charged.");
+  }
+  if (preview.distribution_fingerprint !== input.expectedDistribution) {
+    throw new ApiError(
+      409,
+      "stale_distribution",
+      "Your eligible cards, odds or collection availability changed after you reviewed them. Review the new odds before drawing. Nothing was charged.",
+      {
+        expected_revision: preview.revision,
+        expected_distribution: preview.distribution_fingerprint,
+      },
+    );
   }
   const wallet = await getWallet(ctx.db, ctx.tenant.id, user.id);
   if (wallet.balance < preview.price) {
@@ -280,6 +358,7 @@ export async function executeDraw(
       weight: entry.weight,
     })),
     filters: preview.filters,
+    distribution_fingerprint: preview.distribution_fingerprint,
     pity: preview.pity,
     random_commitment: commitment,
     drawn_at: now,
