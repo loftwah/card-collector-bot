@@ -221,8 +221,8 @@ These are human authentication checks, not missing implementation or a new authe
 
 ## Signal and scoped-role release — 2026/11/03
 
-- Source: `af9eb27` (`feat: scoped roles, Signal identity and premium collection experience` plus export refresh).
-- Production Worker: `928968ae-9669-4242-bb0f-5282a1de5bb1`.
+- Source: `2c133ee` (`feat: let signed-in accounts attach a verified email`), on top of the Signal/scoped-role release.
+- Production Worker: `c4581234-fa70-4247-9f89-70a35d5a1ec1`.
 - D1 migration: `0014_scoped_roles_and_shares.sql` (additive; 7 commands).
 - Backup: `.foilbury/backups/prod-pre-signal-2026-11-03.json` (86 tables, 30,695 rows).
 - Access applications and policies were not recreated. `pnpm access:configure` remained a plan-only read-back.
@@ -230,3 +230,7 @@ These are human authentication checks, not missing implementation or a new authe
 - Production mastery catalogue: 126 definitions inserted; 0 pending.
 - `pnpm check`: 148 tests. `pnpm test:deployed`: 17 PASS.
 - Human proof still required: Dean's fresh Access session for `/platform-admin`, `/platform-admin/people`, `/_emdash/admin`; Kaylee's passkey enrolment before Bot creation; live Discord desktop/mobile and a controlled spectator.
+
+## Verified email attachment — 2026/11/03
+
+A signed-in account can attach a new primary email from `/account/security` after a recent passkey/authenticator/Access proof. The one-use `link_email` token is bound to `user_id` and the new mailbox; it verifies control without merging another Foilbury account. A Discord-only player can keep the non-routable placeholder address and sign in with Discord; the placeholder is not a claim of email ownership. Dean's different Discord and Foilbury emails are correct: the account link is the identity, not string equality. Cloudflare Access still requires the Access email to match the linked Foilbury account email.

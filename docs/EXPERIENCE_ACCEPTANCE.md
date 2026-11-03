@@ -25,6 +25,7 @@ or live-client pass.
 | Global Collection Admin is scoped and not root | PASS | `fb_platform_role_assignments`; API rejects public approval and out-of-scope collections; `tests/workers/roles.test.ts`. |
 | Kaylee can manage shared collections without root | PASS (provisioned) | Production grant `role_kaylee_mvzm5yiky28tmcyedbg20wdx`, `all:true`, audited. Local visual review at `/studio` and `/studio/collections` shows one scoped world and no platform root. |
 | Kaylee can own/manage her own Bot | PARTIAL — requires her passkey | The Worker now accepts a verified Discord link as identity proof and still requires a passkey/authenticator for a protected account. A human passkey enrolment is the remaining step. |
+| Attach a real verified email | PASS | `/account/security` → Add or change primary email; one-use `link_email` bound to `user_id`; test `tests/workers/roles.test.ts`. |
 | People search/filter, scopes, grant/revoke, pending invites | PASS | `/platform-admin/people`; `PlatformPeople.tsx`; `GET /api/v1/platform/people`, `POST /api/v1/platform/roles`, `POST /api/v1/platform/roles/:id/revoke`. |
 | Idempotent grant/revoke and audit | PASS | `assignPlatformRole` returns `changed:false` for the same scope; `revokePlatformRole` is idempotent; audit rows. |
 | Same checks on website, API, MCP, background jobs | PASS (worker/API); PARTIAL (MCP) | `/api/v1/studio/*` aliases the same domain routes; `mcp/server.mjs` adds scoped collection/share tools. MCP has no platform-role grant tool by design. |
@@ -86,7 +87,7 @@ or live-client pass.
 ## 7. Commands and entry points
 
 ```sh
-pnpm check                       # 72 unit + 76 Workers = 148 tests
+pnpm check                       # 72 unit + 77 Workers = 149 tests
 pnpm test:album                  # real Chromium album journey
 pnpm test:privacy                # privacy boundary
 pnpm test:seo                    # public SEO
@@ -120,10 +121,10 @@ pnpm content:requeue --slug ...  # dry-run a bounded render queue
 
 ## 9. Revisions
 
-- Deployed Worker: `928968ae-9669-4242-bb0f-5282a1de5bb1` from source
-  `8da77e0` (2026/11/03 18:49 Melbourne; 07:49 UTC).
-- Source after the release-notes commit: `1f6b1ae`; no runtime code changed
-  after the deployed source.
+- Deployed Worker: `c4581234-fa70-4247-9f89-70a35d5a1ec1` from source
+  `2c133ee` (2026/11/03 19:14 Melbourne; 08:14 UTC).
+- Final repository HEAD after release notes: `HEAD` on `main`; no runtime code
+  changes after the deployed source.
 - Migration applied: `0014_scoped_roles_and_shares.sql`.
 - Backup: `.foilbury/backups/prod-pre-signal-2026-11-03.json`
   (86 tables, 30,695 rows, SHA-256 `87d8f47d98f7b24abef3f372285d29e40011cee8015666a4bc6178d155affebc`).

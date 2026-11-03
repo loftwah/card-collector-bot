@@ -45,6 +45,11 @@ though the account has no routable mailbox. A passkey or authenticator is still
 required before creating or administering a Bot; that is the strong-auth proof,
 not an email string.
 
+To attach a real email, she signs in with Discord, adds a passkey, then uses
+**Account security → Add or change the primary email**. The one-use link is bound
+to the signed-in account and the new mailbox; it never merges accounts by matching
+an email string. Until then the placeholder address is expected and harmless.
+
 ```sh
 # read-only plan; exact identity and Discord link are rechecked
 pnpm roles:provision
