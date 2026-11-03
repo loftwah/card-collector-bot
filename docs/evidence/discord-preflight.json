@@ -1,0 +1,94 @@
+{
+  "generated_at": "2026-11-03T05:10:41.874Z",
+  "mode": "production",
+  "origin": "https://foilbury.loftwah.com",
+  "checks": [
+    {
+      "id": "origin",
+      "status": "PASS",
+      "detail": "https://foilbury.loftwah.com · HTTP 200 · Foilbury"
+    },
+    {
+      "id": "interactions endpoint",
+      "status": "PASS",
+      "detail": "Unsigned probe returned HTTP 401; expected 401/400, not a 404 or 5xx."
+    },
+    {
+      "id": "application",
+      "status": "PASS",
+      "detail": "Foilbury · 1566702936615026769"
+    },
+    {
+      "id": "guild",
+      "status": "PASS",
+      "detail": "Loftwah · 997734945206313041"
+    },
+    {
+      "id": "channel",
+      "status": "PASS",
+      "detail": "#card-collector-test · 1566700752385081355"
+    },
+    {
+      "id": "command registration",
+      "status": "PASS",
+      "detail": "foilbury 1566755562551779330 · open, daily, collection, card, packs, achievements, tour, profile, help, admin"
+    },
+    {
+      "id": "channel visibility",
+      "status": "BLOCKED",
+      "detail": "No @everyone View Channel override: every guild member can read the channel."
+    },
+    {
+      "id": "spectator setup",
+      "status": "BLOCKED",
+      "detail": "The channel is readable by every guild member. Member-only artwork must stay ephemeral here; public original-IP content may be shared."
+    },
+    {
+      "id": "installation",
+      "status": "PASS",
+      "detail": "Active installation dci_loftwah_test · game enabled · channel policy {}"
+    },
+    {
+      "id": "channel allowlist",
+      "status": "PASS",
+      "detail": "[\"1566700752385081355\"]"
+    },
+    {
+      "id": "reveal policy",
+      "status": "PASS",
+      "detail": "No channel audience is configured; restricted reveals stay ephemeral and public reveals may be shared."
+    },
+    {
+      "id": "selected album",
+      "status": "PASS",
+      "detail": "Danganronpa — Three Killing Games · release 5 · members"
+    },
+    {
+      "id": "album roster",
+      "status": "PASS",
+      "detail": "8/8 published cards"
+    },
+    {
+      "id": "album renders",
+      "status": "PASS",
+      "detail": "32/32 fronts · 32/32 backs"
+    },
+    {
+      "id": "completion achievement",
+      "status": "PASS",
+      "detail": "Three schools · frozen roster 8/8"
+    },
+    {
+      "id": "public showcase",
+      "status": "PASS",
+      "detail": "4 approved public collections"
+    },
+    {
+      "id": "test identities",
+      "status": "PASS",
+      "detail": "2 linked Discord identities · 1 platform admin links"
+    }
+  ],
+  "failed": 0,
+  "blocked": 2
+}

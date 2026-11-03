@@ -138,7 +138,7 @@ The original local acceptance gate was not re-run as a replacement for this evid
 
 ## Live configuration
 
-- Production Worker `70653686-7e78-46e0-87d0-6961f7d0fc7e`; D1 migration `0013_discord_channel_audience.sql` applied after the recorded backup.
+- Production Worker `821164fd-7590-42b7-8184-b91d9e21755b`; source `e8a0f196577e9356e5eb6b55980ca3b346b9768b`; D1 migration `0013_discord_channel_audience.sql` applied after the recorded backup.
 - The existing Foilbury application (`1566702936615026769`), Loftwah guild (`997734945206313041`), `#card-collector-test` (`1566700752385081355`) and installation were retained.
 - `/foilbury` command ID `1566755562551779330` was updated with the `tour` option; all existing options were preserved. No global commands, Gateway connection, privileged intents or Administrator permission were added.
 - The tour uses the real Danganronpa — Three Killing Games release roster (8 cards, 32 variants, 32 fronts, 32 backs) and the frozen **Three schools** achievement. Public showcase remains the four approved original-IP collections.
