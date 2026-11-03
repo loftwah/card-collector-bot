@@ -128,6 +128,17 @@ import {
   reviewGeneration,
   submitGeneration,
 } from "../modules/generation";
+import {
+  createPrintProposal,
+  getPrintProposal,
+  linkApprovedEdition,
+  listPrintProposalReviews,
+  listPrintProposals,
+  printCoverageForCard,
+  reviewPrintProposal,
+  revisePrintProposal,
+  submitPrintProposal,
+} from "../modules/prints";
 import { publicCard, publicSet } from "./public";
 import {
   acceptBotInvitation,
@@ -1085,6 +1096,174 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       }),
     );
     return json({ card: await createEditionForCard(ctx, segments[2], body) }, 201);
+  }
+  // Multi-print proposals. A print is a distinct artwork edition, never a finish
+  // rename; approval and edition linking stay separate, audited actions.
+  if (
+    segments[0] === "admin" &&
+    segments[1] === "cards" &&
+    segments[2] &&
+    segments[3] === "prints" &&
+    segments.length === 4
+  ) {
+    if (method === "GET") {
+      ensureContentRead(ctx);
+      const [items, coverage] = await Promise.all([
+        listPrintProposals(ctx, segments[2]),
+        printCoverageForCard(ctx, segments[2]),
+      ]);
+      return json({ items, coverage });
+    }
+    if (method === "POST") {
+      ensureContentWrite(ctx);
+      ensureStepUp(ctx);
+      const body = await readJson(
+        request,
+        z.object({
+          printNumber: z.string().min(1).max(8),
+          role: z.enum([
+            "portrait",
+            "action_scene",
+            "alternate_art",
+            "special_release",
+            "ensemble",
+            "location",
+            "object",
+            "other",
+          ]),
+          title: z.string().min(1).max(160),
+          creativeDirection: z.string().min(40).max(4000),
+          sourceAssetId: idSchema,
+          artworkAssetId: idSchema.nullable().optional(),
+          backgroundAssetId: idSchema.nullable().optional(),
+          rightsNote: z.string().max(500).nullable().optional(),
+          sourceRefs: z.array(z.string().url().max(500)).max(12).optional(),
+          provenance: z.record(z.string(), z.unknown()).optional(),
+          finishKeys: z.array(z.enum(["plain", "silver", "gold", "holographic"])).max(4).optional(),
+          status: z.enum(["draft", "proposed"]).optional(),
+        }),
+      );
+      return json(
+        { proposal: await createPrintProposal(ctx, { cardId: segments[2], ...body }) },
+        201,
+      );
+    }
+  }
+  if (
+    segments[0] === "admin" &&
+    segments[1] === "prints" &&
+    segments[2] &&
+    segments.length === 3
+  ) {
+    if (method === "GET") {
+      ensureContentRead(ctx);
+      const [proposal, reviews] = await Promise.all([
+        getPrintProposal(ctx, segments[2]),
+        listPrintProposalReviews(ctx, segments[2]),
+      ]);
+      return json({ proposal, reviews });
+    }
+    if (method === "PATCH") {
+      ensureContentWrite(ctx);
+      ensureStepUp(ctx);
+      const body = await readJson(
+        request,
+        z.object({
+          role: z
+            .enum([
+              "portrait",
+              "action_scene",
+              "alternate_art",
+              "special_release",
+              "ensemble",
+              "location",
+              "object",
+              "other",
+            ])
+            .optional(),
+          title: z.string().min(1).max(160).optional(),
+          creativeDirection: z.string().min(40).max(4000).optional(),
+          sourceAssetId: idSchema.optional(),
+          artworkAssetId: idSchema.nullable().optional(),
+          backgroundAssetId: idSchema.nullable().optional(),
+          rightsNote: z.string().max(500).nullable().optional(),
+          sourceRefs: z.array(z.string().url().max(500)).max(12).optional(),
+          finishKeys: z.array(z.enum(["plain", "silver", "gold", "holographic"])).max(4).optional(),
+          expectedRevision: z.number().int().positive().optional(),
+          note: z.string().max(500).optional(),
+        }),
+      );
+      const { expectedRevision, ...input } = body;
+      return json({
+        proposal: await revisePrintProposal(ctx, segments[2], input, { expectedRevision }),
+      });
+    }
+  }
+  if (
+    segments[0] === "admin" &&
+    segments[1] === "prints" &&
+    segments[2] &&
+    segments[3] === "submit" &&
+    segments.length === 4 &&
+    method === "POST"
+  ) {
+    ensureContentWrite(ctx);
+    ensureStepUp(ctx);
+    const body = await readJson(
+      request,
+      z.object({
+        expectedRevision: z.number().int().positive().optional(),
+        note: z.string().max(500).optional(),
+      }),
+    );
+    return json({
+      proposal: await submitPrintProposal(ctx, segments[2], body),
+    });
+  }
+  if (
+    segments[0] === "admin" &&
+    segments[1] === "prints" &&
+    segments[2] &&
+    segments[3] === "review" &&
+    segments.length === 4 &&
+    method === "POST"
+  ) {
+    ensureContentWrite(ctx);
+    ensureStepUp(ctx);
+    const body = await readJson(
+      request,
+      z.object({
+        decision: z.enum(["approved", "rejected"]),
+        note: z.string().max(1000).optional(),
+        expectedRevision: z.number().int().positive().optional(),
+      }),
+    );
+    return json({
+      proposal: await reviewPrintProposal(ctx, segments[2], body.decision, body),
+    });
+  }
+  if (
+    segments[0] === "admin" &&
+    segments[1] === "prints" &&
+    segments[2] &&
+    segments[3] === "link" &&
+    segments.length === 4 &&
+    method === "POST"
+  ) {
+    ensureContentWrite(ctx);
+    ensureStepUp(ctx);
+    const body = await readJson(
+      request,
+      z.object({
+        editionId: idSchema,
+        expectedRevision: z.number().int().positive().optional(),
+      }),
+    );
+    return json({
+      proposal: await linkApprovedEdition(ctx, segments[2], body.editionId, {
+        expectedRevision: body.expectedRevision,
+      }),
+    });
   }
   if (segments[0] === "admin" && segments[1] === "recipes" && method === "GET") {
     ensureContentRead(ctx);

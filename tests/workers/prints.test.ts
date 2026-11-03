@@ -265,7 +265,37 @@ describe("multi-print proposals", () => {
     ).toThrowError(/too close/);
   });
 
-  it("requires a human reviewer and records approval, rejection and revision history", async () => {
+  it("records an explicitly scoped agent review as an agent decision", async () => {
+    await bootstrap();
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const fixture = await fixturePool(owner);
+    const art = await addAsset(owner, "ast_print_agent", "sha-print-agent");
+    const proposal = await createPrintProposal(owner, baseProposal(fixture, art));
+    const agent = {
+      ...owner,
+      actor: {
+        type: "agent" as const,
+        id: "grant_print_review",
+        representedUserId: owner.user!.id,
+        label: "Delegated print reviewer",
+      },
+      scopes: ["content:write"],
+    };
+    await expect(
+      reviewPrintProposal(agent, proposal.id, "approved", { note: "No review scope." }),
+    ).rejects.toMatchObject({ code: "print_review_scope_required" });
+    const scoped = { ...agent, scopes: ["content:write", "print:review"] };
+    const approved = await reviewPrintProposal(scoped, proposal.id, "approved", {
+      note: "Agent review under delegated authority: identity and provenance checked.",
+      expectedRevision: proposal.revision,
+    });
+    expect(approved.status).toBe("approved");
+    expect(approved.reviewer_kind).toBe("agent");
+    const history = await listPrintProposalReviews(owner, proposal.id);
+    expect(history.at(-1)?.reviewer_kind).toBe("agent");
+  });
+
+  it("requires an authorised reviewer and records approval, rejection and revision history", async () => {
     await bootstrap();
     const owner = await ctxFor("cabinet", "owner@foilbury.local");
     const player = await ctxFor("cabinet", "player@foilbury.local");

@@ -28,6 +28,9 @@ const groups = [
   {
     label: "Craft",
     links: [
+      ...(isBotAdmin || isGlobalCollectionAdmin
+        ? [{ href: "/studio/prints", label: "Print studio" }]
+        : []),
       { href: "/brand-kit", label: "Brand kit" },
       ...(isBotAdmin ? [{ href: "/admin/editorial", label: "EmDash editorial" }] : []),
       ...(isPlatform ? [{ href: "/platform-admin", label: "Platform administration" }] : []),

@@ -57,6 +57,9 @@ const canClaim = !nextEligible || new Date(nextEligible) <= new Date();
 const completed = sets.filter((set) => set.progress?.complete && !set.progress.claimed);
 const featured = inventory[0] ?? null;
 const recent = inventory.slice(1, 7);
+const printTitleOf = (item: (typeof inventory)[number] | null) =>
+  item?.edition_name?.includes(" — ") ? item.edition_name.split(" — ").slice(1).join(" — ") : null;
+const featuredPrint = printTitleOf(featured);
 const enabledCollections = collections.filter((collection) => collection.enabled);
 const publishedSets = sets.filter((set) => set.status === "published");
 const activeSet =
@@ -150,7 +153,9 @@ const nextMove = canClaim
         <div>
           <p class="studio-stat__label">Latest acquisition</p>
           <p class="mt-0.5 text-sm text-[var(--muted)]">
-            {featured ? `${featured.serial} · ${featured.variant_name}` : "Nothing drawn yet"}
+            {featured
+              ? `${featured.serial} · ${featuredPrint ? `${featuredPrint} · ` : ""}${featured.variant_name}`
+              : "Nothing drawn yet"}
           </p>
         </div>
         {featured ? (
@@ -357,7 +362,7 @@ const nextMove = canClaim
               {item.render_url ? (
                 <img
                   src={item.thumbnail_url ?? item.render_url}
-                  alt={`${item.card_name} — ${item.variant_name}`}
+                  alt={`${item.card_name} — ${printTitleOf(item) ?? item.variant_name}`}
                   loading="lazy"
                   width="300"
                   height="420"
@@ -368,6 +373,7 @@ const nextMove = canClaim
             </div>
             <p class="display-sm mt-2 text-sm leading-tight">{item.card_name}</p>
             <p class="mt-0.5 truncate text-[0.7rem] text-[var(--muted)]">
+              {printTitleOf(item) ? `${printTitleOf(item)} · ` : ""}
               {item.variant_name} · {item.serial}
             </p>
           </a>

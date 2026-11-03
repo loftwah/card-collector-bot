@@ -86,6 +86,7 @@ export interface PrintProposalRow {
   revision: number;
   created_by: string;
   reviewed_by: string | null;
+  reviewer_kind: "human" | "agent" | null;
   reviewed_at: string | null;
   review_note: string | null;
   approved_edition_id: string | null;
@@ -113,6 +114,7 @@ export interface PrintProposalReviewRow {
   revision: number;
   decision: "submitted" | "revised" | "approved" | "rejected" | "linked";
   reviewer_id: string;
+  reviewer_kind: "human" | "agent";
   note: string | null;
   created_at: string;
 }
@@ -540,12 +542,24 @@ export function requirePrintManager(ctx: Ctx): CurrentUser {
 
 export function requirePrintReviewer(ctx: Ctx): CurrentUser {
   const user = requireUser(ctx);
-  if (ctx.actor.type !== "user") {
-    throw new ApiError(
-      403,
-      "print_review_human_required",
-      "A human reviewer must approve or reject print proposals.",
-    );
+  if (ctx.actor.type === "agent") {
+    // An agent may review only when its grant explicitly carries print:review.
+    // The decision is recorded as an agent decision, never as human approval.
+    if (!ctx.scopes?.includes("print:review")) {
+      throw new ApiError(
+        403,
+        "print_review_scope_required",
+        "This agent grant does not include print:review. A human reviewer or a grant with that explicit scope is required.",
+      );
+    }
+    if (!canManageContent(ctx)) {
+      throw new ApiError(
+        403,
+        "print_review_forbidden",
+        "The represented member cannot review print proposals for this Bot.",
+      );
+    }
+    return user;
   }
   if (!user.platformAdmin && user.role !== "owner") {
     throw new ApiError(
@@ -787,14 +801,15 @@ async function insertReview(
   await statement(
     ctx.db,
     `INSERT INTO fb_print_proposal_reviews
-       (id, tenant_id, proposal_id, revision, decision, reviewer_id, note, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, tenant_id, proposal_id, revision, decision, reviewer_id, reviewer_kind, note, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     newId("prv"),
     ctx.tenant.id,
     proposalId,
     revision,
     decision,
     reviewerId,
+    ctx.actor.type === "agent" ? "agent" : "human",
     note,
     nowIso(),
   ).run();
@@ -1003,7 +1018,7 @@ export async function listPrintProposalReviews(
   await loadProposalRow(ctx, proposalId);
   return all<PrintProposalReviewRow>(
     ctx.db,
-    `SELECT id, proposal_id, revision, decision, reviewer_id, note, created_at
+    `SELECT id, proposal_id, revision, decision, reviewer_id, reviewer_kind, note, created_at
        FROM fb_print_proposal_reviews
       WHERE tenant_id = ? AND proposal_id = ?
       ORDER BY revision, created_at`,
@@ -1127,12 +1142,13 @@ export async function reviewPrintProposal(
   const updated = await run(
     ctx.db,
     `UPDATE fb_print_proposals
-        SET status = ?, reviewed_by = ?, reviewed_at = ?, review_note = ?,
+        SET status = ?, reviewed_by = ?, reviewer_kind = ?, reviewed_at = ?, review_note = ?,
             approved_at = CASE WHEN ? = 'approved' THEN ? ELSE approved_at END,
             revision = revision + 1, updated_at = ?
       WHERE id = ? AND tenant_id = ? AND status = 'proposed' AND revision = ?`,
     decision,
     reviewer.id,
+    ctx.actor.type === "agent" ? "agent" : "human",
     now,
     note,
     decision,

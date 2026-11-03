@@ -89,19 +89,25 @@ while (true) {
       }
     }
     const outputPath = path.join(tmpDir, `${payload.variant_id}.webp`);
+    // A multi-print edition is named "Subject — Print title". The face keeps
+    // the subject name and uses the print title as its subtitle, so two prints
+    // of the same subject are distinguishable without renaming the subject.
+    const printTitle = entry.edition?.name?.includes(" — ")
+      ? entry.edition.name.split(" — ").slice(1).join(" — ")
+      : "";
     await composeCard({
       subjectPath,
       backgroundPath,
       material: payload.material_key,
       effect: payload.effect_key ?? "none",
       name: entry.card.name,
-      subtitle: entry.card.subtitle ?? "",
+      subtitle: printTitle || (entry.card.subtitle ?? ""),
       setName: entry.card.collections?.[0]?.name ?? entry.card.sets[0]?.name ?? "Cabinet",
       serial:
         entry.card.collections?.[0]?.view_audience === "public"
           ? "PUBLIC SHOWCASE"
           : "MEMBER EDITION",
-      className: entry.card.class?.name ?? "",
+      className: printTitle ? "Print" : (entry.card.class?.name ?? ""),
       rarity: entry.card.rarity?.name ?? "",
       composition: payload.composition_json ? JSON.parse(payload.composition_json) : null,
       markPath,

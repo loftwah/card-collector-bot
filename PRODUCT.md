@@ -23,9 +23,9 @@ Foilbury is a collectible-card cabinet. A player claims a free allowance, opens 
 - Account security: passkeys, authenticator, recovery codes, session review and revocation.
 - Player cabinet: collection filtered by collection and set, draw studio, rewards, trades, preferences, collector showcase and share links.
 - Bot administration at `/admin/*`: catalogue, artwork editions, collections, team invitations, sets, pools, economy, availability, imports, render studio and audit.
-- Scoped Studio at `/studio`: a normal signed-in workspace for Bot Owners/Admins and Global Collection Admins. It does not require Cloudflare Access and cannot grant platform root.
+- Scoped Studio at `/studio`: a normal signed-in workspace for Bot Owners/Admins and Global Collection Admins. It does not require Cloudflare Access and cannot grant platform root. `/studio/prints` reviews distinct artwork editions, records agent or human decisions separately, and links approved prints to catalogue editions.
 - Platform Administration at `/platform-admin`: accounts, People & roles, Access links, Bots, installations, global collections, explicit Super Admin record and audit.
-- Brand kit at `/brand-kit`: four reviewed marks, Discord avatars, server/social banners, wordmarks and OG assets. The canonical working identity is Signal Fold.
+- Brand kit at `/brand-kit`: three complete identity systems plus the legacy marks. Signal Fold is selected and applied to the Foilbury application under delegated authority; Bastion and Aperture remain available. The wider Loftwah guild identity is unchanged.
 - Website tour at `/tour`: public-safe, skippable and resumable, with a member continuation and a private operator appendix.
 - Showcase at `/showcase`: real public stills and playable MP4 exports with an export manifest and audience label.
 - Discord HTTP interactions at `/api/discord/interactions`: `/foilbury open`, `daily`, `collection`, `card`, `packs`, `achievements`, `tour`, `profile`, `help` and guarded `admin` subcommands. The guided tour is private by default and shares only after explicit audience checks.
@@ -61,10 +61,11 @@ Foilbury is a collectible-card cabinet. A player claims a free allowance, opens 
 
 ## Known gaps
 
-- Dean's administration uses his existing Cloudflare-account sign-in. The authentication correction is deployed; a fresh human Access session and a complete authenticated Production Administration journey still need to be recorded (see `docs/AUTH_ACCEPTANCE.md`).
+- Dean's administration uses his existing Cloudflare-account sign-in. A fresh human Access session and a complete authenticated Production Administration journey still need to be recorded (see `docs/AUTH_ACCEPTANCE.md`).
 - The production EmDash operator console is protected by Access and configured for the existing Dean account; a human authenticated editorial session is still required to exercise the native console.
-- A local Discord OAuth callback is registered at `http://localhost:5173/auth/discord/callback`; a completed local Discord consent is a human step. Production OAuth remains preserved.
 - A real second Discord guild installation and a second-person acceptance matrix require an authorised human participant. The channel visibility and spectator items remain BLOCKED in the preflight.
-- Production card renders were deployed with the previous composure; the new emblem/proof-label pipeline is proven locally and needs an authorised production re-render. Do not claim the old published renders are the new design.
-- Paid generation, FAL, ElevenLabs and other billed providers remain intentionally unrun.
+- Production member card renders for the pre-existing 560 variants were generated with the previous composure; a bounded re-render/publication plan is prepared. Do not claim those old member renders are the new composure.
+- The Signal Fold identity is selected and applied to the Foilbury application; the Loftwah guild icon was not changed and the server banner is blocked by the Boost entitlement. The bot profile banner remains a Developer Portal step.
+- The multi-print proof has eight reviewed original-IP prints and a dedicated pool locally; production publication is the remaining release step. The wider collection-by-collection rollout is not complete.
+- Paid generation is now run for the reviewed original-IP print set only (fal.ai, about US$2.25). ElevenLabs and other billed providers remain intentionally unrun.
 

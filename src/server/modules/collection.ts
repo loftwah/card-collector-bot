@@ -39,6 +39,7 @@ export interface InventoryRow {
   thumbnail_url: string | null;
   back_render_url: string | null;
   edition_id: string;
+  edition_name: string;
   composition_json: string | null;
   subject_asset_id: string;
   background_asset_id: string | null;
@@ -57,7 +58,7 @@ const INVENTORY_SELECT = `SELECT ci.id, ci.card_id, ci.variant_id, cd.name AS ca
   ci.acquired_via, ci.acquired_at, cd.status AS card_status, ('/media/render/' || vr.asset_id) AS render_url,
   ('/media/back/' || br.asset_id) AS back_render_url,
   (SELECT '/media/derivative/' || d.id FROM fb_asset_derivatives d WHERE d.tenant_id = vr.tenant_id AND d.source_asset_id = vr.asset_id AND d.size_key = 'thumb' AND d.status = 'ready' LIMIT 1) AS thumbnail_url,
-  v.edition_id, e.subject_asset_id, e.background_asset_id, e.composition_json, sa.width AS subject_width, sa.height AS subject_height
+  v.edition_id, e.name AS edition_name, e.subject_asset_id, e.background_asset_id, e.composition_json, sa.width AS subject_width, sa.height AS subject_height
   FROM fb_card_instances ci
   JOIN fb_card_definitions cd ON cd.id = ci.card_id
   JOIN fb_variants v ON v.id = ci.variant_id

@@ -8,6 +8,7 @@ import { auditStatement } from "../http";
 export const ALL_SCOPES = [
   "content:read",
   "content:write",
+  "print:review",
   "catalogue:publish",
   "import:write",
   "render:write",

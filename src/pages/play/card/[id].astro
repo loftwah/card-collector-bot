@@ -50,6 +50,11 @@ const eventLabel: Record<string, string> = {
   gifted: "Received as a gift",
   recycled: "Recycled into Foil",
 };
+// Multi-print editions are named "Subject — Print title". Keep the subject as
+// the card identity and surface the print title as the human-readable edition.
+const printTitle = instance.edition_name?.includes(" — ")
+  ? instance.edition_name.split(" — ").slice(1).join(" — ")
+  : null;
 ---
 
 <PlayerLayout title={`${instance.card_name} · Collection`}>
@@ -69,7 +74,7 @@ const eventLabel: Record<string, string> = {
         backUrl={instance.back_render_url}
         fallbackUrl="/brand/card-back.webp"
         name={instance.card_name}
-        subtitle={instance.subtitle}
+        subtitle={printTitle ?? instance.subtitle}
         finish={displayFinish(instance.variant_name, instance.material_key, instance.effect_key)}
         collection={instance.collection_name}
         serial={instance.serial}
@@ -146,7 +151,9 @@ const eventLabel: Record<string, string> = {
         {instance.locked ? <span class="badge">Locked</span> : null}
       </div>
       <h1 class="page-title mt-3">{instance.card_name}</h1>
-      <p class="mt-2 text-lg text-[var(--signal)]">{instance.subtitle}</p>
+      <p class="mt-2 text-lg text-[var(--signal)]">
+        {printTitle ? `Print · ${printTitle}` : instance.subtitle}
+      </p>
       <p class="prose mt-5 text-[var(--muted)]">
         {instance.bio_safe || instance.bio || instance.description}
       </p>
@@ -219,7 +226,7 @@ const eventLabel: Record<string, string> = {
           kind="card"
           targetId={instance.id}
           title={instance.card_name}
-          description={`${displayFinish(instance.variant_name, instance.material_key, instance.effect_key)} · ${instance.collection_name ?? "Cabinet"}. Choose the exact audience before creating a link.`}
+          description={`${printTitle ? `${printTitle} · ` : ""}${displayFinish(instance.variant_name, instance.material_key, instance.effect_key)} · ${instance.collection_name ?? "Cabinet"}. Choose the exact audience before creating a link.`}
           frontUrl={instance.render_url}
           backUrl={instance.back_render_url}
         />

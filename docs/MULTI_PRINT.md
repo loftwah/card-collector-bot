@@ -1,9 +1,21 @@
-# Multi-print catalogue and review foundation
+# Multi-print catalogue, print studio and review
 
-Status: **foundation only**. Source baseline `a39e2bf`, 2026-11-04. This page
-documents the additive domain model introduced by `migrations/0020_multi_print.sql`
-and `src/server/modules/prints.ts`. It does not claim that artwork, admin UI,
-routes, generation jobs or production data exist yet.
+Status: **implemented locally and visually reviewed; production publication is
+the remaining release step**. Source baseline `fc325f5`, 2026-11-04.
+
+The original additive domain model (`migrations/0020_multi_print.sql` and
+`src/server/modules/prints.ts`) now has:
+
+- REST routes under `/api/v1/admin/cards/:id/prints` and `/api/v1/admin/prints/:id`
+  for create, submit, review, revise and edition linking;
+- a scoped Studio review surface at `/studio/prints`;
+- one bounded original-IP proof with eight reviewed prints across Tux, Gabe and
+  Drop Bear, each with four finish variants and saved front/back renders;
+- a dedicated `second-print-capsule` pool with real odds and a real local draw;
+- an explicit agent-delegated review kind, recorded as `agent` rather than
+  disguised as human approval (`migrations/0023_print_reviewer_kind.sql`);
+- a fal.ai-first generation runner with a hard budget cap, resumable jobs and a
+  local cost ledger.
 
 ## What this layer does
 
@@ -316,41 +328,66 @@ Local, against the source baseline:
 
 ```sh
 pnpm exec vitest run --config vitest.workers.config.ts tests/workers/prints.test.ts
-# 1 file passed, 7 tests passed
+# 1 file passed, 8 tests passed (including agent-scoped review)
 
 pnpm exec astro check
-# 0 errors (pre-existing hints only; no new type errors)
+# 0 errors (pre-existing hints only)
+
+node scripts/art/test-print-proof.mjs
+# desktop + mobile: print title, saved front, saved back, 5:7 ratio, 0 console errors
 ```
 
 The tests cover proposal creation validation, duplicate/near-duplicate and
-existing-edition rejection, human approval/rejection/revision, stale revisions,
-additive edition linkage, finish-only rejection, the original-IP vertical slice,
-coverage labels (including the single-print exception), and the absence of
-inventory ownership in the proposal layer. They use local Workers D1; no
-production or provider call was made.
+existing-edition rejection, human approval/rejection/revision, explicitly scoped
+agent review, stale revisions, additive edition linkage, finish-only rejection,
+the original-IP vertical slice, coverage labels (including the single-print
+exception), and the absence of inventory ownership in the proposal layer.
+
+The browser proof opened the owned Tux — Rooftop Relay card at 1440×900 and
+390×844, verified the decoded 750×1050 front and back renders differ, checked
+the 5:7 object ratio (0.714), and recorded no console errors. Screenshots are in
+`.foilbury/evidence/print-proof/`.
+
+The Studio review surface was inspected in Chromium at `/studio/prints` with
+Tux selected: coverage `minimum met`, four approved/linked prints, source and
+artwork comparison, review notes and the printed-edition list all render.
+
+## Artwork generated in this proof
+
+Eight prints, 32 finish variants, 32 saved fronts and 32 saved backs:
+
+| Subject | Prints |
+| --- | --- |
+| Tux | Rooftop Relay, Signal Watch, Voxel Expedition, Lantern Line |
+| Gabe | Coronation, Rehearsed; Autumn Market |
+| Drop Bear | Midnight Ambush; Hollow Lantern |
+
+The candidate contact sheet is `.foilbury/evidence/print-contact-sheet.jpg`.
+Selections and rejection notes are in `.foilbury/content/print-selections.json`.
+Paid generation used `fal-ai/nano-banana-pro/edit` at 1K, 1–2 candidates per
+print. The ledger is `.foilbury/evidence/art-budget-ledger.json`: 15 submitted
+jobs, 14 successful images, **US$2.10 recorded spend** (plus the first
+US$0.15 candidate seeded into the same ledger, for **US$2.25 total**). One
+`gabe/02` candidate failed at transport before a result existed; it was not
+blind-retried, and the second candidate was reviewed and used.
 
 ## What remains
 
-- **API/route integration**: `src/server/api/router.ts` is untouched. REST
-  routes, OpenAPI, scoped Studio endpoints, CLI and MCP tools still need
-  explicit contracts.
-- **Admin UI**: collection → subject → prints comparison queue, contact sheets,
-  side-by-side source/candidate views, approve/reject/revise controls, cost and
-  queue state, mobile/keyboard/accessibility work.
-- **Agent-assisted sourcing/production**: fal-first adapter registry, reference
-  conditioning, identity/likeness packs, candidate jobs, budgets, retries,
-  cancellation, provider diagnostics and private media handling.
-- **Artwork and render pipeline**: real distinct art for the vertical slice,
-  front/back composition, 5:7 crop validation, Discord thumbnail checks and
-  finish variants.
-- **Edition/release workflow**: create/link editions through the existing
-  pipeline, publish/release rules, rollback and retirement.
+- **Production publication**: apply `0023`, upload the 80 R2 objects, apply the
+  additive SQL bundle, deploy the Worker revision, then read back the live
+  catalogue, pool odds and media. A local pass is not a deployed revision.
+- **Human review after the agent**: the proof records agent-delegated decisions.
+  The owner can still reject, revise or replace any print; nothing claims human
+  approval.
+- **Collection-wide rollout**: this is one original-IP vertical slice, not the
+  whole catalogue. The next collection needs its own reviewed identity pack and
+  budget.
 - **Card merge/alias migration**: reassign proposals and recompute or preserve
   stable print keys when two subjects are merged; do not delete review history.
-- **Collection rollout tooling**: collection-level coverage roll-up, exception
-  register and budget evidence beyond this manual tracker.
-- **Quality gates**: real browser journeys, Playwright/axe, mobile/200% zoom,
-  render and thumbnail inspection, performance and privacy checks.
-- **Production**: inspect live state, take a D1 JSON backup, apply the additive
-  migration, smoke-test, and obtain deployment approval. A local pass is not a
-  deployed revision.
+- **CLI/MCP/OpenAPI print tools**: the HTTP routes and Studio are live; the
+  headless CLI/MCP surface for print proposals is still a follow-up.
+- **Discord print picker**: the pool is available to `/foilbury packs` and draws,
+  but the picker does not yet group by print title. The reveal shows the card and
+  finish; a print-aware reveal is a follow-up.
+- **Adversarial/likeness QA at scale**: eight prints were reviewed; a wider
+  rollout needs the same contact-sheet, identity and near-duplicate checks.
