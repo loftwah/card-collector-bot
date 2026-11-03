@@ -2297,3 +2297,10 @@ html[data-motion="reduced"] .layered-card__effect {
   font-size: 1.35rem;
   color: var(--muted);
 }
+
+.share-panel__confirm {
+  margin-top: 1rem;
+  border: 1px solid var(--line-strong);
+  background: var(--raised);
+  padding: 0.9rem 1rem;
+}

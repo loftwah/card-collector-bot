@@ -2,65 +2,18 @@
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import AchievementBadge from "../../components/player/AchievementBadge.astro";
 import { pageContext } from "../../server/page";
-import { first } from "../../server/db";
-import { sha256Hex } from "../../server/ids";
-import { canViewCollection, viewerAccess } from "../../server/modules/visibility";
+import { resolveShareView } from "../../server/modules/shares";
 import { formatDate, formatDual } from "../../lib/utils";
 
 const ctx = await pageContext(Astro.request);
 const raw = Astro.params.token ?? "";
-const tokenHash = await sha256Hex(raw);
-const link = await first<{
-  id: string;
-  user_id: string;
-  status: string;
-  expires_at: string;
-  kind: string;
-  target_id: string | null;
-  payload_json: string;
-  created_at: string;
-}>(
-  ctx.db,
-  "SELECT id, user_id, status, expires_at, kind, target_id, payload_json, created_at FROM fb_share_links WHERE tenant_id = ? AND token_hash = ?",
-  ctx.tenant.id,
-  tokenHash,
-);
-const active = link && link.status === "active" && new Date(link.expires_at) > new Date();
-const owner = active ? await first<{ display_name: string }>(ctx.db, "SELECT display_name FROM fb_users WHERE id = ?", link!.user_id) : null;
-let payload: Record<string, any> = {};
-try { payload = active ? JSON.parse(link!.payload_json || "{}") : {}; } catch { payload = {}; }
+const view = await resolveShareView(ctx, raw);
+const { active, visible, publicView, link, collection, payload, showSerial, ownerDisplayName: owner } = view;
 const kind = link?.kind ?? "cabinet";
-const collectionId = typeof payload.collection_id === "string" ? payload.collection_id : null;
-
-// Check the current collection audience, not only the audience captured at
-// share creation time. A later public→members change must close this view.
-const collection = collectionId
-  ? await first<{ id: string; slug: string; name: string; view_audience: string; public_approved_at: string | null; logo_url: string | null; description: string }>(
-      ctx.db,
-      "SELECT id, slug, name, view_audience, public_approved_at, logo_url, description FROM fb_collections WHERE id = ? AND archived_at IS NULL",
-      collectionId,
-    )
-  : null;
-const currentPublic = Boolean(collection && collection.view_audience === "public" && collection.public_approved_at);
-const capturedPublic = payload.audience === "public";
-const publicView = capturedPublic && (kind === "cabinet" ? false : kind === "wishlist" || kind === "achievement" ? false : currentPublic);
-const signedIn = Boolean(ctx.user);
-let authorised = publicView;
-if (active && !authorised && signedIn) {
-  if (ctx.user!.id === link!.user_id) authorised = true;
-  else if (kind === "card" || kind === "latest") {
-    authorised = collectionId ? Boolean(await canViewCollection(ctx, collectionId)) : Boolean((await viewerAccess(ctx)).memberTenantIds.size);
-  } else if (kind === "collection") {
-    authorised = Boolean(collectionId && await canViewCollection(ctx, collectionId));
-  } else {
-    authorised = (await viewerAccess(ctx)).memberTenantIds.size > 0;
-  }
-}
-const visible = Boolean(active && authorised);
 if (!active) Astro.response.status = 404;
 const shareTitle = kind === "card" || kind === "latest" ? String(payload.card_name ?? "A shared card") : kind === "achievement" ? String(payload.achievement_name ?? "A shared badge") : kind === "collection" ? String(payload.collection_name ?? "A shared collection") : kind === "profile" ? String(payload.display_name ?? "A collector") : "A shared Foilbury cabinet";
 const pageTitle = active ? `${publicView ? shareTitle : "Member share"} · Foilbury` : "Share not found · Foilbury";
-const showSerial = visible && ctx.user?.id === link?.user_id;
+const currentPublic = Boolean(collection && collection.view_audience === "public" && collection.public_approved_at);
 const finishLabel = String(payload.finish ?? "").replaceAll("diamond", "holographic");
 const publicHref = currentPublic && collection ? `/cabinet?collection=${collection.slug}` : collection ? `/play/collection?collection=${collection.slug}` : "/cabinet";
 ---
@@ -74,7 +27,7 @@ const publicHref = currentPublic && collection ? `/cabinet?collection=${collecti
           <span class="badge">Snapshot · {formatDual(String(payload.captured_at ?? link!.created_at))}</span>
           <span class="badge">Expires {formatDate(link!.expires_at)}</span>
         </div>
-        <h1 class="display mt-5 text-[clamp(2.8rem,7vw,6rem)] uppercase">{kind === "card" || kind === "latest" ? payload.card_name : kind === "achievement" ? payload.achievement_name : kind === "collection" ? payload.collection_name : kind === "wishlist" ? "Wanted cards" : kind === "profile" ? `${payload.display_name ?? owner?.display_name ?? "A collector"}'s showcase` : `${owner?.display_name ?? "A collector"} shared a cabinet`}</h1>
+        <h1 class="display mt-5 text-[clamp(2.8rem,7vw,6rem)] uppercase">{kind === "card" || kind === "latest" ? payload.card_name : kind === "achievement" ? payload.achievement_name : kind === "collection" ? payload.collection_name : kind === "wishlist" ? "Wanted cards" : kind === "profile" ? `${payload.display_name ?? owner ?? "A collector"}'s showcase` : `${owner ?? "A collector"} shared a cabinet`}</h1>
         <p class="mt-3 max-w-2xl text-[var(--muted)]">{kind === "card" || kind === "latest" ? `${finishLabel || "Card"}${payload.subtitle ? ` · ${payload.subtitle}` : ""}` : kind === "achievement" ? payload.achievement_description : kind === "collection" ? (collection?.description ?? payload.description ?? "A curated Foilbury world.") : "An explicitly shared snapshot. It is not a live inventory and cannot be used to act on the owner's account."}</p>
 
         {kind === "card" || kind === "latest" ? (

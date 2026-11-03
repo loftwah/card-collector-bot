@@ -2,17 +2,20 @@
 import PlayerLayout from "../../layouts/PlayerLayout.astro";
 import AchievementBadge from "../../components/player/AchievementBadge.astro";
 import ShareLinkButton from "../../components/player/ShareLinkButton";
+import ShareManager from "../../components/player/ShareManager";
 import { pageContext } from "../../server/page";
 import { getInventory } from "../../server/modules/collection";
 import { listAchievements } from "../../server/modules/achievements";
 import { listCollections, collectionProgress } from "../../server/modules/collections";
+import { listShareLinks } from "../../server/modules/economy";
 
 const ctx = await pageContext(Astro.request);
 const user = ctx.user!;
-const [inventory, achievements, collections] = await Promise.all([
+const [inventory, achievements, collections, shares] = await Promise.all([
   getInventory(ctx, { limit: 300, favourite: true }),
   listAchievements(ctx, user.id),
   listCollections(ctx),
+  listShareLinks(ctx),
 ]);
 const earned = achievements.filter((item) => item.state === "earned").slice(0, 8);
 const progress = await Promise.all(collections.slice(0, 6).map(async (collection) => ({ collection, stat: await collectionProgress(ctx, collection.id) })));
@@ -91,4 +94,6 @@ const completeWorlds = progress.filter((item) => item.stat.complete).length;
       </div>
     </div>
   </section>
+
+  <ShareManager client:load initial={shares} />
 </PlayerLayout>

@@ -1,0 +1,126 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import { bootstrap, ctxFor, fixturePool, makeInstance, runtime } from "./helpers";
+import { createShareLink, revokeShareLink, updatePreferences } from "../../src/server/modules/economy";
+import { resolveShareView } from "../../src/server/modules/shares";
+import type { Ctx } from "../../src/server/context";
+import { nowIso } from "../../src/server/db";
+import { createUser, addMembership } from "../../src/server/modules/identity";
+
+function anonymous(ctx: Ctx): Ctx {
+  return {
+    ...ctx,
+    user: null,
+    actor: { type: "system", id: "anonymous", representedUserId: null, label: "Anonymous" },
+    csrfToken: "",
+  };
+}
+
+describe("share privacy and lifecycle policy", () => {
+  beforeEach(async () => {
+    await bootstrap();
+  });
+
+  it("never exposes a member-only share or serial to an anonymous or cross-Bot viewer", async () => {
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    await updatePreferences(owner, { sharingEnabled: true });
+    const profile = await createShareLink(owner, { kind: "profile", expiresInDays: 7 });
+
+    const anon = await resolveShareView(anonymous(owner), profile.token);
+    expect(anon.active).toBe(true);
+    expect(anon.publicView).toBe(false);
+    expect(anon.visible).toBe(false);
+
+    const member = await resolveShareView(player, profile.token);
+    expect(member.visible).toBe(true);
+    expect(JSON.stringify(member.payload)).not.toMatch(/email|wallet|ledger|account_id|serial/i);
+
+    const harbourUser = await createUser(runtime.DB, { email: "harbour-viewer@example.test", displayName: "Harbour Viewer", password: "a-long-test-password" });
+    const harbour = await runtime.DB.prepare("SELECT id, slug, name FROM fb_tenants WHERE slug = 'harbour'").first<{ id: string; slug: string; name: string }>();
+    await addMembership(runtime.DB, harbour!.id, harbourUser.id, "player");
+    const crossBot: Ctx = {
+      ...owner,
+      user: {
+        id: harbourUser.id,
+        email: harbourUser.email,
+        displayName: "Harbour Viewer",
+        role: "player",
+        platformAdmin: false,
+        emailVerified: true,
+        capabilities: [],
+      },
+      actor: { type: "user", id: harbourUser.id, representedUserId: harbourUser.id, label: "Harbour Viewer" },
+    };
+    const cross = await resolveShareView(crossBot, profile.token);
+    expect(cross.visible).toBe(false);
+  });
+
+  it("keeps a public snapshot safe while refusing private identifiers", async () => {
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const fixture = await fixturePool(owner);
+    const instanceId = await makeInstance(owner, owner.user!.id, fixture, "SHARE-PUBLIC-1");
+    await updatePreferences(owner, { sharingEnabled: true });
+    const share = await createShareLink(owner, { kind: "card", targetId: instanceId, expiresInDays: 7 });
+    expect(share.audience).toBe("public");
+
+    const anon = await resolveShareView(anonymous(owner), share.token);
+    expect(anon.active).toBe(true);
+    expect(anon.publicView).toBe(true);
+    expect(anon.visible).toBe(true);
+    // The serial exists in the private record, but is never shown to a public
+    // viewer; the page renders it only when showSerial is true.
+    expect(anon.showSerial).toBe(false);
+    const serial = String(anon.payload.serial);
+    expect(serial.length).toBeGreaterThan(0);
+    const ownerView = await resolveShareView(owner, share.token);
+    expect(ownerView.showSerial).toBe(true);
+  });
+
+  it("closes a public link when the collection audience changes", async () => {
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const fixture = await fixturePool(owner);
+    const instanceId = await makeInstance(owner, owner.user!.id, fixture, "SHARE-AUDIENCE-1");
+    await updatePreferences(owner, { sharingEnabled: true });
+    const share = await createShareLink(owner, { kind: "card", targetId: instanceId, expiresInDays: 7 });
+    expect((await resolveShareView(anonymous(owner), share.token)).publicView).toBe(true);
+    await runtime.DB.prepare("UPDATE fb_collections SET view_audience = 'members', public_approved_at = NULL WHERE id = 'col_test_public'").run();
+    const closed = await resolveShareView(anonymous(owner), share.token);
+    expect(closed.active).toBe(true);
+    expect(closed.publicView).toBe(false);
+    expect(closed.visible).toBe(false);
+    // A member still sees the member-audience snapshot.
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    expect((await resolveShareView(player, share.token)).visible).toBe(true);
+  });
+
+  it("stops resolving on revocation, expiry or the owner's revoked membership", async () => {
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    await updatePreferences(owner, { sharingEnabled: true });
+    const revoked = await createShareLink(owner, { kind: "profile", expiresInDays: 7 });
+    await revokeShareLink(owner, revoked.id);
+    expect((await resolveShareView(owner, revoked.token)).active).toBe(false);
+
+    const expired = await createShareLink(owner, { kind: "profile", expiresInDays: 1 });
+    await runtime.DB.prepare("UPDATE fb_share_links SET expires_at = ? WHERE id = ?").bind(new Date(Date.now() - 1000).toISOString(), expired.id).run();
+    expect((await resolveShareView(owner, expired.token)).active).toBe(false);
+
+    const ownerRevoked = await createShareLink(owner, { kind: "profile", expiresInDays: 7 });
+    await runtime.DB
+      .prepare("UPDATE fb_memberships SET status = 'revoked', revoked_at = ? WHERE tenant_id = ? AND user_id = ?")
+      .bind(nowIso(), owner.tenant.id, owner.user!.id)
+      .run();
+    // Even the owner's own browser cannot keep the snapshot alive once they are
+    // no longer an active member of the Bot.
+    expect((await resolveShareView(owner, ownerRevoked.token)).active).toBe(false);
+  });
+
+  it("does not resolve a cabinet share from another Bot", async () => {
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    await updatePreferences(owner, { sharingEnabled: true });
+    const share = await createShareLink(owner, { kind: "profile", expiresInDays: 7 });
+    const harbour = await ctxFor("harbour", "harbour.owner@foilbury.test");
+    const cross = await resolveShareView(harbour, share.token);
+    expect(cross.active).toBe(false);
+    expect(cross.visible).toBe(false);
+  });
+});

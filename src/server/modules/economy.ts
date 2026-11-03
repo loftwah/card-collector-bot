@@ -436,7 +436,7 @@ export async function createShareLink(
   }
   const kind = options.kind ?? "cabinet";
   const targetId = options.targetId ?? null;
-  if (kind !== "cabinet" && kind !== "wishlist" && !targetId) {
+  if (!["cabinet", "wishlist", "profile"].includes(kind) && !targetId) {
     throw new ApiError(422, "share_target_required", "Choose the exact object to share.");
   }
   let audience: "public" | "member" | "private" = "private";
