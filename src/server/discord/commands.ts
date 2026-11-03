@@ -119,16 +119,28 @@ function errorCallback(error: unknown, ephemeral = true): DiscordCallback {
     apiError?.details && typeof apiError.details.next_eligible_at === "string"
       ? `\nNext eligible: <t:${Math.floor(new Date(apiError.details.next_eligible_at).getTime() / 1000)}:R>`
       : "";
-  const message =
+  let message =
     apiError?.message ?? "Foilbury could not complete that action. Nothing was changed.";
+  if (apiError?.code === "insufficient_funds") {
+    message += " Claim your daily allowance with /foilbury daily, or choose a cheaper capsule from /foilbury packs.";
+  } else if (apiError?.code === "empty_pool") {
+    message += " Try /foilbury packs or check your collection preferences.";
+  } else if (apiError?.code === "discord_channel_not_allowed" || apiError?.code === "discord_installation_disabled") {
+    message += " Ask a Bot Admin to enable this channel or gameplay; nothing was charged.";
+  }
+  const title =
+    apiError?.code === "reward_cooldown"
+      ? "Allowance not ready"
+      : apiError?.code === "insufficient_funds"
+        ? "Not enough Foil"
+        : apiError?.code === "empty_pool"
+          ? "No eligible cards here"
+          : "Foilbury could not do that";
   return callback(
     {
       embeds: [
         {
-          title:
-            apiError?.code === "reward_cooldown"
-              ? "Allowance not ready"
-              : "Foilbury could not do that",
+          title,
           description: `${truncate(message, 1500)}${detail}`,
           color: 0xd97757,
         },
@@ -187,11 +199,52 @@ async function openCard(
   const poolSlug = validatePoolSlug(requestedPool ?? "cabinet-draw");
   const preview = await getPoolPreview(ctx, poolSlug, installation.channel_key ?? undefined);
   if (preview.eligible_count === 0) {
+    if (!requestedPool) {
+      // The default capsule can be empty because a collection was disabled or
+      // the member hid every world. Present real alternatives and their price
+      // instead of a dead end; opening still requires an explicit press.
+      const pools = await listPools(ctx);
+      const choices = [];
+      for (const pool of pools.slice(0, 8)) {
+        const candidate = await getPoolPreview(ctx, pool.slug, installation.channel_key ?? undefined).catch(() => null);
+        if (candidate && candidate.eligible_count > 0) {
+          choices.push({ pool, preview: candidate });
+        }
+      }
+      if (choices.length) {
+        choices.sort((left, right) => left.preview.price - right.preview.price || left.pool.name.localeCompare(right.pool.name));
+        return callback(
+          {
+            embeds: [
+              {
+                title: "Choose your capsule",
+                description: "The default capsule has no eligible cards for you right now. These capsules have real eligible cards and show their ordinary price. Press one to open it; nothing is charged until you press.",
+                color: 0x00c8b8,
+                fields: choices.slice(0, 5).map((choice) => ({
+                  name: choice.pool.name,
+                  value: `✦ ${choice.preview.price} · ${choice.preview.eligible_count} eligible cards`,
+                  inline: true,
+                })),
+                footer: { text: "Nothing is charged by viewing this picker." },
+              },
+            ],
+            components: components([
+              choices.slice(0, 4).map((choice) => ({
+                type: 2,
+                style: 1,
+                label: `Open ${choice.pool.name} · ✦${choice.preview.price}`.slice(0, 80),
+                custom_id: `foilbury:open:${choice.pool.slug}`,
+              })),
+            ]),
+          },
+          true,
+        );
+      }
+    }
     throw new ApiError(
       409,
       "empty_pool",
-      preview.filters.empty_reason ??
-        "This pool has no eligible cards right now. You were not charged.",
+      `${preview.filters.empty_reason ?? "This pool has no eligible cards right now."} Nothing was charged. Try /foilbury packs, or check your collection preferences.`,
     );
   }
   const digest = await sha256Hex(

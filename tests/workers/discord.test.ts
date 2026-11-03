@@ -236,6 +236,49 @@ describe("Discord HTTP interactions", () => {
     expect(link?.url).toContain("/play/collection");
   });
 
+  it("opens the default capsule without a pool argument", async () => {
+    await fixturePool(await ctxFor("cabinet", "player@foilbury.local"));
+    const now = new Date().toISOString();
+    const fixture = await runtime.DB.prepare("SELECT variant_id FROM fb_pool_entries WHERE pool_id = 'pool_test_open' LIMIT 1").first<{ variant_id: string }>();
+    await runtime.DB.batch([
+      runtime.DB.prepare("INSERT INTO fb_pools (id, tenant_id, slug, name, description, status, revision, price, created_at, updated_at, published_at) VALUES ('pool_default_cabinet', (SELECT tenant_id FROM fb_pools WHERE id = 'pool_test_open'), 'cabinet-draw', 'Cabinet draw', 'Default capsule', 'active', 1, 80, ?, ?, ?)").bind(now, now, now),
+      runtime.DB.prepare("INSERT INTO fb_pool_entries (id, tenant_id, pool_id, pool_revision, variant_id, weight, enabled, created_at) VALUES ('poe_default', (SELECT tenant_id FROM fb_pools WHERE id = 'pool_test_open'), 'pool_default_cabinet', 1, ?, 100, 1, ?)").bind(fixture!.variant_id, now),
+    ]);
+    const opened = await send(interaction(command("open"), { id: "default-open" }));
+    expect(opened.response.status).toBe(200);
+    expect(JSON.stringify(opened.payload.data)).toContain("Test One");
+    const draw = await runtime.DB.prepare("SELECT price, pool_id FROM fb_draws WHERE idempotency_key = 'discord:default-open:open'").first<{ price: number; pool_id: string }>();
+    expect(draw).toMatchObject({ price: 80, pool_id: "pool_default_cabinet" });
+  });
+
+  it("offers real eligible capsules when the default is empty", async () => {
+    await fixturePool(await ctxFor("cabinet", "player@foilbury.local"));
+    const now = new Date().toISOString();
+    await runtime.DB.prepare("INSERT INTO fb_pools (id, tenant_id, slug, name, description, status, revision, price, created_at, updated_at, published_at) VALUES ('pool_empty_default', (SELECT tenant_id FROM fb_pools WHERE id = 'pool_test_open'), 'cabinet-draw', 'Cabinet draw', 'Default capsule with no entries', 'active', 1, 80, ?, ?, ?)").bind(now, now, now).run();
+    const picker = await send(interaction(command("open"), { id: "default-empty" }));
+    expect(JSON.stringify(picker.payload.data)).toContain("Choose your capsule");
+    const ids = (picker.payload.data?.components ?? []).flatMap((row) => row.components ?? []).map((component) => component.custom_id);
+    expect(ids).toContain("foilbury:open:test-pool");
+    expect(picker.payload.data?.flags).toBe(64);
+    const draws = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_draws").first<{ count: number }>();
+    expect(draws?.count ?? 0).toBe(0);
+  });
+
+  it("explains insufficient funds with a daily-claim next step", async () => {
+    const player = await fixturePool(await ctxFor("cabinet", "player@foilbury.local"));
+    await send(interaction(command("profile"), { id: "funds-profile" }));
+    const identity = await runtime.DB.prepare("SELECT user_id FROM fb_discord_identities WHERE discord_user_id = ?").bind(DISCORD_USER_ID).first<{ user_id: string }>();
+    expect(identity?.user_id).toBeTruthy();
+    const playerCtx = await ctxFor("cabinet", "player@foilbury.local");
+    await setBalance({ ...playerCtx, user: { ...playerCtx.user!, id: identity!.user_id } }, identity!.user_id, 0);
+    const failed = await send(interaction(command("open", [{ name: "pool", type: 3, value: "test-pool" }]), { id: "no-funds" }));
+    expect(JSON.stringify(failed.payload.data)).toContain("Not enough Foil");
+    expect(JSON.stringify(failed.payload.data)).toContain("/foilbury daily");
+    const draws = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_draws").first<{ count: number }>();
+    expect(draws?.count ?? 0).toBe(0);
+    expect(player.variantId).toBeTruthy();
+  });
+
   it("rejects the wrong guild, the wrong channel, and unbound installations", async () => {
     const wrongGuild = await send(
       interaction(command("daily"), { guildId: "111111111111111111", id: "wrong-guild" }),

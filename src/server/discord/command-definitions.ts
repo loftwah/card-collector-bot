@@ -8,7 +8,7 @@ export const DISCORD_COMMANDS = [
       {
         type: 1,
         name: "open",
-        description: "Open an eligible capsule",
+        description: "Open a capsule now (default cabinet-draw)",
         options: [
           { type: 3, name: "pool", description: "Pool slug; defaults to cabinet-draw", required: false },
         ],
@@ -99,7 +99,7 @@ export const DISCORD_COMMANDS = [
 export const HELP_TEXT = [
   "**Foilbury** is a collectible cabinet. Your cards belong to this Bot, not to this server.",
   "",
-  "`/foilbury open [pool]` — open a capsule and receive a card",
+  "`/foilbury open [pool]` — open a capsule now; pool is optional and defaults to cabinet-draw",
   "`/foilbury daily` — claim the shared daily allowance",
   "`/foilbury collection` — see your owned cards and duplicates",
   "`/foilbury card <query>` — inspect a catalogue card",
