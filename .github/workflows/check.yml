@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   check:
-    name: Typecheck and tests
+    name: Typecheck, build and browser tests
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -39,3 +39,51 @@ jobs:
 
       - name: Check types and tests
         run: pnpm check
+
+      - name: Build production bundle without private environment files
+        env:
+          CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: "false"
+          CLOUDFLARE_INCLUDE_PROCESS_ENV: "false"
+        run: |
+          pnpm build
+          test ! -e dist/server/.dev.vars
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Bootstrap local browser fixtures
+        env:
+          FOILBURY_URL: http://localhost:5173
+        run: |
+          pnpm setup:local --skip-sources
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          import { apiForm } from "./scripts/lib/api.mjs";
+
+          for (const [kind, file] of [
+            ["subject", "public/art/layers/mark.png"],
+            ["background", "public/art/layers/material-plain.png"],
+          ]) {
+            const form = new FormData();
+            form.append("file", new Blob([readFileSync(file)], { type: "image/png" }), `${kind}.png`);
+            form.append("kind", kind);
+            form.append("name", `CI ${kind}`);
+            form.append("credit", "Foilbury repository CI fixture");
+            await apiForm("/api/v1/admin/assets", form);
+          }
+          NODE
+
+      - name: Check authentication and editorial browser journeys
+        env:
+          FOILBURY_URL: http://localhost:5173
+        run: |
+          pnpm test:auth
+          pnpm test:editorial
+
+      - name: Stop local server
+        if: always()
+        run: |
+          node --input-type=module <<'NODE'
+          import { stopDevServer } from "./scripts/lib/local.mjs";
+          await stopDevServer();
+          NODE
