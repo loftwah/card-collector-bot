@@ -378,7 +378,9 @@ export async function generateCollectionArt({ collection, cards, outputDir, sour
         attributes: card.attributes,
         collectionName: collection.name,
         collectionDescription: collection.description,
-        initials: card.art?.initials ?? card.name.slice(0, 2).toUpperCase(),
+        // The reverse badge identifies the collection, not the character. This
+        // avoids character initials reading as unrelated words or symbols.
+        initials: collectionInitials,
         palette: colors,
         motif,
         sourceWork: collection.source_work,
