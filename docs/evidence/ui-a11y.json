@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-03T13:45:29.762Z",
-  "base_url": "http://localhost:4321",
+  "generated_at": "2026-11-03T13:49:44.592Z",
+  "base_url": "http://localhost:5173",
   "results": [
     {
       "name": "light public home: axe + overflow",
@@ -68,9 +68,189 @@
       "detail": "0 total axe findings, none serious/critical"
     },
     {
-      "name": "rendered UI/accessibility acceptance",
-      "status": "FAIL",
-      "detail": "page.goto: net::ERR_ABORTED at http://localhost:4321/studio\nCall log:\n\u001b[2m  - navigating to \"http://localhost:4321/studio\", waiting until \"load\"\u001b[22m\n"
+      "name": "light scoped Studio: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light Studio collections: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light Studio NPC collectors: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light collection preferences: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light wishlist: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light daily missions: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light NPC lounge: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light platform administration: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light account security: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light mobile player home: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light mobile worlds browser: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light mobile collections: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light mobile NPC lounge: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light 200% zoom-equivalent has no horizontal overflow",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "light reduced-motion preference is active",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "dark authenticated player home: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark collection: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark worlds browser: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark card detail: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark Bot administration: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark collections admin: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark team admin: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark scoped Studio: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark Studio collections: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark Studio NPC collectors: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark collection preferences: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark wishlist: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark daily missions: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark NPC lounge: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark platform administration: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark account security: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark mobile player home: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark mobile worlds browser: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark mobile collections: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark mobile NPC lounge: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark 200% zoom-equivalent has no horizontal overflow",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "dark reduced-motion preference is active",
+      "status": "PASS",
+      "detail": ""
     }
   ]
 }
