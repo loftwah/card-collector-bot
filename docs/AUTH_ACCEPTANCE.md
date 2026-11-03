@@ -221,8 +221,8 @@ These are human authentication checks, not missing implementation or a new authe
 
 ## Signal and scoped-role release — 2026/11/03
 
-- Source: `e27c098` (`feat: scoped roles, Signal identity and premium collection experience` plus export refresh).
-- Production Worker: `67c61689-82e0-4d85-b41a-a84551deb3f6`.
+- Source: `af9eb27` (`feat: scoped roles, Signal identity and premium collection experience` plus export refresh).
+- Production Worker: `bc57af7e-7a9e-4e2c-84cc-263018157f02`.
 - D1 migration: `0014_scoped_roles_and_shares.sql` (additive; 7 commands).
 - Backup: `.foilbury/backups/prod-pre-signal-2026-11-03.json` (86 tables, 30,695 rows).
 - Access applications and policies were not recreated. `pnpm access:configure` remained a plan-only read-back.
