@@ -13,7 +13,7 @@ try {
 } catch {
   return Astro.redirect("/cabinet");
 }
-const published = (await listCards(ctx, { publicOnly: true, limit: 100 })).find((item) => item.id === card!.id);
+const published = (await listCards(ctx, { publicOnly: true, id: card!.id, limit: 1 }))[0];
 if (!published) return Astro.redirect("/cabinet");
 const clean = publicCard(published);
 const variants = clean.editions.flatMap((edition) => edition.variants);

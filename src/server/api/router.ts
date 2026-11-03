@@ -457,12 +457,8 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     if (card.status !== "published")
       throw new ApiError(404, "card_not_found", "That card is not published.");
     const visible = ctx.user
-      ? (await listCards(ctx, { viewerScope: true, limit: 200 })).find(
-          (item) => item.id === card.id,
-        )
-      : (await listCards(ctx, { publicOnly: true, limit: 200 })).find(
-          (item) => item.id === card.id,
-        );
+      ? (await listCards(ctx, { viewerScope: true, id: card.id, limit: 1 }))[0]
+      : (await listCards(ctx, { publicOnly: true, id: card.id, limit: 1 }))[0];
     if (!visible)
       throw new ApiError(404, "card_not_found", "That card is not available in this album.");
     return json({ card: publicCard(visible) });
@@ -474,6 +470,10 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ items: sets.map(publicSet) });
   }
   if (segments[0] === "pools" && segments.length === 1 && method === "GET") {
+    // Capsule inventory and pricing are member-facing. Anonymous discovery
+    // must not enumerate a Bot's pool metadata.
+    playerWrite(ctx);
+    requireScope(ctx, "inventory:read");
     const pools = await listPools(ctx);
     return json({
       items: pools.map(({ id, slug, name, description, revision, price, status }) => ({

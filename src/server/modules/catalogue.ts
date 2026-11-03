@@ -120,6 +120,9 @@ export async function listCards(
   ctx: Ctx,
   options: {
     includeDrafts?: boolean;
+    /** Exact lookup, never limited by a page of a broader listing. */
+    id?: string;
+    slug?: string;
     search?: string;
     category?: string;
     tag?: string;
@@ -135,6 +138,14 @@ export async function listCards(
   const where: string[] = ["cd.tenant_id = ?", "cd.archived_at IS NULL"];
   const params: unknown[] = [ctx.tenant.id];
   if (!options.includeDrafts) where.push("cd.status = 'published'");
+  if (options.id) {
+    where.push("cd.id = ?");
+    params.push(options.id);
+  }
+  if (options.slug) {
+    where.push("cd.slug = ?");
+    params.push(options.slug);
+  }
   if (options.publicOnly) {
     const pub = publicCollectionSql("cvis");
     const hidden = publicCollectionSql("chidden");
