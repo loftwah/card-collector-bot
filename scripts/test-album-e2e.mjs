@@ -144,6 +144,7 @@ try {
   // 6. Configure an achievement through the Admin UI.
   await admin.goto("/admin/achievements", { waitUntil: "networkidle" });
   const achievementKey = `album-proof-${stamp}`;
+  await fieldControl(admin, "Authority").selectOption("bot");
   await admin.getByLabel("Key").fill(achievementKey);
   await admin.getByLabel("Name", { exact: true }).fill("Album proof complete");
   await admin.getByLabel("Description").fill("Collect the acceptance subject.");
@@ -192,8 +193,29 @@ try {
   member.on("pageerror", (error) => memberErrors.push(error.message));
   await memberContext.request.post("/api/v1/dev/login", { data: { email: "player@foilbury.local" } });
   await member.goto("/play/draw", { waitUntil: "networkidle" });
-  await member.getByLabel("Choose a capsule").selectOption(`album-pool-${stamp}`);
-  await member.getByRole("button", { name: /Draw for/ }).click();
+  const previewPath = `/api/v1/pools/album-pool-${stamp}`;
+  let releasePreview;
+  const heldPreview = new Promise((resolve) => { releasePreview = resolve; });
+  await member.route(`**${previewPath}`, async (route) => {
+    await heldPreview;
+    await route.continue();
+  }, { times: 1 });
+  const drawButton = member.getByRole("button", { name: /Draw for/ });
+  try {
+    const previewRequested = member.waitForRequest((request) => new URL(request.url()).pathname === previewPath, { timeout: 20000 });
+    await member.getByLabel("Choose a capsule").selectOption(`album-pool-${stamp}`);
+    await previewRequested;
+    if (!(await drawButton.isDisabled())) throw new Error("Drawing remained enabled while the selected capsule's preview was pending.");
+  } finally {
+    releasePreview();
+  }
+  const drawResponsePromise = member.waitForResponse((response) => new URL(response.url()).pathname === "/api/v1/draws" && response.request().method() === "POST");
+  await drawButton.click();
+  const drawResponse = await drawResponsePromise;
+  const drawReceipt = await drawResponse.json();
+  if (drawResponse.status() !== 200 || drawReceipt.card_name !== cardName) {
+    throw new Error(`The selected capsule must award ${cardName}; received ${drawResponse.status()} ${JSON.stringify(drawReceipt)}.`);
+  }
   await member.getByText(/New subject|Another copy/).waitFor({ timeout: 20000 });
   const inspect = member.getByRole("link", { name: /Inspect this instance/ });
   await inspect.waitFor();
@@ -262,8 +284,13 @@ try {
   await member.emulateMedia({ reducedMotion: "no-preference" });
   pass("member drew with visible odds and inspected both faces in flat, 3D and reduced motion", instanceHref ?? "");
 
+  const memberAchievements = await request(member, "GET", "/api/v1/achievements");
+  const earned = memberAchievements.body?.items?.find((item) => item.key === achievementKey);
+  if (memberAchievements.status !== 200 || earned?.state !== "earned" || earned?.reward_state !== "granted") {
+    throw new Error(`The selected card must earn and pay its achievement: ${JSON.stringify(earned ?? memberAchievements)}.`);
+  }
   await member.goto("/play/achievements", { waitUntil: "networkidle" });
-  await member.getByText("Album proof complete").first().waitFor({ timeout: 20000 });
+  await member.locator("article.is-earned").getByRole("heading", { level: 4, name: "Album proof complete", exact: true }).waitFor({ timeout: 20000 });
   pass("achievement appears as earned for the member");
 
   await member.goto("/play/gifts", { waitUntil: "networkidle" });

@@ -63,6 +63,14 @@ These local suites do not prove delivered email, production launch-data
 integrity or native EmDash console admission. The documented existing Dean CMS
 mapping has not been independently verified in a live native-console session.
 
+The album gate also exposed a pre-existing capsule-selection race: drawing
+could use the previous pool's preview while the newly selected pool loaded.
+The correction only enables drawing with a loaded preview for the current
+pool and community filter, ignores superseded responses and locks both
+selectors during an in-flight draw. The browser test deliberately holds the
+new preview, verifies that drawing is disabled, then checks the exact awarded
+card and its earned, granted achievement without forcing a re-evaluation.
+
 Before release, the full check and relevant local auth/editorial browser tests
 must pass. After the approved Access change and Worker deployment, use an
 authorised fresh browser session to verify `/platform-admin`, its API,
