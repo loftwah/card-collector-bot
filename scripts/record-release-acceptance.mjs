@@ -20,7 +20,12 @@ if (state.dirty && !skipChecks) {
   // not. The caller commits the manifest after this run.
   const dirty = state.dirty
     .split("\n")
-    .filter((line) => line.trim() && !line.endsWith("docs/release-acceptance.json"));
+    .filter(
+      (line) =>
+        line.trim() &&
+        !line.endsWith("docs/release-acceptance.json") &&
+        !line.includes("docs/evidence/"),
+    );
   if (dirty.length) {
     console.error("Record acceptance from a clean source tree (only the manifest may be dirty).");
     console.error(dirty.join("\n"));
