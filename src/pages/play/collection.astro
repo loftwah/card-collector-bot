@@ -9,8 +9,13 @@ import { listCollections } from "../../server/modules/collections";
 
 const ctx = await pageContext(Astro.request);
 const user = ctx.user!;
-const [items, sets, wallet, collections] = await Promise.all([getInventory(ctx, { limit: 300 }), listSets(ctx, user.id), getWalletSummary(ctx.db, ctx.tenant.id, user.id, 1), listCollections(ctx)]);
 const initialCollection = Astro.url.searchParams.get("collection") ?? "";
+const [items, sets, wallet, collections] = await Promise.all([
+  getInventory(ctx, { limit: 300, collection: initialCollection || undefined }),
+  listSets(ctx, user.id),
+  getWalletSummary(ctx.db, ctx.tenant.id, user.id, 1),
+  listCollections(ctx),
+]);
 const publishedSets = sets.filter((set) => set.status === "published");
 ---
 <PlayerLayout title="Collection · Foilbury">

@@ -36,6 +36,8 @@ pnpm dev                  # start Astro/Workers local server (daemonised by Astr
 pnpm exec astro dev status
 pnpm exec astro dev logs
 pnpm check                # Astro/TypeScript check plus unit and Workers integration tests
+pnpm demo                 # repeatable guided walkthrough + private storyboard
+pnpm demo:show            # headed walkthrough; opens the storyboard
 pnpm test:e2e             # real Chrome E2E, screenshots into docs/evidence
 pnpm test:agent           # real stdio MCP client plus CLI against the running service
 pnpm test:persistence     # stop/start the local server and compare inventory/ledger state
