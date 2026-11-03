@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "environment": "production",
-  "generated_at": "2026-11-03T18:18:11.841Z",
+  "generated_at": "2026-11-03T18:20:28.621Z",
   "source_tree_hash": "e296c9a5662bd97cd70e7b5609bf9717a88dde1d94f48de2f3d2b990b8f564a1",
   "source_sha": "1ad1d1cf702bcb75337147ef5efcf7cc1dcc6ab6",
   "checks": [
@@ -58,7 +58,7 @@
       "result": "pass",
       "test_command": "pnpm test:deployed",
       "tested_tree_hash": "e296c9a5662bd97cd70e7b5609bf9717a88dde1d94f48de2f3d2b990b8f564a1",
-      "evidence": "Deployed runtime Worker 359908ab-b36f-420d-84f6-494282fd39e7 from source 20404a5; x-foilbury-build=20404a5; build-bound read-only smoke PASS. D1 migrations 0024/0025 applied after backup d1-2026-11-03T17-51-08-952Z.json. Later commits in this tree are documentation/release-tooling/render-script only; runtime source remains 20404a5.",
+      "evidence": "Deployed runtime Worker 91e5c2bf-3451-42e2-887e-d0e5a72d1437 from source 5983dd7; x-foilbury-build=5983dd7; build-bound read-only smoke PASS. Previous security release 359908ab (source 20404a5) and bb44505d (source 8df3051) remain in history. D1 migrations 0024/0025 applied after backup d1-2026-11-03T17-51-08-952Z.json.",
       "residual": "Real client and independent spectator observations remain blocked."
     },
     {
