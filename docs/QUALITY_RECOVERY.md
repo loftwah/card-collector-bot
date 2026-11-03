@@ -146,10 +146,12 @@ refreshed under `docs/evidence/ui-*.png`.
 
 ### Tests and build
 
-- `pnpm check`: 72 unit + 79 Workers tests, 0 type errors.
+- `pnpm check`: 72 unit + 80 Workers tests, 0 type errors.
 - `pnpm build`: PASS.
-- New regression: `tests/workers/collection-progress.test.ts` proves owned
-  subjects can never exceed the published roster, including after retirement.
+- New regressions: `tests/workers/collection-progress.test.ts` proves owned
+  subjects can never exceed the published roster, including after retirement;
+  `tests/workers/render-composition.test.ts` proves the edition composition
+  reaches the render job payload.
 - New Discord tour journey test: real draw via the tour, attachment metadata,
   serial, ledger −80, private inspection and progress.
 
