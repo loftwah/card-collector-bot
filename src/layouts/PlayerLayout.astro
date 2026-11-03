@@ -26,28 +26,31 @@ const links = [
     <div class="container py-6">
       <div class="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p class="eyebrow">Private cabinet · {session?.tenantSlug}</p>
-          <h1 class="display-sm mt-1 text-3xl md:text-4xl">{user?.displayName ?? "Collector"}</h1>
+          <p class="display-sm text-3xl md:text-4xl">{user?.displayName ?? "Collector"}</p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
           <a class="btn btn-secondary btn-sm" href="/cabinet">Public catalogue</a>
           <a class="btn btn-secondary btn-sm" href="/play/preferences">Preferences</a>
         </div>
       </div>
-      <nav class="mt-5 flex gap-1 overflow-x-auto border-b border-[var(--line)] pb-0 no-scrollbar" aria-label="Cabinet sections">
-        {links.map((link) => (
-          <a
-            href={link.href}
-            class:list={[
-              "shrink-0 border-b-2 px-3 py-2.5 font-mono text-[0.65rem] uppercase tracking-[0.1em] no-underline transition-colors",
-              path === link.href || (link.href !== "/play" && path.startsWith(link.href + "/"))
-                ? "border-[var(--brass)] text-[var(--ink)]"
-                : "border-transparent text-[var(--muted)] hover:text-[var(--ink)]",
-            ]}
-          >
-            {link.label}
-          </a>
-        ))}
+      <nav class="cabinet-tabs mt-5 flex gap-1 overflow-x-auto border-b border-[var(--line)] pb-1" aria-label="Cabinet sections">
+        {links.map((link) => {
+          const active = path === link.href || (link.href !== "/play" && path.startsWith(link.href + "/"));
+          return (
+            <a
+              href={link.href}
+              aria-current={active ? "page" : undefined}
+              class:list={[
+                "shrink-0 border-b-2 px-3 py-2.5 font-mono text-[0.65rem] uppercase tracking-[0.1em] no-underline transition-colors",
+                active
+                  ? "border-[var(--brass)] text-[var(--ink)]"
+                  : "border-transparent text-[var(--muted)] hover:text-[var(--ink)]",
+              ]}
+            >
+              {link.label}
+            </a>
+          );
+        })}
       </nav>
     </div>
   </section>

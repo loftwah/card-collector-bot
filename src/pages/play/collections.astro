@@ -2,77 +2,182 @@
 import PlayerLayout from "../../layouts/PlayerLayout.astro";
 import { pageContext } from "../../server/page";
 import { listCollections, collectionProgress } from "../../server/modules/collections";
-import { getInventory } from "../../server/modules/collection";
 
 const ctx = await pageContext(Astro.request);
 const user = ctx.user!;
-const [collections, inventory] = await Promise.all([listCollections(ctx), getInventory(ctx, { limit: 500 })]);
+const collections = await listCollections(ctx);
 const progress = new Map<string, Awaited<ReturnType<typeof collectionProgress>>>();
 for (const collection of collections) {
   progress.set(collection.id, await collectionProgress(ctx, collection.id));
 }
-const coverFor = (id: string) => {
-  const collection = collections.find((item) => item.id === id);
-  if (collection?.banner_url) return collection.banner_url;
-  const card = inventory.find((item) => item.collection_name === collection?.name);
-  return card?.thumbnail_url ?? card?.render_url ?? null;
+
+const q = (Astro.url.searchParams.get("q") ?? "").trim();
+const statusFilter = Astro.url.searchParams.get("status") ?? "all";
+const sort = Astro.url.searchParams.get("sort") ?? "progress";
+
+const enriched = collections.map((collection, index) => {
+  const stat = progress.get(collection.id);
+  const total = stat?.total_cards ?? 0;
+  const owned = Math.min(stat?.owned_cards ?? 0, total);
+  const cardCount = collection.card_count;
+  const state = total === 0 ? "unavailable" : owned >= total ? "complete" : owned > 0 ? "in-progress" : "unstarted";
+  const pct = total > 0 ? Math.round((owned / total) * 100) : 0;
+  return { collection, stat, total, owned, cardCount, state, pct, index };
+});
+
+const playable = enriched.filter((item) => item.total > 0);
+const completeCount = playable.filter((item) => item.state === "complete").length;
+const inProgress = playable.filter((item) => item.state === "in-progress");
+const continueItem = [...inProgress].sort((a, b) => b.pct - a.pct)[0] ?? null;
+
+const matchesStatus = (item: (typeof playable)[number]) => {
+  if (statusFilter === "in-progress") return item.state === "in-progress";
+  if (statusFilter === "complete") return item.state === "complete";
+  if (statusFilter === "unstarted") return item.state === "unstarted";
+  return true;
 };
-const ownedByCollection = new Map<string, number>();
-for (const item of inventory) {
-  if (!item.collection_name) continue;
-  ownedByCollection.set(item.collection_name, (ownedByCollection.get(item.collection_name) ?? 0) + 1);
-}
+
+const searchable = (item: (typeof playable)[number]) =>
+  `${item.collection.name} ${item.collection.description} ${item.collection.source_work ?? ""}`.toLowerCase();
+
+const filtered = playable
+  .filter((item) => (q ? searchable(item).includes(q.toLowerCase()) : true))
+  .filter(matchesStatus)
+  .sort((a, b) => {
+    if (sort === "name") return a.collection.name.localeCompare(b.collection.name);
+    const order: Record<string, number> = { "in-progress": 0, unstarted: 1, complete: 2, unavailable: 3 };
+    const byState = (order[a.state] ?? 99) - (order[b.state] ?? 99);
+    if (byState !== 0) return byState;
+    return b.pct - a.pct || a.collection.name.localeCompare(b.collection.name);
+  });
+
+const labelFor = (item: (typeof playable)[number]) => {
+  if (item.state === "complete") return "Complete";
+  if (item.state === "unstarted") return `Not started · 0 of ${item.total}`;
+  return `${item.owned} of ${item.total} · ${item.total - item.owned} to go`;
+};
+
+const cardWord = (count: number) => `${count} ${count === 1 ? "card" : "cards"}`;
+const audienceLabel = (audience: string) =>
+  audience === "public" ? "Public showcase" : audience === "private" ? "Private" : "Members";
 ---
+
 <PlayerLayout title="Worlds · Foilbury">
   <section class="border-b border-[var(--line)] pb-7">
-    <p class="text-[0.68rem] uppercase tracking-[0.16em] text-[var(--coral)]">Your worlds</p>
-    <div class="mt-3 flex flex-wrap items-end justify-between gap-5">
-      <div>
-        <h2 class="display text-[clamp(2.8rem,7vw,5.6rem)]">Every world you can enter.</h2>
-        <p class="mt-4 max-w-2xl text-[var(--muted)]">Each collection has its own cast, visual language and source boundary. Progress counts the subjects you actually own; variants are a separate collection goal.</p>
-      </div>
-      <div class="text-right">
-        <p class="text-[0.6rem] uppercase tracking-[0.12em] text-[var(--muted)]">Available</p>
-        <p class="display-sm mt-1 text-4xl">{collections.length}</p>
-        <p class="text-xs text-[var(--muted)]">{collections.filter((item) => item.enabled).length} enabled for this Bot</p>
-      </div>
+    <div class="max-w-3xl">
+      <h1 class="display text-[clamp(2.8rem,7vw,5.6rem)]">Every world you can enter.</h1>
+      <p class="mt-4 max-w-2xl text-[var(--muted)]">Each collection has its own cast, visual language and source boundary. Progress counts the subjects you actually own; variants are a separate collection goal.</p>
+      <p class="mt-3 text-sm text-[var(--muted)]">
+        {completeCount} of {playable.length} worlds complete.
+        {continueItem ? <span> <a class="underline decoration-[var(--brass)] underline-offset-4" href={`/play/collection?collection=${continueItem.collection.slug}`}>Continue with {continueItem.collection.name}</a>.</span> : null}
+      </p>
     </div>
+
+    <form method="get" action="/play/collections" class="mt-6 grid gap-3 border-t border-[var(--line)] pt-5 md:grid-cols-[1fr_auto_auto_auto]">
+      <label class="field">
+        <span class="label">Search worlds</span>
+        <input class="input" type="search" name="q" value={q} placeholder="Name, description or source" />
+      </label>
+      <label class="field">
+        <span class="label">Status</span>
+        <select class="select" name="status">
+          <option value="all" selected={statusFilter === "all"}>All worlds</option>
+          <option value="in-progress" selected={statusFilter === "in-progress"}>In progress</option>
+          <option value="unstarted" selected={statusFilter === "unstarted"}>Not started</option>
+          <option value="complete" selected={statusFilter === "complete"}>Complete</option>
+        </select>
+      </label>
+      <label class="field">
+        <span class="label">Sort</span>
+        <select class="select" name="sort">
+          <option value="progress" selected={sort === "progress"}>Progress first</option>
+          <option value="name" selected={sort === "name"}>Name A–Z</option>
+        </select>
+      </label>
+      <div class="flex items-end gap-2">
+        <button class="btn btn-primary btn-sm" type="submit">Apply</button>
+        <a class="btn btn-ghost btn-sm" href="/play/collections">Reset</a>
+      </div>
+    </form>
   </section>
 
-  <section class="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-    {collections.map((collection, index) => {
-      const stat = progress.get(collection.id);
-      const pct = stat && stat.total_cards ? Math.round((stat.owned_cards / stat.total_cards) * 100) : 0;
-      const cover = coverFor(collection.id);
-      return (
-        <a href={`/play/collection?collection=${collection.slug}`} class="world-card group no-underline" data-tone={index % 4}>
-          <div class="world-card__art">
-            {cover ? <img src={cover} alt="" loading="lazy" width="750" height="1050" /> : <div class="world-card__fallback">{collection.name.charAt(0)}</div>}
-            <div class="world-card__wash" aria-hidden="true"></div>
-            <div class="world-card__head">
-              {collection.logo_url ? <img src={collection.logo_url} alt="" class="world-card__mark" width="52" height="52" loading="lazy" /> : <span class="world-card__monogram">{collection.name.charAt(0)}</span>}
-              <span class="world-card__audience">{collection.view_audience === "public" ? "Public showcase" : collection.view_audience === "private" ? "Private" : "Members"}</span>
-            </div>
-          </div>
-          <div class="p-4">
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <h3 class="display-sm text-2xl leading-tight">{collection.name}</h3>
-                <p class="mt-1 line-clamp-2 text-sm text-[var(--muted)]">{collection.description || "A curated world."}</p>
+  <section class="mt-8">
+    <div class="flex flex-wrap items-end justify-between gap-3">
+      <p class="text-sm text-[var(--muted)]" role="status">{filtered.length} of {playable.length} worlds shown</p>
+      {inProgress.length ? <p class="font-mono text-[0.62rem] uppercase tracking-[0.12em] text-[var(--muted)]">{inProgress.length} in progress</p> : null}
+    </div>
+
+    <div class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {filtered.map((item) => {
+        const { collection, state, owned, total, pct, cardCount, index } = item;
+        const cover = collection.cover_url ?? collection.banner_url;
+        const mark = collection.logo_url;
+        const statusText = labelFor(item);
+        return (
+          <a
+            href={`/play/collection?collection=${collection.slug}`}
+            class="world-card group no-underline"
+            data-tone={index % 4}
+          >
+            <div class="world-card__art">
+              {cover ? (
+                <img
+                  src={cover}
+                  alt=""
+                  loading={index < 3 ? "eager" : "lazy"}
+                  fetchpriority={index === 0 ? "high" : "auto"}
+                  width="750"
+                  height="1050"
+                />
+              ) : (
+                <div class="world-card__fallback" aria-hidden="true">
+                  {mark ? <img src={mark} alt="" class="world-card__fallback-mark" width="72" height="72" loading="lazy" /> : null}
+                  <span class="world-card__fallback-name">{collection.name}</span>
+                </div>
+              )}
+              {cover ? <div class="world-card__wash" aria-hidden="true"></div> : null}
+              <div class="world-card__head" aria-hidden="true">
+                <span class="world-card__audience">{audienceLabel(collection.view_audience)}</span>
               </div>
-              <span class="whitespace-nowrap font-mono text-[0.56rem] uppercase tracking-[0.08em] text-[var(--muted)]">{stat?.owned_cards ?? 0}/{stat?.total_cards ?? collection.card_count}</span>
             </div>
-            <div class="mt-4 h-1.5 bg-[var(--paper-3)]" role="progressbar" aria-valuemin="0" aria-valuemax={stat?.total_cards ?? collection.card_count} aria-valuenow={stat?.owned_cards ?? 0} aria-label={`${collection.name} base-card progress`}>
-              <div class="h-full bg-[var(--brass)]" style={`width:${pct}%`}></div>
+            <div class="p-4">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <h3 id={`world-${collection.id}-title`} class="display-sm text-2xl leading-tight">{collection.name}</h3>
+                  <span class="sr-only">{audienceLabel(collection.view_audience)}.</span>
+                  <p class="mt-1 line-clamp-2 text-sm text-[var(--muted)]">{collection.description || "A curated world."}</p>
+                </div>
+                <span class="whitespace-nowrap font-mono text-[0.65rem] uppercase tracking-[0.08em] text-[var(--muted)]">{owned}/{total}</span>
+              </div>
+              <div class="mt-3 flex items-center justify-between gap-3">
+                <span class:list={["world-card__state", state === "complete" ? "world-card__state--complete" : ""]}>{statusText}</span>
+                <span class="font-mono text-[0.65rem] uppercase tracking-[0.08em] text-[var(--muted)]">{cardWord(cardCount)}</span>
+              </div>
+              {state === "in-progress" ? (
+                <div class="mt-2 h-1.5 bg-[var(--paper-3)]" role="progressbar" aria-valuemin="0" aria-valuemax={total} aria-valuenow={owned} aria-label={`${collection.name} base-card progress`}>
+                  <div class="h-full bg-[var(--brass)]" style={`width:${pct}%`}></div>
+                </div>
+              ) : state === "complete" ? (
+                <div class="mt-2 h-1.5 bg-[var(--brass)]" aria-hidden="true"></div>
+              ) : null}
+              <div class="mt-3 flex flex-wrap items-center justify-between gap-2 font-mono text-[0.64rem] uppercase tracking-[0.08em] text-[var(--muted)]">
+                <span>{collection.source_work ?? (collection.scope === "global" ? "Foilbury world" : "This Bot")}</span>
+                <span>{collection.scope === "global" ? "Foilbury" : "This Bot"} · {cardWord(cardCount)}</span>
+              </div>
             </div>
-            <div class="mt-3 flex flex-wrap items-center justify-between gap-2 font-mono text-[0.54rem] uppercase tracking-[0.08em] text-[var(--muted)]">
-              <span>{collection.source_work ?? (collection.scope === "global" ? "Foilbury world" : "This Bot")}</span>
-              <span>{collection.scope === "global" ? "Global" : "Bot"} · {collection.card_count} cards</span>
-            </div>
-          </div>
-        </a>
-      );
-    })}
+          </a>
+        );
+      })}
+    </div>
+
+    {filtered.length === 0 ? (
+      <div class="empty mt-8">
+        <div>
+          <p class="display-sm text-2xl">{playable.length === 0 ? "No worlds are open yet." : "No worlds match those filters."}</p>
+          <p class="mt-2 text-sm">{playable.length === 0 ? "Ask the album owner to publish a collection for this Bot." : "Try another search, or reset the filters."}</p>
+          {playable.length > 0 ? <a class="btn btn-secondary btn-sm mt-4" href="/play/collections">Reset filters</a> : null}
+        </div>
+      </div>
+    ) : null}
   </section>
-  {collections.length === 0 ? <div class="empty mt-8"><div><p class="display-sm text-2xl">No worlds are open yet.</p><p class="mt-2 text-sm">Ask the album owner to enable a collection for this Bot.</p></div></div> : null}
 </PlayerLayout>

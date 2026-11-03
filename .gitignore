@@ -20,3 +20,8 @@ public/cards/
 public/media/private/
 imports/
 .artifacts/
+
+# Harness-local skill mirror; project-canonical copy lives in .agents/skills.
+.opencode/
+# Impeccable's downloaded native engine is platform-specific and re-downloaded on demand.
+.agents/skills/impeccable/scripts/bin/

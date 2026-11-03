@@ -42,6 +42,7 @@ export interface CollectionSummary extends CollectionRow {
   manageable: boolean;
   owner_name: string;
   audience_label: string;
+  cover_url: string | null;
 }
 
 function normalizeSlug(value: string): string {
@@ -66,7 +67,14 @@ export async function listCollections(
     `SELECT c.*,
             (SELECT COUNT(*) FROM fb_collection_cards cc WHERE cc.collection_id = c.id) AS card_count,
             COALESCE(bc.enabled, 0) AS enabled,
-            COALESCE(t.name, 'Foilbury global') AS owner_name
+            COALESCE(t.name, 'Foilbury global') AS owner_name,
+            (SELECT vr.public_url
+               FROM fb_collection_cards cc2
+               JOIN fb_variants v2 ON v2.card_id = cc2.card_id AND v2.status = 'published' AND v2.archived_at IS NULL
+               JOIN fb_variant_renders vr ON vr.variant_id = v2.id AND vr.status = 'published'
+              WHERE cc2.collection_id = c.id
+              ORDER BY cc2.sort, v2.name
+              LIMIT 1) AS cover_url
        FROM fb_collections c
        LEFT JOIN fb_tenants t ON t.id = c.owner_tenant_id
        LEFT JOIN fb_bot_collections bc ON bc.collection_id = c.id AND bc.bot_id = ?
@@ -94,7 +102,14 @@ export async function listPublicCollections(ctx: Ctx): Promise<CollectionSummary
     `SELECT c.*,
             (SELECT COUNT(*) FROM fb_collection_cards cc WHERE cc.collection_id = c.id) AS card_count,
             0 AS enabled,
-            COALESCE(t.name, 'Foilbury global') AS owner_name
+            COALESCE(t.name, 'Foilbury global') AS owner_name,
+            (SELECT vr.public_url
+               FROM fb_collection_cards cc2
+               JOIN fb_variants v2 ON v2.card_id = cc2.card_id AND v2.status = 'published' AND v2.archived_at IS NULL
+               JOIN fb_variant_renders vr ON vr.variant_id = v2.id AND vr.status = 'published'
+              WHERE cc2.collection_id = c.id
+              ORDER BY cc2.sort, v2.name
+              LIMIT 1) AS cover_url
        FROM fb_collections c
        LEFT JOIN fb_tenants t ON t.id = c.owner_tenant_id
       WHERE ${publicCollectionSql("c")}
@@ -128,7 +143,14 @@ export async function getCollection(
     `SELECT c.*,
             (SELECT COUNT(*) FROM fb_collection_cards cc WHERE cc.collection_id = c.id) AS card_count,
             COALESCE(bc.enabled, 0) AS enabled,
-            COALESCE(t.name, 'Foilbury global') AS owner_name
+            COALESCE(t.name, 'Foilbury global') AS owner_name,
+            (SELECT vr.public_url
+               FROM fb_collection_cards cc2
+               JOIN fb_variants v2 ON v2.card_id = cc2.card_id AND v2.status = 'published' AND v2.archived_at IS NULL
+               JOIN fb_variant_renders vr ON vr.variant_id = v2.id AND vr.status = 'published'
+              WHERE cc2.collection_id = c.id
+              ORDER BY cc2.sort, v2.name
+              LIMIT 1) AS cover_url
        FROM fb_collections c
        LEFT JOIN fb_tenants t ON t.id = c.owner_tenant_id
        LEFT JOIN fb_bot_collections bc ON bc.collection_id = c.id AND bc.bot_id = ?

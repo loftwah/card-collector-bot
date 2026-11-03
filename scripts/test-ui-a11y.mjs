@@ -65,6 +65,9 @@ try {
     await page.goto("/play/collection");
     await page.getByRole("heading", { name: /your drawers/i }).waitFor();
     await audit(page, `${scheme} collection`);
+    await page.goto("/play/collections");
+    await page.getByRole("heading", { name: /every world you can enter/i }).waitFor();
+    await audit(page, `${scheme} worlds browser`, `ui-worlds-${scheme}.png`);
     const instance = await page.evaluate(async () => {
       const response = await fetch("/api/v1/inventory?limit=1");
       const body = await response.json();
@@ -96,6 +99,9 @@ try {
     await page.goto("/play");
     await page.getByRole("heading", { name: /your cabinet/i }).waitFor();
     await audit(page, `${scheme} mobile player home`, `ui-play-mobile-${scheme}.png`);
+    await page.goto("/play/collections");
+    await page.getByRole("heading", { name: /every world you can enter/i }).waitFor();
+    await audit(page, `${scheme} mobile worlds browser`, `ui-worlds-mobile-${scheme}.png`);
     await page.goto("/admin/collections");
     await page.getByText(/worlds with a front door/i).waitFor();
     await page.getByText("Bubbles").first().waitFor({ timeout: 20000 });

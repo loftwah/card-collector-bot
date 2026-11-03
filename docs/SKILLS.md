@@ -74,3 +74,21 @@ bound to the current source hash, 140/140 sourced credits, 0 placeholder
 subjects, 0 duplicate launch editions. The temporary content agent grant and
 Access service token were revoked/removed after the import. The `/foilbury`
 guild command was re-registered with the `achievements` option.
+
+## 2026-11-03 Impeccable 4.8.0 upgrade and Worlds polish
+
+This supersedes the earlier Impeccable 4.0.4 row for future sessions.
+
+| Field | Record |
+|---|---|
+| Source / version | Upstream `pbakaus/impeccable`, latest release `cli-v4.8.0` (published 2026-10-26); CLI `4.8.0`, detector engine `0.1.18`. Installed with `npx impeccable@latest install --project --providers=agents` and `--providers=opencode`. |
+| Installed location | Project-local `.agents/skills/impeccable/` (the path required by `AGENTS.md`) and `.opencode/skills/impeccable/` (harness path). The earlier user-level `~/.agents/skills/impeccable` 4.0.4 is no longer the authority. |
+| Context | `node .agents/skills/impeccable/scripts/context.mjs --target src/pages/index.astro` loaded `PRODUCT.md`, `DESIGN.md` and returned no surface brief. |
+| Critique method | Dual sub-agent: Assessment A `ses_e60ace9fbffeHo7Vxvc4f6P2Ur` (design review) and Assessment B `ses_e60ace9fbffdFfRUQi248HHIkd` (detector + browser evidence), isolated from each other. Target: `src/pages/play/collections.astro` at `http://localhost:5173/play/collections`, authenticated local owner. |
+| Detector | `impeccable detect --json src/pages/play/collections.astro src/layouts/PlayerLayout.astro src/layouts/BaseLayout.astro` → `[]` (0 findings). CSS-only Geist `overused-font` warnings were treated as brief-controlled, not defects. |
+| Rendered checks | 34/34 `scripts/test-ui-a11y.mjs` checks PASS; axe WCAG 2 AA had 0 serious/critical findings; no horizontal overflow at 1440, 720, 390 or 320 px; keyboard focus visible; reduced-motion preference applied. |
+| Material findings | Desktop CLS 0.435 from the display-font swap plus wrapping KPI; mobile first card started at 696 px and hid the product; no search/filter/sort; 21 nearly-empty progress bars and tiny status text; “1 cards” and invalid 0/0 progress; banned eyebrows above headings; viewer-dependent inventory thumbnails and upscaled portrait covers; double logo on banner art; reduced-motion still applied transforms; no `aria-current` on the active Worlds tab. |
+| Changes | Removed the Worlds eyebrow and “Available 24” KPI; added the Worlds H1, collector summary, search, status filter and progress/name sort; added a contextual “Continue with …” link; made progress state readable and complete-state explicit; removed invalid progressbars when total is 0; fixed pluralisation; made cover art deterministic collection art (`cover_url`) with a designed fallback; removed duplicate overlay marks; raised small metadata sizes; fixed overlay contrast; added `aria-current`, a thin visible tab scrollbar, font preloads, and reduced-motion transform removal. |
+| Evidence | `docs/evidence/ui-worlds-light.png`, `ui-worlds-dark.png`, `ui-worlds-mobile-light.png`, `ui-worlds-mobile-dark.png`; `docs/evidence/ui-a11y.json`; `/tmp/fb-evidence/` (Assessment B working evidence). |
+| Remaining | Mobile first card still begins below the first 844 px because the hero + search controls are substantial; mobile sub-nav remains horizontally scrollable (now with a visible thin scrollbar); the collection progress loop is still N+1 (~one aggregate pair per collection); local proof-world fixtures appear in local screenshots and must not be used as production evidence. |
+| Unrelated work left untouched | `src/server/discord/handler.ts`, `src/server/discord/commands.ts` and `tests/workers/discord.test.ts` had uncommitted changes from another pass during this session. One Discord test currently fails (`link?.type` expected 2 but undefined); this is outside the Impeccable UI change and was not overwritten. |

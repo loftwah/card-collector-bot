@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-02T14:44:18.701Z",
+  "generated_at": "2026-11-03T03:16:14.278Z",
   "base_url": "http://localhost:5173",
   "results": [
     {
@@ -43,6 +43,11 @@
       "detail": "0 total axe findings, none serious/critical"
     },
     {
+      "name": "light worlds browser: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
       "name": "light card detail: axe + overflow",
       "status": "PASS",
       "detail": "0 total axe findings, none serious/critical"
@@ -78,6 +83,11 @@
       "detail": "0 total axe findings, none serious/critical"
     },
     {
+      "name": "light mobile worlds browser: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
       "name": "light mobile collections: axe + overflow",
       "status": "PASS",
       "detail": "0 total axe findings, none serious/critical"
@@ -99,6 +109,11 @@
     },
     {
       "name": "dark collection: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark worlds browser: axe + overflow",
       "status": "PASS",
       "detail": "0 total axe findings, none serious/critical"
     },
@@ -134,6 +149,11 @@
     },
     {
       "name": "dark mobile player home: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark mobile worlds browser: axe + overflow",
       "status": "PASS",
       "detail": "0 total axe findings, none serious/critical"
     },

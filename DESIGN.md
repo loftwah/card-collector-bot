@@ -30,6 +30,7 @@ Use the CSS tokens in `src/styles/global.css`; do not add a competing palette. T
 
 - shadcn/ui primitives are configured through `components.json` and `src/components/ui/`; Tailwind tokens map to the Foilbury palette.
 - Existing project classes `btn`, `badge`, `surface-flat`, `table`, `field`, `input` and `eyebrow` remain compatible.
+- Do not place a kicker or eyebrow label above a heading. The heading carries its own weight; use a quiet summary line only when the number is decision-useful.
 - Capsule reveal is satisfying but short; skip is always available. Respect `prefers-reduced-motion`.
 - 3D inspection is on-demand on card detail only: CSS 3D, no canvas per tile, pointer/keyboard tilt, front/back, reduced-motion static fallback, and a flat first paint. It never changes ownership, finish or serial.
 - Focus is visible (`--focus`); icon-only controls need an accessible name.
