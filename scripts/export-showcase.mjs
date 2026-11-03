@@ -85,7 +85,7 @@ function baseCss(width, height) {
   return `@font-face{font-family:Manrope;src:url('data:font/woff2;base64,${manropeBase64}') format('woff2');font-weight:200 800}
   *{margin:0;padding:0;box-sizing:border-box}html,body{width:${width}px;height:${height}px;overflow:hidden;background:#07110f;color:#eff5f1;font-family:Manrope,sans-serif}`;
 }
-function poster({ width, height, portrait = true, title = "Characters worth keeping.", kicker = "FOILBURY · PUBLIC SHOWCASE", card = heroData, back = heroBackData, footer = "FREE TO PLAY · ORIGINAL WORLDS · FOILBURY.LOFTWAH.COM" }) {
+function poster({ width, height, portrait = true, compact = false, title = "Characters worth keeping.", kicker = "FOILBURY · PUBLIC SHOWCASE", card = heroData, back = heroBackData, footer = "FREE TO PLAY · ORIGINAL WORLDS · FOILBURY.LOFTWAH.COM" }) {
   const pad = Math.round(width * 0.065);
   const cardWidth = portrait ? Math.round(width * 0.52) : Math.round(height * 0.67);
   return `<!doctype html><html><head><meta charset="utf-8"><style>${baseCss(width, height)}
@@ -103,7 +103,8 @@ function poster({ width, height, portrait = true, title = "Characters worth keep
     .cardwrap img{width:${cardWidth}px;max-height:${Math.round(height * 0.72)}px;object-fit:contain;filter:drop-shadow(0 ${Math.round(height * 0.05)}px ${Math.round(height * 0.06)}px rgba(0,0,0,.7));transform:rotate(-2deg)}
     .cardwrap .back{position:absolute;width:${Math.round(cardWidth * 0.7)}px;transform:rotate(7deg) translate(${Math.round(cardWidth * 0.35)}px,${Math.round(cardWidth * 0.1)}px);opacity:.9}
     .footer{position:absolute;left:${pad}px;right:${pad}px;bottom:${pad * 0.6}px;display:flex;justify-content:space-between;font-family:ui-monospace,monospace;font-size:${Math.round(width * 0.012)}px;letter-spacing:.16em;color:#8aa39b;text-transform:uppercase}
-    .stamp{position:absolute;right:${pad}px;top:${pad}px;border:1px solid #c9f25f;color:#c9f25f;font-family:ui-monospace,monospace;font-size:${Math.round(width * 0.012)}px;letter-spacing:.12em;padding:6px 9px;text-transform:uppercase;transform:rotate(1.5deg)}
+    .stamp{position:absolute;z-index:4;right:${pad}px;top:${pad}px;background:rgba(7,17,15,.88);border:1px solid #c9f25f;color:#c9f25f;font-family:ui-monospace,monospace;font-size:${Math.round(width * 0.012)}px;letter-spacing:.12em;padding:6px 9px;text-transform:uppercase;transform:rotate(1.5deg)}
+    ${compact ? `.stage{padding-bottom:${Math.round(pad * 2.1)}px}.mark{width:48px;height:48px;margin-bottom:16px}.kicker{font-size:12px}h1{font-size:56px;line-height:.95;max-width:14ch;margin-top:14px}.sub{font-size:16px;line-height:1.35;max-width:38ch;margin-top:14px}.rule{height:6px;width:220px;margin-top:16px}.footer{font-size:10px;letter-spacing:.14em}` : ""}
   </style></head><body><div class="stage"><div class="grid"></div><div class="copy"><img class="mark" src="data:image/png;base64,${brandMark}" alt=""><p class="kicker">${esc(kicker)}</p><h1>${esc(title)}</h1><p class="sub">${esc(hero.name)} · ${esc(hero.collection_name)}. A real public card, a designed back, four finishes and a serial that belongs to its owner.</p><div class="rule"></div></div><div class="cardwrap"><img class="back" src="${back}" alt=""><img src="${card}" alt=""></div><div class="footer"><span>${esc(footer)}</span><span>${new Date().toISOString().slice(0, 10)}</span></div><span class="stamp">Public-safe</span></div></body></html>`;
 }
 const sizes = [
@@ -119,7 +120,7 @@ for (const size of sizes) {
 }
 
 const ogFile = path.join(publicOut, "og-1200x630.png");
-await capture(poster({ width: 1200, height: 630, portrait: false, title: "Characters worth keeping.", kicker: "FOILBURY · PUBLIC SHOWCASE", footer: "FOILBURY.LOFTWAH.COM" }), ogFile, 1200, 630);
+await capture(poster({ width: 1200, height: 630, portrait: false, compact: true, title: "Characters worth keeping.", kicker: "FOILBURY · PUBLIC SHOWCASE", footer: "FOILBURY.LOFTWAH.COM" }), ogFile, 1200, 630);
 
 const mastery = `<!doctype html><html><head><meta charset="utf-8"><style>${baseCss(1920, 1080)}
   .stage{position:relative;width:100%;height:100%;padding:70px;background:linear-gradient(130deg,rgba(44,227,211,.12),transparent 48%),#07110f}

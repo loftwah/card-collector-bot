@@ -77,11 +77,13 @@ interface DrawResult {
 export default function DrawStudio({
   pools,
   initialBalance,
+  initialPool = "",
 }: {
   pools: PoolSummary[];
   initialBalance: number;
+  initialPool?: string;
 }) {
-  const [slug, setSlug] = useState(pools[0]?.slug ?? "");
+  const [slug, setSlug] = useState(pools.some((pool) => pool.slug === initialPool) ? initialPool : (pools[0]?.slug ?? ""));
   const [channel, setChannel] = useState("");
   const [loadedPreview, setPreview] = useState<Preview | null>(null);
   const previewRequest = useRef(0);

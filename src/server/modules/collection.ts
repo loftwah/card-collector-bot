@@ -241,7 +241,12 @@ export async function setLocked(ctx: Ctx, instanceId: string, locked: boolean) {
   return { id: instanceId, locked };
 }
 
-export async function toggleWishlist(ctx: Ctx, cardId: string, wanted: boolean) {
+export async function toggleWishlist(
+  ctx: Ctx,
+  cardId: string,
+  wanted: boolean,
+  target?: { materialKey?: string | null; effectKey?: string | null; variantId?: string | null },
+) {
   const user = ctx.user!;
   const card = await first<{ id: string }>(
     ctx.db,
@@ -250,12 +255,39 @@ export async function toggleWishlist(ctx: Ctx, cardId: string, wanted: boolean) 
     ctx.tenant.id,
   );
   if (!card) throw new ApiError(404, "card_not_found", "Card not found.");
+  let targetVariant: { id: string; material_key: string; effect_key: string | null } | null = null;
+  if (target?.variantId) {
+    targetVariant = await first<{ id: string; material_key: string; effect_key: string | null }>(
+      ctx.db,
+      `SELECT v.id, m.key AS material_key, e.key AS effect_key
+         FROM fb_variants v JOIN fb_materials m ON m.id = v.material_id
+         LEFT JOIN fb_effects e ON e.id = v.effect_id
+        WHERE v.id = ? AND v.card_id = ? AND v.tenant_id = ? AND v.status = 'published' AND v.archived_at IS NULL`,
+      target.variantId,
+      cardId,
+      ctx.tenant.id,
+    );
+    if (!targetVariant) throw new ApiError(422, "wishlist_target_invalid", "That published finish does not belong to this card.");
+  }
   if (wanted) {
     await ctx.db
       .prepare(
-        "INSERT INTO fb_wishlists (tenant_id, user_id, card_id, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(tenant_id, user_id, card_id) DO NOTHING",
+        `INSERT INTO fb_wishlists (tenant_id, user_id, card_id, target_material_key, target_effect_key, target_variant_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(tenant_id, user_id, card_id) DO UPDATE SET
+           target_material_key = excluded.target_material_key,
+           target_effect_key = excluded.target_effect_key,
+           target_variant_id = excluded.target_variant_id`,
       )
-      .bind(ctx.tenant.id, user.id, cardId, nowIso())
+      .bind(
+        ctx.tenant.id,
+        user.id,
+        cardId,
+        targetVariant?.material_key ?? target?.materialKey ?? null,
+        target?.effectKey ?? targetVariant?.effect_key ?? null,
+        targetVariant?.id ?? null,
+        nowIso(),
+      )
       .run();
   } else {
     await ctx.db
@@ -263,14 +295,30 @@ export async function toggleWishlist(ctx: Ctx, cardId: string, wanted: boolean) 
       .bind(ctx.tenant.id, user.id, cardId)
       .run();
   }
-  return { card_id: cardId, wanted };
+  return {
+    card_id: cardId,
+    wanted,
+    target_material_key: targetVariant?.material_key ?? target?.materialKey ?? null,
+    target_effect_key: target?.effectKey ?? targetVariant?.effect_key ?? null,
+    target_variant_id: targetVariant?.id ?? null,
+  };
 }
 
 export async function getWishlist(ctx: Ctx) {
   const user = ctx.user!;
-  return all<{ card_id: string; name: string; slug: string }>(
+  return all<{
+    card_id: string;
+    name: string;
+    slug: string;
+    target_material_key: string | null;
+    target_effect_key: string | null;
+    target_variant_id: string | null;
+    variant_name: string | null;
+  }>(
     ctx.db,
-    `SELECT w.card_id, cd.name, cd.slug FROM fb_wishlists w JOIN fb_card_definitions cd ON cd.id = w.card_id
+    `SELECT w.card_id, cd.name, cd.slug, w.target_material_key, w.target_effect_key, w.target_variant_id, v.name AS variant_name
+       FROM fb_wishlists w JOIN fb_card_definitions cd ON cd.id = w.card_id
+       LEFT JOIN fb_variants v ON v.id = w.target_variant_id
       WHERE w.tenant_id = ? AND w.user_id = ? ORDER BY w.created_at DESC`,
     ctx.tenant.id,
     user.id,

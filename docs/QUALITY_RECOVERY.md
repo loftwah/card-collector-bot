@@ -253,3 +253,14 @@ permission was changed by this task.
 4. Human Cloudflare Access session for `/platform-admin` and `/_emdash/admin`.
 5. Owner aesthetic acceptance of the new palette; the code no longer treats a
    clean detector as approval.
+
+## 2026-11-04 backlog pass — additional reproduced failures and repairs
+
+| Reproduced failure | Repair | Detecting evidence |
+| --- | --- | --- |
+| Public pool preview omitted `distribution_fingerprint` and collection labels, so the draw room read `undefined.length` and a real draw could not use the approved distribution. | `publicPoolPreview` now returns both fields; a route test draws immediately from the preview. | `route-contract.test.ts` "exposes the exact approved distribution". |
+| Studio collections stacked every world and the create form, recreating the endless-scroll complaint. | Search, status filter and 8-row pagination; totals remain real. | `test:ui` Studio collections at light/dark/mobile; `AdminCollections.tsx`. |
+| NPC lounge used a definition list with nested wrappers, failing axe `definition-list`/`dlitem`. | Direct `dt`/`dd` structure per row, labelled NPC/You bars. | `test:ui` NPC lounge light/dark/mobile. |
+| The public OG still was the smallest poster, causing copy/footer collision and a stamp hidden behind the card. | Compact OG layout and a raised stamp; regenerated all showcase stills/videos. | `public/media/showcase/og-1200x630.png`. |
+| Admin intro read "Bot-scoped authority for cabinet." | "Bot-scoped authority for this cabinet." | `AdminLayout.astro`. |
+| Existing artwork editions could not be revised from the editor. | Optional source edition prefill creates a new immutable edition with `parent_edition_id`; originals/copies are untouched. | `render-composition.test.ts`; artwork editor suite. |

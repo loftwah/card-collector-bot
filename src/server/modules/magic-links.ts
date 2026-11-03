@@ -308,3 +308,12 @@ export async function pruneMagicLinks(db: D1Database): Promise<void> {
   await db.prepare("DELETE FROM fb_magic_links WHERE expires_at < ? OR used_at < ?").bind(nowIso(), new Date(Date.now() - 86400_000).toISOString()).run();
 }
 
+/**
+ * Rate-limit rows are one row per keyed bucket. Expired windows are removed on
+ * the existing cron so long-lived deployments do not accumulate per-address
+ * keys indefinitely. No raw address is stored: only keyed HMAC buckets. */
+export async function pruneRateLimits(db: D1Database): Promise<void> {
+  const cutoff = Math.floor(Date.now() / 1000) - 86400;
+  await db.prepare("DELETE FROM fb_rate_limits WHERE window_start < ?").bind(cutoff).run();
+}
+

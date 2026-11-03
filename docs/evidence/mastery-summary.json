@@ -1,0 +1,45 @@
+{
+  "generated_at": "2026-11-03T13:07:15.675Z",
+  "results": [
+    {
+      "name": "owner strong-auth session established for audited gifts",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "dedicated local demo identity created through the real magic-link flow",
+      "status": "PASS",
+      "detail": "mastery.demo.1793711230412@example.test"
+    },
+    {
+      "name": "real 7/8 Gold roster state before the final subject",
+      "status": "PASS",
+      "detail": "7/8"
+    },
+    {
+      "name": "real 8/8 transition earned Gold mastery once",
+      "status": "PASS",
+      "detail": "Danganronpa — Three Killing Games · Gold run · 2026-11-03T13:07:14.098Z"
+    },
+    {
+      "name": "Holographic mastery and full roster unlock use the same frozen roster",
+      "status": "PASS",
+      "detail": "Danganronpa — Three Killing Games · Holographic run · Three schools"
+    },
+    {
+      "name": "no duplicate mastery unlock or reward row",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "mastery card share stays member-gated and does not leak the snapshot",
+      "status": "PASS",
+      "detail": "member"
+    },
+    {
+      "name": "rendered achievement and collection screens inspected",
+      "status": "PASS",
+      "detail": ""
+    }
+  ]
+}

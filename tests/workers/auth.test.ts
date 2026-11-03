@@ -9,7 +9,7 @@ import { createCollection, addCollectionCards, enableCollection } from "../../sr
 import { createPool, executeDraw, getPoolPreview, publishPool } from "../../src/server/modules/pools";
 import { nowIso } from "../../src/server/db";
 import { sha256Hex } from "../../src/server/ids";
-import { ApiError, requireRecentStrongAuth } from "../../src/server/context";
+import { ApiError, requireRecentStrongAuth, resolveSession } from "../../src/server/context";
 
 describe("passwordless identity, Access linking, bots and collections", () => {
   beforeEach(async () => {
@@ -61,6 +61,22 @@ describe("passwordless identity, Access linking, bots and collections", () => {
         .first<{ count: number }>();
       expect(sessionsAfter?.count ?? 0).toBe(sessionsBefore?.count ?? 0);
     }
+  });
+
+  it("invalidates an existing session immediately when membership is revoked", async () => {
+    const ctx = await ctxFor("cabinet", "owner@foilbury.local");
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const session = await createSession(runtime.DB, player.tenant, player.user!, { authMethod: "magic_link", assurance: "email" });
+    expect(await resolveSession(runtime.DB, session.token)).not.toBeNull();
+    await runtime.DB
+      .prepare("UPDATE fb_memberships SET status = 'revoked', revoked_at = ? WHERE tenant_id = ? AND user_id = ?")
+      .bind(nowIso(), player.tenant.id, player.user!.id)
+      .run();
+    expect(await resolveSession(runtime.DB, session.token)).toBeNull();
+    await runtime.DB
+      .prepare("UPDATE fb_memberships SET status = 'active', revoked_at = NULL WHERE tenant_id = ? AND user_id = ?")
+      .bind(player.tenant.id, player.user!.id)
+      .run();
   });
 
   it("does not activate an unaccepted invitation during sign-in", async () => {

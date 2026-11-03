@@ -8,6 +8,7 @@ import { getEconomy, getPreferences } from "../../server/modules/economy";
 
 const ctx = await pageContext(Astro.request);
 const user = ctx.user!;
+const requestedPool = Astro.url.searchParams.get("pool") ?? "";
 const [pools, wallet, economy, prefs] = await Promise.all([
   listPools(ctx),
   getWalletSummary(ctx.db, ctx.tenant.id, user.id, 1),
@@ -35,6 +36,7 @@ const [pools, wallet, economy, prefs] = await Promise.all([
         .sort((a, b) => (a.slug === "cabinet-draw" ? -1 : b.slug === "cabinet-draw" ? 1 : a.name.localeCompare(b.name)))
         .map((pool) => ({ id: pool.id, slug: pool.slug, name: pool.name, description: pool.description, revision: pool.revision, price: pool.price, status: pool.status }))}
       initialBalance={wallet.balance}
+      initialPool={requestedPool}
     />
   </div>
   <div class="mt-8 notice">

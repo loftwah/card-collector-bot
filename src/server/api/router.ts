@@ -277,6 +277,7 @@ const giftSchema = z.object({
   amount: z.number().int().positive().max(10000).optional(),
   openings: z.number().int().min(1).max(20).optional(),
   cardId: idSchema.nullable().optional(),
+  variantId: idSchema.nullable().optional(),
   message: z.string().max(280).nullable().optional(),
   reason: z.string().min(3).max(500),
 });
@@ -614,8 +615,23 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   if (segments[0] === "wishlist" && segments.length === 1 && method === "POST") {
     playerWrite(ctx);
     requireScope(ctx, "inventory:write");
-    const body = await readJson(request, z.object({ cardId: idSchema, wanted: z.boolean() }));
-    return json(await toggleWishlist(ctx, body.cardId, body.wanted));
+    const body = await readJson(
+      request,
+      z.object({
+        cardId: idSchema,
+        wanted: z.boolean(),
+        targetVariantId: idSchema.nullable().optional(),
+        targetMaterialKey: z.string().max(40).nullable().optional(),
+        targetEffectKey: z.string().max(40).nullable().optional(),
+      }),
+    );
+    return json(
+      await toggleWishlist(ctx, body.cardId, body.wanted, {
+        variantId: body.targetVariantId,
+        materialKey: body.targetMaterialKey,
+        effectKey: body.targetEffectKey,
+      }),
+    );
   }
   if (segments[0] === "rewards" && segments[1] === "claim" && method === "POST") {
     playerWrite(ctx);

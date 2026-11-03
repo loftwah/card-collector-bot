@@ -195,6 +195,28 @@ describe("exact API dispatch and least-privilege player scopes", () => {
     expect(draw.json.distribution_fingerprint).toBe(preview.json.distribution_fingerprint);
   });
 
+  it("stores a finish/edition-specific wishlist target through the player API", async () => {
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const fixture = await fixturePool(owner);
+    const add = await sendJson(player, "/api/v1/wishlist", "POST", { cardId: fixture.cardId, wanted: true, targetVariantId: fixture.variantId });
+    expect(add.response.status).toBe(200);
+    expect(add.json.target_variant_id).toBe(fixture.variantId);
+    expect(add.json.target_material_key).toBe("plain");
+    const list = await sendJson(player, "/api/v1/wishlist", "GET");
+    expect(list.response.status).toBe(200);
+    const item = (list.json.items as Array<Record<string, unknown>>)[0]!;
+    expect(item.target_variant_id).toBe(fixture.variantId);
+    expect(item.variant_name).toBe("Plain");
+    const invalid = await sendJson(player, "/api/v1/wishlist", "POST", { cardId: fixture.cardId, wanted: true, targetVariantId: "var_does_not_exist" });
+    expect(invalid.response.status).toBe(422);
+    expect((invalid.json.error as { code: string }).code).toBe("wishlist_target_invalid");
+    const removed = await sendJson(player, "/api/v1/wishlist", "POST", { cardId: fixture.cardId, wanted: false });
+    expect(removed.response.status).toBe(200);
+    const empty = await sendJson(player, "/api/v1/wishlist", "GET");
+    expect((empty.json.items as unknown[]).length).toBe(0);
+  });
+
   it("allows the minimum explicit scope for each write", async () => {
     const owner = await ctxFor("cabinet", "owner@foilbury.local");
     const player = await ctxFor("cabinet", "player@foilbury.local");

@@ -4,6 +4,7 @@ import { addMembership, createUser, ensureWallet } from "../../src/server/module
 import { previewAdminGift, sendAdminGift } from "../../src/server/modules/admin-gifts";
 import { listMyGiftReceipts } from "../../src/server/modules/admin-gifts";
 import { nowIso } from "../../src/server/db";
+import { sha256Hex } from "../../src/server/ids";
 
 async function strong(ctx: Awaited<ReturnType<typeof ctxFor>>) {
   // Gift-domain fixtures carry a recent local factor. An Access label alone
@@ -19,6 +20,46 @@ async function member(tenantId: string, email: string) {
 }
 
 describe("scoped administrator gifts", () => {
+  it("delivers an exact published finish when a card gift names the variant", async () => {
+    await bootstrap();
+    const owner = await strong(await ctxFor("cabinet", "owner@foilbury.local"));
+    const fixture = await fixturePool(owner);
+    const recipient = await member(owner.tenant.id, "gold.gift@example.com");
+    const gold = await runtime.DB.prepare("SELECT id FROM fb_materials WHERE tenant_id = ? AND key = 'gold'").bind(owner.tenant.id).first<{ id: string }>();
+    const none = await runtime.DB.prepare("SELECT id FROM fb_effects WHERE tenant_id = ? AND key = 'none'").bind(owner.tenant.id).first<{ id: string }>();
+    const now = nowIso();
+    await runtime.DB.batch([
+      runtime.DB.prepare(
+        "INSERT INTO fb_variants (id, tenant_id, card_id, edition_id, material_id, effect_id, name, status, created_at) VALUES ('var_gift_gold', ?, ?, ?, ?, ?, 'Gold', 'published', ?)",
+      ).bind(owner.tenant.id, fixture.cardId, fixture.editionId, gold!.id, none!.id, now),
+      runtime.DB.prepare(
+        "INSERT INTO fb_variant_renders (id, tenant_id, variant_id, recipe_id, asset_id, public_url, width, height, sha256, status, created_at, published_at) VALUES ('vr_gift_gold', ?, 'var_gift_gold', ?, ?, '/media/public/gift-gold', 750, 1050, 'gift-gold-hash', 'published', ?, ?)",
+      ).bind(owner.tenant.id, fixture.recipeId, fixture.renderAsset, now, now),
+    ]);
+    const key = "gift-exact-finish";
+    const result = await sendAdminGift(owner, {
+      kind: "card",
+      scope: "single",
+      userIds: [recipient.id],
+      cardId: fixture.cardId,
+      variantId: "var_gift_gold",
+      reason: "Exact-finish gift proof",
+      idempotency: { key, digest: await sha256Hex(key) },
+    });
+    expect(result.status).toBe("completed");
+    const instance = await runtime.DB.prepare("SELECT variant_id, serial FROM fb_card_instances WHERE tenant_id = ? AND user_id = ?").bind(owner.tenant.id, recipient.id).first<{ variant_id: string; serial: string }>();
+    expect(instance?.variant_id).toBe("var_gift_gold");
+    await expect(sendAdminGift(owner, {
+      kind: "card",
+      scope: "single",
+      userIds: [recipient.id],
+      cardId: fixture.cardId,
+      variantId: "var_not_a_finish",
+      reason: "Invalid exact finish",
+      idempotency: { key: "gift-bad-finish", digest: await sha256Hex("gift-bad-finish") },
+    })).rejects.toMatchObject({ code: "variant_invalid" });
+  });
+
   it("previews, sends and retries a Foil gift without double-crediting", async () => {
     await bootstrap();
     const owner = await strong(await ctxFor("cabinet", "owner@foilbury.local"));

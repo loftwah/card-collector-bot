@@ -228,6 +228,9 @@ export async function createNpc(
   const id = newId("npc");
   const userId = newId("usr");
   const now = nowIso();
+  let slug = slugify(name);
+  const slugTaken = await first<{ id: string }>(ctx.db, "SELECT id FROM fb_npc_collectors WHERE tenant_id = ? AND slug = ?", ctx.tenant.id, slug);
+  if (slugTaken) slug = `${slug}-${id.slice(-5).toLowerCase()}`;
   const email = `npc.${id}@synthetic.invalid`;
   const goals = {
     collection_id: input.goalCollectionId ?? null,
@@ -251,7 +254,7 @@ export async function createNpc(
         ctx.tenant.id,
         bot.id,
         userId,
-        slugify(name),
+        slug,
         name,
         preset.key,
         safeUrl(input.avatarUrl),

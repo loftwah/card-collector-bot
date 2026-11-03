@@ -1,0 +1,117 @@
+---
+import PlayerLayout from "../../layouts/PlayerLayout.astro";
+import WishlistRemoveButton from "../../components/player/WishlistRemoveButton";
+import { pageContext } from "../../server/page";
+import { getWishlist } from "../../server/modules/collection";
+import { getCard } from "../../server/modules/catalogue";
+import { all, first } from "../../server/db";
+import { displayFinish } from "../../lib/utils";
+
+const ctx = await pageContext(Astro.request);
+const user = ctx.user!;
+const wishes = await getWishlist(ctx);
+const rows = await Promise.all(
+  wishes.map(async (wish) => {
+    let card = null;
+    try {
+      card = await getCard(ctx, wish.card_id);
+    } catch {
+      card = null;
+    }
+    const targetVariant = wish.target_variant_id
+      ? card?.editions.flatMap((edition) => edition.variants).find((variant) => variant.id === wish.target_variant_id) ?? null
+      : null;
+    const renderUrl = targetVariant?.render_url ?? card?.editions.flatMap((edition) => edition.variants).find((variant) => variant.render_url)?.render_url ?? null;
+    const [owned, paths] = await Promise.all([
+      first<{ subjects: number; target: number }>(
+        ctx.db,
+        `SELECT COUNT(*) AS subjects,
+                SUM(CASE WHEN ci.variant_id = ? THEN 1 ELSE 0 END) AS target
+           FROM fb_card_instances ci
+          WHERE ci.tenant_id = ? AND ci.user_id = ? AND ci.card_id = ? AND ci.status IN ('owned','reserved')`,
+        wish.target_variant_id,
+        ctx.tenant.id,
+        user.id,
+        wish.card_id,
+      ),
+      card
+        ? all<{ slug: string; name: string; price: number; variants: number }>(
+            ctx.db,
+            `SELECT p.slug, p.name, p.price, COUNT(DISTINCT pe.variant_id) AS variants
+               FROM fb_pool_entries pe
+               JOIN fb_pools p ON p.id = pe.pool_id AND p.revision = pe.pool_revision
+               JOIN fb_variants v ON v.id = pe.variant_id
+              WHERE pe.tenant_id = ? AND p.status = 'active' AND pe.enabled = 1 AND v.status = 'published' AND v.card_id = ?
+                AND (? IS NULL OR v.id = ?)
+              GROUP BY p.id ORDER BY p.price, p.name`,
+            ctx.tenant.id,
+            wish.card_id,
+            wish.target_variant_id,
+            wish.target_variant_id,
+          )
+        : Promise.resolve([]),
+    ]);
+    return { wish, card, targetVariant, renderUrl, owned, paths };
+  }),
+);
+const targetLabel = (row: (typeof rows)[number]) =>
+  row.targetVariant
+    ? `${row.targetVariant.name}`
+    : row.wish.target_material_key
+      ? displayFinish(row.wish.target_material_key, row.wish.target_material_key, row.wish.target_effect_key)
+      : "Any finish";
+---
+<PlayerLayout title="Wishlist · Foilbury">
+  <div class="border-b border-[var(--line)] pb-5">
+    <p class="eyebrow">Wishlist</p>
+    <div class="mt-2 flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <h2 class="display-sm text-4xl">What you are still looking for.</h2>
+        <p class="mt-2 max-w-3xl text-sm text-[var(--muted)]">A wish is a personal goal, not a queue and not a better odd. Each entry shows the exact finish you chose and the ordinary capsules that currently list it. Odds are still shown and committed in the draw room.</p>
+      </div>
+      <span class="badge">{rows.length} wanted</span>
+    </div>
+  </div>
+
+  {rows.length === 0 ? (
+    <div class="empty mt-6">
+      <div>
+        <p class="display-sm text-2xl">Nothing on the wishlist yet.</p>
+        <p class="mt-2 text-sm">Open a card you own and choose a finish, or browse your collection to add a subject.</p>
+        <div class="mt-4 flex justify-center gap-2"><a class="btn btn-primary btn-sm" href="/play/collection">Browse my cards</a><a class="btn btn-secondary btn-sm" href="/play/draw">Open a capsule</a></div>
+      </div>
+    </div>
+  ) : (
+    <ul class="mt-6 grid gap-3">
+      {rows.map((row) => (
+        <li class="grid gap-4 border border-[var(--line)] bg-[var(--paper)] p-4 sm:grid-cols-[110px_1fr_auto] sm:items-start">
+          <figure class="m-0">
+            {row.renderUrl ? <img class="w-full border border-[var(--line)]" src={row.renderUrl} alt={row.wish.name} width="750" height="1050" loading="lazy" /> : <div class="card-face-fallback">No published render</div>}
+          </figure>
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
+              <h3 class="display-sm text-2xl uppercase">{row.wish.name}</h3>
+              {row.owned?.subjects ? <span class="badge badge-signal">Subject owned</span> : <span class="badge">Not owned</span>}
+              {row.wish.target_variant_id && row.owned?.target ? <span class="badge badge-rare">Exact finish owned</span> : null}
+            </div>
+            <p class="mt-1 text-sm text-[var(--muted)]">Wanted: <strong>{targetLabel(row)}</strong>{row.card?.collections.length ? ` · ${row.card.collections.map((collection) => collection.name).join(" · ")}` : ""}</p>
+            {row.paths.length ? (
+              <div class="mt-3">
+                <p class="eyebrow">Ordinary acquisition paths</p>
+                <div class="mt-1 flex flex-wrap gap-2">
+                  {row.paths.map((path) => (
+                    <a class="badge hover:border-[var(--ink)]" href={`/play/draw?pool=${encodeURIComponent(path.slug)}`}>{path.name} · ✦ {path.price}</a>
+                  ))}
+                </div>
+                <p class="mt-1 text-xs text-[var(--muted)]">Listed does not always mean currently eligible: your collection preferences, channel policy and Bot availability are applied in the draw room.</p>
+              </div>
+            ) : (
+              <p class="mt-3 text-sm text-[var(--muted)]">No active capsule currently lists this target. Owning or trading for it remains a legitimate path; nothing here changes another member's odds.</p>
+            )}
+          </div>
+          <WishlistRemoveButton client:load cardId={row.wish.card_id} name={row.wish.name} />
+        </li>
+      ))}
+    </ul>
+  )}
+</PlayerLayout>

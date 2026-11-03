@@ -540,16 +540,26 @@ export async function createShareLink(
       captured_at: nowIso(),
     };
   } else if (kind === "wishlist") {
-    const wishes = await all<{ card_name: string; card_slug: string }>(
+    const wishes = await all<{ card_name: string; card_slug: string; target_material_key: string | null; target_effect_key: string | null; variant_name: string | null }>(
       ctx.db,
-      `SELECT cd.name AS card_name, cd.slug AS card_slug FROM fb_wishlists w
-         JOIN fb_card_definitions cd ON cd.id = w.card_id
+      `SELECT cd.name AS card_name, cd.slug AS card_slug, w.target_material_key, w.target_effect_key, v.name AS variant_name
+         FROM fb_wishlists w JOIN fb_card_definitions cd ON cd.id = w.card_id
+         LEFT JOIN fb_variants v ON v.id = w.target_variant_id
         WHERE w.tenant_id = ? AND w.user_id = ? ORDER BY cd.name LIMIT 100`,
       ctx.tenant.id,
       user.id,
     );
     audience = "member";
-    payload = { label: "Wishlist", items: wishes, audience, captured_at: nowIso() };
+    payload = {
+      label: "Wishlist",
+      items: wishes.map((wish) => ({
+        card_name: wish.card_name,
+        card_slug: wish.card_slug,
+        target: wish.variant_name ?? ([wish.target_material_key, wish.target_effect_key].filter(Boolean).join(" · ") || null),
+      })),
+      audience,
+      captured_at: nowIso(),
+    };
   } else if (kind === "profile") {
     const [counts, favourites, badges] = await Promise.all([
       first<{ cards: number; favourites: number }>(

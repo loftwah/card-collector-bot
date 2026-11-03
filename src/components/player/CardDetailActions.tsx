@@ -20,6 +20,8 @@ export default function CardDetailActions({
   initialFavourite,
   initialLocked,
   initialWishlist,
+  initialWishlistTarget = "",
+  wishlistVariants = [],
   reserved,
 }: {
   instanceId: string;
@@ -27,11 +29,14 @@ export default function CardDetailActions({
   initialFavourite: boolean;
   initialLocked: boolean;
   initialWishlist: boolean;
+  initialWishlistTarget?: string;
+  wishlistVariants?: Array<{ id: string; label: string }>;
   reserved: boolean;
 }) {
   const [favourite, setFavourite] = useState(initialFavourite);
   const [locked, setLocked] = useState(initialLocked);
   const [wishlist, setWishlist] = useState(initialWishlist);
+  const [wishlistTarget, setWishlistTarget] = useState(initialWishlistTarget);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -60,8 +65,8 @@ export default function CardDetailActions({
     const next = !wishlist;
     setWishlist(next);
     try {
-      await api(`/api/v1/wishlist`, { method: "POST", body: { cardId, wanted: next } });
-      setNotice(next ? "Added to your wishlist." : "Removed from your wishlist.");
+      await api(`/api/v1/wishlist`, { method: "POST", body: { cardId, wanted: next, targetVariantId: next && wishlistTarget ? wishlistTarget : null } });
+      setNotice(next ? (wishlistTarget ? "Wishlist saved with the exact finish you chose." : "Added to your wishlist for any finish.") : "Removed from your wishlist.");
     } catch (cause) {
       setWishlist(!next);
       setError(describeError(cause));
@@ -130,6 +135,27 @@ export default function CardDetailActions({
           <Bookmark size={15} fill={wishlist ? "currentColor" : "none"} className={cn(wishlist && "text-[var(--brass)]")} />
           {wishlist ? "Wishlisted" : "Wishlist"}
         </Button>
+        {wishlistVariants.length ? (
+          <label className="inline-flex items-center gap-1.5 text-xs text-[var(--muted)]">
+            <span className="sr-only">Wishlist finish</span>
+            <select
+              className="select h-8 text-xs"
+              value={wishlistTarget}
+              aria-label="Wishlist finish or edition"
+              onChange={(event) => {
+                const value = event.target.value;
+                setWishlistTarget(value);
+                if (!value || !wishlist) return;
+                void api(`/api/v1/wishlist`, { method: "POST", body: { cardId, wanted: true, targetVariantId: value } })
+                  .then(() => setNotice("Wishlist target updated to that exact finish."))
+                  .catch((cause) => setError(describeError(cause)));
+              }}
+            >
+              <option value="">Any finish</option>
+              {wishlistVariants.map((variant) => <option key={variant.id} value={variant.id}>{variant.label}</option>)}
+            </select>
+          </label>
+        ) : null}
         <Button variant="secondary" size="sm" onClick={toggleLock} disabled={Boolean(busy)} aria-pressed={locked}>
           {locked ? <Lock size={15} /> : <LockOpen size={15} />}
           {locked ? "Locked" : "Lock"}

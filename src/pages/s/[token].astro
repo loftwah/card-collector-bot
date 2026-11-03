@@ -63,7 +63,7 @@ const publicHref = currentPublic && collection ? `/cabinet?collection=${collecti
 
         {kind === "wishlist" ? (
           <ul class="mt-8 grid max-w-3xl gap-2 sm:grid-cols-2">
-            {(Array.isArray(payload.items) ? payload.items : []).map((item: { card_name?: string }) => <li class="border border-[var(--line)] px-3 py-2 text-sm">{item.card_name ?? "Wanted card"}</li>)}
+            {(Array.isArray(payload.items) ? payload.items : []).map((item: { card_name?: string; target?: string | null }) => <li class="border border-[var(--line)] px-3 py-2 text-sm">{item.card_name ?? "Wanted card"}{item.target ? <span class="block font-mono text-[0.58rem] uppercase tracking-[0.08em] text-[var(--muted)]">{item.target}</span> : null}</li>)}
           </ul>
         ) : null}
 

@@ -23,7 +23,8 @@ const set = sets.find(
   (item) => item.cards.some((card) => card.id === instance.card_id) && item.status === "published",
 );
 const wishlist = await getWishlist(ctx);
-const wished = wishlist.some((item) => item.card_id === instance.card_id);
+const wish = wishlist.find((item) => item.card_id === instance.card_id) ?? null;
+const wished = Boolean(wish);
 const cardCatalogue = await getCard(ctx, instance.card_slug).catch(() => null);
 const variantComparisons = cardCatalogue
   ? cardCatalogue.editions
@@ -200,6 +201,12 @@ const eventLabel: Record<string, string> = {
           initialFavourite={Boolean(instance.favourite)}
           initialLocked={Boolean(instance.locked)}
           initialWishlist={wished}
+          initialWishlistTarget={wish?.target_variant_id ?? ""}
+          wishlistVariants={(cardCatalogue?.editions ?? []).flatMap((edition) =>
+            edition.variants
+              .filter((variant) => variant.status === "published" && variant.render_url)
+              .map((variant) => ({ id: variant.id, label: `${edition.name} · ${variant.name}` })),
+          )}
           reserved={instance.status === "reserved"}
         />
       </div>

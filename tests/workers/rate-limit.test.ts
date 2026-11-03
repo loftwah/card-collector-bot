@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { bootstrap, ctxFor } from "./helpers";
-import { requestMagicLink } from "../../src/server/modules/magic-links";
+import { pruneRateLimits, requestMagicLink } from "../../src/server/modules/magic-links";
 import { trustedClientKey, type RuntimeConfig } from "../../src/server/context";
 import { newId } from "../../src/server/ids";
 
@@ -72,6 +72,23 @@ describe("auth abuse limits use a trusted bounded client identity", () => {
 
     const stored = await base.db.prepare("SELECT key FROM fb_rate_limits").all<{ key: string }>();
     for (const row of stored.results ?? []) expect(row.key).not.toContain("203.0.113.9");
+  });
+
+  it("bounds concurrent attempts and prunes expired buckets", async () => {
+    const ctx = await ctxFor("cabinet", "owner@foilbury.local");
+    const attempts = await Promise.allSettled(
+      Array.from({ length: 25 }, (_, index) =>
+        requestMagicLink({ ...ctx, clientKey: "concurrent-client", requestId: `ray-${index}` }, { email: `burst-${index}@example.com`, purpose: "signin" }),
+      ),
+    );
+    const allowed = attempts.filter((item) => item.status === "fulfilled").length;
+    const limited = attempts.filter((item) => item.status === "rejected" && (item.reason as { code?: string }).code === "rate_limited").length;
+    expect(allowed).toBe(20);
+    expect(limited).toBe(5);
+    await ctx.db.prepare("INSERT OR REPLACE INTO fb_rate_limits (key, window_start, count) VALUES ('expired:bucket', ?, 99)").bind(Math.floor(Date.now() / 1000) - 90000).run();
+    await pruneRateLimits(ctx.db);
+    const old = await ctx.db.prepare("SELECT key FROM fb_rate_limits WHERE key = 'expired:bucket'").first();
+    expect(old).toBeNull();
   });
 
   it("keeps local test traffic in one explicit local bucket regardless of spoofed headers", async () => {

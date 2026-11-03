@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-03T12:46:09.728Z",
+  "generated_at": "2026-11-03T13:08:28.638Z",
   "base_url": "http://localhost:5173",
   "results": [
     {
@@ -84,6 +84,11 @@
     },
     {
       "name": "light collection preferences: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light wishlist: axe + overflow",
       "status": "PASS",
       "detail": "0 total axe findings, none serious/critical"
     },
@@ -184,6 +189,11 @@
     },
     {
       "name": "dark collection preferences: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark wishlist: axe + overflow",
       "status": "PASS",
       "detail": "0 total axe findings, none serious/critical"
     },

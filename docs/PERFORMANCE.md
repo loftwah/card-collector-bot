@@ -43,3 +43,40 @@ Production Worker `821164fd-7590-42b7-8184-b91d9e21755b`, source
 Issue #3 remains open until a confirmed independent waterfall is removed with a
 comparable measurement and the permission, ordering, rate-limit and idempotency
 behaviour is preserved.
+
+## 2026-11-04 re-measurement after the backlog changes
+
+Same local scenario as the earlier report (headless Chromium, 1440×900,
+`pnpm perf:local`). The collection-preference, NPC and wishlist work did not add
+a request waterfall to the draw, catalogue or collection hot paths.
+
+| Route | TTFB | LCP | CLS | Images | Long tasks |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `/play` | 139 ms | 172 ms | 0.0001 | 963 KB | 0 |
+| `/play/collections` | 125 ms | 176 ms | 0.0001 | 620 KB | 0 |
+| `/play/collection` | 74 ms | 116 ms | 0.0000 | 1,361 KB | 0 |
+| `/play/draw` | 33 ms | 64 ms | 0.0000 | 0 KB | 0 |
+| `/play/achievements` | 34 ms | 72 ms | 0.0002 | 220 KB | 0 |
+| `/admin` | 34 ms | 60 ms | 0.0000 | 0 KB | 0 |
+| `/play/card/:id` | — | 76 ms | 0.0002 | 320 KB | 0 |
+
+Read-only production samples from the same host (three requests per route):
+home TTFB 0.25–0.96 s, `/cabinet` 0.22–0.32 s, `/cabinet/tux` 0.29–0.31 s.
+These are not field percentiles and do not describe the new source, which is not
+deployed. The draw preview now also returns the approved distribution
+fingerprint and collection labels; this is one response, not an extra request.
+
+Changes reviewed and dispositioned:
+
+- Collection preference filtering is evaluated inside the existing pool preview
+  query/hydration. No per-card extra query was introduced.
+- NPC actions call the same preview/draw path; they are bounded to one preview
+  and one draw per action, with no fan-out. Scheduled runs cap at ten NPCs per
+  Bot per cron invocation.
+- Wishlist pages are bounded to the member's own wishes and one pool lookup per
+  wish; the list is small by nature and is not on the draw hot path.
+- The public draw-preview payload regression was a contract omission, not a
+  performance change; it is covered by a route test.
+
+Remaining production measurement: deploy the reconciled source, then repeat the
+same scenarios against the built Worker and inspect sampled Cloudflare traces.

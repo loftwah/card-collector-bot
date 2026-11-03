@@ -17,6 +17,8 @@ export interface GiftInput {
   amount?: number;
   openings?: number;
   cardId?: string | null;
+  /** Optional exact published variant for a card gift. */
+  variantId?: string | null;
   message?: string | null;
   reason: string;
   idempotency: IdempotencyInput;
@@ -174,11 +176,22 @@ export async function sendAdminGift(ctx: Ctx, input: GiftInput) {
   if (replay) return { ...(replay.response as object), replayed: true };
   const recipients = await resolveRecipients(ctx, input, authority);
   if (!recipients.length) throw new ApiError(422, "recipients_required", "No eligible recipients were found.");
+  if (input.kind === "card" && input.variantId) {
+    const exact = await first<{ id: string }>(
+      ctx.db,
+      `SELECT v.id FROM fb_variants v JOIN fb_variant_renders vr ON vr.variant_id = v.id AND vr.status = 'published'
+        WHERE v.id = ? AND v.card_id = ? AND v.tenant_id = ? AND v.status = 'published' AND v.archived_at IS NULL`,
+      input.variantId,
+      input.cardId ?? "",
+      ctx.tenant.id,
+    );
+    if (!exact) throw new ApiError(422, "variant_invalid", "That exact finish is not a published variant of the gift card.");
+  }
   const { amount, openings } = validateAmount(ctx, input);
   const message = sanitizeMessage(input.message);
   const campaignId = newId("gftc");
   const now = nowIso();
-  const item = { amount, openings, card_id: input.cardId ?? null };
+  const item = { amount, openings, card_id: input.cardId ?? null, variant_id: input.variantId ?? null };
   const expected = recipients.length;
   const response = {
     campaign_id: campaignId,
@@ -306,7 +319,7 @@ async function deliverGiftAward(
   campaign: { id: string; kind: GiftKind; item_json: string; message: string | null; created_by: string },
   award: { id: string; tenant_id: string; user_id: string; kind: GiftKind; amount: number; card_id: string | null },
 ): Promise<{ ledgerId?: string; instanceId?: string; serial?: string; description: string; amount?: number }> {
-  const item = JSON.parse(campaign.item_json) as { amount?: number; openings?: number; card_id?: string | null };
+  const item = JSON.parse(campaign.item_json) as { amount?: number; openings?: number; card_id?: string | null; variant_id?: string | null };
   const idempotencyKey = `gift:${campaign.id}:${award.user_id}:${award.id}`;
   if (award.kind === "foil" || award.kind === "opening") {
     const pool = await first<{ price: number }>(
@@ -343,14 +356,23 @@ async function deliverGiftAward(
     ctx.tenant.id,
   );
   if (!card) throw new ApiError(422, "card_invalid", "The gift card is not published.");
-  const variant = await first<{ id: string; name: string }>(
-    ctx.db,
-    `SELECT v.id, v.name FROM fb_variants v
-       JOIN fb_variant_renders vr ON vr.variant_id = v.id AND vr.status = 'published'
-      WHERE v.card_id = ? AND v.status = 'published' AND v.archived_at IS NULL
-      ORDER BY CASE WHEN v.name LIKE '%Plain%' OR v.name LIKE '%Base%' THEN 0 ELSE 1 END, v.name LIMIT 1`,
-    card.id,
-  );
+  const variant = item.variant_id
+    ? await first<{ id: string; name: string }>(
+        ctx.db,
+        `SELECT v.id, v.name FROM fb_variants v
+           JOIN fb_variant_renders vr ON vr.variant_id = v.id AND vr.status = 'published'
+          WHERE v.id = ? AND v.card_id = ? AND v.status = 'published' AND v.archived_at IS NULL LIMIT 1`,
+        item.variant_id,
+        card.id,
+      )
+    : await first<{ id: string; name: string }>(
+        ctx.db,
+        `SELECT v.id, v.name FROM fb_variants v
+           JOIN fb_variant_renders vr ON vr.variant_id = v.id AND vr.status = 'published'
+          WHERE v.card_id = ? AND v.status = 'published' AND v.archived_at IS NULL
+          ORDER BY CASE WHEN v.name LIKE '%Plain%' OR v.name LIKE '%Base%' THEN 0 ELSE 1 END, v.name LIMIT 1`,
+        card.id,
+      );
   if (!variant) throw new ApiError(409, "card_unavailable", "The gift card has no published finish.");
   const existing = await first<{ id: string; serial: string }>(
     ctx.db,

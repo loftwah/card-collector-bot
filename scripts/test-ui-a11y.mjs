@@ -101,6 +101,9 @@ try {
     await page.goto("/play/preferences");
     await page.getByRole("heading", { name: /choose what can drop for you/i }).waitFor();
     await audit(page, `${scheme} collection preferences`, `ui-preferences-${scheme}.png`);
+    await page.goto("/play/wishlist");
+    await page.getByRole("heading", { name: /what you are still looking for/i }).waitFor();
+    await audit(page, `${scheme} wishlist`, `ui-wishlist-${scheme}.png`);
     await page.goto("/play/rivals");
     await page.getByRole("heading", { name: /the cabinet has regulars/i }).waitFor();
     await audit(page, `${scheme} NPC lounge`, `ui-rivals-${scheme}.png`);

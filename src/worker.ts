@@ -2,6 +2,7 @@ import handler, { createScheduledHandler, PluginBridge } from "@emdash-cms/cloud
 import { handleDiscordInteraction } from "./server/discord/handler";
 import type { DiscordEnv } from "./server/discord/types";
 import { runScheduledNpcProgression } from "./server/modules/npcs";
+import { pruneMagicLinks, pruneRateLimits } from "./server/modules/magic-links";
 
 export { PluginBridge };
 
@@ -22,6 +23,8 @@ export default {
     // logged and never block the editorial/scheduled-publication handler.
     try {
       const bindings = env as { DB: never; MEDIA: never };
+      await pruneRateLimits(bindings.DB);
+      await pruneMagicLinks(bindings.DB);
       await runScheduledNpcProgression(
         bindings.DB,
         bindings.MEDIA,
