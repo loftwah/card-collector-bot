@@ -48,6 +48,11 @@ Commands:
   catalogue publish <id>         Publish a card identity
   catalogue archive <id>         Remove a draft or archive a collectible
   catalogue merge <id> --into <id>  Merge a duplicate identity, preserving aliases
+  prints <card-id>               List print proposals, coverage and printed editions
+  print propose <card-id> --number --role --title --direction --source [--artwork --status]
+  print submit <proposal-id>
+  print review <proposal-id> --decision approve|reject [--note ...]
+  print link <proposal-id> --edition <edition-id>
   taxonomy list                  List classes, categories, tags, rarities, materials, effects
   taxonomy create --kind --key --name
   sets list                      List sets and completion versions
@@ -128,6 +133,50 @@ async function main() {
       return out(await apiJson(`/api/v1/admin/cards/${id}/merge`, { method: "POST", token, body: { targetId: flags.get("into") } }));
     }
     return fail("unknown catalogue command", 2);
+  }
+
+  if (command === "prints") {
+    if (!sub) fail("prints needs a card id", 2);
+    return out(await apiJson(`/api/v1/admin/cards/${sub}/prints`, { token }));
+  }
+  if (command === "print") {
+    if (sub === "propose") {
+      const cardId = rest[0];
+      if (!cardId) fail("print propose needs a card id", 2);
+      return out(await apiJson(`/api/v1/admin/cards/${cardId}/prints`, {
+        method: "POST",
+        token,
+        body: {
+          printNumber: flags.get("number"),
+          role: flags.get("role") ?? "portrait",
+          title: flags.get("title"),
+          creativeDirection: flags.get("direction"),
+          sourceAssetId: flags.get("source"),
+          artworkAssetId: flags.get("artwork") ?? null,
+          rightsNote: flags.get("rights") ?? "Original Foilbury character and composition.",
+          finishKeys: flags.get("finishes") ? String(flags.get("finishes")).split(",") : ["plain", "silver", "gold", "holographic"],
+          status: flags.get("status") ?? "draft",
+        },
+      }));
+    }
+    if (sub === "submit") {
+      const id = rest[0];
+      if (!id) fail("print submit needs a proposal id", 2);
+      return out(await apiJson(`/api/v1/admin/prints/${id}/submit`, { method: "POST", token, body: { note: flags.get("note") ?? "Submitted from the CLI." } }));
+    }
+    if (sub === "review") {
+      const id = rest[0];
+      const decision = flags.get("decision");
+      if (!id || !["approve", "reject"].includes(decision)) fail("print review needs an id and --decision approve|reject", 2);
+      return out(await apiJson(`/api/v1/admin/prints/${id}/review`, { method: "POST", token, body: { decision: decision === "approve" ? "approved" : "rejected", note: flags.get("note") ?? `CLI ${decision}.` } }));
+    }
+    if (sub === "link") {
+      const id = rest[0];
+      const edition = flags.get("edition");
+      if (!id || !edition) fail("print link needs a proposal id and --edition <edition-id>", 2);
+      return out(await apiJson(`/api/v1/admin/prints/${id}/link`, { method: "POST", token, body: { editionId: edition } }));
+    }
+    return fail("unknown print command", 2);
   }
 
   if (command === "taxonomy") {

@@ -32,6 +32,10 @@ pnpm foilbury whoami
 pnpm foilbury catalogue list
 pnpm foilbury catalogue merge <duplicate-id> --into <target-id>
 pnpm foilbury pools show cabinet-draw
+pnpm foilbury prints <card-id>
+pnpm foilbury print propose <card-id> --number 02 --role portrait --title "Signal Watch" --direction "..." --source <asset-id> --artwork <asset-id> --status proposed
+pnpm foilbury print review <proposal-id> --decision approve --note "Identity and provenance checked."
+pnpm foilbury print link <proposal-id> --edition <edition-id>
 pnpm foilbury generation plan --prompt "A restrained background plate" --count 1
 pnpm foilbury inventory --as player
 pnpm foilbury reward claim --as player
@@ -78,7 +82,7 @@ The MCP server is stdio-only. It does not expose an unauthenticated remote endpo
 }
 ```
 
-Tools include status, catalogue and taxonomy reads/writes, identity merging, imports, render queue, bounded generation planning, pools, inventory, wishlist, wallet, rewards, draws, trades, gifts, recycling, agent grants, global collection scoping, share links, catalogue publication, operations and local outbox processing. Generation submit deliberately refuses until a ceiling and verified adapter exist; no provider result is fabricated.
+Tools include status, catalogue and taxonomy reads/writes, print proposal/review/link, identity merging, imports, render queue, bounded generation planning, pools, inventory, wishlist, wallet, rewards, draws, trades, gifts, recycling, agent grants, global collection scoping, share links, catalogue publication, operations and local outbox processing. Generation submit deliberately refuses until a ceiling and verified adapter exist; no provider result is fabricated.
 
 ## Discord adapter
 

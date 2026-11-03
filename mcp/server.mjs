@@ -36,6 +36,27 @@ server.tool("foilbury_catalogue_list", "List the owner catalogue, including draf
   return apiJson(`/api/v1/admin/cards?${params}`, { token: token() });
 }));
 
+server.tool("foilbury_prints_list", "List print proposals and coverage for one subject. A print is a distinct artwork edition, not a finish.", { cardId: z.string().min(1).max(120) }, guarded(({ cardId }) => apiJson(`/api/v1/admin/cards/${cardId}/prints`, { token: token() })));
+
+server.tool("foilbury_print_propose", "Create a print proposal from an approved identity source and artwork asset. Approval and edition linking are separate.", {
+  cardId: z.string().min(1).max(120),
+  printNumber: z.string().min(1).max(8),
+  role: z.enum(["portrait", "action_scene", "alternate_art", "special_release", "ensemble", "location", "object", "other"]),
+  title: z.string().min(1).max(160),
+  creativeDirection: z.string().min(40).max(4000),
+  sourceAssetId: z.string().min(1).max(120),
+  artworkAssetId: z.string().min(1).max(120).nullable().optional(),
+  rightsNote: z.string().max(500).optional(),
+  finishKeys: z.array(z.enum(["plain", "silver", "gold", "holographic"])).max(4).optional(),
+  status: z.enum(["draft", "proposed"]).optional(),
+}, guarded(({ cardId, ...body }) => apiJson(`/api/v1/admin/cards/${cardId}/prints`, { method: "POST", token: token(), body })));
+
+server.tool("foilbury_print_submit", "Submit a draft print proposal for review.", { proposalId: z.string(), expectedRevision: z.number().int().positive().optional(), note: z.string().max(500).optional() }, guarded(({ proposalId, ...body }) => apiJson(`/api/v1/admin/prints/${proposalId}/submit`, { method: "POST", token: token(), body })));
+
+server.tool("foilbury_print_review", "Approve or reject a print proposal. An agent needs the explicit print:review scope; the decision is recorded as an agent decision.", { proposalId: z.string(), decision: z.enum(["approved", "rejected"]), note: z.string().max(1000).optional(), expectedRevision: z.number().int().positive().optional() }, guarded(({ proposalId, ...body }) => apiJson(`/api/v1/admin/prints/${proposalId}/review`, { method: "POST", token: token(), body })));
+
+server.tool("foilbury_print_link", "Link an approved print proposal to the artwork edition that uses the same approved artwork.", { proposalId: z.string(), editionId: z.string(), expectedRevision: z.number().int().positive().optional() }, guarded(({ proposalId, ...body }) => apiJson(`/api/v1/admin/prints/${proposalId}/link`, { method: "POST", token: token(), body })));
+
 server.tool("foilbury_content_create", "Create a draft card identity. It is not public until an artwork edition is published and the catalogue is released.", {
   slug: z.string().min(1).max(80),
   name: z.string().min(1).max(160),
