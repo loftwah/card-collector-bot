@@ -32,7 +32,8 @@ export async function requestMagicLink(
   await checkRateLimit(ctx.db, "magic:service", 120, 900);
 
   const account = await findUserByEmail(ctx.db, email);
-  if (account?.disabled_at) return { ok: true };
+  // Synthetic game actors have no mailbox and no human sign-in path.
+  if (account?.disabled_at || account?.is_synthetic) return { ok: true };
 
   const raw = token("fbm");
   const id = newId("ml");
@@ -210,6 +211,7 @@ export async function redeemMagicLink(
 
   const account = await findUserByEmail(ctx.db, row.email);
   if (account?.disabled_at) throw new ApiError(403, "account_disabled", "This account is disabled.");
+  if (account?.is_synthetic) throw new ApiError(403, "account_disabled", "Synthetic collectors cannot sign in.");
   const user = account
     ? { id: account.id, email: account.email, displayName: account.display_name }
     : await createEmailUser(ctx.db, { email: row.email });

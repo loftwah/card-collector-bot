@@ -171,6 +171,26 @@ import {
   joinMainAlbum,
   setMemberStatus,
 } from "../modules/membership";
+import {
+  compareNpc,
+  createNpc,
+  createNpcBatch,
+  getNpc,
+  getNpcAdminOverview,
+  listNpcActions,
+  listNpcPresets,
+  listNpcProfiles,
+  listNpcs,
+  playNpcOnce,
+  previewNpcAction,
+  requireNpcManager,
+  requireNpcRead,
+  runDueNpcs,
+  runNpcBatch,
+  setNpcLimits,
+  setNpcStatus,
+  updateNpc,
+} from "../modules/npcs";
 
 const idSchema = z.string().min(3).max(80);
 const cardBody = z.object({
@@ -785,6 +805,115 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     playerWrite(ctx);
     requireScope(ctx, "profile:write");
     return json(await revokeShareLink(ctx, segments[1]));
+  }
+
+  // Persistent synthetic NPC collectors. Human-readable lounge views are
+  // member-scoped; every mutation is Bot-scoped and capability-checked.
+  if (segments[0] === "npcs" && segments.length === 2 && segments[1] === "lounge" && method === "GET") {
+    requireNpcRead(ctx);
+    return json({ items: await listNpcProfiles(ctx) });
+  }
+  if (segments[0] === "npcs" && segments.length === 2 && segments[1] === "presets" && method === "GET") {
+    requireNpcManager(ctx);
+    return json({ items: await listNpcPresets() });
+  }
+  if (segments[0] === "npcs" && segments.length === 2 && segments[1] === "admin" && method === "GET") {
+    return json(await getNpcAdminOverview(ctx));
+  }
+  if (segments[0] === "npcs" && segments.length === 1 && method === "GET") {
+    requireNpcManager(ctx);
+    const items = await listNpcs(ctx);
+    return json({ items });
+  }
+  if (segments[0] === "npcs" && segments.length === 1 && method === "POST") {
+    requireNpcManager(ctx);
+    const body = await readJson(
+      request,
+      z.object({
+        name: z.string().min(2).max(80),
+        presetKey: z.string().min(2).max(60),
+        bio: z.string().max(500).optional(),
+        avatarUrl: z.string().max(500).nullable().optional(),
+        goalCollectionId: idSchema.nullable().optional(),
+        poolSlug: z.string().max(80).nullable().optional(),
+        startingBalance: z.number().int().min(0).max(10000).optional(),
+        scheduleEnabled: z.boolean().optional(),
+        intervalMinutes: z.number().int().min(15).max(10080).optional(),
+      }),
+    );
+    return json(await createNpc(ctx, body), 201);
+  }
+  if (segments[0] === "npcs" && segments.length === 2 && segments[1] === "batch" && method === "POST") {
+    requireNpcManager(ctx);
+    const body = await readJson(
+      request,
+      z.object({
+        presetKeys: z.array(z.string().min(2).max(60)).min(1).max(10),
+        prefix: z.string().max(50).optional(),
+        goalCollectionId: idSchema.nullable().optional(),
+      }),
+    );
+    return json({ items: await createNpcBatch(ctx, body) }, 201);
+  }
+  if (segments[0] === "npcs" && segments.length === 2 && segments[1] === "limits" && method === "PATCH") {
+    requireNpcManager(ctx);
+    const body = await readJson(
+      request,
+      z.object({
+        maxNpcs: z.number().int().min(0).max(100).optional(),
+        maxDrawsPerDay: z.number().int().min(0).max(500).optional(),
+        pausedAll: z.boolean().optional(),
+      }),
+    );
+    return json(await setNpcLimits(ctx, body));
+  }
+  if (segments[0] === "npcs" && segments.length === 2 && segments[1] === "run-scheduled" && method === "POST") {
+    requireNpcManager(ctx);
+    return json(await runDueNpcs(ctx.db, ctx));
+  }
+  if (segments[0] === "npcs" && segments[1] && segments.length >= 2) {
+    const npcId = segments[1];
+    if (segments.length === 2 && method === "GET") {
+      requireNpcRead(ctx);
+      return json((await getNpc(ctx, npcId)).summary);
+    }
+    if (segments.length === 2 && method === "PATCH") {
+      requireNpcManager(ctx);
+      const body = await readJson(
+        request,
+        z.object({
+          name: z.string().min(2).max(80).optional(),
+          bio: z.string().max(500).optional(),
+          avatarUrl: z.string().max(500).nullable().optional(),
+          presetKey: z.string().min(2).max(60).optional(),
+          goalCollectionId: idSchema.nullable().optional(),
+          poolSlug: z.string().max(80).nullable().optional(),
+          scheduleEnabled: z.boolean().optional(),
+          intervalMinutes: z.number().int().min(15).max(10080).optional(),
+        }),
+      );
+      return json(await updateNpc(ctx, npcId, body));
+    }
+    if (segments.length === 3 && segments[2] === "actions" && method === "GET") {
+      return json({ items: await listNpcActions(ctx, npcId) });
+    }
+    if (segments.length === 3 && segments[2] === "compare" && method === "GET") {
+      return json(await compareNpc(ctx, npcId));
+    }
+    if (segments.length === 3 && segments[2] === "preview" && method === "POST") {
+      return json(await previewNpcAction(ctx, npcId));
+    }
+    if (segments.length === 3 && segments[2] === "play" && method === "POST") {
+      const body = await readJson(request, z.object({ idempotencyKey: z.string().min(8).max(200).optional() }).optional());
+      return json(await playNpcOnce(ctx, npcId, body?.idempotencyKey));
+    }
+    if (segments.length === 3 && segments[2] === "run" && method === "POST") {
+      const body = await readJson(request, z.object({ count: z.number().int().min(1).max(10).default(1) }));
+      return json(await runNpcBatch(ctx, npcId, body.count));
+    }
+    if (segments.length === 3 && ["pause", "resume", "retire"].includes(segments[2] ?? "") && method === "POST") {
+      return json(await setNpcStatus(ctx, npcId, segments[2] === "pause" ? "paused" : segments[2] === "retire" ? "retired" : "active"));
+    }
   }
 
   // Content administration

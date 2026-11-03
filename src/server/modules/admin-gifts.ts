@@ -75,7 +75,7 @@ async function resolveRecipients(ctx: Ctx, input: GiftInput, authority: { botId:
          FROM fb_users u
          JOIN fb_memberships m ON m.user_id = u.id AND m.status = 'active' AND m.revoked_at IS NULL
          JOIN fb_tenants t ON t.id = m.tenant_id
-        WHERE u.id IN (${ids.map(() => "?").join(",")}) AND u.disabled_at IS NULL
+        WHERE u.id IN (${ids.map(() => "?").join(",")}) AND u.disabled_at IS NULL AND u.is_synthetic = 0
           AND (? = 0 OR m.tenant_id = ?)
         ORDER BY u.display_name`,
       ...ids,
@@ -94,7 +94,7 @@ async function resolveRecipients(ctx: Ctx, input: GiftInput, authority: { botId:
          FROM fb_memberships m
          JOIN fb_users u ON u.id = m.user_id AND u.disabled_at IS NULL
          JOIN fb_tenants t ON t.id = m.tenant_id
-        WHERE m.tenant_id = ? AND m.status = 'active' AND m.revoked_at IS NULL
+        WHERE m.tenant_id = ? AND m.status = 'active' AND m.revoked_at IS NULL AND u.is_synthetic = 0
         ORDER BY u.display_name LIMIT ?`,
       authority.tenantId,
       MAX_RECIPIENTS + 1,

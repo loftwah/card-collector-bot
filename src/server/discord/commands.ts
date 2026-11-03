@@ -16,6 +16,7 @@ import {
 } from "../modules/collections";
 import { executeDraw, getPoolPreview, listPools } from "../modules/pools";
 import { finishKey, listAchievements } from "../modules/achievements";
+import { compareNpc, listNpcProfiles } from "../modules/npcs";
 import { audienceRank, canViewCard, effectiveCardAudience } from "../modules/visibility";
 import { HELP_TEXT } from "./command-definitions";
 import { channelAudienceFor, isBotAdmin, requireBotAdmin } from "./context";
@@ -844,6 +845,75 @@ async function profile(ctx: Ctx, installation: DiscordInstallation): Promise<Dis
       components: components([
         [button("Daily", "foilbury:daily", 2), button("Collection", "foilbury:collection", 2)],
       ]),
+    },
+    true,
+  );
+}
+
+async function npcView(ctx: Ctx, query: string): Promise<DiscordCallback> {
+  const profiles = await listNpcProfiles(ctx);
+  if (profiles.length === 0) {
+    return callback(
+      {
+        embeds: [
+          {
+            title: "No NPC collectors are active",
+            description: "This Bot has no labelled synthetic collectors yet. A Bot Owner can create one in Studio → NPC collectors. Nothing is simulated in the meantime.",
+            color: 0x7c6b4f,
+            footer: { text: "Foilbury · NPC lounge" },
+          },
+        ],
+        components: components([[{ type: 2, style: 5, label: "Open Studio", url: absoluteUrl(ctx.config.publicOrigin, "/studio/npcs")! }]]),
+      },
+      true,
+    );
+  }
+  const needle = query.trim().toLowerCase();
+  const selected = needle
+    ? profiles.find((npc) => npc.id.toLowerCase() === needle || npc.slug.toLowerCase() === needle || npc.name.toLowerCase().includes(needle))
+    : null;
+  if (!selected) {
+    return callback(
+      {
+        embeds: [
+          {
+            title: "NPC collectors · synthetic cast",
+            description: "Clearly labelled fictional game actors with real persisted cards. They are not Discord members or human engagement.",
+            color: 0x7c6b4f,
+            fields: profiles.slice(0, 8).map((npc) => ({
+              name: `${npc.name} · ${npc.preset_label}`,
+              value: `${npc.status} · ${npc.subjects} subjects · ${npc.gold} Gold · ${npc.holographic} Holographic\n\`/foilbury npc name:${npc.slug}\``,
+              inline: false,
+            })),
+            footer: { text: "NPC · synthetic collector · not a human member" },
+          },
+        ],
+        components: components([[{ type: 2, style: 5, label: "Open the NPC lounge", url: absoluteUrl(ctx.config.publicOrigin, "/play/rivals")! }]]),
+      },
+      true,
+    );
+  }
+  const comparison = await compareNpc(ctx, selected.id);
+  return callback(
+    {
+      embeds: [
+        {
+          title: `${selected.name} · NPC`,
+          description: selected.bio,
+          color: 0x00c8b8,
+          thumbnail: selected.avatar_url ? { url: absoluteUrl(ctx.config.publicOrigin, selected.avatar_url) ?? selected.avatar_url } : undefined,
+          fields: [
+            { name: "Preset", value: selected.preset_label, inline: true },
+            { name: "Status", value: selected.status, inline: true },
+            { name: "Recorded actions", value: String(selected.actions_count), inline: true },
+            { name: "NPC album", value: `${selected.subjects} subjects · ${selected.cards} copies\n${selected.gold} Gold · ${selected.holographic} Holographic`, inline: true },
+            { name: "Your album", value: `${comparison.viewer.subjects} subjects · ${comparison.viewer.cards} copies\n${comparison.viewer.gold} Gold · ${comparison.viewer.holographic} Holographic`, inline: true },
+            { name: "Honesty", value: "NPC · synthetic collector. Real draws, serials and ledger entries; never a human member or fabricated testimonial.", inline: false },
+          ],
+          footer: { text: "Foilbury · on-demand NPC inspection" },
+        },
+      ],
+      components: components([[{ type: 2, style: 5, label: "Compare in the lounge", url: absoluteUrl(ctx.config.publicOrigin, "/play/rivals")! }]]),
     },
     true,
   );
@@ -2059,6 +2129,8 @@ export async function runCommand(
       return tour(ctx, installation, "welcome", interaction.channel_id);
     case "profile":
       return profile(ctx, installation);
+    case "npc":
+      return npcView(ctx, typeof values.name === "string" ? values.name : "");
     case "help":
       return help(ctx);
     case "admin:status":

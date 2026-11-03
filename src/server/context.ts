@@ -42,6 +42,8 @@ export interface CurrentUser {
   platformRoles?: string[];
   /** Present only for an active global_collection_admin assignment. */
   globalCollectionScope?: GlobalCollectionScope | null;
+  /** True only for an explicitly synthetic game actor. Never a login identity. */
+  synthetic?: boolean;
 }
 
 export interface Actor {

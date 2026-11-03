@@ -16,6 +16,7 @@ export async function createTrade(
   },
 ) {
   const user = ctx.user!;
+  if (user.synthetic) throw new ApiError(403, "synthetic_transfer_blocked", "NPC collectors cannot trade with human members.");
   if (!input.recipientId && !input.recipientEmail) {
     throw new ApiError(422, "recipient_required", "Choose the member who receives this offer.");
   }
@@ -23,14 +24,14 @@ export async function createTrade(
     ? await first<{ id: string; display_name: string; email: string }>(
         ctx.db,
         `SELECT u.id, u.display_name, u.email FROM fb_users u JOIN fb_memberships m ON m.user_id = u.id
-          WHERE u.id = ? AND m.tenant_id = ? AND m.status = 'active' AND u.disabled_at IS NULL`,
+          WHERE u.id = ? AND m.tenant_id = ? AND m.status = 'active' AND u.disabled_at IS NULL AND u.is_synthetic = 0`,
         input.recipientId,
         ctx.tenant.id,
       )
     : await first<{ id: string; display_name: string; email: string }>(
         ctx.db,
         `SELECT u.id, u.display_name, u.email FROM fb_users u JOIN fb_memberships m ON m.user_id = u.id
-          WHERE u.email = ? AND m.tenant_id = ? AND m.status = 'active' AND u.disabled_at IS NULL`,
+          WHERE u.email = ? AND m.tenant_id = ? AND m.status = 'active' AND u.disabled_at IS NULL AND u.is_synthetic = 0`,
         input.recipientEmail!.trim().toLowerCase(),
         ctx.tenant.id,
       );
@@ -296,9 +297,10 @@ export async function createGift(
   input: { recipientEmail: string; instanceId: string; idempotencyKey: string; note?: string },
 ) {
   const user = ctx.user!;
+  if (user.synthetic) throw new ApiError(403, "synthetic_transfer_blocked", "NPC collectors cannot gift cards to human members.");
   const recipient = await first<{ id: string }>(
     ctx.db,
-    `SELECT u.id FROM fb_users u JOIN fb_memberships m ON m.user_id = u.id WHERE u.email = ? AND m.tenant_id = ?`,
+    `SELECT u.id FROM fb_users u JOIN fb_memberships m ON m.user_id = u.id WHERE u.email = ? AND m.tenant_id = ? AND u.is_synthetic = 0`,
     input.recipientEmail.trim().toLowerCase(),
     ctx.tenant.id,
   );

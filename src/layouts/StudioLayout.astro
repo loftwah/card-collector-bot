@@ -21,6 +21,7 @@ const groups = [
           ]
         : []),
       ...(isBotAdmin ? [{ href: "/studio/team", label: "Team & invitations" }] : []),
+      ...(isBotAdmin ? [{ href: "/studio/npcs", label: "NPC collectors" }] : []),
       ...(isGlobalCollectionAdmin ? [{ href: "/studio/access", label: "Your access" }] : []),
     ],
   },

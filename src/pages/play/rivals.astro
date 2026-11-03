@@ -1,0 +1,82 @@
+---
+import PlayerLayout from "../../layouts/PlayerLayout.astro";
+import { pageContext } from "../../server/page";
+import { compareNpc, listNpcProfiles } from "../../server/modules/npcs";
+import { first } from "../../server/db";
+
+const ctx = await pageContext(Astro.request);
+const user = ctx.user!;
+const profiles = await listNpcProfiles(ctx);
+const comparisons = await Promise.all(profiles.map(async (npc) => compareNpc(ctx, npc.id)));
+const viewer = comparisons[0]?.viewer ?? { display_name: user.displayName, subjects: 0, gold: 0, holographic: 0, cards: 0 };
+const viewerCards = await first<{ cards: number }>(
+  ctx.db,
+  "SELECT COUNT(*) AS cards FROM fb_card_instances WHERE tenant_id = ? AND user_id = ? AND status IN ('owned','reserved')",
+  ctx.tenant.id,
+  user.id,
+);
+---
+<PlayerLayout title="NPC rivals · Foilbury">
+  <div class="border-b border-[var(--line)] pb-5">
+    <p class="eyebrow">NPC lounge · synthetic collectors</p>
+    <h2 class="display-sm mt-1 text-4xl">The cabinet has regulars.</h2>
+    <p class="mt-2 max-w-3xl text-sm text-[var(--muted)]">These are fictional NPC collectors with real persisted draws, serials and achievements in this Bot. They are not human members, Discord users or engagement metrics. Compare their genuinely recorded albums with yours.</p>
+  </div>
+
+  <section class="mt-6 grid gap-3 sm:grid-cols-4">
+    <div class="studio-stat"><p class="studio-stat__label">Your subjects</p><p class="studio-stat__value">{viewer.subjects}</p></div>
+    <div class="studio-stat"><p class="studio-stat__label">Your copies</p><p class="studio-stat__value">{viewerCards?.cards ?? 0}</p></div>
+    <div class="studio-stat"><p class="studio-stat__label">Your Gold</p><p class="studio-stat__value">{viewer.gold}</p></div>
+    <div class="studio-stat"><p class="studio-stat__label">Your Holographic</p><p class="studio-stat__value">{viewer.holographic}</p></div>
+  </section>
+
+  {comparisons.length === 0 ? (
+    <div class="empty mt-6"><div><p class="display-sm text-2xl">No NPC collectors are active in this Bot.</p><p class="mt-2 text-sm">A Bot Owner can create one from Studio → NPC collectors. Nothing here is simulated when no NPC exists.</p></div></div>
+  ) : (
+    <section class="mt-7 grid gap-4 md:grid-cols-2">
+      {comparisons.map(({ npc, npc_cards }) => {
+        const subjectMax = Math.max(1, npc.subjects, viewer.subjects);
+        const goldMax = Math.max(1, npc.gold, viewer.gold);
+        const holoMax = Math.max(1, npc.holographic, viewer.holographic);
+        return (
+          <article class="border border-[var(--line)] bg-[var(--paper)] p-5">
+            <div class="flex items-start gap-4">
+              {npc.avatar_url ? <img src={npc.avatar_url} alt="" width="64" height="64" class="h-16 w-16 border border-[var(--line)] object-cover" loading="lazy" /> : <span class="grid h-16 w-16 place-items-center bg-[var(--ink)] font-display text-2xl text-[var(--paper)]" aria-hidden="true">{npc.name.slice(0, 2).toUpperCase()}</span>}
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2"><h3 class="display-sm text-2xl uppercase">{npc.name}</h3><span class="badge badge-signal">NPC</span><span class="badge">{npc.status}</span></div>
+                <p class="mt-0.5 text-xs text-[var(--muted)]">{npc.preset_label} · {npc.actions_count} recorded actions</p>
+                <p class="mt-2 text-sm text-[var(--muted)]">{npc.bio}</p>
+              </div>
+            </div>
+            <dl class="mt-4 grid gap-2 text-xs">
+              {[
+                ["Subjects", npc.subjects, viewer.subjects, subjectMax],
+                ["Gold", npc.gold, viewer.gold, goldMax],
+                ["Holographic", npc.holographic, viewer.holographic, holoMax],
+              ].map(([label, npcValue, viewerValue, max]) => (
+                <div>
+                  <div class="flex items-center justify-between"><dt>{label}</dt><dd class="font-mono">NPC {npcValue} · You {viewerValue}</dd></div>
+                  <div class="mt-1 grid grid-cols-2 gap-1" aria-hidden="true">
+                    <div class="h-1.5 bg-[var(--paper-3)]"><div class="h-full bg-[var(--teal)]" style={`width:${Math.round((Number(npcValue) / Number(max)) * 100)}%`}></div></div>
+                    <div class="h-1.5 bg-[var(--paper-3)]"><div class="h-full bg-[var(--signal)]" style={`width:${Math.round((Number(viewerValue) / Number(max)) * 100)}%`}></div></div>
+                  </div>
+                </div>
+              ))}
+            </dl>
+            {npc_cards.length ? (
+              <div class="mt-4 grid grid-cols-3 gap-2">
+                {npc_cards.slice(0, 3).map((card) => (
+                  <div>
+                    {card.render_url ? <img src={card.render_url} alt={`${card.card_name} — ${card.variant_name}`} class="w-full border border-[var(--line)]" width="750" height="1050" loading="lazy" /> : <div class="card-face-fallback">No render</div>}
+                    <p class="mt-1 truncate text-[0.68rem] font-semibold">{card.card_name}</p>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <p class="mt-3 font-mono text-[0.55rem] uppercase tracking-[0.08em] text-[var(--muted)]">Synthetic history · never a human testimonial</p>
+          </article>
+        );
+      })}
+    </section>
+  )}
+</PlayerLayout>

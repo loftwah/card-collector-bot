@@ -1,0 +1,16 @@
+---
+import StudioLayout from "../../layouts/StudioLayout.astro";
+import NpcStudio from "../../components/admin/NpcStudio";
+---
+<StudioLayout>
+  <div class="studio-rule">
+    <div>
+      <h2 class="display-sm text-4xl uppercase">NPC collectors.</h2>
+      <p class="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--muted)]">Create and control persistent synthetic collectors on this Bot. They use the same wallets, pools, odds, serials and achievements as human members, and every action is labelled and reversible by pause or retirement.</p>
+    </div>
+    <span class="studio-stamp">Bot-scoped</span>
+  </div>
+  <div class="mt-7">
+    <NpcStudio client:load />
+  </div>
+</StudioLayout>

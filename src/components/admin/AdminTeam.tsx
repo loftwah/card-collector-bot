@@ -13,6 +13,7 @@ const CAPABILITIES = [
   { key: "inventory", label: "Inspect inventory" },
   { key: "members", label: "Invite and revoke admins" },
   { key: "settings", label: "Bot settings" },
+  { key: "npc.manage", label: "Manage NPC collectors" },
 ];
 
 interface TeamData {

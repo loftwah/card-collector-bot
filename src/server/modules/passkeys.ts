@@ -135,7 +135,7 @@ export async function authenticationOptions(ctx: Ctx, request: Request, email?: 
   let allowCredentials: { id: string; transports?: string[] }[] = [];
   let userId: string | null = null;
   if (email) {
-    const row = await first<{ id: string }>(ctx.db, "SELECT id FROM fb_users WHERE email = ? AND disabled_at IS NULL", email.trim().toLowerCase());
+    const row = await first<{ id: string }>(ctx.db, "SELECT id FROM fb_users WHERE email = ? AND disabled_at IS NULL AND is_synthetic = 0", email.trim().toLowerCase());
     if (row) {
       userId = row.id;
       const credentials = await all<{ credential_id: string; transports_json: string }>(

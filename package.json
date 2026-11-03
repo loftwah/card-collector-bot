@@ -72,7 +72,10 @@
     "perf:local": "node scripts/measure-product-performance.mjs",
     "plan:rerender": "node scripts/production-rerender-plan.mjs",
     "content:derivatives": "node scripts/content/backfill-derivatives.mjs",
-    "test:editorial:emdash": "node scripts/test-emdash-editorial.mjs"
+    "test:editorial:emdash": "node scripts/test-emdash-editorial.mjs",
+    "demo:npcs": "node scripts/demo-npcs.mjs",
+    "test:npc": "vitest run --config vitest.workers.config.ts tests/workers/npc.test.ts",
+    "test:npc:ui": "node scripts/test-npc-e2e.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "14.4.3",

@@ -24,6 +24,8 @@ export const ALL_SCOPES = [
   "recycle:write",
   "settings:write",
   "ops:read",
+  "npc:read",
+  "npc:write",
 ] as const;
 
 export type Scope = (typeof ALL_SCOPES)[number];
@@ -88,10 +90,11 @@ export async function findUserByEmail(
   display_name: string;
   email_verified_at: string | null;
   disabled_at: string | null;
+  is_synthetic: number;
 } | null> {
   return first(
     db,
-    "SELECT id, email, display_name, email_verified_at, disabled_at FROM fb_users WHERE email = ?",
+    "SELECT id, email, display_name, email_verified_at, disabled_at, is_synthetic FROM fb_users WHERE email = ?",
     email.trim().toLowerCase(),
   );
 }
@@ -135,7 +138,7 @@ export async function markEmailVerified(db: D1Database, userId: string): Promise
 }
 
 const DEFAULT_CAPABILITIES: Record<Role, string[]> = {
-  owner: ["content", "publish", "economy", "members", "settings", "inventory", "grants"],
+  owner: ["content", "publish", "economy", "members", "settings", "inventory", "grants", "npc.manage"],
   editor: ["content", "publish", "members"],
   economy_admin: ["economy", "inventory", "grants"],
   player: [],
@@ -211,15 +214,16 @@ export async function login(
     capabilities_json: string | null;
     role: Role;
     disabled_at: string | null;
+    is_synthetic: number;
   }>(
     db,
-    `SELECT u.id, u.email, u.display_name, u.password_hash, u.platform_admin, u.email_verified_at, u.disabled_at, m.role, m.capabilities_json
+    `SELECT u.id, u.email, u.display_name, u.password_hash, u.platform_admin, u.email_verified_at, u.disabled_at, u.is_synthetic, m.role, m.capabilities_json
        FROM fb_users u JOIN fb_memberships m ON m.user_id = u.id
       WHERE u.email = ? AND m.tenant_id = ?`,
     email.trim().toLowerCase(),
     tenant.id,
   );
-  if (!row || row.disabled_at)
+  if (!row || row.disabled_at || row.is_synthetic)
     throw new ApiError(401, "invalid_credentials", "Email or password is incorrect.");
   const valid = await verifyPassword(password, row.password_hash);
   if (!valid) throw new ApiError(401, "invalid_credentials", "Email or password is incorrect.");

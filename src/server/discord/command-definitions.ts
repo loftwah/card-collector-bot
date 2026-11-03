@@ -25,6 +25,12 @@ export const DISCORD_COMMANDS = [
       { type: 1, name: "achievements", description: "View your achievements and next milestones" },
       { type: 1, name: "tour", description: "Start the guided Foilbury tour" },
       { type: 1, name: "profile", description: "View your player profile" },
+      {
+        type: 1,
+        name: "npc",
+        description: "Inspect a labelled NPC collector",
+        options: [{ type: 3, name: "name", description: "NPC name or slug; omit to list the cast", required: false }],
+      },
       { type: 1, name: "help", description: "Explain Foilbury commands and next steps" },
       {
         type: 2,
@@ -101,6 +107,7 @@ export const HELP_TEXT = [
   "`/foilbury achievements` — see earned badges and what is close",
   "`/foilbury tour` — run the guided welcome, album, opening and sharing tour",
   "`/foilbury profile` — see your balance and daily status",
+  "`/foilbury npc [name]` — inspect a labelled NPC collector and compare progress",
   "",
   "Admin commands: `/foilbury admin status|settings|pools|enable|disable|grant`.",
   "Admin commands require a Bot Owner or Bot Admin Foilbury account; server moderator is not platform authority.",

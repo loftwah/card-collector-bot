@@ -1,0 +1,56 @@
+{
+  "generated_at": "2026-11-03T12:36:20.711Z",
+  "base_url": "http://localhost:5173",
+  "results": [
+    {
+      "name": "created a Bot-scoped NPC through the real Studio UI",
+      "status": "PASS",
+      "detail": "Acceptance NPC 1793709353788"
+    },
+    {
+      "name": "previewed the next bounded action before spending",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "played one real draw through the shared economy",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "persisted receipt shows the real card, serial and balance",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "pause and resume are real status transitions",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "edited the NPC profile without changing its real history",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "cloned the NPC into a separate wallet-backed collector",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "member-facing NPC lounge shows the labelled synthetic profile and comparison",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "no unexpected console errors",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "temporary NPC fixture cleaned up",
+      "status": "PASS",
+      "detail": "2 row(s)"
+    }
+  ]
+}
