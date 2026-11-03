@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "environment": "production",
-  "generated_at": "2026-11-03T17:48:16.236Z",
+  "generated_at": "2026-11-03T17:53:46.078Z",
   "source_tree_hash": "f47f72f82ea8c5fc6933b3846ba1665e651abaf7324f2ca47e73f511633bec3f",
   "source_sha": "b4bfef0bd1a56d45cc47ef072b9b059da190d6a5",
   "checks": [
@@ -42,6 +42,25 @@
     }
   ],
   "criteria": [
+    {
+      "id": "release.deployed-identity",
+      "issue": [
+        19,
+        22,
+        24,
+        31,
+        32,
+        33,
+        34,
+        35
+      ],
+      "required": true,
+      "result": "pass",
+      "test_command": "pnpm test:deployed",
+      "tested_tree_hash": "f47f72f82ea8c5fc6933b3846ba1665e651abaf7324f2ca47e73f511633bec3f",
+      "evidence": "Production Worker bb44505d-4eab-4166-919b-83f4e4524d91 from source 8df3051; x-foilbury-build=8df3051; read-only smoke 15/15 PASS; D1 migrations 0024/0025 applied after JSON backup d1-2026-11-03T17-51-08-952Z.json; schema read-back confirms receipt_json, delivery_visibility, self_grants_enabled, grant_limit and capability_revision.",
+      "residual": "Real client invocation and independent spectator observation remain the live interaction layer."
+    },
     {
       "id": "discord.deferred-private",
       "issue": [
