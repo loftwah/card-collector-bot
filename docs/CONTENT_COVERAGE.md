@@ -14,11 +14,17 @@ sanitised coverage and review tracker. Every row is members-only at launch.
 - Card text, serials, labels, statistics and the collection frame remain
   programmatic Foilbury design. The sourced image is the subject layer; it is
   not presented as an official Foilbury illustration.
-- Production catalogue release **4**; Worker `17e140dc-9652-43cb-9d13-abbdcff9c396`.
+- Production catalogue release **4**; Worker `fd09faba-16f2-4fc2-82eb-b85e5fdf3e91`.
   Production holds 21 collections, 156 cards, 640 variants, 640 published
-  renders, 45 active achievements and 21 active pools. All **560/560 launch
-  variants** have a render whose source hash matches the current edition; there
-  are **0 placeholder subjects** and **0 duplicate launch editions**.
+  renders, 560 published launch backs, 45 active achievements and 21 active
+  pools. All **560/560 launch variants** have a render whose source hash matches
+  the current edition; there are **0 placeholder subjects** and **0 duplicate
+  launch editions**. Card backs use the collection monogram, not character
+  initials.
+- A repeatable walkthrough is available with `pnpm demo` / `pnpm demo:show`.
+  It covers 26 public, member, inspection, draw, achievement, gift, security,
+  admin, privacy and mobile stages and writes a private storyboard. See
+  `docs/DEMO.md`.
 - Existing Loftwah public showcase content and Dean's inventory/ledger remain
   separate. The corrective import did not change the 10 owned instances, 19
   ledger rows or 1,880 Foil total recorded before the pass.

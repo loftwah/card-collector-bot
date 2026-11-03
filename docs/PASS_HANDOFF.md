@@ -248,17 +248,24 @@ SHA-256 `08ea0ebe8927a02547a5ac9a1705066bc4c762e1df1ed30773506281c537cb31`).
 
 - D1 migrations `0010_render_source_hash.sql`, `0011_achievement_roster_snapshots.sql`
   and `0012_achievement_roster_snapshots_unique.sql` applied after the backup.
-- Worker: `17e140dc-9652-43cb-9d13-abbdcff9c396` (final; the content import ran on
-  the preceding `f7d76d03-55ad-417a-9618-8f2ca0d45041` and the final deploy added
-  the roster-aware achievement evaluation).
+- Worker: `fd09faba-16f2-4fc2-82eb-b85e5fdf3e91` (final; the content import ran
+  on `f7d76d03-55ad-417a-9618-8f2ca0d45041`, later deploys added the roster-aware
+  achievement evaluation, Discord attachment/link fixes and the collection-filter
+  fix).
 - Content import: 640 render jobs, **640 rendered / 0 failed**; catalogue release
   **4**.
 - Production counts: 21 collections, 156 cards, 159 editions (the 3 pre-existing
   public-showcase duplicates remain), 640 variants, 640 published renders, 45
   active achievements, 21 active pools.
 - Launch coverage: **560/560** variants have a render bound to the current
-  edition source hash; **0** placeholder subjects; **0** duplicate launch
-  editions; **140/140** sourced credits.
+  edition source hash; **560/560** published back renders; **0** placeholder
+  subjects; **0** duplicate launch editions; **140/140** sourced credits.
+- Card backs now use the **collection monogram** (for example `DR` for
+  Danganronpa), never the character initials. Hajime's old `HH` badge is gone
+  from both sides.
+- Repeatable demo: `pnpm demo` / `pnpm demo:show` runs a 26-stage walkthrough
+  and writes a private storyboard under `.foilbury/demo/latest/index.html`.
+  See `docs/DEMO.md`.
 - Ledger/inventory baseline preserved by the corrective import: 10 instances
   (10 owned), 19 ledger rows, 1,880 Foil total.
 - Temporary production agent grant and Access service token were revoked/removed

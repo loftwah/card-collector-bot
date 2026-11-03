@@ -1,7 +1,7 @@
 {
   "generated_at": "2026-11-03T00:30:00Z",
   "source_commit": "31f9148",
-  "worker_version": "a3c55bc4-008d-4a76-ada0-ebc9c3c1025d",
+  "worker_version": "fd09faba-16f2-4fc2-82eb-b85e5fdf3e91",
   "content_import_worker": "f7d76d03-55ad-417a-9618-8f2ca0d45041",
   "migrations": [
     "0010_render_source_hash.sql",
@@ -47,8 +47,18 @@
     "catalogue_release": 4,
     "launch_variants": 560,
     "launch_renders_current_source": 560,
+    "launch_back_renders": 560,
+    "back_badge": "collection monogram (no character initials)",
     "placeholder_subjects": 0,
     "duplicate_launch_editions": 0
+  },
+  "demo": {
+    "command": "pnpm demo / pnpm demo:show",
+    "stages": 26,
+    "layout_warnings": 0,
+    "console_errors": 0,
+    "storyboard": ".foilbury/demo/latest/index.html (private)",
+    "docs": "docs/DEMO.md"
   },
   "art_sourcing": {
     "launch_cards": 140,
