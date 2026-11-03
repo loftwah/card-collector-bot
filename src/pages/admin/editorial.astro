@@ -27,7 +27,7 @@ try {
         <div><p class="eyebrow">Recent journal entries · read-only</p><p class="mt-1 text-sm text-[var(--muted)]">Read from EmDash on the same D1 database. This is a handoff, not a second CMS.</p></div>
         <a class="btn btn-primary btn-sm" href="/_emdash/admin" target="_blank" rel="noreferrer">Open EmDash admin ↗</a>
       </div>
-      {offline ? <div class="empty mt-4"><p>The editorial database is not available yet. Core gameplay is unaffected. Finish EmDash setup or use the local dev bypass.</p></div> : null}
+      {offline ? <div class="empty mt-4"><p>The editorial database is unavailable. Core gameplay is unaffected. Open the EmDash console with an authorised operator account; this page never substitutes placeholder journal entries.</p></div> : null}
       <div class="mt-4 grid gap-3">
         {posts.map((post) => (
           <article class="border-b border-[var(--line)] pb-3 last:border-0">
@@ -46,12 +46,12 @@ try {
         <p class="mt-3 font-mono text-[0.58rem] uppercase tracking-[0.1em] text-[var(--muted)]">Boundary: docs/EMDASH_BOUNDARY.md</p>
       </div>
       <div class="surface-flat p-5">
-        <p class="eyebrow">Release sequence</p>
+        <p class="eyebrow">Editorial release sequence</p>
         <ol class="mt-2 grid gap-2 text-sm text-[var(--muted)]">
-          <li>1. Author and review editorial content.</li>
-          <li>2. Validate catalogue references and recipe versions.</li>
-          <li>3. Render missing variants locally.</li>
-          <li>4. Activate one immutable catalogue release.</li>
+          <li>1. Author and save a draft in EmDash.</li>
+          <li>2. Use the authorised EmDash preview to check blocks and media.</li>
+          <li>3. Publish or schedule that entry in EmDash.</li>
+          <li>4. Read the public entry at <a class="underline" href="/journal">/journal</a>, then revise or unpublish there.</li>
         </ol>
       </div>
       <div class="notice">

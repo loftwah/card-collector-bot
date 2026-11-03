@@ -1,0 +1,51 @@
+{
+  "generated_at": "2026-11-03T12:21:30.526Z",
+  "base_url": "http://localhost:5173",
+  "results": [
+    {
+      "name": "temporary local EmDash operator session",
+      "status": "PASS",
+      "detail": "dev@emdash.local"
+    },
+    {
+      "name": "authored a rich draft through the native CMS API",
+      "status": "PASS",
+      "detail": "01M6GNPTKYADP27VK765BHFJF4"
+    },
+    {
+      "name": "draft is not public before publication",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "published entry renders supported blocks faithfully",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "browser rendered and decoded the published media",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "revision reached the public page",
+      "status": "PASS",
+      "detail": "NDoyMDI2LTExLTAzVDEyOjIxOjI2LjczOVo="
+    },
+    {
+      "name": "supported scheduled publication is stored and not yet public",
+      "status": "PASS",
+      "detail": "2026-11-03T13:21:27.161Z"
+    },
+    {
+      "name": "unpublish removes the public entry",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "acceptance entries removed from the local CMS",
+      "status": "PASS",
+      "detail": ""
+    }
+  ]
+}

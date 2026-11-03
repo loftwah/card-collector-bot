@@ -71,7 +71,8 @@
     "test:artwork": "node scripts/test-artwork-editor.mjs",
     "perf:local": "node scripts/measure-product-performance.mjs",
     "plan:rerender": "node scripts/production-rerender-plan.mjs",
-    "content:derivatives": "node scripts/content/backfill-derivatives.mjs"
+    "content:derivatives": "node scripts/content/backfill-derivatives.mjs",
+    "test:editorial:emdash": "node scripts/test-emdash-editorial.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "14.4.3",
