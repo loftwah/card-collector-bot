@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, Eye, EyeOff, Sparkles } from "lucide-react";
 import { api, describeError, idempotencyKey } from "@/lib/client";
 import { Button } from "../ui/button";
@@ -65,7 +65,8 @@ interface DrawResult {
 export default function DrawStudio({ pools, initialBalance }: { pools: PoolSummary[]; initialBalance: number }) {
   const [slug, setSlug] = useState(pools[0]?.slug ?? "");
   const [channel, setChannel] = useState("");
-  const [preview, setPreview] = useState<Preview | null>(null);
+  const [loadedPreview, setPreview] = useState<Preview | null>(null);
+  const previewRequest = useRef(0);
   const [loading, setLoading] = useState(false);
   const [drawing, setDrawing] = useState(false);
   const [error, setError] = useState("");
@@ -74,28 +75,44 @@ export default function DrawStudio({ pools, initialBalance }: { pools: PoolSumma
   const [balance, setBalance] = useState(initialBalance);
   const [pendingKey, setPendingKey] = useState(idempotencyKey("draw"));
 
+  // A selection changes before its effect starts the next request. Never show
+  // or draw against odds from a different capsule or community filter.
+  const preview = loadedPreview?.pool.slug === slug && (loadedPreview.filters.channel_key ?? "") === channel
+    ? loadedPreview
+    : null;
   const insufficient = preview ? balance < preview.price : false;
   const empty = preview ? preview.eligible_count === 0 : false;
-  const blocked = !preview || empty || insufficient || drawing;
+  const blocked = loading || !preview || empty || insufficient || drawing;
 
   async function loadPreview(nextSlug = slug, nextChannel = channel) {
-    if (!nextSlug) return;
+    const request = ++previewRequest.current;
+    if (!nextSlug) {
+      setPreview(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError("");
     try {
       const query = nextChannel ? `?channel=${encodeURIComponent(nextChannel)}` : "";
       const data = await api<Preview>(`/api/v1/pools/${encodeURIComponent(nextSlug)}${query}`);
+      if (request !== previewRequest.current) return;
+      if (data.pool.slug !== nextSlug || (data.filters.channel_key ?? "") !== nextChannel) {
+        throw new Error("The capsule preview changed. Select the capsule again to review its odds.");
+      }
       setPreview(data);
     } catch (cause) {
+      if (request !== previewRequest.current) return;
       setError(describeError(cause));
       setPreview(null);
     } finally {
-      setLoading(false);
+      if (request === previewRequest.current) setLoading(false);
     }
   }
 
   useEffect(() => {
     void loadPreview(slug, channel);
+    return () => { previewRequest.current += 1; };
   }, [slug, channel]);
 
   async function draw() {
@@ -107,7 +124,7 @@ export default function DrawStudio({ pools, initialBalance }: { pools: PoolSumma
     try {
       const data = await api<DrawResult>("/api/v1/draws", {
         method: "POST",
-        body: { pool: preview.pool.slug, expectedRevision: preview.expected_revision, channelKey: channel || undefined },
+        body: { pool: slug, expectedRevision: preview.expected_revision, channelKey: channel || undefined },
         idempotencyKey: pendingKey,
       });
       setResult(data);
@@ -137,7 +154,7 @@ export default function DrawStudio({ pools, initialBalance }: { pools: PoolSumma
         <div className="surface-flat p-5">
           <label className="field">
             <span className="label">Choose a capsule</span>
-            <select className="select" value={slug} onChange={(event) => { setSlug(event.target.value); setResult(null); }} aria-label="Choose a capsule">
+            <select className="select" value={slug} onChange={(event) => { setSlug(event.target.value); setResult(null); }} aria-label="Choose a capsule" disabled={drawing}>
               <optgroup label="Everyday">
                 {pools.filter((pool) => pool.slug === "cabinet-draw").map((pool) => <option key={pool.id} value={pool.slug}>{pool.name} · ✦ {pool.price}</option>)}
               </optgroup>
@@ -165,7 +182,7 @@ export default function DrawStudio({ pools, initialBalance }: { pools: PoolSumma
           <p className="eyebrow">Where you are opening</p>
           <label className="field mt-3">
             <span className="label">Community filter</span>
-            <select value={channel} onChange={(event) => setChannel(event.target.value)} className="select">
+            <select value={channel} onChange={(event) => setChannel(event.target.value)} className="select" disabled={drawing}>
               <option value="">Public cabinet</option>
               <option value="family-table">Family table · hides horror-tagged cards</option>
             </select>
@@ -285,3 +302,4 @@ export default function DrawStudio({ pools, initialBalance }: { pools: PoolSumma
     </div>
   );
 }
+

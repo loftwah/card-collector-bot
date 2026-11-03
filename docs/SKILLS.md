@@ -76,6 +76,7 @@ subjects, 0 duplicate launch editions. The temporary content agent grant and
 Access service token were revoked/removed after the import. The `/foilbury`
 guild command was re-registered with the `achievements` option.
 
+
 ## 2026-11-03 Impeccable 4.8.0 upgrade and Worlds polish
 
 This supersedes the earlier Impeccable 4.0.4 row for future sessions.
@@ -94,3 +95,32 @@ This supersedes the earlier Impeccable 4.0.4 row for future sessions.
 | Deployment | Worker `c6f0b94a-c2f6-4461-ae59-321db9b7079e` deployed to `foilbury.loftwah.com`; production `/play/collections` loaded 21 collections with the new H1, search/filter/sort and card-art covers using the authenticated member session. |
 | Remaining | Mobile first card still begins below the first 844 px because the hero + search controls are substantial; mobile sub-nav remains horizontally scrollable (now with a visible thin scrollbar); the collection progress loop is still N+1 (~one aggregate pair per collection); local proof-world fixtures appear in local screenshots and must not be used as production evidence. Cloudflare’s injected Web Analytics beacon is blocked by the project CSP, producing two console errors unrelated to this UI. |
 | Unrelated work left untouched | `src/server/discord/handler.ts`, `src/server/discord/commands.ts` and `tests/workers/discord.test.ts` had uncommitted changes from another pass during this session. One Discord test currently fails (`link?.type` expected 2 but undefined); this is outside the Impeccable UI change and was not overwritten. |
+
+## Authentication correction prepared after the live comparison
+
+This section records a code/configuration correction, not a production release.
+
+| Skill | Source and loaded location | Actual use and findings | Changes and evidence |
+|---|---|---|---|
+| Cloudflare One | Existing `.agents/skills/cloudflare-one`; current Cloudflare application-token and MFA requirements documentation | Compared live App Composer and Foilbury applications and owner policies. Composer inherits global MFA off; Foilbury adds an app override. Standard application JWTs do not guarantee an IdP claim; the supported identity endpoint reports provider details. | MFA inheritance reconciliation and read-back guard; standard token validation; bound provider lookup. `node --test tests/scripts/cloudflare-access-app.test.mjs`: 9/9. Live reset is pending approval and verification. |
+| Wrangler / Workers best practices | Existing `.agents/skills/wrangler` and `.agents/skills/workers-best-practices` | Inspected pinned runtime, bindings and deployment script. Preserved the current Worker/resource identities. Kept Access proof request-scoped and existing account roles authoritative. | Request-context and cookie-assurance corrections; regression coverage. Syntax checks pass; full pinned-runtime checks run through the PR workflow and are a release gate. No deployment or production data mutation performed in this review. |
+| EmDash site / CLI / plugins | Existing `.agents/skills/building-emdash-site`, `.agents/skills/creating-plugins`, `.agents/skills/emdash-cli`; official EmDash authentication guide | Confirmed the supported runtime `audienceEnvVar` configuration and local-development fallback. A build-time audience gate could silently omit the adapter. | `astro.config.mjs` always configures Access using `FOILBURY_ACCESS_EDITORIAL_AUD`; existing provisioning and role settings preserved. Syntax check passes; authenticated native console remains a live acceptance gate. |
+| Impeccable / shadcn | Latest tracked `.agents/skills/impeccable` 4.8.0 and `.agents/skills/shadcn`; `harden` and `craft-floor` references, `PRODUCT.md`, `DESIGN.md`, `components.json` and installed Alert implementation | The context launcher and package CLI were unavailable in the partial review checkout; project context and component source were read directly. The Platform Admin early loading return hid its initial API error. The album gate exposed a draw against stale capsule odds while a new selection loaded. | Reused the installed Alert and Button to show the initial error and reload action. Draws now require the current pool/filter preview; superseded responses are ignored and selectors are disabled during a draw. The album browser regression holds a preview response and verifies the exact card plus earned/granted achievement. No redesign or new primitive. Live owner acceptance remains pending. |
+
+The separate API admission correction follows Cloudflare's documented
+target-application navigation/cookie flow. Its local regression tests cover
+both administration areas, exact API audiences, linked human roles, safe return
+paths, parallel request coalescing, loop prevention and no mutation replay.
+The CI workflow also runs the required album and privacy journeys with guarded,
+explicitly synthetic local fixtures; this is not production launch evidence.
+
+
+## 2026-11-03 owner sign-in, demo album and Discord tour release
+
+| Skill | Source and loaded location | Actual use and findings | Changes and evidence |
+|---|---|---|---|
+| Cloudflare One | Installed `.agents/skills/cloudflare-one`; live Access API and application read-back | Classified the five Access applications and their policies before changing MFA. Confirmed the supported inheritance state is an absent application override (`mfa_config: null`), not `mfa_disabled:true`. Preserved every application ID, audience, IdP restriction and policy. | `scripts/lib/cloudflare-access-app.mjs` performs GET → full PUT → GET read-back and rejects a retained override; `pnpm access:configure --apply` saved Platform Administration, Platform Admin API and Editorial to inherit organisation MFA. The organisation-wide MFA setting was read before and after and was unchanged. Evidence: `docs/AUTH_ACCEPTANCE.md`, `tests/scripts/cloudflare-access-app.test.mjs`. |
+| Wrangler / Workers best practices | Installed `.agents/skills/wrangler` and `.agents/skills/workers-best-practices`; pinned `wrangler 4.156.1` | Inspected the production config and current deployment (`fd09faba…`), took a D1 JSON backup, applied the additive `0013` migration, deployed through the existing authenticated environment, and checked `.dev.vars` and secret values were absent from `dist`. | Worker `821164fd-7590-42b7-8184-b91d9e21755b`; backup `.foilbury/backups/prod-pre-tour-2026-11-03.json` (85 tables, 30,688 rows); `pnpm test:deployed` PASS. |
+| EmDash CLI / site | Installed `.agents/skills/emdash-cli`; EmDash 1.4 runtime | Verified the native console is mounted on the same D1/R2 and can be opened locally through EmDash's **development-only** setup bypass. The CLI had no stored remote token, so it returned “dev bypass is not available on this site” / “Not authenticated”; no token was invented. Production remains Cloudflare-Access-protected with the existing Dean CMS account and `autoProvision:false`. | `pnpm demo` now captures `/_emdash/admin`; production `/_emdash/admin` returns an Access redirect, not a local bypass. Evidence: `.foilbury/demo/latest/index.html`; `docs/DEMO.md`. |
+| Playwright | Installed `@playwright/test 1.64.1`; real Chromium | Ran the real local journeys and the browser acceptance scripts. Found two repeatability defects: the auth script assumed a fresh TOTP enrolment, and the album script assumed CI-only image fixtures. Neither was a product assertion failure. | Auth now resets only the local owner TOTP/recovery fixture before enrolment; the album script's local fixture images were restored from tracked brand assets. `pnpm test:auth` 10/10 PASS, `pnpm test:album` 14/14 PASS, `pnpm test:privacy` 9/9 PASS, `pnpm test:editorial` PASS, `pnpm demo` 28 stages / 0 console errors. |
+| Impeccable / shadcn | Installed project skills | Not triggered for visual redesign: this pass added no new primitive, component or palette. Existing tokens and shadcn-based surfaces were left intact. The added EmDash/Platform Admin stages are evidence captures of existing screens. | No UI component/style change; `pnpm check` and the browser suites cover the affected screens. |

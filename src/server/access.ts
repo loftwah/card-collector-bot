@@ -9,7 +9,6 @@ export interface AccessIdentity {
   subject: string;
   email: string;
   audience: string;
-  idpType: string;
   payload: JWTPayload;
 }
 
@@ -89,30 +88,97 @@ export async function verifyAccessToken(
       issuer: `https://${config.access.teamDomain}`,
       audience,
       algorithms: ["RS256"],
+      requiredClaims: ["exp"],
       clockTolerance: 5,
-      currentDate: options?.now ? new Date(options.now) : undefined,
+      currentDate: options?.now !== undefined ? new Date(options.now) : undefined,
     });
     payload = verified.payload;
   } catch {
     throw new ApiError(401, "access_token_invalid", "Your Cloudflare Access session is expired or invalid. Sign in again.");
   }
 
+  if (payload.type !== "app") {
+    throw new ApiError(401, "access_token_invalid", "Cloudflare Access did not provide an application token.");
+  }
   const email = typeof payload.email === "string" ? payload.email.trim().toLowerCase() : "";
-  const subject =
-    typeof payload.sub === "string" && payload.sub.length > 0
-      ? payload.sub
-      : email;
-  if (!email || !email.includes("@") || !subject) {
+  const subject = typeof payload.sub === "string" ? payload.sub : "";
+  if (!email || !email.includes("@") || !subject.trim()) {
     throw new ApiError(401, "access_identity_missing", "Cloudflare Access did not provide a verifiable email identity.");
   }
-  const idp = (payload as JWTPayload & { idp?: { type?: string } }).idp;
+  // The standard Access application JWT does not include the IdP type or
+  // establish that MFA occurred. Keep verified identity separate from the
+  // application's authentication policy and Foilbury role checks.
   return {
     subject,
     email,
     audience,
-    idpType: typeof idp?.type === "string" ? idp.type : "unknown",
     payload,
   };
+}
+
+/**
+ * Read the IdP from Access's supported identity endpoint, after verifying the
+ * assertion with verifyAccessToken. Mixed Cloudflare/OTP applications cannot
+ * infer this from their audience or from an undocumented JWT claim.
+ *
+ * This proves the provider for this assertion, not that MFA occurred. Any
+ * unavailable, mismatched or unrecognised response grants no extra assurance.
+ */
+export async function resolveAccessIdentityProvider(
+  token: string,
+  identity: AccessIdentity,
+  config: RuntimeConfig,
+  options?: { fetcher?: typeof fetch },
+): Promise<"cloudflare" | null> {
+  if (!config.access.enabled || !config.access.teamDomain) return null;
+  try {
+    const response = await (options?.fetcher ?? fetch)(
+      `https://${config.access.teamDomain}/cdn-cgi/access/get-identity`,
+      {
+        headers: { cookie: `CF_Authorization=${token}` },
+        redirect: "error",
+        signal: AbortSignal.timeout(3_000),
+      },
+    );
+    if (!response.ok || !response.body) return null;
+
+    // Identity data can include groups. Bound the response before parsing and
+    // keep the assertion, response and provider proof scoped to this request.
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let bytes = 0;
+    let body = "";
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        bytes += value.byteLength;
+        if (bytes > 65_536) {
+          await reader.cancel();
+          return null;
+        }
+        body += decoder.decode(value, { stream: true });
+      }
+      body += decoder.decode();
+    } finally {
+      reader.releaseLock();
+    }
+    const profile: unknown = JSON.parse(body);
+    if (!profile || typeof profile !== "object" || Array.isArray(profile)) return null;
+    const data = profile as Record<string, unknown>;
+    if (
+      data.user_uuid !== identity.subject ||
+      typeof data.email !== "string" ||
+      data.email.trim().toLowerCase() !== identity.email
+    ) return null;
+
+    const idp = data.idp;
+    return idp && typeof idp === "object" && "type" in idp && idp.type === "cloudflare"
+      ? "cloudflare"
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 async function loadMember(db: D1Database, tenantId: string, userId: string): Promise<CurrentUser | null> {
@@ -244,7 +310,7 @@ export async function resolveAccessIdentity(
       tenant.id,
       account.id,
       account.id,
-      JSON.stringify({ email: identity.email, audience: identity.audience, idp: identity.idpType }),
+      JSON.stringify({ email: identity.email, audience: identity.audience, authentication: "cloudflare_access" }),
       requestId ?? null,
       now,
     )
@@ -253,11 +319,13 @@ export async function resolveAccessIdentity(
   return { identity, user, status: "linked" };
 }
 
-export function assertPlatformAccessIdentity(identity: AccessIdentity): void {
-  // Platform administration uses the Cloudflare account IdP, not a
-  // one-time email PIN. This is an explicit assurance requirement.
-  if (identity.idpType !== "cloudflare") {
-    throw new ApiError(403, "access_strong_auth_required", "Platform administration requires your Cloudflare account identity.");
+export function assertPlatformAccessIdentity(identity: AccessIdentity, config: RuntimeConfig): void {
+  // These dedicated Access applications enforce the platform identity policy
+  // at the edge. Their verified audience is the contract; a fabricated JWT
+  // IdP claim is not. Foilbury still requires its explicit Super Admin role.
+  const platformAudiences = [config.access.platformAudience, config.access.platformApiAudience];
+  if (!config.access.enabled || !platformAudiences.some((audience) => Boolean(audience) && audience === identity.audience)) {
+    throw new ApiError(403, "access_platform_required", "Sign in through the Cloudflare Access application for platform administration.");
   }
 }
 
@@ -302,3 +370,4 @@ export async function findAccessTenantForIdentity(
   );
   return row ?? null;
 }
+

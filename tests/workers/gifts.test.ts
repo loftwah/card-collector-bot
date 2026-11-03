@@ -6,7 +6,9 @@ import { listMyGiftReceipts } from "../../src/server/modules/admin-gifts";
 import { nowIso } from "../../src/server/db";
 
 async function strong(ctx: Awaited<ReturnType<typeof ctxFor>>) {
-  return { ...ctx, sessionAssurance: "access" };
+  // Gift-domain fixtures carry a recent local factor. An Access label alone
+  // is deliberately insufficient without a verified, linked Access request.
+  return { ...ctx, sessionAssurance: "passkey", sessionAuthTime: nowIso() };
 }
 
 async function member(tenantId: string, email: string) {
@@ -122,3 +124,4 @@ describe("scoped administrator gifts", () => {
     expect(preview.message).not.toContain("<@");
   });
 });
+

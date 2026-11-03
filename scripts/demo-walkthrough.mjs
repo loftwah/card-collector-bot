@@ -42,6 +42,15 @@ function log(message) {
   console.log(message);
 }
 
+function isIgnorableBrowserNoise(message) {
+  const text = message.text();
+  const url = message.location()?.url ?? "";
+  return (
+    text.includes("1Password") ||
+    (text.includes("Failed to load resource") && url.endsWith("/favicon.ico"))
+  );
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -63,7 +72,9 @@ async function prime(page) {
     window.scrollTo(0, 0);
   });
   await page
-    .waitForFunction(() => [...document.images].every((image) => image.complete), null, { timeout: 15000 })
+    .waitForFunction(() => [...document.images].every((image) => image.complete), null, {
+      timeout: 15000,
+    })
     .catch(() => undefined);
   await page.waitForTimeout(250);
 }
@@ -73,9 +84,14 @@ async function inspect(page) {
     const images = [...document.images];
     return {
       title: document.title,
-      heading: document.querySelector("h1")?.textContent?.trim() ?? document.querySelector("h2")?.textContent?.trim() ?? "",
+      heading:
+        document.querySelector("h1")?.textContent?.trim() ??
+        document.querySelector("h2")?.textContent?.trim() ??
+        "",
       brokenImages: images
-        .filter((image) => image.complete && image.naturalWidth === 0 && (image.currentSrc || image.src))
+        .filter(
+          (image) => image.complete && image.naturalWidth === 0 && (image.currentSrc || image.src),
+        )
         .map((image) => image.currentSrc || image.src)
         .slice(0, 8),
       overflow: document.documentElement.scrollWidth > window.innerWidth + 2,
@@ -88,9 +104,16 @@ async function capture(page, { name, caption, bullets = [], fullPage = true }) {
   await prime(page);
   const info = await inspect(page);
   const index = String(stages.length + 1).padStart(2, "0");
-  const file = path.join(shotsDir, `${index}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}.png`);
+  const file = path.join(
+    shotsDir,
+    `${index}-${name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")}.png`,
+  );
   await page.screenshot({ path: file, fullPage, scale: "css" });
-  if (info.brokenImages.length) warnings.push(`${name}: broken images ${info.brokenImages.join(", ")}`);
+  if (info.brokenImages.length)
+    warnings.push(`${name}: broken images ${info.brokenImages.join(", ")}`);
   if (info.overflow) warnings.push(`${name}: horizontal overflow at ${info.url}`);
   stages.push({
     index,
@@ -104,20 +127,32 @@ async function capture(page, { name, caption, bullets = [], fullPage = true }) {
   log(`  captured ${name}`);
 }
 
-async function visit(page, { name, route, caption, bullets = [], waitFor, fullPage = true, screenshot = true }) {
+async function visit(
+  page,
+  { name, route, caption, bullets = [], waitFor, fullPage = true, screenshot = true },
+) {
   await page.goto(`${baseURL}${route}`, { waitUntil: "networkidle" });
   if (waitFor) await page.waitForSelector(waitFor, { timeout: 20000 });
   if (screenshot) await capture(page, { name, caption, bullets, fullPage });
   else {
     const info = await inspect(page);
-    stages.push({ index: String(stages.length + 1).padStart(2, "0"), name, caption, bullets, screenshot: null, status: "PASS", info });
+    stages.push({
+      index: String(stages.length + 1).padStart(2, "0"),
+      name,
+      caption,
+      bullets,
+      screenshot: null,
+      status: "PASS",
+      info,
+    });
     log(`  checked ${name}`);
   }
 }
 
 async function login(context, email) {
   const response = await context.request.post(`${baseURL}/api/v1/dev/login`, { data: { email } });
-  if (!response.ok()) throw new Error(`Development sign-in failed for ${email}: HTTP ${response.status()}`);
+  if (!response.ok())
+    throw new Error(`Development sign-in failed for ${email}: HTTP ${response.status()}`);
 }
 
 function cleanupLocalTestFixtures() {
@@ -129,7 +164,11 @@ function cleanupLocalTestFixtures() {
     const file = path.join(base, String(entry));
     if (!file.endsWith(".sqlite") || file.endsWith("metadata.sqlite")) continue;
     try {
-      const table = execFileSync("sqlite3", [file, "SELECT name FROM sqlite_master WHERE type='table' AND name='fb_artwork_editions';"], { encoding: "utf8" }).trim();
+      const table = execFileSync(
+        "sqlite3",
+        [file, "SELECT name FROM sqlite_master WHERE type='table' AND name='fb_artwork_editions';"],
+        { encoding: "utf8" },
+      ).trim();
       if (table) {
         db = file;
         break;
@@ -158,15 +197,20 @@ function cleanupLocalTestFixtures() {
 
 async function ensureDemoPool() {
   const cards = await apiJson("/api/v1/admin/cards?limit=2000");
-  const card = cards.items.find((item) => item.slug === "hajime-hinata") ?? cards.items.find((item) => item.collections?.length);
+  const card =
+    cards.items.find((item) => item.slug === "hajime-hinata") ??
+    cards.items.find((item) => item.collections?.length);
   if (!card) throw new Error("No launch card is available for the demo pool.");
-  const variant = card.editions.flatMap((edition) => edition.variants).find((item) => item.material_key === "plain" && item.render_url);
+  const variant = card.editions
+    .flatMap((edition) => edition.variants)
+    .find((item) => item.material_key === "plain" && item.render_url);
   if (!variant) throw new Error("No plain rendered variant is available for the demo pool.");
   const pools = await apiJson("/api/v1/admin/pools");
   const existing = pools.items.find((item) => item.slug === "demo-walkthrough");
   const body = {
     name: "Demo Walkthrough",
-    description: "A zero-price fixture pool used by the guided product walkthrough. It pulls one fixed card so every demo is consistent.",
+    description:
+      "A zero-price fixture pool used by the guided product walkthrough. It pulls one fixed card so every demo is consistent.",
     price: 0,
     entries: [{ variantId: variant.id, weight: 1 }],
   };
@@ -178,7 +222,10 @@ async function ensureDemoPool() {
     await apiJson(`/api/v1/admin/pools/${updated.pool.id}/publish`, { method: "POST", body: {} });
     return { pool: updated.pool, card: card.name, variant: variant.name };
   }
-  const created = await apiJson("/api/v1/admin/pools", { method: "POST", body: { slug: "demo-walkthrough", ...body } });
+  const created = await apiJson("/api/v1/admin/pools", {
+    method: "POST",
+    body: { slug: "demo-walkthrough", ...body },
+  });
   await apiJson(`/api/v1/admin/pools/${created.pool.id}/publish`, { method: "POST", body: {} });
   return { pool: created.pool, card: card.name, variant: variant.name };
 }
@@ -294,7 +341,9 @@ let browser;
 try {
   if (!readOnly) {
     if (!/localhost|127\.0\.0\.1/.test(baseURL)) {
-      throw new Error("Refusing to create the demo fixture pool outside localhost. Use --read-only for a remote walkthrough.");
+      throw new Error(
+        "Refusing to create the demo fixture pool outside localhost. Use --read-only for a remote walkthrough.",
+      );
     }
     await ensureServer();
     cleanupLocalTestFixtures();
@@ -303,10 +352,14 @@ try {
   }
 
   browser = await chromium.launch({ channel: "chrome", headless: !headed });
-  const publicContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
+  const publicContext = await browser.newContext({
+    viewport: { width: 1440, height: 1000 },
+    deviceScaleFactor: 1,
+  });
   const publicPage = await publicContext.newPage();
   publicPage.on("console", (message) => {
-    if (message.type() === "error" && !message.text().includes("1Password")) consoleErrors.push(message.text());
+    if (message.type() === "error" && !isIgnorableBrowserNoise(message))
+      consoleErrors.push(message.text());
   });
   publicPage.on("pageerror", (error) => consoleErrors.push(error.message));
 
@@ -315,37 +368,61 @@ try {
     name: "Public first impression",
     route: "/",
     waitFor: "text=Characters worth keeping.",
-    caption: "The signed-out landing page. The public showcase is the approved Loftwah-owned content only; no launch roster or private art is present.",
-    bullets: ["Real published renders lead the page.", "The cabinet/sign-in path is visible without exposing member content.", "Typography, paper and brass establish the collector's-cabinet world."],
+    caption:
+      "The signed-out landing page. The public showcase is the approved Loftwah-owned content only; no launch roster or private art is present.",
+    bullets: [
+      "Real published renders lead the page.",
+      "The cabinet/sign-in path is visible without exposing member content.",
+      "Typography, paper and brass establish the collector's-cabinet world.",
+    ],
   });
   await visit(publicPage, {
     name: "Public cabinet",
     route: "/cabinet",
     waitFor: "h1",
-    caption: "The public catalogue: four reviewed Loftwah showcase collections. The 17 launch worlds are members-only and do not appear here.",
-    bullets: ["Collection covers and marks carry the identity.", "Cards are inspectable without a member session.", "No NBA or franchise names leak into the public HTML."],
+    caption:
+      "The public catalogue: four reviewed Loftwah showcase collections. The 17 launch worlds are members-only and do not appear here.",
+    bullets: [
+      "Collection covers and marks carry the identity.",
+      "Cards are inspectable without a member session.",
+      "No NBA or franchise names leak into the public HTML.",
+    ],
   });
   await visit(publicPage, {
     name: "Public card detail",
     route: "/cabinet/tux",
     waitFor: "h1",
-    caption: "A public card detail with the designed front, profile, source context and provenance language.",
-    bullets: ["Artwork and metadata are readable at desktop size.", "The card is framed as a collectible, not a dashboard tile.", "Source credit is honest and visible."],
+    caption:
+      "A public card detail with the designed front, profile, source context and provenance language.",
+    bullets: [
+      "Artwork and metadata are readable at desktop size.",
+      "The card is framed as a collectible, not a dashboard tile.",
+      "Source credit is honest and visible.",
+    ],
   });
   await visit(publicPage, {
     name: "Sign-in options",
     route: "/login",
     waitFor: "h1",
-    caption: "Passwordless entry: Discord OAuth, one-use email link, passkey, and the loopback-only development sign-in.",
-    bullets: ["The normal journey is passwordless.", "The development shortcut is clearly separated from production identity.", "No account is merged on an unverified email string."],
+    caption:
+      "Passwordless entry: Discord OAuth, one-use email link, passkey, and the loopback-only development sign-in.",
+    bullets: [
+      "The normal journey is passwordless.",
+      "The development shortcut is clearly separated from production identity.",
+      "No account is merged on an unverified email string.",
+    ],
   });
 
   log("\nMember album");
-  const memberContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
+  const memberContext = await browser.newContext({
+    viewport: { width: 1440, height: 1000 },
+    deviceScaleFactor: 1,
+  });
   await login(memberContext, "player@foilbury.local");
   const memberPage = await memberContext.newPage();
   memberPage.on("console", (message) => {
-    if (message.type() === "error" && !message.text().includes("1Password")) consoleErrors.push(message.text());
+    if (message.type() === "error" && !isIgnorableBrowserNoise(message))
+      consoleErrors.push(message.text());
   });
   memberPage.on("pageerror", (error) => consoleErrors.push(error.message));
 
@@ -353,22 +430,37 @@ try {
     name: "Member cabinet",
     route: "/play",
     waitFor: "text=Your cabinet",
-    caption: "The member home: balance, recent acquisitions, set progress, achievements and the next draw.",
-    bullets: ["The balance and daily allowance are visible without hunting.", "Recent cards lead the page; the interface stays quiet.", "The draw room, collections and achievements are one click away."],
+    caption:
+      "The member home: balance, recent acquisitions, set progress, achievements and the next draw.",
+    bullets: [
+      "The balance and daily allowance are visible without hunting.",
+      "Recent cards lead the page; the interface stays quiet.",
+      "The draw room, collections and achievements are one click away.",
+    ],
   });
   await visit(memberPage, {
     name: "Worlds browser",
     route: "/play/collections",
     waitFor: "text=Every world you can enter.",
-    caption: "All playable worlds, with collection covers, member-only labels, completion progress and the public/member distinction.",
-    bullets: ["The 17 launch worlds are presented as distinct albums.", "Progress is separate from catalogue ownership.", "The public showcase remains visibly separate."],
+    caption:
+      "All playable worlds, with collection covers, member-only labels, completion progress and the public/member distinction.",
+    bullets: [
+      "The 17 launch worlds are presented as distinct albums.",
+      "Progress is separate from catalogue ownership.",
+      "The public showcase remains visibly separate.",
+    ],
   });
   await visit(memberPage, {
     name: "Danganronpa collection",
     route: "/play/collection?collection=danganronpa-three-games",
     waitFor: "text=Your drawers",
-    caption: "A launch collection detail. The roster, owned cards, collection identity and source boundary are in one place.",
-    bullets: ["The collection reads as an album, not a filter tag.", "Owned and missing cards are distinguishable.", "Card art is the visual anchor."],
+    caption:
+      "A launch collection detail. The roster, owned cards, collection identity and source boundary are in one place.",
+    bullets: [
+      "The collection reads as an album, not a filter tag.",
+      "Owned and missing cards are distinguishable.",
+      "Card art is the visual anchor.",
+    ],
   });
 
   log("\nDraw room and card inspection");
@@ -377,40 +469,68 @@ try {
   await memberPage.getByLabel("Choose a capsule").selectOption("demo-walkthrough");
   await capture(memberPage, {
     name: "Draw odds",
-    caption: "The draw room with the zero-price demo capsule selected. Odds and prices are shown before the action.",
-    bullets: ["The pool price is explicit.", "The eligible finish odds are visible.", "Opening is a deliberate action, not a surprise charge."],
+    caption:
+      "The draw room with the zero-price demo capsule selected. Odds and prices are shown before the action.",
+    bullets: [
+      "The pool price is explicit.",
+      "The eligible finish odds are visible.",
+      "Opening is a deliberate action, not a surprise charge.",
+    ],
   });
   await memberPage.getByRole("button", { name: /Draw for/ }).click();
   await memberPage.getByText(/New subject|Another copy/).waitFor({ timeout: 20000 });
   await capture(memberPage, {
     name: "Draw result",
-    caption: "A real draw result with the awarded card, finish, serial, pool, balance and odds for that copy.",
-    bullets: ["The copy is immediately in the collection.", "The serial and finish are recorded, not inferred.", "The result explains what was pulled and what it cost."],
+    caption:
+      "A real draw result with the awarded card, finish, serial, pool, balance and odds for that copy.",
+    bullets: [
+      "The copy is immediately in the collection.",
+      "The serial and finish are recorded, not inferred.",
+      "The result explains what was pulled and what it cost.",
+    ],
   });
 
-  const inventory = await memberPage.evaluate(async () => (await fetch("/api/v1/inventory")).json());
-  const owned = inventory.items?.find((item) => item.card_name === "Hajime Hinata") ?? inventory.items?.[0];
+  const inventory = await memberPage.evaluate(async () =>
+    (await fetch("/api/v1/inventory")).json(),
+  );
+  const owned =
+    inventory.items?.find((item) => item.card_name === "Hajime Hinata") ?? inventory.items?.[0];
   if (owned) {
     await memberPage.goto(`${baseURL}/play/card/${owned.id}`, { waitUntil: "networkidle" });
     await memberPage.locator(".card-inspector__stage").waitFor();
     await capture(memberPage, {
       name: "Card front",
-      caption: "The awarded card in the private inspector. The front is the real render, not a UI approximation.",
-      bullets: ["The image is the same render used by Discord.", "The serial and finish remain attached to this copy.", "The flat view is the first paint."],
+      caption:
+        "The awarded card in the private inspector. The front is the real render, not a UI approximation.",
+      bullets: [
+        "The image is the same render used by Discord.",
+        "The serial and finish remain attached to this copy.",
+        "The flat view is the first paint.",
+      ],
     });
     await memberPage.getByRole("button", { name: /View back/i }).click();
     await memberPage.getByRole("button", { name: /View front/i }).waitFor();
     await capture(memberPage, {
       name: "Card back",
-      caption: "The designed reverse: collection identity, a readable profile excerpt, structured attributes and a credit line.",
-      bullets: ["The back is a real designed surface, not the front repeated.", "The biography and attributes do not collide.", "The selected side is visible even in flat mode."],
+      caption:
+        "The designed reverse: collection identity, a readable profile excerpt, structured attributes and a credit line.",
+      bullets: [
+        "The back is a real designed surface, not the front repeated.",
+        "The biography and attributes do not collide.",
+        "The selected side is visible even in flat mode.",
+      ],
     });
     await memberPage.getByRole("button", { name: /Inspect in 3D/i }).click();
     await memberPage.getByRole("button", { name: "Exit 3D" }).waitFor();
     await capture(memberPage, {
       name: "3D inspection",
-      caption: "On-demand CSS 3D. Tilt is interaction-only, the card keeps its printed identity and no ownership changes.",
-      bullets: ["The card gains depth without a canvas per tile.", "Pointer and keyboard controls are available.", "The back remains selectable while 3D is on."],
+      caption:
+        "On-demand CSS 3D. Tilt is interaction-only, the card keeps its printed identity and no ownership changes.",
+      bullets: [
+        "The card gains depth without a canvas per tile.",
+        "Pointer and keyboard controls are available.",
+        "The back remains selectable while 3D is on.",
+      ],
     });
     await memberPage.getByRole("button", { name: /View front/i }).click();
     await memberPage.getByRole("button", { name: /View back/i }).waitFor();
@@ -419,8 +539,13 @@ try {
     await memberPage.getByRole("button", { name: /View front/i }).waitFor();
     await capture(memberPage, {
       name: "Reduced motion",
-      caption: "Reduced-motion mode removes the tilt animation but still shows the selected back. Motion is optional; content is not.",
-      bullets: ["No unnecessary movement.", "The back is still visible and readable.", "The accessibility tree follows the selected side."],
+      caption:
+        "Reduced-motion mode removes the tilt animation but still shows the selected back. Motion is optional; content is not.",
+      bullets: [
+        "No unnecessary movement.",
+        "The back is still visible and readable.",
+        "The accessibility tree follows the selected side.",
+      ],
     });
     await memberPage.emulateMedia({ reducedMotion: "no-preference" });
   } else {
@@ -432,49 +557,161 @@ try {
     name: "Achievements",
     route: "/play/achievements",
     waitFor: "text=Little proofs of time well spent.",
-    caption: "Earned badges and next milestones. Achievement progress is separate from the catalogue and survives later collection growth.",
-    bullets: ["Earned and next are clearly separated.", "Rewards are shown as one-time entitlements.", "The page uses real committed inventory."],
+    caption:
+      "Earned badges and next milestones. Achievement progress is separate from the catalogue and survives later collection growth.",
+    bullets: [
+      "Earned and next are clearly separated.",
+      "Rewards are shown as one-time entitlements.",
+      "The page uses real committed inventory.",
+    ],
   });
   await visit(memberPage, {
     name: "Gift receipts",
     route: "/play/gifts",
     waitFor: "text=A note in the post.",
-    caption: "The member gift inbox: what arrived, who sent it, the value and when it was delivered.",
-    bullets: ["Gifts are Bot-scoped and auditable.", "Foil, opening and card gifts are distinguishable.", "The receipt explains the delivered value."],
+    caption:
+      "The member gift inbox: what arrived, who sent it, the value and when it was delivered.",
+    bullets: [
+      "Gifts are Bot-scoped and auditable.",
+      "Foil, opening and card gifts are distinguishable.",
+      "The receipt explains the delivered value.",
+    ],
   });
   await visit(memberPage, {
     name: "Preferences",
     route: "/play/preferences",
     waitFor: "text=Make the cabinet yours.",
-    caption: "Member preferences for reduced motion, sharing and presentation without changing ownership or odds.",
-    bullets: ["Preferences are separate from collectible identity.", "Sharing is explicit and revocable.", "The cabinet can be made quieter without losing content."],
+    caption:
+      "Member preferences for reduced motion, sharing and presentation without changing ownership or odds.",
+    bullets: [
+      "Preferences are separate from collectible identity.",
+      "Sharing is explicit and revocable.",
+      "The cabinet can be made quieter without losing content.",
+    ],
   });
   await visit(memberPage, {
     name: "Account security",
     route: "/account/security",
     waitFor: "h1",
-    caption: "Passkeys, authenticator, recovery codes and session review. Sensitive actions require recent strong authentication.",
-    bullets: ["Passwordless and strong-auth paths are first-class.", "Sessions can be reviewed and revoked.", "The development login remains a local-only shortcut."],
+    caption:
+      "Passkeys, authenticator, recovery codes and session review. Sensitive actions require recent strong authentication.",
+    bullets: [
+      "Passwordless and strong-auth paths are first-class.",
+      "Sessions can be reviewed and revoked.",
+      "The development login remains a local-only shortcut.",
+    ],
   });
 
   log("\nAdmin surfaces");
-  const adminContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
+  const adminContext = await browser.newContext({
+    viewport: { width: 1440, height: 1000 },
+    deviceScaleFactor: 1,
+  });
   await login(adminContext, "owner@foilbury.local");
   const adminPage = await adminContext.newPage();
   adminPage.on("console", (message) => {
-    if (message.type() === "error" && !message.text().includes("1Password")) consoleErrors.push(message.text());
+    if (message.type() === "error" && !isIgnorableBrowserNoise(message))
+      consoleErrors.push(message.text());
   });
   adminPage.on("pageerror", (error) => consoleErrors.push(error.message));
   for (const [name, route, caption, bullets] of [
-    ["Admin overview", "/admin", "Bot administration, kept visually separate from Platform Administration and the member album.", ["The Bot scope is explicit.", "Catalogue, economy, team and audit are grouped.", "This is not platform-wide authority."]],
-    ["Catalogue studio", "/admin/catalogue", "The catalogue studio: card identity, editions, four finishes, render state and publish controls.", ["Card definitions and artwork editions are distinct.", "Renders are visible before publishing.", "Long names and missing fields have designed states."]],
-    ["Collections studio", "/admin/collections", "Collection management with identity, source context, visibility and Bot enablement.", ["Scope, status, audience and distribution are separate.", "Disabling distribution does not delete awards.", "Collection covers and marks are editable."]],
-    ["Render studio", "/admin/design", "The render studio for previewing finishes and checking the card as a collectible object.", ["Base, Silver, Gold and Holographic are materially different.", "The preview uses the same renderer as delivery.", "Text and serials remain programmatic."]],
-    ["Achievement composer", "/admin/achievements", "Versioned achievement definitions, criteria, rewards and visibility.", ["Criteria are explicit and reviewable.", "Rewards are separate from notification delivery.", "Existing unlocks are not rewritten."]],
-    ["Gift composer", "/admin/gifts", "Scoped administrator gifts with preview, limits, reasons and per-recipient receipts.", ["The audience is previewed before sending.", "Caps and permissions are visible.", "Sending is a deliberate, audited action."]],
+    [
+      "Admin overview",
+      "/admin",
+      "Bot administration, kept visually separate from Platform Administration and the member album.",
+      [
+        "The Bot scope is explicit.",
+        "Catalogue, economy, team and audit are grouped.",
+        "This is not platform-wide authority.",
+      ],
+    ],
+    [
+      "Catalogue studio",
+      "/admin/catalogue",
+      "The catalogue studio: card identity, editions, four finishes, render state and publish controls.",
+      [
+        "Card definitions and artwork editions are distinct.",
+        "Renders are visible before publishing.",
+        "Long names and missing fields have designed states.",
+      ],
+    ],
+    [
+      "Collections studio",
+      "/admin/collections",
+      "Collection management with identity, source context, visibility and Bot enablement.",
+      [
+        "Scope, status, audience and distribution are separate.",
+        "Disabling distribution does not delete awards.",
+        "Collection covers and marks are editable.",
+      ],
+    ],
+    [
+      "Render studio",
+      "/admin/design",
+      "The render studio for previewing finishes and checking the card as a collectible object.",
+      [
+        "Base, Silver, Gold and Holographic are materially different.",
+        "The preview uses the same renderer as delivery.",
+        "Text and serials remain programmatic.",
+      ],
+    ],
+    [
+      "Achievement composer",
+      "/admin/achievements",
+      "Versioned achievement definitions, criteria, rewards and visibility.",
+      [
+        "Criteria are explicit and reviewable.",
+        "Rewards are separate from notification delivery.",
+        "Existing unlocks are not rewritten.",
+      ],
+    ],
+    [
+      "Gift composer",
+      "/admin/gifts",
+      "Scoped administrator gifts with preview, limits, reasons and per-recipient receipts.",
+      [
+        "The audience is previewed before sending.",
+        "Caps and permissions are visible.",
+        "Sending is a deliberate, audited action.",
+      ],
+    ],
   ]) {
     await visit(adminPage, { name, route, caption, bullets, waitFor: "h1, h2", fullPage: false });
   }
+
+  log("\nPlatform administration and editorial");
+  await visit(adminPage, {
+    name: "Platform Administration",
+    route: "/platform-admin",
+    waitFor: "h1, h2",
+    fullPage: false,
+    caption:
+      "The platform-level console, reachable locally with the provisioned Super Admin account. In production this area is protected by Cloudflare Access and the Worker re-verifies the Access JWT on every request.",
+    bullets: [
+      "Accounts, Access links, Bots, installations and global collections are separate from Bot Admin.",
+      "The account shown is the provisioned local Super Admin, not a Discord moderator.",
+      "Local development sign-in is clearly a fixture and is absent in production.",
+    ],
+  });
+  // EmDash's local dev bypass is a development-only route. Production uses the
+  // existing Cloudflare Access editorial application and Dean's CMS account.
+  await adminPage.goto(
+    `${baseURL}/_emdash/api/setup/dev-bypass?redirect=/_emdash/admin&content=0`,
+    { waitUntil: "networkidle" },
+  );
+  await visit(adminPage, {
+    name: "EmDash editorial console",
+    route: "/_emdash/admin",
+    waitFor: "text=Foilbury Editorial",
+    fullPage: false,
+    caption:
+      "The native EmDash operator console on the same local D1/R2 bindings. Foilbury remains the card/game authority; EmDash owns journal content and media.",
+    bullets: [
+      "The console is the native EmDash admin, not a Foilbury imitation.",
+      "Local access uses EmDash's development-only bypass.",
+      "Production maps the existing Dean CMS account through Cloudflare Access; automatic provisioning is disabled.",
+    ],
+  });
 
   log("\nPrivacy boundary");
   const publicCollections = await publicContext.request.get(`${baseURL}/api/v1/collections`);
@@ -484,7 +721,8 @@ try {
     throw new Error("Signed-out collection API leaked a launch collection.");
   }
   const signedOutPlay = await publicContext.request.get(`${baseURL}/play`, { maxRedirects: 0 });
-  if (![200, 302, 303, 307, 308].includes(signedOutPlay.status())) throw new Error(`Signed-out /play returned ${signedOutPlay.status()}`);
+  if (![200, 302, 303, 307, 308].includes(signedOutPlay.status()))
+    throw new Error(`Signed-out /play returned ${signedOutPlay.status()}`);
   if (owned) {
     const renderPath = await memberPage.evaluate(() => {
       const image = document.querySelector(".card-inspector__front img");
@@ -493,17 +731,27 @@ try {
     if (renderPath) {
       const anonymousRender = await publicContext.request.get(`${baseURL}${renderPath}`);
       const memberRender = await memberContext.request.get(`${baseURL}${renderPath}`);
-      if (anonymousRender.status() !== 404) throw new Error(`Signed-out launch render returned ${anonymousRender.status()}, expected 404.`);
-      if (memberRender.status() !== 200) throw new Error(`Member launch render returned ${memberRender.status()}, expected 200.`);
+      if (anonymousRender.status() !== 404)
+        throw new Error(
+          `Signed-out launch render returned ${anonymousRender.status()}, expected 404.`,
+        );
+      if (memberRender.status() !== 200)
+        throw new Error(`Member launch render returned ${memberRender.status()}, expected 200.`);
       const cache = memberRender.headers()["cache-control"] ?? "";
-      if (!cache.includes("private") || !cache.includes("no-store")) throw new Error(`Member render cache policy was ${cache || "(missing)"}.`);
+      if (!cache.includes("private") || !cache.includes("no-store"))
+        throw new Error(`Member render cache policy was ${cache || "(missing)"}.`);
     }
   }
   stages.push({
     index: String(stages.length + 1).padStart(2, "0"),
     name: "Privacy boundary",
-    caption: "Signed-out callers see only the four public showcase collections. A launch render is 404 without membership and 200 with private, no-store headers for a member.",
-    bullets: ["Public HTML and API do not list launch rosters.", "Launch renders are authorised per request.", "A secret URL is not used as authorisation."],
+    caption:
+      "Signed-out callers see only the four public showcase collections. A launch render is 404 without membership and 200 with private, no-store headers for a member.",
+    bullets: [
+      "Public HTML and API do not list launch rosters.",
+      "Launch renders are authorised per request.",
+      "A secret URL is not used as authorisation.",
+    ],
     screenshot: null,
     status: "PASS",
     info: { heading: "Privacy boundary", url: `${baseURL}/api/v1/collections` },
@@ -511,23 +759,38 @@ try {
   log("  checked privacy boundary");
 
   log("\nMobile review");
-  const mobileContext = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  const mobileContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+  });
   await login(mobileContext, "player@foilbury.local");
   const mobilePage = await mobileContext.newPage();
   await visit(mobilePage, {
     name: "Mobile worlds",
     route: "/play/collections",
     waitFor: "text=Every world you can enter.",
-    caption: "The worlds browser at phone width. Covers, labels and progress reflow without hiding the collection identity.",
-    bullets: ["No horizontal overflow.", "Collection covers remain legible.", "The member/public distinction survives the smaller viewport."],
+    caption:
+      "The worlds browser at phone width. Covers, labels and progress reflow without hiding the collection identity.",
+    bullets: [
+      "No horizontal overflow.",
+      "Collection covers remain legible.",
+      "The member/public distinction survives the smaller viewport.",
+    ],
   });
   if (owned) {
     await mobilePage.goto(`${baseURL}/play/card/${owned.id}`, { waitUntil: "networkidle" });
     await mobilePage.locator(".card-inspector__stage").waitFor();
     await capture(mobilePage, {
       name: "Mobile card inspection",
-      caption: "The card inspector at phone width. The card leads; the controls stay reachable and the selected side is visible.",
-      bullets: ["The front/back controls are touch-sized.", "The card keeps its 5:7 geometry.", "The page does not rely on hover."],
+      caption:
+        "The card inspector at phone width. The card leads; the controls stay reachable and the selected side is visible.",
+      bullets: [
+        "The front/back controls are touch-sized.",
+        "The card keeps its 5:7 geometry.",
+        "The page does not rely on hover.",
+      ],
     });
   }
   await mobileContext.close();
@@ -540,7 +803,10 @@ try {
     base_url: baseURL,
     source: (() => {
       try {
-        return spawnSync("git", ["rev-parse", "--short", "HEAD"], { cwd: root, encoding: "utf8" }).stdout.trim();
+        return spawnSync("git", ["rev-parse", "--short", "HEAD"], {
+          cwd: root,
+          encoding: "utf8",
+        }).stdout.trim();
       } catch {
         return null;
       }
@@ -562,7 +828,9 @@ try {
     // Symlinks are a convenience; the timestamped directory is authoritative.
   }
   log(`\nStoryboard: ${path.join(outDir, "index.html")}`);
-  log(`Stages: ${stages.length} · warnings: ${warnings.length} · console errors: ${new Set(consoleErrors).size}`);
+  log(
+    `Stages: ${stages.length} · warnings: ${warnings.length} · console errors: ${new Set(consoleErrors).size}`,
+  );
   if (shouldOpen) {
     spawn("open", [path.join(outDir, "index.html")], { stdio: "ignore", detached: true }).unref();
   }
@@ -573,7 +841,18 @@ try {
   try {
     fs.writeFileSync(
       path.join(outDir, "report.json"),
-      JSON.stringify({ generated_at: new Date().toISOString(), base_url: baseURL, stages, warnings, console_errors: [...new Set(consoleErrors)], error: String(error) }, null, 2),
+      JSON.stringify(
+        {
+          generated_at: new Date().toISOString(),
+          base_url: baseURL,
+          stages,
+          warnings,
+          console_errors: [...new Set(consoleErrors)],
+          error: String(error),
+        },
+        null,
+        2,
+      ),
     );
     fs.writeFileSync(path.join(outDir, "index.html"), storyboard());
   } catch {

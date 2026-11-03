@@ -38,6 +38,9 @@ pnpm exec astro dev logs
 pnpm check                # Astro/TypeScript check plus unit and Workers integration tests
 pnpm demo                 # repeatable guided walkthrough + private storyboard
 pnpm demo:show            # headed walkthrough; opens the storyboard
+pnpm demo:album           # dry-run the local 7/8 -> 8/8 album demonstration
+pnpm demo:album --mode seven --apply
+pnpm demo:discord:check   # read-only Discord tour preflight; no draws or posts
 pnpm test:e2e             # real Chrome E2E, screenshots into docs/evidence
 pnpm test:agent           # real stdio MCP client plus CLI against the running service
 pnpm test:persistence     # stop/start the local server and compare inventory/ledger state
@@ -125,12 +128,14 @@ The original local-first build and its acceptance record remain in `docs/LOCAL_A
 Discord is connected through a signed **HTTP interactions** endpoint, not a Gateway connection:
 
 - application `Foilbury` (`1566702936615026769`) installed in Loftwah (`997734945206313041`);
-- guild command `/foilbury` registered with `open`, `daily`, `collection`, `card`, `packs`, `profile`, `help` and guarded `admin` subcommands;
+- guild command `/foilbury` registered with `open`, `daily`, `collection`, `card`, `packs`, `achievements`, `tour`, `profile`, `help` and guarded `admin` subcommands;
 - gameplay restricted to `#card-collector-test` (`1566700752385081355`) by the installation allowlist;
 - real pulls, card artwork, persistent collection, buttons and Bot Owner status verified live;
 - Presence, Server Members and Message Content intents remain disabled.
 
-The admin surfaces `/admin` and `/api/v1/admin` are behind Cloudflare Access. Website sign-in supports the production bootstrap password and **Continue with Discord** (OAuth with state + PKCE); a real production OAuth sign-in showed the same collection as the Discord bot. Magic links, passkeys, authenticator MFA, recovery codes and session review are not yet implemented. See `docs/DISCORD_ACCEPTANCE.md` for exact evidence, gaps and human prerequisites. `PRODUCT.md` and `DESIGN.md` hold the current product/design context.
+The guided Discord host script and its truthful audience/preflight matrix are in `docs/DISCORD_TOUR.md`. The public showcase remains original IP only; member-only album art stays ephemeral in a channel whose audience has not been verified.
+
+The admin surfaces `/admin`, `/api/v1/admin`, `/platform-admin`, `/api/v1/platform` and `/_emdash` are behind Cloudflare Access. The Worker verifies the Access JWT on every administrative request. Platform, platform API and editorial applications inherit the organisation MFA setting rather than carrying a duplicate per-application enrolment. Website sign-in supports Discord OAuth, magic links, passkeys, authenticator MFA, recovery codes and session review. See `docs/AUTH_ACCEPTANCE.md` and `docs/DISCORD_ACCEPTANCE.md` for exact evidence, gaps and human prerequisites. `PRODUCT.md` and `DESIGN.md` hold the current product/design context.
 
 Email delivery, paid generation, live headless agent runs and the two-person/second-server acceptance remain unverified or blocked. Public launch is not ready.
 

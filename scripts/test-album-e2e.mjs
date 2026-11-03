@@ -36,8 +36,16 @@ function fieldControl(page, label) {
 const adminContext = await browser.newContext({ baseURL, viewport: { width: 1440, height: 1100 } });
 const admin = await adminContext.newPage();
 const adminErrors = [];
+const adminResponses = [];
 admin.on("console", (message) => { if (message.type() === "error") adminErrors.push(message.text()); });
 admin.on("pageerror", (error) => adminErrors.push(error.message));
+admin.on("response", (response) => {
+  const url = new URL(response.url());
+  if (url.origin !== new URL(baseURL).origin) return;
+  if (!["/api/v1/admin/access-session", "/api/v1/admin/assets", "/api/v1/admin/collections"].includes(url.pathname)) return;
+  adminResponses.push({ method: response.request().method(), path: url.pathname, status: response.status(), admission: response.headers()["x-foilbury-access-session"] });
+  if (adminResponses.length > 12) adminResponses.shift();
+});
 
 async function request(page, method, url, body) {
   return page.evaluate(async ({ method, url, body }) => {
@@ -136,6 +144,7 @@ try {
   // 6. Configure an achievement through the Admin UI.
   await admin.goto("/admin/achievements", { waitUntil: "networkidle" });
   const achievementKey = `album-proof-${stamp}`;
+  await fieldControl(admin, "Authority").selectOption("bot");
   await admin.getByLabel("Key").fill(achievementKey);
   await admin.getByLabel("Name", { exact: true }).fill("Album proof complete");
   await admin.getByLabel("Description").fill("Collect the acceptance subject.");
@@ -184,8 +193,29 @@ try {
   member.on("pageerror", (error) => memberErrors.push(error.message));
   await memberContext.request.post("/api/v1/dev/login", { data: { email: "player@foilbury.local" } });
   await member.goto("/play/draw", { waitUntil: "networkidle" });
-  await member.getByLabel("Choose a capsule").selectOption(`album-pool-${stamp}`);
-  await member.getByRole("button", { name: /Draw for/ }).click();
+  const previewPath = `/api/v1/pools/album-pool-${stamp}`;
+  let releasePreview;
+  const heldPreview = new Promise((resolve) => { releasePreview = resolve; });
+  await member.route(`**${previewPath}`, async (route) => {
+    await heldPreview;
+    await route.continue();
+  }, { times: 1 });
+  const drawButton = member.getByRole("button", { name: /Draw for/ });
+  try {
+    const previewRequested = member.waitForRequest((request) => new URL(request.url()).pathname === previewPath, { timeout: 20000 });
+    await member.getByLabel("Choose a capsule").selectOption(`album-pool-${stamp}`);
+    await previewRequested;
+    if (!(await drawButton.isDisabled())) throw new Error("Drawing remained enabled while the selected capsule's preview was pending.");
+  } finally {
+    releasePreview();
+  }
+  const drawResponsePromise = member.waitForResponse((response) => new URL(response.url()).pathname === "/api/v1/draws" && response.request().method() === "POST");
+  await drawButton.click();
+  const drawResponse = await drawResponsePromise;
+  const drawReceipt = await drawResponse.json();
+  if (drawResponse.status() !== 200 || drawReceipt.card_name !== cardName) {
+    throw new Error(`The selected capsule must award ${cardName}; received ${drawResponse.status()} ${JSON.stringify(drawReceipt)}.`);
+  }
   await member.getByText(/New subject|Another copy/).waitFor({ timeout: 20000 });
   const inspect = member.getByRole("link", { name: /Inspect this instance/ });
   await inspect.waitFor();
@@ -254,8 +284,13 @@ try {
   await member.emulateMedia({ reducedMotion: "no-preference" });
   pass("member drew with visible odds and inspected both faces in flat, 3D and reduced motion", instanceHref ?? "");
 
+  const memberAchievements = await request(member, "GET", "/api/v1/achievements");
+  const earned = memberAchievements.body?.items?.find((item) => item.key === achievementKey);
+  if (memberAchievements.status !== 200 || earned?.state !== "earned" || earned?.reward_state !== "granted") {
+    throw new Error(`The selected card must earn and pay its achievement: ${JSON.stringify(earned ?? memberAchievements)}.`);
+  }
   await member.goto("/play/achievements", { waitUntil: "networkidle" });
-  await member.getByText("Album proof complete").first().waitFor({ timeout: 20000 });
+  await member.locator("article.is-earned").getByRole("heading", { level: 4, name: "Album proof complete", exact: true }).waitFor({ timeout: 20000 });
   pass("achievement appears as earned for the member");
 
   await member.goto("/play/gifts", { waitUntil: "networkidle" });
@@ -285,6 +320,12 @@ try {
 } catch (error) {
   console.error(error?.stack ?? error);
   fail("album acceptance", error);
+  console.error("Album failure diagnostics", JSON.stringify({
+    path: new URL(admin.url()).pathname,
+    alerts: await admin.getByRole("alert").allTextContents().catch(() => []),
+    consoleErrors: adminErrors.slice(-5),
+    responses: adminResponses,
+  }));
   await admin.screenshot({ path: path.join(evidence, "album-failure-admin.png"), fullPage: true }).catch(() => undefined);
   fs.writeFileSync(path.join(evidence, "album-browser.json"), JSON.stringify({ generated_at: new Date().toISOString(), slug, cardSlug, collectionName, results }, null, 2));
   process.exitCode = 1;

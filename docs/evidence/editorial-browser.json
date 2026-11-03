@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-02T12:18:32.356Z",
+  "generated_at": "2026-11-03T05:05:44.471Z",
   "base_url": "http://localhost:5173",
   "results": [
     {
@@ -10,12 +10,12 @@
     {
       "name": "draft card created with category, tags, bio and quote",
       "status": "PASS",
-      "detail": "crd_mvz86boz687c1d9c2vbd6b73"
+      "detail": "crd_mw085l9rzd1b11qzp03m5d3p"
     },
     {
       "name": "artwork edition and published variant attached",
       "status": "PASS",
-      "detail": "var_mvz86bqqn7w7trr4c1kx8r89"
+      "detail": "var_mw085lda11n08d6q92ks7dad"
     },
     {
       "name": "durable render queue produced the public card image",
@@ -35,7 +35,7 @@
     {
       "name": "draw through the shared command awarded the new card",
       "status": "PASS",
-      "detail": "ins_mvz86civ2qs2b7k9gk646zen"
+      "detail": "ins_mw085m93cxphatwvap8a9tcn"
     },
     {
       "name": "retired card cannot drop again, and the attempt is not charged",
@@ -45,7 +45,7 @@
     {
       "name": "previously awarded copy remains owned after retirement",
       "status": "PASS",
-      "detail": "FB-1-RO-9D8A5E"
+      "detail": "FB-1-RO-D72B92"
     },
     {
       "name": "owned card detail renders the editorial proof without console errors",

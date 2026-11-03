@@ -9,12 +9,44 @@
  */
 import { chromium } from "@playwright/test";
 import crypto from "node:crypto";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
 const baseURL = process.env.FOILBURY_URL ?? "http://localhost:5173";
 const evidence = path.join("docs", "evidence");
 fs.mkdirSync(evidence, { recursive: true });
+
+/**
+ * This browser test enrols a TOTP authenticator. On a re-run the owner is
+ * already enrolled, so reset only that local test fixture (never production,
+ * and never cards/ledger/inventory) to keep the journey repeatable.
+ */
+function resetLocalAuthenticatorFixture() {
+  if (!/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(baseURL)) return;
+  const base = path.join(".wrangler/state/v3/d1");
+  if (!fs.existsSync(base)) return;
+  let db = null;
+  for (const entry of fs.readdirSync(base, { recursive: true })) {
+    const file = path.join(base, String(entry));
+    if (!file.endsWith(".sqlite") || file.endsWith("metadata.sqlite")) continue;
+    try {
+      const table = execFileSync("sqlite3", [file, "SELECT name FROM sqlite_master WHERE type='table' AND name='fb_totp_secrets';"], { encoding: "utf8" }).trim();
+      if (table) {
+        db = file;
+        break;
+      }
+    } catch {
+      // Not the application database.
+    }
+  }
+  if (!db) return;
+  execFileSync("sqlite3", [
+    db,
+    `DELETE FROM fb_totp_secrets WHERE user_id = (SELECT id FROM fb_users WHERE email = 'owner@foilbury.local');
+     DELETE FROM fb_recovery_codes WHERE user_id = (SELECT id FROM fb_users WHERE email = 'owner@foilbury.local');`,
+  ]);
+}
 
 function base32Decode(input) {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
@@ -55,6 +87,7 @@ function fail(name, error) {
   console.error(`FAIL ${name} · ${error?.message ?? error}`);
 }
 
+resetLocalAuthenticatorFixture();
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ baseURL, viewport: { width: 1440, height: 1000 } });
 const page = await context.newPage();
@@ -64,7 +97,10 @@ page.on("pageerror", (error) => consoleErrors.push(error.message));
 
 try {
   await page.goto("/login");
-  await page.evaluate(() => fetch("/api/v1/dev/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: "owner@foilbury.local" }) }));
+  const loginResponse = await context.request.post("/api/v1/dev/login", {
+    data: { email: "owner@foilbury.local" },
+  });
+  if (!loginResponse.ok()) throw new Error(`Development sign-in failed: HTTP ${loginResponse.status()}`);
   await page.goto("/account/security");
   await page.getByText("Fast, phishing-resistant sign-in.").waitFor();
   pass("dev account enters the security surface");

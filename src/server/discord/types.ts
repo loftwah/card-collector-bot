@@ -104,6 +104,7 @@ export interface DiscordInstallation {
   guild_name: string | null;
   channel_allowlist_json: string;
   channel_key: string | null;
+  channel_audience_json?: string | null;
   game_enabled: number;
   website_enabled: number;
   api_enabled: number;

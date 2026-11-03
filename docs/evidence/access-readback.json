@@ -1,0 +1,71 @@
+{
+  "captured_at": "2026-11-03T05:10:54.797162+00:00",
+  "organization": {
+    "auth_domain": "jolly-cake-2b85.cloudflareaccess.com",
+    "mfa_required_for_all_apps": null
+  },
+  "apps": [
+    {
+      "id": "f0e372f1-f229-4603-8122-b86872e16af3",
+      "name": "Foilbury Editorial",
+      "domain": "foilbury.loftwah.com/_emdash",
+      "aud": "d012a3aa003ab8e15683cedf50c1c9cc29e16fcca2a8183dcd213f18b3a46639",
+      "allowed_idps": [
+        "3f35f90b-bf4d-4ce2-90ae-bd0016ff3648"
+      ],
+      "auto_redirect_to_identity": true,
+      "session_duration": "8h",
+      "mfa_config": null
+    },
+    {
+      "id": "9a76651c-cd8d-4dfc-993e-b1adbe6fa7b8",
+      "name": "Foilbury Platform Admin API",
+      "domain": "foilbury.loftwah.com/api/v1/platform",
+      "aud": "df35f87f5433d07579bf48b66f75c9de352ee290750edb7f2465451f5e33b6e9",
+      "allowed_idps": [
+        "3f35f90b-bf4d-4ce2-90ae-bd0016ff3648"
+      ],
+      "auto_redirect_to_identity": true,
+      "session_duration": "8h",
+      "mfa_config": null
+    },
+    {
+      "id": "5db60bf3-09c8-4bb1-bee7-7296bab7d9a9",
+      "name": "Foilbury Platform Administration",
+      "domain": "foilbury.loftwah.com/platform-admin",
+      "aud": "89a773fff17de2bdbb1097a98c78aed35155114d7bd22433f7140609f0c37733",
+      "allowed_idps": [
+        "3f35f90b-bf4d-4ce2-90ae-bd0016ff3648"
+      ],
+      "auto_redirect_to_identity": true,
+      "session_duration": "8h",
+      "mfa_config": null
+    },
+    {
+      "id": "e95cb61b-3163-4e84-8476-e34355016f74",
+      "name": "Foilbury Admin API",
+      "domain": "foilbury.loftwah.com/api/v1/admin",
+      "aud": "ecc6e454b7fe9d1251e79274e73ccd8645c1510031f0b1bb81804e9947cbe8aa",
+      "allowed_idps": [
+        "11de3d49-aaf9-43fc-bfab-b38a307f39c7",
+        "3f35f90b-bf4d-4ce2-90ae-bd0016ff3648"
+      ],
+      "auto_redirect_to_identity": false,
+      "session_duration": "8h",
+      "mfa_config": null
+    },
+    {
+      "id": "81570cb1-bc16-4b7c-9133-249302a2579e",
+      "name": "Foilbury Administration",
+      "domain": "foilbury.loftwah.com/admin",
+      "aud": "c2529a1b72e9ed9d1dcd9d1efc4f30b36175d1a061b78ef0c723262c7e14be16",
+      "allowed_idps": [
+        "11de3d49-aaf9-43fc-bfab-b38a307f39c7",
+        "3f35f90b-bf4d-4ce2-90ae-bd0016ff3648"
+      ],
+      "auto_redirect_to_identity": false,
+      "session_duration": "8h",
+      "mfa_config": null
+    }
+  ]
+}

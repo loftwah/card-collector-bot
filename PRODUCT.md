@@ -23,7 +23,7 @@ Foilbury is a collectible-card cabinet. A player claims a free allowance, opens 
 - Player cabinet: collection filtered by collection and set, draw studio, rewards, trades, preferences and share links.
 - Bot administration at `/admin/*`: catalogue, artwork editions, collections, team invitations, sets, pools, economy, availability, imports, render studio and audit.
 - Platform Administration at `/platform-admin`: accounts, Access links, Bots, installations, global collections, explicit Super Admin record and audit.
-- Discord HTTP interactions at `/api/discord/interactions`: `/foilbury open`, `daily`, `collection`, `card`, `packs`, `profile`, `help` and guarded `admin` subcommands.
+- Discord HTTP interactions at `/api/discord/interactions`: `/foilbury open`, `daily`, `collection`, `card`, `packs`, `achievements`, `tour`, `profile`, `help` and guarded `admin` subcommands. The guided tour is private by default and shares only after explicit audience checks.
 - Headless REST API, CLI and stdio MCP server using scoped agent grants.
 - EmDash is the editorial CMS for journal drafts and media; Foilbury remains the source of truth for card identity, artwork editions, categories, tags, pools, awards and inventory.
 
@@ -56,8 +56,9 @@ Foilbury is a collectible-card cabinet. A player claims a free allowance, opens 
 
 ## Known gaps
 
-- Dean's human Cloudflare Access MFA enrollment and first authenticated `/admin` visit remain a human step; the policy, JWT verification and application session path are implemented and unit-tested.
+- Dean's administration uses his existing Cloudflare-account sign-in. A separate Access MFA enrolment is not an intended onboarding step. The authentication correction is prepared; deployment and a complete authenticated administration journey remain to be verified (see `docs/AUTH_ACCEPTANCE.md`).
 - The production EmDash operator console is protected by Access and configured for the existing Dean account; a human authenticated editorial session is still required to exercise the native console.
 - A local Discord OAuth callback is registered at `http://localhost:5173/auth/discord/callback`; a completed local Discord consent is a human step. Production OAuth remains preserved.
 - A real second Discord guild installation and a second-person acceptance matrix require an authorised human participant.
 - Paid generation, FAL, ElevenLabs and other billed providers remain intentionally unrun.
+

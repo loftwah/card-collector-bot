@@ -4,7 +4,13 @@ import { first, nowIso } from "../db";
 import { newId } from "../ids";
 import { addMembership, ensureWallet } from "../modules/identity";
 import { creditWallet } from "../modules/wallet";
-import type { DiscordEnv, DiscordIdentity, DiscordInstallation, DiscordInteraction, DiscordUser } from "./types";
+import type {
+  DiscordEnv,
+  DiscordIdentity,
+  DiscordInstallation,
+  DiscordInteraction,
+  DiscordUser,
+} from "./types";
 
 export interface ResolvedInstallation {
   installation: DiscordInstallation;
@@ -18,6 +24,27 @@ export interface ResolvedPlayer {
   created: boolean;
 }
 
+/**
+ * The audience an operator has verified for a channel. Missing policy means
+ * public only: restricted artwork stays ephemeral until a channel is prepared.
+ */
+export function channelAudienceFor(
+  installation: DiscordInstallation,
+  channelId: string | undefined | null,
+): "public" | "members" | "private" {
+  if (!channelId) return "public";
+  try {
+    const parsed = JSON.parse(installation.channel_audience_json ?? "{}") as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const value = (parsed as Record<string, unknown>)[channelId];
+      if (value === "public" || value === "members" || value === "private") return value;
+    }
+  } catch {
+    // A malformed policy is treated as public-only, never as a permissive one.
+  }
+  return "public";
+}
+
 function isSnowflake(value: string | undefined | null): value is string {
   return Boolean(value && /^\d{15,22}$/.test(value));
 }
@@ -25,7 +52,11 @@ function isSnowflake(value: string | undefined | null): value is string {
 export function interactionUser(interaction: DiscordInteraction): DiscordUser {
   const user = interaction.member?.user ?? interaction.user;
   if (!user || !isSnowflake(user.id)) {
-    throw new ApiError(401, "discord_user_missing", "Discord did not provide a verified user for this interaction.");
+    throw new ApiError(
+      401,
+      "discord_user_missing",
+      "Discord did not provide a verified user for this interaction.",
+    );
   }
   return user;
 }
@@ -34,10 +65,15 @@ export async function resolveInstallation(
   env: DiscordEnv,
   interaction: DiscordInteraction,
   applicationId: string,
+  options: { allowDisabledGame?: boolean } = {},
 ): Promise<ResolvedInstallation> {
   const guildId = interaction.guild_id;
   if (!isSnowflake(guildId)) {
-    throw new ApiError(403, "discord_guild_required", "Foilbury only works in a server where it is installed.");
+    throw new ApiError(
+      403,
+      "discord_guild_required",
+      "Foilbury only works in a server where it is installed.",
+    );
   }
   const installation = await first<DiscordInstallation>(
     env.DB,
@@ -47,32 +83,55 @@ export async function resolveInstallation(
     guildId,
   );
   if (!installation) {
-    throw new ApiError(403, "discord_installation_missing", "This server is not bound to a Foilbury Bot. Ask the Bot Owner to connect it.");
+    throw new ApiError(
+      403,
+      "discord_installation_missing",
+      "This server is not bound to a Foilbury Bot. Ask the Bot Owner to connect it.",
+    );
   }
-  if (!installation.game_enabled) {
-    throw new ApiError(403, "discord_game_disabled", "Discord gameplay is paused for this installation. Nothing was charged.");
+  if (!installation.game_enabled && !options.allowDisabledGame) {
+    throw new ApiError(
+      403,
+      "discord_game_disabled",
+      "Discord gameplay is paused for this installation. Nothing was charged.",
+    );
   }
   let allowedChannels: string[] = [];
   try {
     const parsed = JSON.parse(installation.channel_allowlist_json) as unknown;
-    if (Array.isArray(parsed)) allowedChannels = parsed.filter((value): value is string => typeof value === "string");
+    if (Array.isArray(parsed))
+      allowedChannels = parsed.filter((value): value is string => typeof value === "string");
   } catch {
     allowedChannels = [];
   }
-  if (allowedChannels.length > 0 && (!interaction.channel_id || !allowedChannels.includes(interaction.channel_id))) {
-    throw new ApiError(403, "discord_channel_not_enabled", "Foilbury is not enabled in this channel. Try the configured play channel.");
+  if (
+    allowedChannels.length > 0 &&
+    (!interaction.channel_id || !allowedChannels.includes(interaction.channel_id))
+  ) {
+    throw new ApiError(
+      403,
+      "discord_channel_not_enabled",
+      "Foilbury is not enabled in this channel. Try the configured play channel.",
+    );
   }
   const tenant = await first<Tenant>(
     env.DB,
     "SELECT id, slug, name FROM fb_tenants WHERE id = ?",
     installation.tenant_id,
   );
-  if (!tenant) throw new ApiError(503, "tenant_not_configured", "This installation's Bot is no longer configured.");
+  if (!tenant)
+    throw new ApiError(
+      503,
+      "tenant_not_configured",
+      "This installation's Bot is no longer configured.",
+    );
   return { installation, tenant, allowedChannels };
 }
 
 function safeDisplayName(user: DiscordUser): string {
-  const raw = (user.global_name ?? user.username ?? "Discord Player").replace(/[\u0000-\u001f\u007f]/g, "").trim();
+  const raw = (user.global_name ?? user.username ?? "Discord Player")
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .trim();
   return (raw || "Discord Player").slice(0, 80);
 }
 
@@ -86,20 +145,56 @@ export async function ensureDiscordPlayer(
   discordUser: DiscordUser,
 ): Promise<ResolvedPlayer> {
   const displayName = safeDisplayName(discordUser);
-  const existing = await first<DiscordIdentity & { email: string; user_display_name: string; platform_admin: number; role: CurrentUser["role"]; disabled_at: string | null; tenant_name: string }>(
+  const existing = await first<
+    DiscordIdentity & {
+      email: string;
+      user_display_name: string;
+      platform_admin: number;
+      role: CurrentUser["role"];
+      disabled_at: string | null;
+      membership_status: string | null;
+      membership_revoked_at: string | null;
+      tenant_name: string;
+    }
+  >(
     env.DB,
-    `SELECT di.*, u.email, u.display_name AS user_display_name, u.platform_admin, u.disabled_at, m.role, t.name AS tenant_name
+    `SELECT di.*, u.email, u.display_name AS user_display_name, u.platform_admin, u.disabled_at,
+            m.role, m.status AS membership_status, m.revoked_at AS membership_revoked_at, t.name AS tenant_name
        FROM fb_discord_identities di
        JOIN fb_users u ON u.id = di.user_id
-       JOIN fb_memberships m ON m.user_id = u.id AND m.tenant_id = di.tenant_id
+       LEFT JOIN fb_memberships m ON m.user_id = u.id AND m.tenant_id = di.tenant_id
        JOIN fb_tenants t ON t.id = di.tenant_id
-      WHERE di.tenant_id = ? AND di.discord_user_id = ? AND di.revoked_at IS NULL`,
+      WHERE di.tenant_id = ? AND di.discord_user_id = ?`,
     tenant.id,
     discordUser.id,
   );
   if (existing) {
-    if (existing.disabled_at) throw new ApiError(403, "account_disabled", "This player account is disabled.");
-    await env.DB.prepare("UPDATE fb_discord_identities SET username = ?, global_name = ?, last_seen_at = ? WHERE id = ?")
+    // A verified Discord identity never restores a revoked membership. The
+    // membership and the identity's revocation state are checked on every
+    // interaction, including buttons and delayed confirmations.
+    if (existing.revoked_at) {
+      throw new ApiError(
+        403,
+        "discord_identity_revoked",
+        "This Discord identity was revoked for this Bot. Ask the Bot Owner to restore it.",
+      );
+    }
+    if (existing.disabled_at)
+      throw new ApiError(403, "account_disabled", "This player account is disabled.");
+    if (
+      !existing.membership_status ||
+      existing.membership_status !== "active" ||
+      existing.membership_revoked_at
+    ) {
+      throw new ApiError(
+        403,
+        "membership_revoked",
+        "This player is no longer an active member of this Bot. Nothing was changed.",
+      );
+    }
+    await env.DB.prepare(
+      "UPDATE fb_discord_identities SET username = ?, global_name = ?, last_seen_at = ? WHERE id = ?",
+    )
       .bind(discordUser.username, discordUser.global_name ?? null, nowIso(), existing.id)
       .run();
     return {
@@ -116,7 +211,13 @@ export async function ensureDiscordPlayer(
   }
 
   const email = `discord.${discordUser.id}@players.foilbury.invalid`;
-  let user = await first<{ id: string; email: string; display_name: string; platform_admin: number; disabled_at: string | null }>(
+  let user = await first<{
+    id: string;
+    email: string;
+    display_name: string;
+    platform_admin: number;
+    disabled_at: string | null;
+  }>(
     env.DB,
     "SELECT id, email, display_name, platform_admin, disabled_at FROM fb_users WHERE email = ?",
     email,
@@ -134,17 +235,40 @@ export async function ensureDiscordPlayer(
       created = true;
     } catch (error) {
       if (!String(error).includes("UNIQUE")) throw error;
-      user = await first<{ id: string; email: string; display_name: string; platform_admin: number; disabled_at: string | null }>(
+      user = await first<{
+        id: string;
+        email: string;
+        display_name: string;
+        platform_admin: number;
+        disabled_at: string | null;
+      }>(
         env.DB,
         "SELECT id, email, display_name, platform_admin, disabled_at FROM fb_users WHERE email = ?",
         email,
       );
     }
   }
-  if (!user) throw new ApiError(500, "player_create_failed", "The player identity could not be created.");
-  if (user.disabled_at) throw new ApiError(403, "account_disabled", "This player account is disabled.");
+  if (!user)
+    throw new ApiError(500, "player_create_failed", "The player identity could not be created.");
+  if (user.disabled_at)
+    throw new ApiError(403, "account_disabled", "This player account is disabled.");
 
-  await addMembership(env.DB, tenant.id, user.id, "player");
+  // A partially created account may already have a membership. Never let a
+  // later interaction silently reactivate a revoked or suspended membership.
+  const priorMembership = await first<{ status: string; revoked_at: string | null }>(
+    env.DB,
+    "SELECT status, revoked_at FROM fb_memberships WHERE tenant_id = ? AND user_id = ?",
+    tenant.id,
+    user.id,
+  );
+  if (priorMembership && (priorMembership.status !== "active" || priorMembership.revoked_at)) {
+    throw new ApiError(
+      403,
+      "membership_revoked",
+      "This player is no longer an active member of this Bot. Nothing was changed.",
+    );
+  }
+  if (!priorMembership) await addMembership(env.DB, tenant.id, user.id, "player");
   await ensureWallet(env.DB, tenant.id, user.id);
 
   const starterKey = `starter:${tenant.id}:${user.id}`;
@@ -188,13 +312,31 @@ export async function ensureDiscordPlayer(
         (id, tenant_id, discord_user_id, user_id, username, global_name, linked_at, last_seen_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-      .bind(identityId, tenant.id, discordUser.id, user.id, discordUser.username, discordUser.global_name ?? null, nowIso(), nowIso())
+      .bind(
+        identityId,
+        tenant.id,
+        discordUser.id,
+        user.id,
+        discordUser.username,
+        discordUser.global_name ?? null,
+        nowIso(),
+        nowIso(),
+      )
       .run();
   } catch (error) {
     if (!String(error).includes("UNIQUE")) throw error;
   }
 
-  const resolved = await first<DiscordIdentity & { email: string; user_display_name: string; platform_admin: number; role: CurrentUser["role"]; disabled_at: string | null; tenant_name: string }>(
+  const resolved = await first<
+    DiscordIdentity & {
+      email: string;
+      user_display_name: string;
+      platform_admin: number;
+      role: CurrentUser["role"];
+      disabled_at: string | null;
+      tenant_name: string;
+    }
+  >(
     env.DB,
     `SELECT di.*, u.email, u.display_name AS user_display_name, u.platform_admin, u.disabled_at, m.role, t.name AS tenant_name
        FROM fb_discord_identities di
@@ -205,7 +347,8 @@ export async function ensureDiscordPlayer(
     tenant.id,
     discordUser.id,
   );
-  if (!resolved) throw new ApiError(500, "player_link_failed", "The Discord identity could not be linked.");
+  if (!resolved)
+    throw new ApiError(500, "player_link_failed", "The Discord identity could not be linked.");
   return {
     created,
     identity: resolved,
@@ -237,7 +380,11 @@ export async function linkDiscordIdentity(
     discordUser.id,
   );
   if (existingForDiscord && existingForDiscord.user_id !== user.id) {
-    throw new ApiError(409, "discord_already_linked", "That Discord account is already linked to another Foilbury account.");
+    throw new ApiError(
+      409,
+      "discord_already_linked",
+      "That Discord account is already linked to another Foilbury account.",
+    );
   }
   const existingForUser = await first<DiscordIdentity>(
     env.DB,
@@ -246,7 +393,11 @@ export async function linkDiscordIdentity(
     user.id,
   );
   if (existingForUser && existingForUser.discord_user_id !== discordUser.id) {
-    throw new ApiError(409, "account_already_linked", "This Foilbury account is already linked to a different Discord account.");
+    throw new ApiError(
+      409,
+      "account_already_linked",
+      "This Foilbury account is already linked to a different Discord account.",
+    );
   }
   const now = nowIso();
   if (existingForDiscord) {
@@ -255,7 +406,12 @@ export async function linkDiscordIdentity(
     )
       .bind(discordUser.username, discordUser.global_name ?? null, now, existingForDiscord.id)
       .run();
-    return { ...existingForDiscord, username: discordUser.username, global_name: discordUser.global_name ?? null, last_seen_at: now };
+    return {
+      ...existingForDiscord,
+      username: discordUser.username,
+      global_name: discordUser.global_name ?? null,
+      last_seen_at: now,
+    };
   }
   await ensureWallet(env.DB, tenant.id, user.id);
   const id = newId("dci");
@@ -265,7 +421,16 @@ export async function linkDiscordIdentity(
         (id, tenant_id, discord_user_id, user_id, username, global_name, linked_at, last_seen_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-      .bind(id, tenant.id, discordUser.id, user.id, discordUser.username, discordUser.global_name ?? null, now, now)
+      .bind(
+        id,
+        tenant.id,
+        discordUser.id,
+        user.id,
+        discordUser.username,
+        discordUser.global_name ?? null,
+        now,
+        now,
+      )
       .run();
   } catch (error) {
     if (!String(error).includes("UNIQUE")) throw error;
@@ -277,7 +442,11 @@ export async function linkDiscordIdentity(
     discordUser.id,
   );
   if (!linked || linked.user_id !== user.id) {
-    throw new ApiError(409, "discord_link_conflict", "That Discord account could not be linked to this Foilbury account.");
+    throw new ApiError(
+      409,
+      "discord_link_conflict",
+      "That Discord account could not be linked to this Foilbury account.",
+    );
   }
   return linked;
 }

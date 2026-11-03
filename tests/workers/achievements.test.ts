@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { bootstrap, ctxFor, fixturePool, makeInstance, runtime, walletBalance } from "./helpers";
 import { evaluateAchievements, listAchievements } from "../../src/server/modules/achievements";
+import { addCollectionCards, createCollection } from "../../src/server/modules/collections";
+import { addMembership, createUser } from "../../src/server/modules/identity";
 import { newId, sha256Hex } from "../../src/server/ids";
 import { nowIso } from "../../src/server/db";
 
@@ -16,11 +18,19 @@ describe("achievements", () => {
     expect(firstCard).toBeTruthy();
     expect(firstCard?.reward_amount).toBe(160);
     expect(await walletBalance(player, player.user!.id)).toBe(before + 160);
-    const unlocks = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_achievement_unlocks WHERE tenant_id = ? AND user_id = ? AND achievement_id = 'ach_first_card'").bind(player.tenant.id, player.user!.id).first<{ count: number }>();
+    const unlocks = await runtime.DB.prepare(
+      "SELECT COUNT(*) AS count FROM fb_achievement_unlocks WHERE tenant_id = ? AND user_id = ? AND achievement_id = 'ach_first_card'",
+    )
+      .bind(player.tenant.id, player.user!.id)
+      .first<{ count: number }>();
     expect(unlocks?.count).toBe(1);
     await evaluateAchievements(player, { userId: player.user!.id });
     expect(await walletBalance(player, player.user!.id)).toBe(before + 160);
-    const again = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_achievement_unlocks WHERE tenant_id = ? AND user_id = ? AND achievement_id = 'ach_first_card'").bind(player.tenant.id, player.user!.id).first<{ count: number }>();
+    const again = await runtime.DB.prepare(
+      "SELECT COUNT(*) AS count FROM fb_achievement_unlocks WHERE tenant_id = ? AND user_id = ? AND achievement_id = 'ach_first_card'",
+    )
+      .bind(player.tenant.id, player.user!.id)
+      .first<{ count: number }>();
     expect(again?.count).toBe(1);
   });
 
@@ -34,10 +44,18 @@ describe("achievements", () => {
       evaluateAchievements(player, { userId: player.user!.id }),
       evaluateAchievements(player, { userId: player.user!.id }),
     ]);
-    const unlocks = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_achievement_unlocks WHERE tenant_id = ? AND user_id = ? AND achievement_id = 'ach_first_card'").bind(player.tenant.id, player.user!.id).first<{ count: number }>();
+    const unlocks = await runtime.DB.prepare(
+      "SELECT COUNT(*) AS count FROM fb_achievement_unlocks WHERE tenant_id = ? AND user_id = ? AND achievement_id = 'ach_first_card'",
+    )
+      .bind(player.tenant.id, player.user!.id)
+      .first<{ count: number }>();
     expect(unlocks?.count).toBe(1);
     expect(await walletBalance(player, player.user!.id)).toBe(before + 160);
-    const ledger = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_ledger_entries WHERE tenant_id = ? AND user_id = ? AND reference_type = 'achievement'").bind(player.tenant.id, player.user!.id).first<{ count: number }>();
+    const ledger = await runtime.DB.prepare(
+      "SELECT COUNT(*) AS count FROM fb_ledger_entries WHERE tenant_id = ? AND user_id = ? AND reference_type = 'achievement'",
+    )
+      .bind(player.tenant.id, player.user!.id)
+      .first<{ count: number }>();
     expect(ledger?.count).toBe(1);
   });
 
@@ -55,21 +73,38 @@ describe("achievements", () => {
       `INSERT INTO fb_achievement_unlocks
         (id, tenant_id, user_id, achievement_id, achievement_version, earned_at, reward_state, reward_amount, notification_state, created_at)
        VALUES ('unl_recovery_pending', ?, ?, ?, ?, ?, 'pending', 160, 'pending', ?)`,
-    ).bind(player.tenant.id, player.user!.id, definition!.id, definition!.version, nowIso(), nowIso()).run();
+    )
+      .bind(
+        player.tenant.id,
+        player.user!.id,
+        definition!.id,
+        definition!.version,
+        nowIso(),
+        nowIso(),
+      )
+      .run();
     await evaluateAchievements(player, { userId: player.user!.id });
     expect(await walletBalance(player, player.user!.id)).toBe(before + 160);
     const unlock = await runtime.DB.prepare(
       "SELECT reward_state, reward_ledger_id, notification_state FROM fb_achievement_unlocks WHERE id = 'unl_recovery_pending'",
-    ).first<{ reward_state: string; reward_ledger_id: string | null; notification_state: string }>();
+    ).first<{
+      reward_state: string;
+      reward_ledger_id: string | null;
+      notification_state: string;
+    }>();
     expect(unlock?.reward_state).toBe("granted");
     expect(unlock?.reward_ledger_id).toBeTruthy();
     const ledger = await runtime.DB.prepare(
       "SELECT COUNT(*) AS count FROM fb_ledger_entries WHERE tenant_id = ? AND user_id = ? AND reference_type = 'achievement'",
-    ).bind(player.tenant.id, player.user!.id).first<{ count: number }>();
+    )
+      .bind(player.tenant.id, player.user!.id)
+      .first<{ count: number }>();
     expect(ledger?.count).toBe(1);
     const outbox = await runtime.DB.prepare(
       "SELECT COUNT(*) AS count FROM fb_outbox WHERE tenant_id = ? AND topic = 'achievement.earned' AND json_extract(payload_json, '$.unlock_id') = 'unl_recovery_pending'",
-    ).bind(player.tenant.id).first<{ count: number }>();
+    )
+      .bind(player.tenant.id)
+      .first<{ count: number }>();
     expect(outbox?.count).toBe(1);
 
     // Simulate a crash after the ledger commit but before the unlock state was
@@ -86,7 +121,9 @@ describe("achievements", () => {
     expect(reconciled?.reward_ledger_id).toBeTruthy();
     const ledgerAgain = await runtime.DB.prepare(
       "SELECT COUNT(*) AS count FROM fb_ledger_entries WHERE tenant_id = ? AND user_id = ? AND reference_type = 'achievement'",
-    ).bind(player.tenant.id, player.user!.id).first<{ count: number }>();
+    )
+      .bind(player.tenant.id, player.user!.id)
+      .first<{ count: number }>();
     expect(ledgerAgain?.count).toBe(1);
   });
 
@@ -99,26 +136,55 @@ describe("achievements", () => {
       `INSERT INTO fb_achievement_definitions
         (id, scope, tenant_id, key, version, name, description, criteria_json, reward_json, visibility, art_key, category, sort, status, created_by, created_at, updated_at)
        VALUES (?, 'bot', ?, 'test-roster-boundary', 1, 'Roster boundary', 'Only the frozen release card counts.', ?, '{"foil":0}', 'member', 'medal-test', 'collection', 6, 'active', 'test', ?, ?)`,
-    ).bind(
-      achievementId,
-      player.tenant.id,
-      JSON.stringify({ type: "collection_unique", collection_id: "col_test_public", target: 1, roster_card_ids: [fixture.cardId] }),
-      nowIso(),
-      nowIso(),
-    ).run();
+    )
+      .bind(
+        achievementId,
+        player.tenant.id,
+        JSON.stringify({
+          type: "collection_unique",
+          collection_id: "col_test_public",
+          target: 1,
+          roster_card_ids: [fixture.cardId],
+        }),
+        nowIso(),
+        nowIso(),
+      )
+      .run();
     const laterCard = `crd_${await sha256Hex("roster-later-card")}`.slice(0, 30);
     await runtime.DB.prepare(
       "INSERT INTO fb_card_definitions (id, tenant_id, logical_id, slug, name, description, status, created_at, updated_at, version) VALUES (?, ?, ?, ?, 'Later Card', 'A later addition.', 'published', ?, ?, 1)",
-    ).bind(laterCard, player.tenant.id, "test:roster-later", "roster-later-card", nowIso(), nowIso()).run();
-    await runtime.DB.prepare("INSERT INTO fb_collection_cards (collection_id, card_id, tenant_id, sort, added_by, added_at) VALUES ('col_test_public', ?, ?, 1, 'test', ?)").bind(laterCard, player.tenant.id, nowIso()).run();
-    await makeInstance(player, player.user!.id, { cardId: laterCard, variantId: fixture.variantId }, "ACH-ROSTER-LATER");
+    )
+      .bind(
+        laterCard,
+        player.tenant.id,
+        "test:roster-later",
+        "roster-later-card",
+        nowIso(),
+        nowIso(),
+      )
+      .run();
+    await runtime.DB.prepare(
+      "INSERT INTO fb_collection_cards (collection_id, card_id, tenant_id, sort, added_by, added_at) VALUES ('col_test_public', ?, ?, 1, 'test', ?)",
+    )
+      .bind(laterCard, player.tenant.id, nowIso())
+      .run();
+    await makeInstance(
+      player,
+      player.user!.id,
+      { cardId: laterCard, variantId: fixture.variantId },
+      "ACH-ROSTER-LATER",
+    );
     await evaluateAchievements(player, { userId: player.user!.id });
-    const before = (await listAchievements(player, player.user!.id)).find((item) => item.id === achievementId);
+    const before = (await listAchievements(player, player.user!.id)).find(
+      (item) => item.id === achievementId,
+    );
     expect(before?.state).not.toBe("earned");
     expect(before?.progress).toBe(0);
     await makeInstance(player, player.user!.id, fixture, "ACH-ROSTER-RELEASE");
     await evaluateAchievements(player, { userId: player.user!.id });
-    const after = (await listAchievements(player, player.user!.id)).find((item) => item.id === achievementId);
+    const after = (await listAchievements(player, player.user!.id)).find(
+      (item) => item.id === achievementId,
+    );
     expect(after?.state).toBe("earned");
   });
 
@@ -126,8 +192,14 @@ describe("achievements", () => {
     await bootstrap();
     const player = await ctxFor("cabinet", "player@foilbury.local");
     const fixture = await fixturePool(player);
-    const taxonomy = await runtime.DB.prepare("SELECT id, key FROM fb_materials WHERE tenant_id = ?").bind(player.tenant.id).all<{ id: string; key: string }>();
-    const effects = await runtime.DB.prepare("SELECT id, key FROM fb_effects WHERE tenant_id = ?").bind(player.tenant.id).all<{ id: string; key: string }>();
+    const taxonomy = await runtime.DB.prepare(
+      "SELECT id, key FROM fb_materials WHERE tenant_id = ?",
+    )
+      .bind(player.tenant.id)
+      .all<{ id: string; key: string }>();
+    const effects = await runtime.DB.prepare("SELECT id, key FROM fb_effects WHERE tenant_id = ?")
+      .bind(player.tenant.id)
+      .all<{ id: string; key: string }>();
     const none = effects.results.find((effect) => effect.key === "none")!;
     const holo = effects.results.find((effect) => effect.key === "holographic")!;
     const materials = new Map(taxonomy.results.map((material) => [material.key, material.id]));
@@ -141,13 +213,33 @@ describe("achievements", () => {
       const variantId = newId("var");
       await runtime.DB.prepare(
         "INSERT INTO fb_variants (id, tenant_id, card_id, edition_id, material_id, effect_id, name, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'published', ?)",
-      ).bind(variantId, player.tenant.id, fixture.cardId, fixture.editionId, materials.get(material)!, effect, material, nowIso()).run();
-      await makeInstance(player, player.user!.id, { cardId: fixture.cardId, variantId }, `ACH-SET-${material}`);
+      )
+        .bind(
+          variantId,
+          player.tenant.id,
+          fixture.cardId,
+          fixture.editionId,
+          materials.get(material)!,
+          effect,
+          material,
+          nowIso(),
+        )
+        .run();
+      await makeInstance(
+        player,
+        player.user!.id,
+        { cardId: fixture.cardId, variantId },
+        `ACH-SET-${material}`,
+      );
     }
     await evaluateAchievements(player, { userId: player.user!.id });
-    const view = (await listAchievements(player, player.user!.id)).find((item) => item.key === "core-finish-set");
+    const view = (await listAchievements(player, player.user!.id)).find(
+      (item) => item.key === "core-finish-set",
+    );
     expect(view?.state).toBe("earned");
-    const holoUnlock = (await listAchievements(player, player.user!.id)).find((item) => item.key === "first-holographic");
+    const holoUnlock = (await listAchievements(player, player.user!.id)).find(
+      (item) => item.key === "first-holographic",
+    );
     expect(holoUnlock?.state).toBe("earned");
   });
 
@@ -160,25 +252,176 @@ describe("achievements", () => {
       `INSERT INTO fb_achievement_definitions
         (id, scope, tenant_id, key, version, name, description, criteria_json, reward_json, visibility, art_key, category, sort, status, created_by, created_at, updated_at)
        VALUES (?, 'bot', ?, 'test-collection-one', 1, 'One of one', 'Collect the first card in this test collection.', ?, '{"foil":100}', 'member', 'medal-test', 'collection', 5, 'active', 'test', ?, ?)`,
-    ).bind(
-      achievementId,
-      player.tenant.id,
-      JSON.stringify({ type: "collection_unique", collection_id: "col_test_public", target: 1 }),
-      nowIso(),
-      nowIso(),
-    ).run();
+    )
+      .bind(
+        achievementId,
+        player.tenant.id,
+        JSON.stringify({ type: "collection_unique", collection_id: "col_test_public", target: 1 }),
+        nowIso(),
+        nowIso(),
+      )
+      .run();
     await makeInstance(player, player.user!.id, fixture, "ACH-VERSION-1");
     await evaluateAchievements(player, { userId: player.user!.id });
-    const first = (await listAchievements(player, player.user!.id)).find((item) => item.id === achievementId);
+    const first = (await listAchievements(player, player.user!.id)).find(
+      (item) => item.id === achievementId,
+    );
     expect(first?.state).toBe("earned");
     // A later card in the same collection must not revoke the completed rule.
     const laterCard = `crd_${await sha256Hex("later-card")}`.slice(0, 30);
     await runtime.DB.prepare(
       "INSERT INTO fb_card_definitions (id, tenant_id, logical_id, slug, name, description, status, created_at, updated_at, version) VALUES (?, ?, ?, ?, 'Later Card', 'A later addition.', 'published', ?, ?, 1)",
-    ).bind(laterCard, player.tenant.id, "test:later", "later-card", nowIso(), nowIso()).run();
-    await runtime.DB.prepare("INSERT INTO fb_collection_cards (collection_id, card_id, tenant_id, sort, added_by, added_at) VALUES ('col_test_public', ?, ?, 1, 'test', ?)").bind(laterCard, player.tenant.id, nowIso()).run();
+    )
+      .bind(laterCard, player.tenant.id, "test:later", "later-card", nowIso(), nowIso())
+      .run();
+    await runtime.DB.prepare(
+      "INSERT INTO fb_collection_cards (collection_id, card_id, tenant_id, sort, added_by, added_at) VALUES ('col_test_public', ?, ?, 1, 'test', ?)",
+    )
+      .bind(laterCard, player.tenant.id, nowIso())
+      .run();
     await evaluateAchievements(player, { userId: player.user!.id });
-    const again = (await listAchievements(player, player.user!.id)).find((item) => item.id === achievementId);
+    const again = (await listAchievements(player, player.user!.id)).find(
+      (item) => item.id === achievementId,
+    );
     expect(again?.state).toBe("earned");
+  });
+
+  it("hides collection achievements from members without that collection entitlement", async () => {
+    await bootstrap();
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const fixture = await fixturePool(owner);
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const second = await createUser(runtime.DB, {
+      email: "second-member@example.com",
+      displayName: "Second Member",
+      password: "a-long-test-password",
+    });
+    await addMembership(runtime.DB, owner.tenant.id, second.id, "player");
+    const secondCtx = await ctxFor("cabinet", "second-member@example.com");
+    const privateCollection = await createCollection(owner, {
+      name: "Hidden World",
+      scope: "global",
+      status: "published",
+      viewAudience: "private",
+    });
+    await addCollectionCards(owner, privateCollection.id, [fixture.cardId]);
+    await runtime.DB.prepare(
+      "DELETE FROM fb_collection_cards WHERE collection_id = 'col_test_public'",
+    ).run();
+    await runtime.DB.prepare(
+      "INSERT INTO fb_collection_viewers (collection_id, user_id, granted_by, created_at) VALUES (?, ?, ?, ?)",
+    )
+      .bind(privateCollection.id, player.user!.id, owner.user!.id, nowIso())
+      .run();
+    const achievementId = "ach_test_hidden_collection";
+    await runtime.DB.prepare(
+      `INSERT INTO fb_achievement_definitions
+        (id, scope, tenant_id, key, version, name, description, criteria_json, reward_json, visibility, art_key, category, sort, status, created_by, created_at, updated_at)
+       VALUES (?, 'bot', ?, 'test-hidden-collection', 1, 'Hidden World Complete', 'This name must not leak.', ?, '{"foil":100}', 'member', 'medal-test', 'collection', 9, 'active', 'test', ?, ?)`,
+    )
+      .bind(
+        achievementId,
+        owner.tenant.id,
+        JSON.stringify({
+          type: "collection_unique",
+          collection_id: privateCollection.id,
+          target: 1,
+        }),
+        nowIso(),
+        nowIso(),
+      )
+      .run();
+
+    const invited = await listAchievements(player, player.user!.id);
+    expect(invited.some((item) => item.id === achievementId)).toBe(true);
+    const otherMember = await listAchievements(secondCtx, second.id);
+    expect(otherMember.some((item) => item.id === achievementId)).toBe(false);
+    const anonymous = await listAchievements(
+      {
+        ...player,
+        user: null,
+        actor: { type: "system", id: "anonymous", representedUserId: null, label: "Anonymous" },
+      },
+      undefined,
+    );
+    expect(anonymous.some((item) => item.id === achievementId)).toBe(false);
+  });
+
+  it("recovers a pending unlock after the qualifying card is traded away", async () => {
+    await bootstrap();
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const fixture = await fixturePool(owner);
+    const collection = await createCollection(owner, {
+      name: "Recovery Album",
+      scope: "global",
+      status: "published",
+      viewAudience: "members",
+    });
+    await addCollectionCards(owner, collection.id, [fixture.cardId]);
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const instanceId = await makeInstance(player, player.user!.id, fixture, "ACH-PENDING-TRADE");
+    // Settle the ordinary first-card/collection badges before adding the
+    // recovery fixture, so this test measures only the recovered reward.
+    await evaluateAchievements(player, { userId: player.user!.id });
+    const achievementId = "ach_test_pending_recovery";
+    await runtime.DB.prepare(
+      `INSERT INTO fb_achievement_definitions
+        (id, scope, tenant_id, key, version, name, description, criteria_json, reward_json, visibility, art_key, category, sort, status, created_by, created_at, updated_at)
+       VALUES (?, 'bot', ?, 'test-pending-recovery', 1, 'Recovery complete', 'Recovered even after trade.', ?, '{"foil":100}', 'member', 'medal-test', 'collection', 10, 'active', 'test', ?, ?)`,
+    )
+      .bind(
+        achievementId,
+        owner.tenant.id,
+        JSON.stringify({
+          type: "collection_complete",
+          collection_id: collection.id,
+          target: 1,
+          roster_card_ids: [fixture.cardId],
+        }),
+        nowIso(),
+        nowIso(),
+      )
+      .run();
+    await runtime.DB.prepare(
+      "UPDATE fb_card_instances SET status = 'traded', updated_at = ? WHERE id = ?",
+    )
+      .bind(nowIso(), instanceId)
+      .run();
+    const unlockId = "unl_test_pending_recovery";
+    await runtime.DB.prepare(
+      `INSERT INTO fb_achievement_unlocks
+        (id, tenant_id, user_id, achievement_id, achievement_version, earned_at, reward_state, reward_amount, notification_state, created_at)
+       VALUES (?, ?, ?, ?, 1, ?, 'pending', 100, 'pending', ?)`,
+    )
+      .bind(unlockId, owner.tenant.id, player.user!.id, achievementId, nowIso(), nowIso())
+      .run();
+    const before = await walletBalance(player, player.user!.id);
+    await evaluateAchievements(player, { userId: player.user!.id });
+    expect(await walletBalance(player, player.user!.id)).toBe(before + 100);
+    const unlock = await runtime.DB.prepare(
+      "SELECT reward_state, reward_ledger_id, notification_state FROM fb_achievement_unlocks WHERE id = ?",
+    )
+      .bind(unlockId)
+      .first<{
+        reward_state: string;
+        reward_ledger_id: string | null;
+        notification_state: string;
+      }>();
+    expect(unlock?.reward_state).toBe("granted");
+    expect(unlock?.reward_ledger_id).toBeTruthy();
+    const ledger = await runtime.DB.prepare(
+      "SELECT COUNT(*) AS count FROM fb_ledger_entries WHERE tenant_id = ? AND user_id = ? AND reference_id = ?",
+    )
+      .bind(owner.tenant.id, player.user!.id, unlockId)
+      .first<{ count: number }>();
+    expect(ledger?.count).toBe(1);
+    await evaluateAchievements(player, { userId: player.user!.id });
+    expect(await walletBalance(player, player.user!.id)).toBe(before + 100);
+    const ledgerAgain = await runtime.DB.prepare(
+      "SELECT COUNT(*) AS count FROM fb_ledger_entries WHERE tenant_id = ? AND user_id = ? AND reference_id = ?",
+    )
+      .bind(owner.tenant.id, player.user!.id, unlockId)
+      .first<{ count: number }>();
+    expect(ledgerAgain?.count).toBe(1);
   });
 });

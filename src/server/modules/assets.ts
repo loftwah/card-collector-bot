@@ -5,7 +5,8 @@ import { all, first, nowIso } from "../db";
 import { newId, sha256Hex } from "../ids";
 import { audit } from "../http";
 
-export type AssetKind = "subject" | "background" | "frame" | "material" | "effect" | "brand" | "render";
+export type AssetKind =
+  "subject" | "background" | "frame" | "material" | "effect" | "brand" | "render";
 
 const MAX_BYTES = 8 * 1024 * 1024;
 const MAX_DIMENSION = 5000;
@@ -43,9 +44,11 @@ export interface AssetRow {
 
 export function detectMime(bytes: Uint8Array): string | null {
   if (bytes.length < 12) return null;
-  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "image/png";
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47)
+    return "image/png";
   if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
-  if (bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return "image/webp";
+  if (bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50)
+    return "image/webp";
   return null;
 }
 
@@ -71,25 +74,39 @@ export async function uploadAsset(
     };
   },
 ): Promise<AssetRow> {
-  if (input.bytes.length === 0) throw new ApiError(422, "asset_empty", "The uploaded file is empty.");
-  if (input.bytes.length > MAX_BYTES) throw new ApiError(413, "asset_too_large", "Assets must be 8 MB or smaller.");
+  if (input.bytes.length === 0)
+    throw new ApiError(422, "asset_empty", "The uploaded file is empty.");
+  if (input.bytes.length > MAX_BYTES)
+    throw new ApiError(413, "asset_too_large", "Assets must be 8 MB or smaller.");
   const mime = detectMime(input.bytes);
   if (!mime || !ALLOWED.has(mime)) {
     throw new ApiError(422, "asset_type_invalid", "Only PNG, JPEG and WebP images are accepted.");
   }
   if (input.declaredMime && input.declaredMime !== mime) {
-    throw new ApiError(422, "asset_mime_mismatch", "The file content does not match its declared image type.");
+    throw new ApiError(
+      422,
+      "asset_mime_mismatch",
+      "The file content does not match its declared image type.",
+    );
   }
   let dimensions: { width?: number; height?: number };
   try {
     dimensions = imageSize(input.bytes);
   } catch {
-    throw new ApiError(422, "asset_corrupt", "The image dimensions could not be read. The file may be corrupt.");
+    throw new ApiError(
+      422,
+      "asset_corrupt",
+      "The image dimensions could not be read. The file may be corrupt.",
+    );
   }
   const width = dimensions.width ?? 0;
   const height = dimensions.height ?? 0;
   if (!width || !height || width > MAX_DIMENSION || height > MAX_DIMENSION) {
-    throw new ApiError(422, "asset_dimensions_invalid", "Image dimensions must be between 1 and 5000 pixels.");
+    throw new ApiError(
+      422,
+      "asset_dimensions_invalid",
+      "Image dimensions must be between 1 and 5000 pixels.",
+    );
   }
   const hash = await sha256Hex(input.bytes);
   const existing = await first<AssetRow>(
@@ -115,7 +132,8 @@ export async function uploadAsset(
         )
         .bind(
           input.name.trim() || "Untitled asset",
-          input.visibility ?? (input.accessClassification === "public" ? "public_export" : "private"),
+          input.visibility ??
+            (input.accessClassification === "public" ? "public_export" : "private"),
           input.accessClassification ?? "private",
           input.role ?? input.kind,
           input.official ? 1 : 0,
@@ -129,12 +147,23 @@ export async function uploadAsset(
           existing.id,
           ctx.tenant.id,
         ),
-      auditStatementSafe(ctx, "asset.metadata_revised", existing.id, { kind: input.kind, sha256: hash }),
+      auditStatementSafe(ctx, "asset.metadata_revised", existing.id, {
+        kind: input.kind,
+        sha256: hash,
+      }),
     ]);
-    return (await first<AssetRow>(ctx.db, "SELECT * FROM fb_assets WHERE id = ? AND tenant_id = ?", existing.id, ctx.tenant.id))!;
+    return (await first<AssetRow>(
+      ctx.db,
+      "SELECT * FROM fb_assets WHERE id = ? AND tenant_id = ?",
+      existing.id,
+      ctx.tenant.id,
+    ))!;
   }
   const ext = mime === "image/png" ? "png" : mime === "image/jpeg" ? "jpg" : "webp";
-  const key = `tenants/${ctx.tenant.id}/assets/${hash}.${ext}`;
+  // The storage key is kind-scoped. Identical bytes reused as a different
+  // asset kind must not overwrite or share an object with the original asset;
+  // existing keys are retained so published URLs and references stay valid.
+  const key = `tenants/${ctx.tenant.id}/assets/${input.kind}/${hash}.${ext}`;
   await ctx.media.put(key, input.bytes, {
     httpMetadata: { contentType: mime, contentDisposition: "inline" },
     customMetadata: { tenant: ctx.tenant.id, sha256: hash, kind: input.kind },
@@ -173,12 +202,21 @@ export async function uploadAsset(
         input.source?.credit ?? null,
         nowIso(),
       ),
-    auditStatementSafe(ctx, "asset.uploaded", id, { kind: input.kind, sha256: hash, bytes: input.bytes.length }),
+    auditStatementSafe(ctx, "asset.uploaded", id, {
+      kind: input.kind,
+      sha256: hash,
+      bytes: input.bytes.length,
+    }),
   ]);
   return (await first<AssetRow>(ctx.db, "SELECT * FROM fb_assets WHERE id = ?", id))!;
 }
 
-function auditStatementSafe(ctx: Ctx, action: string, objectId: string, metadata: Record<string, unknown>) {
+function auditStatementSafe(
+  ctx: Ctx,
+  action: string,
+  objectId: string,
+  metadata: Record<string, unknown>,
+) {
   return ctx.db
     .prepare(
       `INSERT INTO fb_audit_events
@@ -209,19 +247,31 @@ export async function listAssets(ctx: Ctx, kind?: AssetKind) {
 }
 
 export async function getAsset(ctx: Ctx, id: string): Promise<AssetRow> {
-  const asset = await first<AssetRow>(ctx.db, "SELECT * FROM fb_assets WHERE id = ? AND tenant_id = ?", id, ctx.tenant.id);
+  const asset = await first<AssetRow>(
+    ctx.db,
+    "SELECT * FROM fb_assets WHERE id = ? AND tenant_id = ?",
+    id,
+    ctx.tenant.id,
+  );
   if (!asset) throw new ApiError(404, "asset_not_found", "Asset not found.");
   return asset;
 }
 
 export async function readAsset(media: R2Bucket, asset: AssetRow): Promise<ArrayBuffer> {
   const object = await media.get(asset.r2_key);
-  if (!object) throw new ApiError(410, "asset_missing", "The stored asset is missing. A render job can rebuild a card from its source.");
+  if (!object)
+    throw new ApiError(
+      410,
+      "asset_missing",
+      "The stored asset is missing. A render job can rebuild a card from its source.",
+    );
   return object.arrayBuffer();
 }
 
 export async function assetUrl(asset: AssetRow): Promise<string> {
-  return asset.visibility === "public_export" ? `/media/public/${asset.id}` : `/media/asset/${asset.id}`;
+  return asset.visibility === "public_export"
+    ? `/media/public/${asset.id}`
+    : `/media/asset/${asset.id}`;
 }
 
 export async function createRenderAsset(
@@ -233,7 +283,8 @@ export async function createRenderAsset(
     throw new ApiError(422, "render_type_invalid", "Rendered cards must be PNG or WebP.");
   }
   const dimensions = imageSize(input.bytes);
-  if (!dimensions.width || !dimensions.height) throw new ApiError(422, "render_dimensions_invalid", "Rendered image has no dimensions.");
+  if (!dimensions.width || !dimensions.height)
+    throw new ApiError(422, "render_dimensions_invalid", "Rendered image has no dimensions.");
   const hash = await sha256Hex(input.bytes);
   const ext = mime === "image/png" ? "png" : "webp";
   const key = `tenants/${ctx.tenant.id}/renders/${hash}.${ext}`;
@@ -297,8 +348,27 @@ export async function createRenderAsset(
            height = excluded.height, sha256 = excluded.sha256, source_hash = excluded.source_hash,
            status = 'published', published_at = excluded.published_at`,
       )
-      .bind(newId("vr"), ctx.tenant.id, input.variantId, input.recipeId, assetId, publicUrl, dimensions.width, dimensions.height, hash, sourceHash, now, now),
-    auditStatementSafe(ctx, "render.published", assetId, { variant_id: input.variantId, recipe_id: input.recipeId, sha256: hash, source_hash: sourceHash, access }),
+      .bind(
+        newId("vr"),
+        ctx.tenant.id,
+        input.variantId,
+        input.recipeId,
+        assetId,
+        publicUrl,
+        dimensions.width,
+        dimensions.height,
+        hash,
+        sourceHash,
+        now,
+        now,
+      ),
+    auditStatementSafe(ctx, "render.published", assetId, {
+      variant_id: input.variantId,
+      recipe_id: input.recipeId,
+      sha256: hash,
+      source_hash: sourceHash,
+      access,
+    }),
   ];
   await ctx.db.batch(statements);
   return { assetId, publicUrl, width: dimensions.width, height: dimensions.height, sha256: hash };
@@ -313,13 +383,19 @@ export async function createBackRenderAsset(
     throw new ApiError(422, "render_type_invalid", "Rendered card backs must be PNG or WebP.");
   }
   const dimensions = imageSize(input.bytes);
-  if (!dimensions.width || !dimensions.height) throw new ApiError(422, "render_dimensions_invalid", "Rendered back has no dimensions.");
+  if (!dimensions.width || !dimensions.height)
+    throw new ApiError(422, "render_dimensions_invalid", "Rendered back has no dimensions.");
   const hash = await sha256Hex(input.bytes);
   const ext = mime === "image/png" ? "png" : "webp";
   const key = `tenants/${ctx.tenant.id}/backs/${hash}.${ext}`;
   await ctx.media.put(key, input.bytes, {
     httpMetadata: { contentType: mime, contentDisposition: "inline" },
-    customMetadata: { tenant: ctx.tenant.id, variant: input.variantId, recipe: input.recipeId, side: "back" },
+    customMetadata: {
+      tenant: ctx.tenant.id,
+      variant: input.variantId,
+      recipe: input.recipeId,
+      side: "back",
+    },
   });
   const existingAsset = await first<{ id: string }>(
     ctx.db,
@@ -329,7 +405,12 @@ export async function createBackRenderAsset(
   );
   const assetId = existingAsset?.id ?? newId("rnd");
   const now = nowIso();
-  const variant = await first<{ card_id: string }>(ctx.db, "SELECT card_id FROM fb_variants WHERE id = ? AND tenant_id = ?", input.variantId, ctx.tenant.id);
+  const variant = await first<{ card_id: string }>(
+    ctx.db,
+    "SELECT card_id FROM fb_variants WHERE id = ? AND tenant_id = ?",
+    input.variantId,
+    ctx.tenant.id,
+  );
   const { effectiveCardAudience } = await import("./visibility");
   const audience = variant ? await effectiveCardAudience(ctx, variant.card_id) : "members";
   const access = audience === "public" ? "public" : audience === "members" ? "member" : "private";
@@ -343,7 +424,20 @@ export async function createBackRenderAsset(
                                       access_classification, role, processing_state, review_status, created_at)
                VALUES (?, ?, 'render', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'render_back', 'ready', 'approved', ?)`,
             )
-            .bind(assetId, ctx.tenant.id, `Card back ${input.variantId}`, mime, dimensions.width, dimensions.height, input.bytes.length, key, hash, access === "public" ? "public_export" : "private", access, now),
+            .bind(
+              assetId,
+              ctx.tenant.id,
+              `Card back ${input.variantId}`,
+              mime,
+              dimensions.width,
+              dimensions.height,
+              input.bytes.length,
+              key,
+              hash,
+              access === "public" ? "public_export" : "private",
+              access,
+              now,
+            ),
         ]),
     ctx.db
       .prepare(
@@ -354,8 +448,23 @@ export async function createBackRenderAsset(
            asset_id = excluded.asset_id, width = excluded.width, height = excluded.height,
            sha256 = excluded.sha256, status = 'published', published_at = excluded.published_at`,
       )
-      .bind(newId("vbr"), ctx.tenant.id, input.variantId, input.recipeId, assetId, dimensions.width, dimensions.height, hash, now, now),
-    auditStatementSafe(ctx, "render.back.published", assetId, { variant_id: input.variantId, sha256: hash, access }),
+      .bind(
+        newId("vbr"),
+        ctx.tenant.id,
+        input.variantId,
+        input.recipeId,
+        assetId,
+        dimensions.width,
+        dimensions.height,
+        hash,
+        now,
+        now,
+      ),
+    auditStatementSafe(ctx, "render.back.published", assetId, {
+      variant_id: input.variantId,
+      sha256: hash,
+      access,
+    }),
   ];
   await ctx.db.batch(statements);
   return { assetId, width: dimensions.width, height: dimensions.height, sha256: hash };
@@ -366,9 +475,11 @@ export async function createDerivative(
   input: { sourceAssetId: string; sizeKey: "thumb" | "preview" | "detail"; bytes: Uint8Array },
 ) {
   const mime = detectMime(input.bytes);
-  if (!mime || mime !== "image/webp") throw new ApiError(422, "derivative_type_invalid", "Derivatives must be WebP.");
+  if (!mime || mime !== "image/webp")
+    throw new ApiError(422, "derivative_type_invalid", "Derivatives must be WebP.");
   const dimensions = imageSize(input.bytes);
-  if (!dimensions.width || !dimensions.height) throw new ApiError(422, "derivative_dimensions_invalid", "Derivative has no dimensions.");
+  if (!dimensions.width || !dimensions.height)
+    throw new ApiError(422, "derivative_dimensions_invalid", "Derivative has no dimensions.");
   const source = await first<AssetRow & { card_id: string }>(
     ctx.db,
     `SELECT a.*, v.card_id FROM fb_assets a
@@ -378,7 +489,8 @@ export async function createDerivative(
     ctx.tenant.id,
     input.sourceAssetId,
   );
-  if (!source) throw new ApiError(404, "source_render_not_found", "The source render was not found.");
+  if (!source)
+    throw new ApiError(404, "source_render_not_found", "The source render was not found.");
   const hash = await sha256Hex(input.bytes);
   const key = `tenants/${ctx.tenant.id}/derivatives/${hash}.webp`;
   const existing = await first<{ id: string }>(
@@ -389,7 +501,13 @@ export async function createDerivative(
     input.sizeKey,
     hash,
   );
-  if (existing) return { id: existing.id, width: dimensions.width, height: dimensions.height, bytes: input.bytes.length };
+  if (existing)
+    return {
+      id: existing.id,
+      width: dimensions.width,
+      height: dimensions.height,
+      bytes: input.bytes.length,
+    };
   await ctx.media.put(key, input.bytes, {
     httpMetadata: { contentType: mime, contentDisposition: "inline" },
     customMetadata: { tenant: ctx.tenant.id, derivative: input.sizeKey, sha256: hash },
@@ -426,14 +544,43 @@ export async function createDerivative(
           (id, tenant_id, source_asset_id, size_key, r2_key, mime, width, height, bytes, sha256, status, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready', ?)`,
       )
-      .bind(derivativeId, ctx.tenant.id, source.id, input.sizeKey, key, mime, dimensions.width, dimensions.height, input.bytes.length, hash, now),
-    auditStatementSafe(ctx, "derivative.created", derivativeId, { source: source.id, size: input.sizeKey, bytes: input.bytes.length }),
+      .bind(
+        derivativeId,
+        ctx.tenant.id,
+        source.id,
+        input.sizeKey,
+        key,
+        mime,
+        dimensions.width,
+        dimensions.height,
+        input.bytes.length,
+        hash,
+        now,
+      ),
+    auditStatementSafe(ctx, "derivative.created", derivativeId, {
+      source: source.id,
+      size: input.sizeKey,
+      bytes: input.bytes.length,
+    }),
   ]);
-  return { id: derivativeId, width: dimensions.width, height: dimensions.height, bytes: input.bytes.length };
+  return {
+    id: derivativeId,
+    width: dimensions.width,
+    height: dimensions.height,
+    bytes: input.bytes.length,
+  };
 }
 
 export async function getRenderAsset(ctx: Ctx, assetId: string) {
-  const row = await first<{ id: string; variant_id: string; public_url: string; mime: string; r2_key: string; width: number; height: number }>(
+  const row = await first<{
+    id: string;
+    variant_id: string;
+    public_url: string;
+    mime: string;
+    r2_key: string;
+    width: number;
+    height: number;
+  }>(
     ctx.db,
     `SELECT a.id, r.variant_id, r.public_url, a.mime, a.r2_key, a.width, a.height
        FROM fb_variant_renders r JOIN fb_assets a ON a.id = r.asset_id
