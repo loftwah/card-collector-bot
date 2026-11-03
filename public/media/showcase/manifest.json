@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-03T06:24:13.066Z",
-  "source_commit": "51b6a0d260d1c3911b9dd70734cfd7008a337063",
+  "generated_at": "2026-11-03T07:18:57.221Z",
+  "source_commit": "eb2df39d7ed93c25b51f29917130a57e100d6a66",
   "audience": "public-safe Foilbury originals",
   "public_card": {
     "name": "Drop Bear",
@@ -10,23 +10,23 @@
   "outputs": [
     {
       "file": "public/media/showcase/card-16x9-1920.png",
-      "sha256": "c834c76237a98cfa8b0dd957ec855413b8708320efc4497952cc4911d4ca313a",
-      "bytes": 1407067
+      "sha256": "27b466fd3b646a8e42097e90a25c1be2025526c73c6ba3cfeb2f673f42a2d473",
+      "bytes": 1276321
     },
     {
       "file": "public/media/showcase/card-1x1-1080.png",
-      "sha256": "a182a3be19aca16ae33dac16ff561583c4d19f46b403028c06543a00ec426ece",
-      "bytes": 886621
+      "sha256": "6bd9b74ec22c0ae8254c32fd31fc1a185771368f5a7e7eb840a8b6670982c087",
+      "bytes": 886175
     },
     {
       "file": "public/media/showcase/card-4x5-1080.png",
-      "sha256": "8e79de881faf2f457e68f3e702c8af1aadbb5d794e42135146ce574e18b97e52",
-      "bytes": 1075668
+      "sha256": "0917ed62d9b5b0c63bebe71a56726360f6c34f1a0023881f070785d8a6e0f261",
+      "bytes": 1039590
     },
     {
       "file": "public/media/showcase/card-9x16-1080.png",
-      "sha256": "f68941ce93636cf2e45e2583c5d752932807bcd360b81636023348bd31dacd79",
-      "bytes": 1285594
+      "sha256": "79feadc673ef56b1d70ff222a1b3bd7df9b389c9b819e6b728b83587b7b31888",
+      "bytes": 1248801
     },
     {
       "file": "public/media/showcase/finish-mastery-16x9-1920.png",
@@ -35,8 +35,8 @@
     },
     {
       "file": "public/media/showcase/foilbury-teaser-9x16.mp4",
-      "sha256": "620ca147fccb4a8c75de771ae681fe683f50ad70d65758e838c1c0a15a7d8e32",
-      "bytes": 1411034
+      "sha256": "860f3a595a354d62e6d85b85509c4a2e2f7fc846ead8edbc3ceb49e235fb3fe0",
+      "bytes": 1392188
     },
     {
       "file": "public/media/showcase/foilbury-trailer-16x9.mp4",
@@ -45,25 +45,25 @@
     },
     {
       "file": "public/media/showcase/manifest.json",
-      "sha256": "08cac18b106cb43e01606a78e0d943af741c99694772e5595c8f575624aee729",
-      "bytes": 2550
+      "sha256": "de8d17eff7a8fd865acab252d6e0d24dabd6583b978022b6709db0554729b931",
+      "bytes": 2869
     },
     {
       "file": "public/media/showcase/og-1200x630.png",
-      "sha256": "31d148ee8395e88e94edd6e9edfb7a96ba502127dd3f83124f1097fba00c6b6e",
-      "bytes": 574746
+      "sha256": "c116310f6d6953e21fd80666b07a25cf83dc2111215aefbdbdfe7b73a9b6a7ed",
+      "bytes": 533133
     }
   ],
   "private_demo": {
-    "draw_id": "drw_mw085m93255v4akj73bbfvw4",
-    "instance_id": "ins_mw085m93cxphatwvap8a9tcn",
-    "receipt_created_at": "2026-11-03T05:05:43.911Z",
-    "card": "Editorial Proof 1793682342624",
+    "draw_id": "drw_mw0cszgczyc7782h23736781",
+    "instance_id": "ins_mw0cszgchke9my5xmn1y2fb6",
+    "receipt_created_at": "2026-11-03T07:15:52.573Z",
+    "card": "Hajime Hinata",
     "variant": "Plain",
-    "serial": "FB-1-RO-D72B92",
-    "pool_revision": 1,
+    "serial": "FB-11-JU-E44765",
+    "pool_revision": 11,
     "audience": "local-demo-private",
-    "image_note": "Persisted local draw receipt; render unavailable, using the public hero still for the poster only.",
+    "image_note": "Persisted local draw receipt; the recorded render is no longer available, so this poster shows the receipt facts without substitute card art.",
     "output": ".foilbury/exports/opening-replay-9x16.mp4"
   },
   "regeneration": "node scripts/export-showcase.mjs",

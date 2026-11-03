@@ -89,7 +89,7 @@ function poster({ width, height, portrait = true, title = "Characters worth keep
   const pad = Math.round(width * 0.065);
   const cardWidth = portrait ? Math.round(width * 0.52) : Math.round(height * 0.67);
   return `<!doctype html><html><head><meta charset="utf-8"><style>${baseCss(width, height)}
-    .stage{position:relative;width:100%;height:100%;padding:${pad}px;display:grid;grid-template-columns:${portrait ? "1fr" : "1.05fr .95fr"};gap:${pad * 0.6}px;align-items:center;background:
+    .stage{position:relative;width:100%;height:100%;padding:${pad}px ${pad}px ${Math.round(pad * 2.3)}px;display:grid;grid-template-columns:${portrait ? "1fr" : "1.05fr .95fr"};gap:${pad * 0.6}px;align-items:center;background:
       linear-gradient(130deg,rgba(44,227,211,.16),transparent 46%),
       linear-gradient(0deg,rgba(201,242,95,.06),transparent 60%),#07110f}
     .grid{position:absolute;inset:0;background-image:linear-gradient(to right,rgba(201,242,95,.08) 1px,transparent 1px),linear-gradient(to bottom,rgba(201,242,95,.06) 1px,transparent 1px);background-size:${Math.round(width / 18)}px ${Math.round(width / 18)}px;mask-image:linear-gradient(110deg,transparent 10%,black 80%)}
