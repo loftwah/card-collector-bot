@@ -92,6 +92,12 @@ Discord uses the signed HTTP interaction endpoint at `/api/discord/interactions`
 - Global collections are curated by the Super Admin or a scoped Global Collection Admin and enabled per Bot. Bot collections are private to their Bot.
 - `/_emdash` is the EmDash editorial operator console, protected by Access in production. It owns journal content/media; Foilbury owns the card catalogue. See `docs/EMDASH_BOUNDARY.md`.
 
+## Scoped administration API
+
+The normal signed-in Studio calls `/api/v1/studio/*`, which aliases the collection domain routes and enforces the live role on every request. The OpenAPI document includes the scoped role, people and share endpoints. A Global Collection Admin agent grant uses the same `content:read`/`content:write` scopes and is limited to its assigned collection IDs.
+
+Platform role grants are human-only: `POST /api/v1/platform/roles` requires Super Admin and recent strong authentication. Only `global_collection_admin` is assignable; the Super Admin role remains a separate provisioning path. Revocation is idempotent.
+
 ## Authority
 
 - The server derives the tenant and member from the credential. A request parameter is not authority.

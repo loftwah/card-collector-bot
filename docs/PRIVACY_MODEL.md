@@ -73,3 +73,13 @@ launch manifests for NBA and the 16 third-party properties are **members-only**
 and are not used in public HTML, metadata, sitemaps, Open Graph images, sample
 grids or marketing copy. `Shared Characters` was reviewed individually because
 its cards are the same original cast; it is approved public content.
+
+## Explicit shares
+
+A share link is a snapshot, not a capability grant. `/s/:token` rechecks the
+current collection audience and the viewer's membership on every request. A
+member-only share shows a generic gate to a signed-out or non-entitled viewer;
+it never renders the card, badge, roster or serial. Public-safe shares may show
+approved original-IP content, but the page still uses `noindex` and generic
+metadata for member material. Revocation stops future requests; it cannot recall
+bytes already downloaded or posted to Discord.

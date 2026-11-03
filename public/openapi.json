@@ -3,7 +3,7 @@
   "info": {
     "title": "Foilbury",
     "version": "1.0.0",
-    "description": "Local-first collectible-card cabinet. The browser, CLI and MCP server call the same authorised application commands. Use the Idempotency-Key header on money-like and destructive commands; reuse it for transport retries.",
+    "description": "Local-first collectible-card cabinet. The browser, CLI and MCP server call the same authorised application commands. Use the Idempotency-Key header on money-like and destructive commands; reuse it for transport retries. Scoped Studio routes mirror the collection domain routes under /api/v1/studio and enforce the live Global Collection Admin or Bot role.",
     "contact": {
       "name": "Foilbury owner",
       "url": "https://foilbury.loftwah.com"
@@ -1538,19 +1538,52 @@
       }
     },
     "/api/v1/shares": {
+      "get": {
+        "tags": [
+          "Player"
+        ],
+        "summary": "List my share links",
+        "description": "No token or private payload is exposed.",
+        "responses": {
+          "200": {
+            "description": "Share receipts"
+          },
+          "401": {
+            "description": "Authentication required"
+          }
+        }
+      },
       "post": {
         "tags": [
           "Player"
         ],
-        "summary": "Create an explicit public share link",
-        "description": "Requires sharing_enabled in preferences. Only composed public renders are exposed.",
+        "summary": "Create a preview-first expiring share",
+        "description": "Rechecks current entitlement and sharing consent. A token never replaces membership authorisation.",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": [
+                  "kind"
+                ],
                 "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "cabinet",
+                      "card",
+                      "collection",
+                      "achievement",
+                      "wishlist",
+                      "latest",
+                      "profile"
+                    ]
+                  },
+                  "targetId": {
+                    "type": "string"
+                  },
                   "expiresInDays": {
                     "type": "integer",
                     "minimum": 1,
@@ -1563,10 +1596,13 @@
         },
         "responses": {
           "200": {
-            "description": "One-time share URL and id"
+            "description": "Share URL, audience and captured preview"
           },
           "409": {
-            "$ref": "#/components/responses/Error"
+            "description": "Sharing disabled in preferences"
+          },
+          "422": {
+            "description": "Target or audience invalid"
           }
         }
       }
@@ -1672,6 +1708,200 @@
         "responses": {
           "200": {
             "description": "Owned cards"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/people": {
+      "get": {
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Search people, platform roles and Bot memberships",
+        "description": "Super Admin only. Returns explicit platform role scopes, Bot roles and pending invitations. Access admission is not a role.",
+        "responses": {
+          "200": {
+            "description": "People and roles"
+          },
+          "403": {
+            "description": "Super Admin required"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/roles": {
+      "get": {
+        "tags": [
+          "Administration"
+        ],
+        "summary": "List scoped platform role assignments",
+        "description": "Super Admin only. The Super Admin role itself is provisioned separately and is not granted here.",
+        "responses": {
+          "200": {
+            "description": "Assignments"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Grant or change a scoped platform role idempotently",
+        "description": "Super Admin only, recent strong authentication required. Only global_collection_admin is assignable; public showcase approval remains Super Admin-only.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "userId",
+                  "role",
+                  "reason"
+                ],
+                "properties": {
+                  "userId": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "global_collection_admin"
+                    ]
+                  },
+                  "scopes": {
+                    "type": "object",
+                    "properties": {
+                      "all": {
+                        "type": "boolean"
+                      },
+                      "collectionIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Assignment idempotent result"
+          },
+          "403": {
+            "description": "Super Admin or strong authentication required"
+          },
+          "422": {
+            "description": "Unverified identity or invalid scope"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/roles/{userId}/revoke": {
+      "post": {
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Revoke a scoped platform role",
+        "description": "Super Admin only. Revocation is idempotent and never deletes the account, cards or history.",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "role",
+                  "reason"
+                ],
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "global_collection_admin"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Revocation result"
+          },
+          "404": {
+            "description": "Role not found"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/collections": {
+      "get": {
+        "tags": [
+          "Administration"
+        ],
+        "summary": "List shared and Bot collections in scope",
+        "description": "A Global Collection Admin sees only assigned shared collections plus their own Bot. Bot Admins see their Bot and enabled globals.",
+        "responses": {
+          "200": {
+            "description": "Collections"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Create a collection in the allowed scope",
+        "description": "Public showcase approval remains Super Admin-only.",
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/api/v1/studio/collections": {
+      "get": {
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Scoped Studio alias for collection management",
+        "description": "Same domain service and live role checks as /api/v1/admin/collections, reachable by a normal signed-in scoped session rather than Cloudflare Access.",
+        "responses": {
+          "200": {
+            "description": "Collections in scope"
+          },
+          "401": {
+            "description": "Signed-in session required"
+          },
+          "403": {
+            "description": "Scope required"
           }
         }
       }
