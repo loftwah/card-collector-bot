@@ -36,8 +36,16 @@ function fieldControl(page, label) {
 const adminContext = await browser.newContext({ baseURL, viewport: { width: 1440, height: 1100 } });
 const admin = await adminContext.newPage();
 const adminErrors = [];
+const adminResponses = [];
 admin.on("console", (message) => { if (message.type() === "error") adminErrors.push(message.text()); });
 admin.on("pageerror", (error) => adminErrors.push(error.message));
+admin.on("response", (response) => {
+  const url = new URL(response.url());
+  if (url.origin !== new URL(baseURL).origin) return;
+  if (!["/api/v1/admin/access-session", "/api/v1/admin/assets", "/api/v1/admin/collections"].includes(url.pathname)) return;
+  adminResponses.push({ method: response.request().method(), path: url.pathname, status: response.status(), admission: response.headers()["x-foilbury-access-session"] });
+  if (adminResponses.length > 12) adminResponses.shift();
+});
 
 async function request(page, method, url, body) {
   return page.evaluate(async ({ method, url, body }) => {
@@ -285,6 +293,12 @@ try {
 } catch (error) {
   console.error(error?.stack ?? error);
   fail("album acceptance", error);
+  console.error("Album failure diagnostics", JSON.stringify({
+    path: new URL(admin.url()).pathname,
+    alerts: await admin.getByRole("alert").allTextContents().catch(() => []),
+    consoleErrors: adminErrors.slice(-5),
+    responses: adminResponses,
+  }));
   await admin.screenshot({ path: path.join(evidence, "album-failure-admin.png"), fullPage: true }).catch(() => undefined);
   fs.writeFileSync(path.join(evidence, "album-browser.json"), JSON.stringify({ generated_at: new Date().toISOString(), slug, cardSlug, collectionName, results }, null, 2));
   process.exitCode = 1;

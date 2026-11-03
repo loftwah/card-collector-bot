@@ -45,9 +45,11 @@ const existing = await apiJson("/api/v1/admin/cards?limit=1");
 assert.ok(Array.isArray(existing.items) && existing.items.length === 0, "CI fixture setup requires an empty catalogue; existing data is never reset.");
 
 const fixtureDir = path.join(process.cwd(), ".foilbury/generated/_test");
+// Brand uploads need different bytes from the seeded subject/background:
+// storage keys currently depend on the hash, while deduplication includes kind.
 const fixtureImages = [
-  ["public/art/layers/mark.png", "mark.png"],
-  ["public/art/layers/material-plain.png", "cover.png"],
+  ["public/art/layers/mark-mono.png", "mark.png"],
+  ["public/art/layers/card-back.png", "cover.png"],
   ["public/brand/discord-avatar.png", "test-card-subject.png"],
 ];
 for (const [source, filename] of fixtureImages) {
