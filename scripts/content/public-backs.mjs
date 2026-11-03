@@ -23,7 +23,7 @@ fs.mkdirSync(outDir, { recursive: true });
 fs.mkdirSync(tmpDir, { recursive: true });
 
 await ensureServer();
-const catalogue = await apiJson("/api/v1/catalogue?limit=100");
+const catalogue = await apiJson("/api/v1/catalogue?limit=2000");
 const cards = catalogue.items.filter((card) => card.editions.some((edition) => edition.variants.some((variant) => variant.render_url)) && card.collections.length > 0 && card.collections.every((collection) => collection.view_audience === "public"));
 const manrope = fs.readFileSync(path.join(root, "public", "fonts", "manrope-latin.woff2")).toString("base64");
 const fraunces = fs.readFileSync(path.join(root, "public", "fonts", "Fraunces.ttf")).toString("base64");

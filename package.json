@@ -51,6 +51,7 @@
     "achievements:mastery": "node scripts/provision-mastery-achievements.mjs",
     "content:backs": "node scripts/content/public-backs.mjs",
     "content:requeue": "node scripts/content/requeue-renders.mjs",
+    "renders:publish-public": "node scripts/publish-public-renders.mjs",
     "brand:generate": "node scripts/brand/generate-brand-kit.mjs",
     "export:showcase": "node scripts/export-showcase.mjs",
     "access:configure": "node scripts/configure-cloudflare-access.mjs",

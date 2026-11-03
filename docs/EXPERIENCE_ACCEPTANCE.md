@@ -15,7 +15,7 @@ or live-client pass.
 | Kaylee is a full Super Admin | FALSE | Production `platform_admin=0`, no `fb_platform_admins` row. |
 | Kaylee is an ordinary User with no scoped role | STALE | A scoped Global Collection Admin row is now active (production, `2026/11/03 17:59 Melbourne`). |
 | EmDash and Foilbury have one clear boundary | PASS | `docs/EMDASH_BOUNDARY.md`; no second card editor or second journal editor. |
-| Public/member card fronts include the collection emblem in production | PARTIAL | New renderer proved locally; existing production renders were not rewritten. See section 8. |
+| Public/member card fronts include the collection emblem in production | PARTIAL | Public fronts are updated in production; launch member fronts still use the previous renderer. See section 8. |
 
 ## 2. Roles and permissions
 
@@ -58,9 +58,9 @@ or live-client pass.
 | Requirement | Status | Evidence |
 |---|---|---|
 | Distinct Foilbury palette and design system | PASS | `DESIGN.md`; Signal palette; `docs/evidence/signal-*.png`. |
-| Collection mark on card front and back | PASS locally / PARTIAL production | Front renderer now embeds the collection mark; local Danganronpa and public assets re-rendered. Existing production assets are unchanged. |
+| Collection mark on card front and back | PASS public production / PASS local member / PARTIAL member production | Public fronts and designed backs were published to production (80 variants, 80 backs). Local Danganronpa member assets were re-rendered; existing production member fronts remain from the previous renderer. |
 | Full-set front/back/finish contact sheets | PASS locally | `.foilbury/evidence/contact-sheets/` (private, contains member art). |
-| Designed public backs | PASS locally | `pnpm content:backs` built and published 42 public variant backs locally. Production publish is pending an approved operator path. |
+| Designed public backs | PASS | `pnpm content:backs` built and `pnpm renders:publish-public` published 80 public fronts and 80 designed backs to production R2/D1; read-back 80 public fronts. |
 | Card flat/flip/zoom/3D/variant comparison | PASS locally | `/play/card/:id`; reduced-motion and keyboard paths; album test. |
 | Opening reveal, skip, replay, receipt, new/duplicate | PASS locally | `/play/draw`; `DrawStudio.tsx`; committed receipt before animation. |
 | Progress: unique, copies, duplicates, all core finishes | PASS | `/play/collection`; binder and finish bars; `collectionProgress`/`collectionBinder`. |
@@ -69,7 +69,8 @@ or live-client pass.
 | Share: card, collection, badge, wishlist, profile | PASS (local) | `/s/:token`; SharePanel/ShareLinkButton; member gate and public-safe audience. |
 | Export stills and playable video | PASS (local/public) | `/showcase`; 18s and 8s H.264 MP4; `public/media/showcase/manifest.json`. |
 | Public SEO | PASS | `pnpm test:seo`; sitemap/robots; dynamic public card OG image. |
-| Full production re-render of existing card assets | BLOCKED (approval/operator) | No production asset mutation without a bounded, approved render run. |
+| Production public render refresh | PASS | 80 public variants and 80 designed backs published; old public assets remain in R2/D1 history. |
+| Production member front re-render | BLOCKED (approval/operator) | 17 launch member fronts remain from the previous renderer; local re-render is proven. |
 
 ## 6. Accessibility, performance and cleanup
 
@@ -77,7 +78,7 @@ or live-client pass.
 |---|---|---|
 | Keyboard/touch/focus/reduced-motion | PASS (local) | Album/opening tests; `prefers-reduced-motion` reveal, 3D fallback. |
 | Rendered visual review | PASS | `docs/evidence/signal-*.png`; `.foilbury/demo/latest`. |
-| Production smoke | PASS | `pnpm test:deployed` 15 checks. |
+| Production smoke | PASS | `pnpm test:deployed` 17 checks. |
 | Performance hot-path audit | PARTIAL | Existing `docs/PERFORMANCE.md`; no new waterfall introduced; new tour queries bounded. |
 | Resource cleanup | PASS (this run) | Demo/browser contexts closed; temporary scripts under `.foilbury/tmp`; no broad cleanup. |
 | No orphaned processes | PASS | Dev server owned by this session; no killall. |
@@ -102,11 +103,10 @@ pnpm content:requeue --slug ...  # dry-run a bounded render queue
 
 ## 8. Remaining honest gaps
 
-1. **Production card assets:** the deployed Worker has the new emblem and
-   `MEMBER EDITION`/`PUBLIC SHOWCASE` renderer, but existing production renders
-   were created by the previous renderer. Re-rendering them requires an
-   approved operator run with the production asset store. Do not call the old
-   assets "new design".
+1. **Production member card fronts:** the public showcase fronts and designed
+   backs are now published (80 + 80). The ~560 launch member variants still carry the previous renderer. A bounded member re-render requires an approved operator
+   run; the local Danganronpa proofs show the target quality. Do not call the old
+   member assets "new design".
 2. **Human Access session:** Dean must open `/platform-admin` and
    `/_emdash/admin` in a real Cloudflare session to record final human proof.
 3. **Kaylee passkey/Bot ownership:** she has the scoped role and can sign in

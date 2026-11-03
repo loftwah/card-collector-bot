@@ -218,3 +218,15 @@ The Access application IDs and audiences were not recreated:
 4. **Bot Admin production:** open `https://foilbury.loftwah.com/admin` as Dean and verify the Bot-scoped screens and one permitted mutation. Local browser evidence and Worker tests pass.
 
 These are human authentication checks, not missing implementation or a new authentication system.
+
+## Signal and scoped-role release — 2026/11/03
+
+- Source: `e27c098` (`feat: scoped roles, Signal identity and premium collection experience` plus export refresh).
+- Production Worker: `67c61689-82e0-4d85-b41a-a84551deb3f6`.
+- D1 migration: `0014_scoped_roles_and_shares.sql` (additive; 7 commands).
+- Backup: `.foilbury/backups/prod-pre-signal-2026-11-03.json` (86 tables, 30,695 rows).
+- Access applications and policies were not recreated. `pnpm access:configure` remained a plan-only read-back.
+- Production role: `usr_mvzm5yiky28tmcyedbg20wdx` (`Kaye ⋆˚꩜｡`) is a scoped Global Collection Admin; `platform_admin=0`; one active Super Admin remains.
+- Production mastery catalogue: 126 definitions inserted; 0 pending.
+- `pnpm check`: 148 tests. `pnpm test:deployed`: 17 PASS.
+- Human proof still required: Dean's fresh Access session for `/platform-admin`, `/platform-admin/people`, `/_emdash/admin`; Kaylee's passkey enrolment before Bot creation; live Discord desktop/mobile and a controlled spectator.

@@ -70,12 +70,14 @@ export default function PublicVariantViewer({
           <div className="card-face">
             {showBack ? (
               <div className="relative h-full w-full bg-[var(--ink)]">
-                <img src={cardBackUrl || "/brand/card-back.webp"} alt={`Back of ${name}`} className="h-full w-full object-cover opacity-80" />
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#141512] via-[#141512]/80 to-transparent p-5 text-[#f4f0e6]">
-                  {collection?.logo_url ? <img src={collection.logo_url} alt="" className="mb-2 h-10 w-10 object-contain" /> : null}
-                  <p className="font-mono text-[0.56rem] uppercase tracking-[0.14em] text-[#d9bf8b]">{collection?.name ?? "Foilbury cabinet"}</p>
-                  <p className="mt-1 font-display text-2xl leading-tight">{name}</p>
-                </div>
+                <img src={variant?.back_render_url ?? cardBackUrl ?? "/brand/card-back.webp"} alt={`Back of ${name}`} className="h-full w-full object-cover" />
+                {!variant?.back_render_url ? (
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#141512] via-[#141512]/80 to-transparent p-5 text-[#f4f0e6]">
+                    {collection?.logo_url ? <img src={collection.logo_url} alt="" className="mb-2 h-10 w-10 object-contain" /> : null}
+                    <p className="font-mono text-[0.56rem] uppercase tracking-[0.14em] text-[#d9bf8b]">{collection?.name ?? "Foilbury cabinet"}</p>
+                    <p className="mt-1 font-display text-2xl leading-tight">{name}</p>
+                  </div>
+                ) : null}
               </div>
             ) : variant?.render_url ? <img src={variant.render_url} alt={`${name} card in ${variant.name} finish`} /> : <div className="card-face-fallback">{name.charAt(0)}</div>}
           </div>

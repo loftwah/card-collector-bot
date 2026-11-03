@@ -1,0 +1,73 @@
+{
+  "generated_at": "2026-11-03T07:34:39.746Z",
+  "uploaded": 80,
+  "fronts": 80,
+  "backs": 80,
+  "readBack": [
+    {
+      "public_fronts": 80
+    }
+  ],
+  "sample": [
+    {
+      "card": "Loftwah",
+      "variant": "Gold",
+      "front_sha": "15e63795330745845da52623052dd9857c7f2c54df785fb3cdb956c030e68913",
+      "back_sha": "8df24dfeeda19a83cd891e73ce9b41c04dcbbe8c1865600306494984efde82bd"
+    },
+    {
+      "card": "Loftwah",
+      "variant": "Diamond",
+      "front_sha": "8b7e107ca429ed208ff00ab983ab1908dfb956d3aafe9afe4c253a33a659031d",
+      "back_sha": "6b63e33bde26ac38121acb88ce0e082a6e85dd0153564f08323f9e0597a8937d"
+    },
+    {
+      "card": "Loftwah",
+      "variant": "Plain",
+      "front_sha": "08434c4cfe425bb0d188cd4228af0ac70bf6408fc757cd9a1eae1e2b0ae9917b",
+      "back_sha": "0cd434177ee43e94c7df0d5204bbfcf80d0657941aaa8e1f68c66a36d3bd3daf"
+    },
+    {
+      "card": "Loftwah",
+      "variant": "Gold · Holographic",
+      "front_sha": "7e61f5357d80d417736c472279674d0a6b6aa44e1179e853ebc804ac1e01c20e",
+      "back_sha": "2da79b68127d188c5939ee4f9995cf53916dfff10913715c954be45afe722e84"
+    },
+    {
+      "card": "Loftwah",
+      "variant": "Silver",
+      "front_sha": "3b1ffc36f8cc52e13cf72aa4f24fee9ea7756336ffe07d980d0512045045941b",
+      "back_sha": "99969a45988f435210b9aa9c6b38fca30e3ee7ff054649dd9febec047d6c00ec"
+    },
+    {
+      "card": "Pippa",
+      "variant": "Gold · Holographic",
+      "front_sha": "dba1aeb9261ef0c98e5317159c38c3844d978a00047dbf935a6f49471ee5fb5f",
+      "back_sha": "f5659d70610089e00cff5e609cefe82c10babd19317b3231d29845edc1de1629"
+    },
+    {
+      "card": "Pippa",
+      "variant": "Diamond",
+      "front_sha": "5ade409b65aa1051f45bf1047330bb34030819d4c384c6c567e4e9781fab9667",
+      "back_sha": "a76a68343fa97423c108f6d91d7dbd08b1a06d83fd303b8f4bf5dd3a6c21ed19"
+    },
+    {
+      "card": "Pippa",
+      "variant": "Plain",
+      "front_sha": "3b18383fa09adef68f11579d698ea1f83ad0849505d1b3f0d8cfdfab2ed35574",
+      "back_sha": "3e304b1890f39401789f87f46808a5b354c4fa40948776bac975b761b3a12b5a"
+    },
+    {
+      "card": "Pippa",
+      "variant": "Silver",
+      "front_sha": "c5c6884b495b4d7176578603fa8c4959b905540719cdd2c656762480a6e9a378",
+      "back_sha": "54a0263a06cd1439f9095b8780d137ecd10f3b5000aae9734910a42e6d769a0d"
+    },
+    {
+      "card": "Pippa",
+      "variant": "Gold",
+      "front_sha": "0930422f5034287be0d397e3bc91236a32c9454bd401b1add04deca9ade1ad65",
+      "back_sha": "c6c4fb4d18dae0701c990b8e4e1e5c3ebdcbc1969f4007f95a2837d33cd85406"
+    }
+  ]
+}
