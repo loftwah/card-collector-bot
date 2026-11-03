@@ -8,7 +8,12 @@ import {
   resolveInstallation,
 } from "./context";
 import { verifyDiscordSignature } from "./signature";
-import type { DiscordCallback, DiscordEnv, DiscordInteraction } from "./types";
+import type {
+  DiscordCallback,
+  DiscordEnv,
+  DiscordInteraction,
+  DiscordMessage,
+} from "./types";
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
@@ -87,55 +92,114 @@ function isAdminInteraction(interaction: DiscordInteraction): boolean {
   return false;
 }
 
+/**
+ * Discord's webhook endpoints normally answer in under a second, but a stalled
+ * connection must not strand the deferred interaction. Without a bound, the
+ * Worker is terminated before it can record a terminal state, which is how the
+ * two live empty `/foilbury open` messages on 2026-11-03 were produced.
+ */
+const DISCORD_DELIVERY_TIMEOUT_MS = 8_000;
+
+async function discordFetch(url: string, init: RequestInit): Promise<Response | null> {
+  try {
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(DISCORD_DELIVERY_TIMEOUT_MS) });
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        message: "Discord request failed or timed out",
+        url: url.replace(/\/[^/]+$/, "/…"),
+        detail: error instanceof Error ? error.message : String(error),
+      }),
+    );
+    return null;
+  }
+}
+
+function stripUnavailableAttachments(data: DiscordMessage): DiscordMessage {
+  const embeds = (data.embeds ?? []).map((embed) => {
+    if (!embed.image?.url.startsWith("attachment://")) return embed;
+    const { image: _image, ...withoutImage } = embed;
+    return withoutImage;
+  });
+  return { ...data, embeds };
+}
+
+function ensureVisibleResult(data: DiscordMessage, artworkFailed: boolean): DiscordMessage {
+  const visible = artworkFailed ? stripUnavailableAttachments(data) : data;
+  const hasVisibleEmbed = Boolean(visible.embeds?.length);
+  if (visible.content?.trim() || hasVisibleEmbed) {
+    if (!artworkFailed || !hasVisibleEmbed) return visible;
+    const note = "The card artwork could not be attached to this message. The result is recorded; open your collection to see the card.";
+    return { ...visible, content: visible.content?.trim() ? `${visible.content}\n${note}` : note };
+  }
+  return {
+    ...visible,
+    content: "Foilbury completed the action, but the result had no displayable content. Open your collection to see the current state.",
+  };
+}
+
 async function discordBody(
   env: DiscordEnv,
   callback: DiscordCallback,
-): Promise<{ body: BodyInit; headers: Record<string, string> }> {
-  if (!callback.attachments?.length) {
+): Promise<{ body: BodyInit; headers: Record<string, string>; artworkFailed: boolean }> {
+  const requested = callback.attachments ?? [];
+  if (!requested.length) {
     return {
-      body: JSON.stringify(callback.data ?? {}),
+      body: JSON.stringify(ensureVisibleResult(callback.data ?? {}, false)),
       headers: { "content-type": "application/json" },
+      artworkFailed: false,
     };
   }
+  const files: Array<{ bytes: Uint8Array; filename: string; contentType: string }> = [];
+  for (const attachment of requested) {
+    try {
+      const object = await env.MEDIA.get(attachment.r2Key);
+      if (!object) continue;
+      const bytes = new Uint8Array(await object.arrayBuffer());
+      files.push({ bytes, filename: attachment.filename, contentType: attachment.contentType });
+    } catch {
+      // A missing or unreadable render falls back to a text receipt below.
+    }
+  }
+  const artworkFailed = files.length === 0;
+  const data = ensureVisibleResult(callback.data ?? {}, artworkFailed);
   const form = new FormData();
-  form.append("payload_json", JSON.stringify(callback.data ?? {}));
-  let index = 0;
-  for (const attachment of callback.attachments) {
-    const object = await env.MEDIA.get(attachment.r2Key);
-    if (!object) continue;
-    const bytes = await object.arrayBuffer();
+  form.append("payload_json", JSON.stringify(data));
+  files.forEach((file, index) => {
     form.append(
       `files[${index}]`,
-      new Blob([bytes as unknown as BlobPart], { type: attachment.contentType }),
-      attachment.filename,
+      new Blob([file.bytes as unknown as BlobPart], { type: file.contentType }),
+      file.filename,
     );
-    index += 1;
-  }
-  return { body: form, headers: {} };
+  });
+  return { body: form, headers: {}, artworkFailed };
 }
 
 async function editOriginal(
   env: DiscordEnv,
   interaction: DiscordInteraction,
   callback: DiscordCallback,
-): Promise<void> {
+): Promise<boolean> {
   const request = await discordBody(env, callback);
-  const response = await fetch(
+  const response = await discordFetch(
     `https://discord.com/api/v10/webhooks/${encodeURIComponent(interaction.application_id)}/${encodeURIComponent(interaction.token)}/messages/@original`,
     { method: "PATCH", headers: request.headers, body: request.body },
   );
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
+  if (!response?.ok) {
+    const detail = response ? await response.text().catch(() => "") : "request timed out";
     console.error(
       JSON.stringify({
         level: "error",
         request_id: `discord:${interaction.id}`,
         message: "Discord follow-up delivery failed",
-        status: response.status,
+        status: response?.status ?? null,
         detail: detail.slice(0, 800),
       }),
     );
+    return false;
   }
+  return true;
 }
 
 async function sendFollowUp(
@@ -144,18 +208,18 @@ async function sendFollowUp(
   callback: DiscordCallback,
 ): Promise<string | null> {
   const request = await discordBody(env, callback);
-  const response = await fetch(
+  const response = await discordFetch(
     `https://discord.com/api/v10/webhooks/${encodeURIComponent(interaction.application_id)}/${encodeURIComponent(interaction.token)}?wait=true`,
     { method: "POST", headers: request.headers, body: request.body },
   );
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
+  if (!response?.ok) {
+    const detail = response ? await response.text().catch(() => "") : "request timed out";
     console.error(
       JSON.stringify({
         level: "error",
         request_id: `discord:${interaction.id}`,
         message: "Discord follow-up message failed",
-        status: response.status,
+        status: response?.status ?? null,
         detail: detail.slice(0, 800),
       }),
     );
@@ -166,19 +230,20 @@ async function sendFollowUp(
 }
 
 async function originalMessageId(interaction: DiscordInteraction): Promise<string | null> {
-  const response = await fetch(
+  const response = await discordFetch(
     `https://discord.com/api/v10/webhooks/${encodeURIComponent(interaction.application_id)}/${encodeURIComponent(interaction.token)}/messages/@original`,
-  ).catch(() => null);
+    { method: "GET" },
+  );
   if (!response?.ok) return null;
   const message = (await response.json().catch(() => null)) as { id?: string } | null;
   return message?.id ?? null;
 }
 
 async function deleteOriginal(interaction: DiscordInteraction): Promise<void> {
-  await fetch(
+  await discordFetch(
     `https://discord.com/api/v10/webhooks/${encodeURIComponent(interaction.application_id)}/${encodeURIComponent(interaction.token)}/messages/@original`,
     { method: "DELETE" },
-  ).catch(() => undefined);
+  );
 }
 
 async function processDeferred(
@@ -186,12 +251,39 @@ async function processDeferred(
   interaction: DiscordInteraction,
   applicationId: string,
 ): Promise<void> {
+  let finished = false;
+  const finish = async (
+    status: "completed" | "failed",
+    errorCode?: string,
+  ): Promise<void> => {
+    if (finished) return;
+    finished = true;
+    await recordFinish(env, interaction.id, status, errorCode);
+  };
+
+  const deliver = async (callback: DiscordCallback): Promise<boolean> => {
+    if (!callback.attachments?.length) {
+      return editOriginal(env, interaction, callback);
+    }
+    // Card reveals are delivered as a normal follow-up with the render
+    // attached, so the artwork is visible even when Discord's external image
+    // proxy has not populated dimensions. The temporary deferred message is
+    // removed only when it is a different message from the delivered card.
+    const delivered = await sendFollowUp(env, interaction, callback);
+    if (delivered) {
+      const original = await originalMessageId(interaction);
+      if (original && original !== delivered) await deleteOriginal(interaction);
+      return true;
+    }
+    // Never leave the deferred placeholder blank. The text receipt is always
+    // safe to show and the missing-artwork note names the recovery path.
+    return editOriginal(env, interaction, callback);
+  };
+
   try {
     const guildId = interaction.guild_id;
     if (!guildId) {
-      await editOriginal(
-        env,
-        interaction,
+      await deliver(
         errorCallback(
           new ApiError(
             403,
@@ -200,7 +292,7 @@ async function processDeferred(
           ),
         ),
       );
-      await recordFinish(env, interaction.id, "failed", "discord_guild_required");
+      await finish("failed", "discord_guild_required");
       return;
     }
     const resolved = await resolveInstallation(env, interaction, applicationId, {
@@ -214,41 +306,11 @@ async function processDeferred(
       interaction.type === 2
         ? await runCommand(ctx, interaction, resolved.installation)
         : await runComponent(ctx, interaction, resolved.installation);
-    const needsAttachmentFollowUp = Boolean(callback.attachments?.length);
-    const wantsEphemeral = Boolean((callback.data?.flags ?? 0) & 64);
-    if ((isEphemeralInteraction(interaction) || wantsEphemeral) && !needsAttachmentFollowUp) {
-      if (wantsEphemeral && !isEphemeralInteraction(interaction)) {
-        // The deferred acknowledgement was public, but the completed result is
-        // restricted. Deliver an ephemeral follow-up and remove the placeholder.
-        const delivered = await sendFollowUp(env, interaction, callback);
-        if (delivered) {
-          const original = await originalMessageId(interaction);
-          if (original && original !== delivered) await deleteOriginal(interaction);
-        } else {
-          await editOriginal(env, interaction, callback);
-        }
-      } else {
-        await editOriginal(env, interaction, callback);
-      }
-    } else {
-      // Card reveals are delivered as a normal follow-up with the render
-      // attached, so the artwork is visible even when Discord's external image
-      // proxy has not populated dimensions. The temporary deferred message is
-      // removed only when it is a different message from the delivered card.
-      const delivered = await sendFollowUp(env, interaction, callback);
-      if (delivered) {
-        const original = await originalMessageId(interaction);
-        if (original && original !== delivered) await deleteOriginal(interaction);
-      } else {
-        await editOriginal(env, interaction, callback);
-      }
-    }
-    await recordFinish(env, interaction.id, "completed");
+    const delivered = await deliver(callback);
+    await finish(delivered ? "completed" : "failed", delivered ? undefined : "delivery_failed");
   } catch (error) {
     const api = error instanceof ApiError ? error : null;
-    if (api) {
-      await recordFinish(env, interaction.id, "failed", api.code);
-    } else {
+    if (!api) {
       console.error(
         JSON.stringify({
           level: "error",
@@ -256,11 +318,9 @@ async function processDeferred(
           message: error instanceof Error ? error.message : "Unexpected Discord interaction error",
         }),
       );
-      await recordFinish(env, interaction.id, "failed", "internal_error");
     }
-    await editOriginal(
-      env,
-      interaction,
+    await finish("failed", api?.code ?? "internal_error");
+    await deliver(
       errorCallback(
         api ??
           new ApiError(
@@ -271,6 +331,29 @@ async function processDeferred(
       ),
     );
   }
+}
+
+/**
+ * Mark interactions that never reached a terminal delivery state. The reward or
+ * draw (when one committed) is untouched and remains visible in the collection;
+ * this only keeps the operational record honest and makes stuck deliveries
+ * visible instead of permanently "processing".
+ */
+export async function expireStaleDiscordInteractions(
+  db: DiscordEnv["DB"],
+  olderThanMinutes = 10,
+): Promise<number> {
+  const now = new Date().toISOString();
+  const cutoff = new Date(Date.now() - olderThanMinutes * 60_000).toISOString();
+  const result = await db
+    .prepare(
+      `UPDATE fb_discord_interactions
+          SET status = 'failed', error_code = 'delivery_timeout', completed_at = ?
+        WHERE status = 'processing' AND created_at < ?`,
+    )
+    .bind(now, cutoff)
+    .run();
+  return result.meta?.changes ?? 0;
 }
 
 /**

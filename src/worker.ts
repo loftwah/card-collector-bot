@@ -1,5 +1,8 @@
 import handler, { createScheduledHandler, PluginBridge } from "@emdash-cms/cloudflare/worker";
-import { handleDiscordInteraction } from "./server/discord/handler";
+import {
+  expireStaleDiscordInteractions,
+  handleDiscordInteraction,
+} from "./server/discord/handler";
 import type { DiscordEnv } from "./server/discord/types";
 import { runScheduledNpcProgression } from "./server/modules/npcs";
 import { pruneMagicLinks, pruneRateLimits } from "./server/modules/magic-links";
@@ -25,13 +28,14 @@ export default {
       const bindings = env as { DB: never; MEDIA: never };
       await pruneRateLimits(bindings.DB);
       await pruneMagicLinks(bindings.DB);
+      await expireStaleDiscordInteractions(bindings.DB as unknown as DiscordEnv["DB"]);
       await runScheduledNpcProgression(
         bindings.DB,
         bindings.MEDIA,
         (await import("./server/config")).readConfig(env as never),
       );
     } catch (error) {
-      console.error(JSON.stringify({ level: "error", message: "NPC scheduled run failed", error: String(error) }));
+      console.error(JSON.stringify({ level: "error", message: "Scheduled maintenance failed", error: String(error) }));
     }
     return emdashScheduled(controller, env as never, ctx);
   },

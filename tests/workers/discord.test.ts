@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { handleDiscordInteraction } from "../../src/server/discord/handler";
+import {
+  expireStaleDiscordInteractions,
+  handleDiscordInteraction,
+} from "../../src/server/discord/handler";
 import { signDiscordRequest } from "../../src/server/discord/signature";
 import type { DiscordEnv } from "../../src/server/discord/types";
 import { bootstrap, ctxFor, fixturePool, runtime, setBalance } from "./helpers";
@@ -387,6 +390,130 @@ describe("Discord HTTP interactions", () => {
     expect(calls[1]!.method).toBe("GET");
     expect(calls[2]!.url).toContain("/messages/@original");
     expect(calls[2]!.method).toBe("DELETE");
+  });
+
+  it("delivers a visible text receipt when the card render cannot be attached", async () => {
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    await fixturePool(player);
+    await runtime.MEDIA.delete("test/render.webp");
+    const raw = JSON.stringify(
+      interaction(command("open", [{ name: "pool", type: 3, value: "test-pool" }]), {
+        id: "missing-render",
+      }),
+    );
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = await signDiscordRequest({ body: raw, timestamp, privateKey });
+    const request = new Request("https://foilbury.test/api/discord/interactions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-signature-ed25519": signature,
+        "x-signature-timestamp": timestamp,
+      },
+      body: raw,
+    });
+    const pending: Promise<unknown>[] = [];
+    const payloads: string[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const form = init?.body instanceof FormData ? init.body : null;
+      payloads.push(form ? String(form.get("payload_json") ?? "") : String(init?.body ?? ""));
+      const id = String(input).includes("?wait=true") ? "follow-up-message" : "original-message";
+      return new Response(JSON.stringify({ id }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+    try {
+      await handleDiscordInteraction(request, env(), {
+        publicKey: publicKeyHex,
+        waitUntil: (promise) => pending.push(promise),
+      });
+      await Promise.all(pending);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    const receipt = payloads.find((payload) => payload.includes("Test One")) ?? "";
+    expect(receipt).not.toContain("attachment://");
+    expect(receipt).toContain("card artwork could not be attached");
+    const record = await runtime.DB.prepare(
+      "SELECT status, error_code FROM fb_discord_interactions WHERE interaction_id = ?",
+    )
+      .bind("missing-render")
+      .first<{ status: string; error_code: string | null }>();
+    expect(record?.status).toBe("completed");
+    expect(record?.error_code).toBeNull();
+  });
+
+  it("records a terminal failed delivery instead of leaving the interaction processing", async () => {
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    await fixturePool(player);
+    await runtime.MEDIA.put("test/render.webp", new Uint8Array([82, 73, 70, 70, 1, 2, 3]));
+    const raw = JSON.stringify(
+      interaction(command("open", [{ name: "pool", type: 3, value: "test-pool" }]), {
+        id: "dead-webhook",
+      }),
+    );
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = await signDiscordRequest({ body: raw, timestamp, privateKey });
+    const request = new Request("https://foilbury.test/api/discord/interactions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-signature-ed25519": signature,
+        "x-signature-timestamp": timestamp,
+      },
+      body: raw,
+    });
+    const pending: Promise<unknown>[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      throw new Error("simulated Discord outage");
+    }) as typeof fetch;
+    try {
+      await handleDiscordInteraction(request, env(), {
+        publicKey: publicKeyHex,
+        waitUntil: (promise) => pending.push(promise),
+      });
+      await Promise.all(pending);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    const record = await runtime.DB.prepare(
+      "SELECT status, error_code FROM fb_discord_interactions WHERE interaction_id = ?",
+    )
+      .bind("dead-webhook")
+      .first<{ status: string; error_code: string | null }>();
+    expect(record?.status).toBe("failed");
+    expect(record?.error_code).toBe("delivery_failed");
+  });
+
+  it("expires stale processing interactions but leaves recent work alone", async () => {
+    const old = new Date(Date.now() - 60 * 60_000).toISOString();
+    const now = new Date().toISOString();
+    for (const [id, createdAt] of [
+      ["stale-processing", old],
+      ["recent-processing", now],
+    ] as const) {
+      await runtime.DB.prepare(
+        `INSERT INTO fb_discord_interactions
+          (interaction_id, application_id, guild_id, channel_id, discord_user_id, command_name, status, created_at)
+         VALUES (?, ?, ?, ?, ?, 'foilbury', 'processing', ?)`,
+      )
+        .bind(id, APPLICATION_ID, GUILD_ID, CHANNEL_ID, DISCORD_USER_ID, createdAt)
+        .run();
+    }
+    const changed = await expireStaleDiscordInteractions(runtime.DB, 10);
+    expect(changed).toBeGreaterThanOrEqual(1);
+    const stale = await runtime.DB.prepare(
+      "SELECT status, error_code FROM fb_discord_interactions WHERE interaction_id = 'stale-processing'",
+    ).first<{ status: string; error_code: string | null }>();
+    const recent = await runtime.DB.prepare(
+      "SELECT status FROM fb_discord_interactions WHERE interaction_id = 'recent-processing'",
+    ).first<{ status: string }>();
+    expect(stale?.status).toBe("failed");
+    expect(stale?.error_code).toBe("delivery_timeout");
+    expect(recent?.status).toBe("processing");
   });
 
   it("does not double-award when the same interaction is delivered concurrently", async () => {

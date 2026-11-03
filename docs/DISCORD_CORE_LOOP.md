@@ -58,9 +58,36 @@ BLOCKED at the last read). It does not prove a live client invocation.
 The test channel still has no `@everyone` View Channel deny, so no member-only
 art may be posted there. No permission was changed by this work.
 
+## Live delivery repair (2026-11-04)
+
+Production logs showed two real `/foilbury open` interactions on 2026-11-03
+(12:53 and 12:54 UTC) that committed a draw and charged 80 Foil each, but left
+an empty public placeholder and a `processing` interaction row. The cards were
+in inventory (Homura Akemi Plain and Madoka Kaname Plain), but the reveal never
+arrived.
+
+The delivery path is now bounded and terminal:
+
+- every Discord webhook request has an 8-second timeout instead of an unbounded
+  fetch;
+- a missing/unreadable render strips the `attachment://` reference and sends the
+  embed as a visible text receipt with a named recovery path;
+- a failed follow-up falls back to editing the deferred placeholder; it never
+  leaves a blank message;
+- `recordFinish` runs exactly once through a guarded `finish()` helper;
+- the scheduled Worker maintenance marks interactions stuck in `processing` for
+  more than 10 minutes as `failed / delivery_timeout`, without touching the
+  committed card or ledger;
+- tests cover a missing render, a dead Discord webhook and stale-processing
+  expiry.
+
+The two empty bot messages were deleted from `#card-collector-test` as
+housekeeping; the awarded cards and ledger rows were not changed.
+
 ## Deployment dependency
 
-The repaired source is `a39e2bf` (plus the current mission work). Production is
-still `c4581234…` from `2c133ee`; the live command uses the older source until
-the approved release. The preflight command list therefore does not yet show
-`missions` or `npc`.
+Production is now `0782b12d-3bb0-41af-ba70-0e46365aacba` from source
+`fc325f5`, migrations through `0022`. The delivery fix itself is in the next
+revision containing this document; until that revision is deployed, the live
+empty-message defect remains possible. The fixed source registers `missions` and
+`npc` in the guild command tree.
