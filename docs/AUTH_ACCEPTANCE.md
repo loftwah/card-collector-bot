@@ -182,7 +182,7 @@ These are human consent/MFA steps, not missing implementation.
 ## Integrated source and deployment
 
 - PR #5 was integrated into `release/owner-sign-in-demo-tour` over main at `f87a812` with the demo, Discord and artwork changes preserved.
-- Production Worker: `821164fd-7590-42b7-8184-b91d9e21755b`; source `e8a0f196577e9356e5eb6b55980ca3b346b9768b`.
+- Production Worker: `b5a8d35d-7911-4d1e-a7e8-d4d08fd9bb21`; deployed source `f161b6879a3a9d209e1b565c500ebc420659f492`.
 - Production D1 migration: `0013_discord_channel_audience.sql` (additive channel policy/share receipt only).
 - Pre-change backup: `.foilbury/backups/prod-pre-tour-2026-11-03.json` (85 tables, 30,688 rows, SHA-256 `b40080a3b77b3cd344827760530711537365ad7a5962aad192f5ef55a8b99ee1`).
 - Production baseline preserved: 2 accounts, 2 active memberships, 11 instances (11 owned), 20 ledger rows, 1,800 Foil total, 21 collections, 156 cards, 640 variants, 640 published renders, 45 achievements, 4 unlocks, 2 Discord identities and 1 installation.
