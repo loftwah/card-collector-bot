@@ -90,6 +90,38 @@ describe("achievements", () => {
     expect(ledgerAgain?.count).toBe(1);
   });
 
+  it("does not count a later card outside the frozen release roster", async () => {
+    await bootstrap();
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const fixture = await fixturePool(player);
+    const achievementId = "ach_test_roster_boundary";
+    await runtime.DB.prepare(
+      `INSERT INTO fb_achievement_definitions
+        (id, scope, tenant_id, key, version, name, description, criteria_json, reward_json, visibility, art_key, category, sort, status, created_by, created_at, updated_at)
+       VALUES (?, 'bot', ?, 'test-roster-boundary', 1, 'Roster boundary', 'Only the frozen release card counts.', ?, '{"foil":0}', 'member', 'medal-test', 'collection', 6, 'active', 'test', ?, ?)`,
+    ).bind(
+      achievementId,
+      player.tenant.id,
+      JSON.stringify({ type: "collection_unique", collection_id: "col_test_public", target: 1, roster_card_ids: [fixture.cardId] }),
+      nowIso(),
+      nowIso(),
+    ).run();
+    const laterCard = `crd_${await sha256Hex("roster-later-card")}`.slice(0, 30);
+    await runtime.DB.prepare(
+      "INSERT INTO fb_card_definitions (id, tenant_id, logical_id, slug, name, description, status, created_at, updated_at, version) VALUES (?, ?, ?, ?, 'Later Card', 'A later addition.', 'published', ?, ?, 1)",
+    ).bind(laterCard, player.tenant.id, "test:roster-later", "roster-later-card", nowIso(), nowIso()).run();
+    await runtime.DB.prepare("INSERT INTO fb_collection_cards (collection_id, card_id, tenant_id, sort, added_by, added_at) VALUES ('col_test_public', ?, ?, 1, 'test', ?)").bind(laterCard, player.tenant.id, nowIso()).run();
+    await makeInstance(player, player.user!.id, { cardId: laterCard, variantId: fixture.variantId }, "ACH-ROSTER-LATER");
+    await evaluateAchievements(player, { userId: player.user!.id });
+    const before = (await listAchievements(player, player.user!.id)).find((item) => item.id === achievementId);
+    expect(before?.state).not.toBe("earned");
+    expect(before?.progress).toBe(0);
+    await makeInstance(player, player.user!.id, fixture, "ACH-ROSTER-RELEASE");
+    await evaluateAchievements(player, { userId: player.user!.id });
+    const after = (await listAchievements(player, player.user!.id)).find((item) => item.id === achievementId);
+    expect(after?.state).toBe("earned");
+  });
+
   it("completes the four core finishes for one subject", async () => {
     await bootstrap();
     const player = await ctxFor("cabinet", "player@foilbury.local");
