@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "environment": "production",
-  "generated_at": "2026-11-03T17:58:26.590Z",
+  "generated_at": "2026-11-03T18:01:52.499Z",
   "source_tree_hash": "cacb4d6720f872ae66f0adbe3954dacacde95cd3bcdb1d7b96fe86f4cbec2976",
   "source_sha": "d92e4fdabde67a2e4d0dbb11da00d4a63ca7bcc6",
   "checks": [
@@ -42,6 +42,25 @@
     }
   ],
   "criteria": [
+    {
+      "id": "release.deployed-identity",
+      "issue": [
+        19,
+        22,
+        24,
+        31,
+        32,
+        33,
+        34,
+        35
+      ],
+      "required": true,
+      "result": "pass",
+      "test_command": "pnpm test:deployed",
+      "tested_tree_hash": "cacb4d6720f872ae66f0adbe3954dacacde95cd3bcdb1d7b96fe86f4cbec2976",
+      "evidence": "Production Worker 359908ab-b36f-420d-84f6-494282fd39e7 from source 20404a5; x-foilbury-build=20404a5; build-bound read-only smoke PASS. Earlier security release bb44505d from 8df3051 is retained in history. D1 migrations 0024/0025 applied after JSON backup d1-2026-11-03T17-51-08-952Z.json.",
+      "residual": "Real client invocation and independent spectator observation remain the live interaction layer."
+    },
     {
       "id": "discord.deferred-private",
       "issue": [
