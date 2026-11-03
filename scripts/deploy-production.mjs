@@ -113,7 +113,11 @@ function deploymentList(env) {
       { env },
     );
     const parsed = JSON.parse(output.slice(output.indexOf("[")));
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed)
+      ? [...parsed].sort(
+          (left, right) => Date.parse(right.created_on ?? 0) - Date.parse(left.created_on ?? 0),
+        )
+      : [];
   } catch {
     return null;
   }
