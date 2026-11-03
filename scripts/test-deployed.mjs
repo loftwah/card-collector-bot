@@ -24,8 +24,25 @@ try {
     pass(`production ${route} responds 200`);
   }
   const brand = await get("/brand-kit");
-  if (!brand.body.includes("Signal Fold") || !brand.body.includes("avatar-carbon-512.png")) throw new Error("Brand kit is missing reviewed assets or downloads.");
-  pass("production brand kit exposes reviewed marks, avatars and banners");
+  if (
+    !brand.body.includes("Signal Fold") ||
+    !brand.body.includes("Bastion") ||
+    !brand.body.includes("Aperture") ||
+    !brand.body.includes("Selected · Signal Fold")
+  ) {
+    throw new Error("Brand kit is missing a reviewed system or the recorded selection.");
+  }
+  for (const asset of [
+    "/brand/kit/systems/signal-fold/icon-512.png",
+    "/brand/kit/systems/signal-fold/banner-960x540.png",
+    "/brand/kit/systems/bastion/icon-512.png",
+    "/brand/kit/systems/aperture/icon-512.png",
+    "/brand/kit/selection.json",
+  ]) {
+    const response = await get(asset);
+    if (response.status !== 200) throw new Error(`${asset} returned ${response.status}`);
+  }
+  pass("production brand kit exposes all three systems, the selection and live assets");
   const tour = await get("/tour");
   if (!tour.body.includes("Hold it to the light") && !tour.body.includes("Inspect both faces")) throw new Error("Website tour is missing its inspection stage.");
   pass("production website tour is present and uses real public cards");

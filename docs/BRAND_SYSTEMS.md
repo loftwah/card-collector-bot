@@ -1,12 +1,28 @@
 # Foilbury brand systems
 
-Status as of 2026-11-04, source baseline `a39e2bf`: **owner selection pending**.
-Three complete systems are generated and presented at `/brand-kit`. No Discord
-application avatar, guild icon or server banner has been changed. Signal Fold
-remains the canonical working identity until the owner records a selection and
-gives explicit approval to apply it.
+Status as of 2026-11-04: **Signal Fold selected and applied to the Foilbury
+application under delegated authority**. The selection record is
+`public/brand/kit/selection.json`; the comparison surface is `/brand-kit`.
 
-This is a selection surface, not a deployment and not a second asset CMS.
+| Scope | State |
+| --- | --- |
+| Foilbury application icon | Applied via Discord `PATCH /applications/@me`; hash `e8234929cc269ab7843ee384aaaa3991`. Previous value recorded for rollback. |
+| Foilbury application description | Applied. Replaced the generic platform copy with the real free-play description. |
+| Foilbury bot profile banner | Manual Developer Portal step. The old banner was not replaced and no claim is made that it was. |
+| Loftwah guild icon | Not changed. The wider server identity is not Foilbury branding. |
+| Loftwah server banner | Blocked: the guild has no `BANNER` entitlement (Boost tier 2). The 960×540 and 1920×1080 assets are retained. |
+| Discord onboarding panel | Public-safe panel posted in `#card-collector-test`. Pinning was denied because the bot lacks `MANAGE_MESSAGES`. |
+| Bastion / Aperture | Retained alternatives. Nothing was deleted; the selection can be reversed. |
+
+**Decision basis.** Signal Fold keeps the folded-card geometry that belongs to a
+collecting product, reads as a deliberate F at 32px, has the strongest
+continuity with the existing card and website language, and needs no new palette
+to stay coherent in light and dark presentation. Bastion's oxblood/plaster
+system is more formal but reads as an E at tiny sizes; Aperture is the strongest
+circular crop but introduces a whole new midnight/vermilion brand and reads as a
+lens or camera mark rather than a card.
+
+This is a selection and provenance record, not a second asset CMS.
 
 ## The three systems
 
@@ -34,9 +50,9 @@ complete systems because it has no paired banner language.
 - rationale, strengths, watch-outs, palette, contrast pairs and provenance;
 - downloadable icon, banner, SVG and manifest links.
 
-Owner decision is stated three times: in the hero status panel, in each system
-column and in the owner gate. The page does not record a choice and does not
-write an asset.
+The selection is stated in the hero status panel, in the chosen system column
+and in the application gate. The page reads `selection.json`; the generator can
+be re-run without erasing the decision, and the two alternatives remain live.
 
 ## System 01 — Signal Fold
 
