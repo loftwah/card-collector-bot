@@ -30,6 +30,8 @@ export default function SecurityPanel() {
   const [totp, setTotp] = useState<{ secret: string; otpauth_url: string } | null>(null);
   const [code, setCode] = useState("");
   const [recovery, setRecovery] = useState<string[]>([]);
+  const [newEmail, setNewEmail] = useState("");
+  const [emailLink, setEmailLink] = useState("");
 
   async function load() {
     try {
@@ -101,6 +103,21 @@ export default function SecurityPanel() {
     } catch (cause) { setError(describeError(cause)); } finally { setBusy(""); }
   }
 
+  async function requestEmailChange() {
+    setBusy("email"); setError(""); setMessage(""); setEmailLink("");
+    try {
+      const result = await api<{ ok: boolean; dev_token?: string }>("/api/v1/security/email/request", {
+        method: "POST",
+        body: { email: newEmail },
+      });
+      setMessage(`Verification link sent to ${newEmail}. Open it while signed in to this account.`);
+      if (result.dev_token) setEmailLink(`/auth/email/verify?token=${encodeURIComponent(result.dev_token)}`);
+      setNewEmail("");
+    } catch (cause) {
+      setError(describeError(cause));
+    } finally { setBusy(""); }
+  }
+
   async function revokeOthers() {
     setBusy("others"); setError(""); setMessage("");
     try {
@@ -125,6 +142,16 @@ export default function SecurityPanel() {
           <div><p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Primary email</p><p className="mt-1 break-all">{data.user.email}</p><p className="mt-1 text-xs text-[var(--muted)]">{data.user.email_verified ? "Verified" : "Not verified"}</p></div>
           <div><p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Cloudflare Access identity</p><p className="mt-1 break-all">{data.access.linked ? data.access.email : "Not linked"}</p><p className="mt-1 text-xs text-[var(--muted)]">{data.access.linked ? `Linked ${date(data.access.linked_at ?? null)}` : "Used only for administration; not a player login."}</p></div>
         </div>
+        <details className="mt-5 border-t border-[var(--line)] pt-4">
+          <summary className="cursor-pointer font-mono text-[0.62rem] uppercase tracking-[0.1em] text-[var(--muted)]">Add or change the primary email</summary>
+          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--muted)]">A Discord-only account can use a non-routable placeholder address and still sign in. Adding a real email enables magic-link sign-in. The new address is attached only after you open a one-use link while signed in; it never merges another Foilbury account.</p>
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <Field label="New email address"><Input type="email" value={newEmail} onChange={(event) => setNewEmail(event.target.value)} placeholder="you@example.com" autoComplete="email" /></Field>
+            <Button size="sm" variant="secondary" onClick={requestEmailChange} disabled={busy === "email" || !newEmail.includes("@")}>{busy === "email" ? <><Loader2 className="animate-spin" size={14} /> Sending…</> : "Send verification link"}</Button>
+          </div>
+          {emailLink ? <a className="mt-2 inline-block text-xs underline underline-offset-4" href={emailLink}>Open the local verification link</a> : null}
+          <p className="mt-2 text-xs text-[var(--muted)]">Changing the primary email requires a recent passkey, authenticator or Cloudflare Access proof. Adding a passkey above also satisfies that step-up.</p>
+        </details>
         <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-[var(--line)] pt-4">
           <span className={`badge ${data.assurance === "passkey" || data.assurance === "access" || data.assurance === "mfa" ? "badge-rare" : ""}`}>Session assurance: {data.assurance ?? "unknown"}</span>
           <a className="btn btn-secondary btn-sm" href="/logout">Sign out of Foilbury</a>

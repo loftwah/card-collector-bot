@@ -3,6 +3,9 @@ import { bootstrap, ctxFor, fixturePool, runtime } from "./helpers";
 import { addMembership, createUser } from "../../src/server/modules/identity";
 import { createCollection, getCollection, updateCollection } from "../../src/server/modules/collections";
 import { assignPlatformRole, revokePlatformRole, listPlatformPeople } from "../../src/server/modules/platform-roles";
+import { confirmEmailChange } from "../../src/server/modules/magic-links";
+import { nowIso } from "../../src/server/db";
+import { sha256Hex, token } from "../../src/server/ids";
 import { ApiError, requireGlobalCollectionManager, requireProtectedAccount, type Ctx } from "../../src/server/context";
 
 async function playerCtx(email: string): Promise<Ctx> {
@@ -111,5 +114,24 @@ describe("scoped Global Collection Admin", () => {
       "INSERT INTO fb_webauthn_credentials (id, user_id, credential_id, public_key, name, created_at) VALUES ('wac_test_scoped', ?, 'cred_test_scoped', 'pk_test_scoped', 'Test passkey', ?)",
     ).bind(admin.user!.id, now).run();
     await expect(requireProtectedAccount(admin)).resolves.toMatchObject({ id: admin.user!.id });
+  });
+
+  it("verifies a new email through a one-use link without merging another account", async () => {
+    await bootstrap();
+    const admin = await playerCtx("discord-email@example.test");
+    const strong: Ctx = { ...admin, sessionAssurance: "passkey", sessionAuthTime: nowIso() };
+    const raw = token("fbm");
+    const now = nowIso();
+    await runtime.DB.prepare(
+      `INSERT INTO fb_magic_links (id, user_id, email, purpose, token_hash, redirect_path, created_at, expires_at, request_id)
+       VALUES ('ml_test_email_change', ?, 'kaylee.real@example.test', 'link_email', ?, '/account/security?email=verified', ?, ?, 'test')`,
+    ).bind(admin.user!.id, await sha256Hex(raw), now, new Date(Date.now() + 15 * 60_000).toISOString()).run();
+    await expect(confirmEmailChange({ ...strong, sessionAssurance: "email" }, raw)).rejects.toBeInstanceOf(ApiError);
+    await confirmEmailChange(strong, raw);
+    const row = await runtime.DB.prepare("SELECT email, email_verified_at FROM fb_users WHERE id = ?").bind(admin.user!.id).first<{ email: string; email_verified_at: string | null }>();
+    expect(row?.email).toBe("kaylee.real@example.test");
+    expect(row?.email_verified_at).toBeTruthy();
+    const duplicates = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_users WHERE email = ?").bind("kaylee.real@example.test").first<{ count: number }>();
+    expect(duplicates?.count).toBe(1);
   });
 });

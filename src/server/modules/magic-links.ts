@@ -1,5 +1,5 @@
 import type { D1Database } from "@cloudflare/workers-types";
-import { ApiError, checkRateLimit, type Ctx, type CurrentUser } from "../context";
+import { ApiError, checkRateLimit, requireRecentStrongAuth, requireUser, type Ctx, type CurrentUser } from "../context";
 import { first, nowIso } from "../db";
 import { newId, sha256Hex, token } from "../ids";
 import { magicLinkEmail, sendEmail } from "../email";
@@ -115,6 +115,61 @@ export async function findMagicLink(ctx: Ctx, rawToken: string) {
        FROM fb_magic_links WHERE token_hash = ?`,
     tokenHash,
   );
+}
+
+/**
+ * Confirm a signed-in account's new email from a one-use link.
+ *
+ * The link proves control of the new mailbox. The current strong session proves
+ * the person changing the account, and a matching row.user_id prevents a link
+ * from being used against another account. We never merge accounts by matching
+ * an email string.
+ */
+export async function confirmEmailChange(ctx: Ctx, rawToken: string): Promise<{ email: string }> {
+  const user = requireUser(ctx);
+  requireRecentStrongAuth(ctx, 30);
+  const tokenHash = await sha256Hex(rawToken);
+  const row = await first<{
+    id: string;
+    user_id: string | null;
+    email: string;
+    purpose: "signin" | "verify_email" | "link_email";
+    expires_at: string;
+    used_at: string | null;
+  }>(
+    ctx.db,
+    "SELECT id, user_id, email, purpose, expires_at, used_at FROM fb_magic_links WHERE token_hash = ?",
+    tokenHash,
+  );
+  if (!row || row.used_at || new Date(row.expires_at) <= new Date()) {
+    throw new ApiError(401, "email_link_invalid", "This email confirmation link is invalid or has expired. Request a new one.");
+  }
+  if (row.purpose !== "link_email" || !row.user_id || row.user_id !== user.id) {
+    throw new ApiError(403, "email_link_mismatch", "This email link was not issued for the signed-in account.");
+  }
+  const existing = await findUserByEmail(ctx.db, row.email);
+  if (existing && existing.id !== user.id) {
+    throw new ApiError(409, "email_in_use", "That email is already attached to another Foilbury account. Nothing was changed.");
+  }
+  const now = nowIso();
+  const consumed = await ctx.db
+    .prepare("UPDATE fb_magic_links SET used_at = ? WHERE id = ? AND used_at IS NULL AND expires_at > ?")
+    .bind(now, row.id, now)
+    .run();
+  if ((consumed.meta?.changes ?? 0) !== 1) {
+    throw new ApiError(401, "email_link_invalid", "This email confirmation link has already been used.");
+  }
+  await ctx.db.batch([
+    ctx.db.prepare("UPDATE fb_users SET email = ?, email_verified_at = ? WHERE id = ? AND disabled_at IS NULL").bind(row.email, now, user.id),
+    ctx.db
+      .prepare(
+        `INSERT INTO fb_audit_events
+          (id, tenant_id, actor_type, actor_id, represented_user_id, action, object_type, object_id, metadata_json, request_id, created_at)
+         VALUES (?, ?, 'user', ?, ?, 'identity.email.verified', 'user', ?, ?, ?, ?)`,
+      )
+      .bind(newId("aud"), ctx.tenant.id, user.id, user.id, user.id, JSON.stringify({ previous_email: user.email }), ctx.requestId, now),
+  ]);
+  return { email: row.email };
 }
 
 export async function redeemMagicLink(

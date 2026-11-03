@@ -4,6 +4,7 @@ import {
   ApiError,
   assertCsrf,
   requireUser,
+  requireRecentStrongAuth,
   roleLabel,
   type Ctx,
 } from "../../../../server/context";
@@ -16,6 +17,7 @@ import {
   upgradeSessionAssurance,
 } from "../../../../server/modules/identity";
 import { deletePasskey, listPasskeys } from "../../../../server/modules/passkeys";
+import { requestMagicLink } from "../../../../server/modules/magic-links";
 import {
   confirmTotpSetup,
   consumeRecoveryCode,
@@ -68,6 +70,23 @@ export const ALL: APIRoute = async ({ request, params }) => {
     const ctx = await buildContext(request);
     if (method !== "GET" && method !== "HEAD") assertCsrf(ctx, request);
     if (path === "overview" && method === "GET") return json(await overview(ctx));
+
+    if (path === "email/request" && method === "POST") {
+      const user = requireUser(ctx);
+      requireRecentStrongAuth(ctx, 30);
+      const input = await readJson(request, z.object({ email: z.string().email().max(320) }));
+      const email = input.email.trim().toLowerCase();
+      if (email === user.email.toLowerCase()) {
+        throw new ApiError(422, "email_unchanged", "That is already the primary email on this account.");
+      }
+      const result = await requestMagicLink(ctx, {
+        email,
+        purpose: "link_email",
+        userId: user.id,
+        redirectPath: "/account/security?email=verified",
+      });
+      return json({ ok: true, ...(result.devToken ? { dev_token: result.devToken } : {}) });
+    }
 
     if (path === "totp/start" && method === "POST") {
       const user = requireUser(ctx);
