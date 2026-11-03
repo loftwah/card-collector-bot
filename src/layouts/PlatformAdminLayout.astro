@@ -12,20 +12,37 @@ const links = [
   { href: "/platform-admin/audit", label: "Audit" },
 ];
 ---
-<BaseLayout title="Platform administration · Foilbury" description="Platform-wide Foilbury identity, Bot, installation, permission and audit operations." noIndex>
-  <section class="border-b border-[var(--line)] bg-[#11130f] text-[#f3eee1]">
+
+<BaseLayout
+  title="Platform administration · Foilbury"
+  description="Platform-wide Foilbury identity, Bot, installation, permission and audit operations."
+  noIndex
+>
+  <section class="admin-band">
     <div class="container py-8 md:py-10">
       <div class="flex flex-wrap items-end justify-between gap-5">
         <div>
           <p class="eyebrow eyebrow-bright">Platform administration · Super Admin</p>
           <h1 class="display-sm mt-2 text-4xl md:text-5xl">The platform desk.</h1>
-          <p class="mt-2 max-w-2xl text-sm leading-relaxed text-[#cfc8b9]">Account and Access links, Bot lifecycle, installations, global collections and audit. This area does not invent operational metrics, and Cloudflare Access admission is never treated as a Foilbury role.</p>
+          <p class="mt-2 max-w-2xl text-sm leading-relaxed text-[rgba(244,240,230,0.78)]">
+            Account and Access links, Bot lifecycle, installations, global collections and audit.
+            This area does not invent operational metrics, and Cloudflare Access admission is never
+            treated as a Foilbury role.
+          </p>
         </div>
         <div class="flex flex-wrap gap-2">
-          <a class="btn btn-brass btn-sm" href="/studio">Studio</a>
-          <a class="btn btn-secondary btn-sm !border-[#5c594d] !text-[#f4f0e6]" href="/admin">Bot administration</a>
-          <a class="btn btn-secondary btn-sm !border-[#5c594d] !text-[#f4f0e6]" href="/account/security">Account security</a>
-          <a class="btn btn-secondary btn-sm !border-[#5c594d] !text-[#f4f0e6]" href="/logout">Sign out</a>
+          <a class="btn btn-signal btn-sm" href="/studio">
+            Studio
+          </a>
+          <a class="btn btn-secondary btn-sm" href="/admin">
+            Bot administration
+          </a>
+          <a class="btn btn-secondary btn-sm" href="/account/security">
+            Account security
+          </a>
+          <a class="btn btn-secondary btn-sm" href="/logout">
+            Sign out
+          </a>
         </div>
       </div>
     </div>
@@ -33,9 +50,21 @@ const links = [
   <section class="container grid gap-8 py-8 lg:grid-cols-[220px_1fr] lg:items-start">
     <nav class="grid gap-1 lg:sticky lg:top-24" aria-label="Platform administration sections">
       {links.map((link) => (
-        <a href={link.href} class:list={["border-l-2 px-3 py-2 font-mono text-[0.68rem] uppercase tracking-[0.1em] no-underline transition-colors", path === link.href ? "border-[var(--brass)] bg-[var(--paper-2)] text-[var(--ink)]" : "border-transparent text-[var(--muted)] hover:border-[var(--line-strong)] hover:text-[var(--ink)]"]}>{link.label}</a>
+        <a
+          href={link.href}
+          class:list={[
+            "border-l-2 px-3 py-2 font-mono text-[0.68rem] uppercase tracking-[0.1em] no-underline transition-colors",
+            path === link.href
+              ? "border-[var(--signal)] bg-[var(--panel-3)] text-[var(--ink)]"
+              : "border-transparent text-[var(--muted)] hover:border-[var(--line-strong)] hover:text-[var(--ink)]",
+          ]}
+        >
+          {link.label}
+        </a>
       ))}
     </nav>
-    <div class="min-w-0"><slot /></div>
+    <div class="min-w-0">
+      <slot />
+    </div>
   </section>
 </BaseLayout>

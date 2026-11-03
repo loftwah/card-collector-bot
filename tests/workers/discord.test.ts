@@ -676,4 +676,86 @@ describe("Discord HTTP interactions", () => {
     }>();
     expect(draws?.count).toBe(0);
   });
+
+  it("walks the guided tour from discovery through a genuine opening and private inspection", async () => {
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    await fixturePool(player);
+    const welcome = await send(interaction(command("tour"), { id: "tour-journey-welcome" }));
+    expect(welcome.payload.data?.flags).toBe(64);
+    expect(welcome.payload.data?.embeds?.[0]?.title).toContain("guided tour");
+
+    const albums = await send(
+      interaction(
+        { custom_id: "foilbury:tour:albums", component_type: 2 },
+        { id: "tour-journey-albums", type: 3 },
+      ),
+    );
+    expect(albums.payload.data?.flags).toBe(64);
+    expect(JSON.stringify(albums.payload.data)).toContain("Release roster");
+
+    const fresh = await send(
+      interaction(
+        { custom_id: "foilbury:tour:fresh", component_type: 2 },
+        { id: "tour-journey-fresh", type: 3 },
+      ),
+    );
+    expect(JSON.stringify(fresh.payload.data)).toContain("Free play, first run");
+
+    const open = await send(
+      interaction(
+        { custom_id: "foilbury:tour:open", component_type: 2 },
+        { id: "tour-journey-open", type: 3 },
+      ),
+    );
+    const openRow = open.payload.data?.components?.flatMap((row) => row.components ?? []) ?? [];
+    const openButton = openRow.find(
+      (component) => component.type === 2 && component.custom_id?.startsWith("foilbury:open:"),
+    );
+    expect(openButton?.custom_id).toBeTruthy();
+
+    const before = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_draws").first<{
+      count: number;
+    }>();
+    const draw = await send(
+      interaction(
+        { custom_id: openButton!.custom_id, component_type: 2 },
+        { id: "tour-journey-draw", type: 3 },
+      ),
+    );
+    const after = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_draws").first<{
+      count: number;
+    }>();
+    expect(after?.count).toBe((before?.count ?? 0) + 1);
+    expect([4, 7]).toContain(draw.payload.type);
+    expect(draw.payload.data?.embeds?.[0]?.title).toContain("Test One");
+    expect(JSON.stringify(draw.payload)).toContain("foilbury-card.webp");
+    const drawRow = await runtime.DB.prepare(
+      "SELECT d.id, d.instance_id, ci.serial FROM fb_draws d JOIN fb_card_instances ci ON ci.id = d.instance_id ORDER BY d.rowid DESC LIMIT 1",
+    ).first<{ id: string; instance_id: string; serial: string }>();
+    expect(drawRow?.serial).toMatch(/FB-/);
+    const spend = await runtime.DB.prepare(
+      "SELECT amount FROM fb_ledger_entries WHERE kind = 'spend' ORDER BY created_at DESC LIMIT 1",
+    ).first<{ amount: number }>();
+    expect(spend?.amount).toBe(-80);
+
+    const inspect = await send(
+      interaction(
+        { custom_id: "foilbury:tour:inspect", component_type: 2 },
+        { id: "tour-journey-inspect", type: 3 },
+      ),
+    );
+    const inspectText = JSON.stringify(inspect.payload.data);
+    expect(inspectText).toContain("Inspect ·");
+    expect(inspectText).toContain("Discord does not present native 3D");
+    expect(inspectText).toMatch(/No published finish renders|Plain/);
+
+    const progress = await send(
+      interaction(
+        { custom_id: "foilbury:tour:progress", component_type: 2 },
+        { id: "tour-journey-progress", type: 3 },
+      ),
+    );
+    expect(JSON.stringify(progress.payload.data)).toContain("Progress ·");
+    expect(JSON.stringify(progress.payload.data)).toContain("Unique subjects");
+  });
 });

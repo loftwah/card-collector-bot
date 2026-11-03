@@ -34,20 +34,45 @@ const groups = [
 ];
 const label = roleLabel(user);
 ---
-<BaseLayout title={`Bot administration · ${session?.tenantSlug ?? "Foilbury"}`} description="Foilbury Bot administration: catalogue, collections, team, publication, economy, pools and agent grants." noIndex>
-  <section class="border-b border-[var(--line)] bg-[#141512] text-[#f4f0e6]">
+
+<BaseLayout
+  title={`Bot administration · ${session?.tenantSlug ?? "Foilbury"}`}
+  description="Foilbury Bot administration: catalogue, collections, team, publication, economy, pools and agent grants."
+  noIndex
+>
+  <section class="admin-band">
     <div class="container py-8 md:py-10">
       <div class="flex flex-wrap items-end justify-between gap-5">
         <div>
-          <p class="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-[var(--brass-bright)]">Bot administration · {label}</p>
-          <h1 class="display-sm mt-2 text-4xl md:text-5xl">{session?.tenantId ? "The cabinet office." : "Bot administration."}</h1>
-          <p class="mt-2 max-w-2xl text-sm leading-relaxed text-[#cfc8b9]">This is Bot-scoped authority for {session?.tenantSlug}. It is not platform administration. Global collections are read-only here unless the same person is the explicitly provisioned Super Admin.</p>
+          <p class="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-[var(--signal-bright)]">
+            Bot administration · {label}
+          </p>
+          <h1 class="display-sm mt-2 text-4xl md:text-5xl">
+            {session?.tenantId ? "The cabinet office." : "Bot administration."}
+          </h1>
+          <p class="mt-2 max-w-2xl text-sm leading-relaxed text-[#cfc8b9]">
+            This is Bot-scoped authority for {session?.tenantSlug}. It is not platform
+            administration. Global collections are read-only here unless the same person is the
+            explicitly provisioned Super Admin.
+          </p>
         </div>
         <div class="flex flex-wrap gap-2">
-          {user?.platformAdmin ? <a class="btn btn-brass btn-sm" href="/platform-admin">Platform administration</a> : null}
-          {user?.globalCollectionScope ? <a class="btn btn-secondary btn-sm !border-[#5c594d] !text-[#f4f0e6]" href="/studio">Studio</a> : null}
-          <a class="btn btn-secondary btn-sm !border-[#5c594d] !text-[#f4f0e6]" href="/account/security">Account security</a>
-          <a class="btn btn-secondary btn-sm !border-[#5c594d] !text-[#f4f0e6]" href="/cabinet">Public catalogue</a>
+          {user?.platformAdmin ? (
+            <a class="btn btn-signal btn-sm" href="/platform-admin">
+              Platform administration
+            </a>
+          ) : null}
+          {user?.globalCollectionScope ? (
+            <a class="btn btn-secondary btn-sm" href="/studio">
+              Studio
+            </a>
+          ) : null}
+          <a class="btn btn-secondary btn-sm" href="/account/security">
+            Account security
+          </a>
+          <a class="btn btn-secondary btn-sm" href="/cabinet">
+            Public catalogue
+          </a>
         </div>
       </div>
     </div>
@@ -56,20 +81,47 @@ const label = roleLabel(user);
     <nav class="grid gap-5 lg:sticky lg:top-24" aria-label="Bot administration sections">
       {groups.map((group) => (
         <div>
-          <p class="mb-1 px-3 font-mono text-[0.58rem] uppercase tracking-[0.14em] text-[var(--muted)]">{group.label}</p>
+          <p class="mb-1 px-3 font-mono text-[0.58rem] uppercase tracking-[0.14em] text-[var(--muted)]">
+            {group.label}
+          </p>
           <div class="grid gap-0.5">
             {group.links.map((link) => (
-              <a href={link.href} class:list={["rounded-[2px] px-3 py-2 font-mono text-[0.66rem] uppercase tracking-[0.1em] no-underline transition-colors", path === link.href ? "admin-nav-active" : "text-[var(--muted)] hover:bg-[var(--paper-2)] hover:text-[var(--ink)]"]}>{link.label}</a>
+              <a
+                href={link.href}
+                class:list={[
+                  "rounded-[2px] px-3 py-2 font-mono text-[0.66rem] uppercase tracking-[0.1em] no-underline transition-colors",
+                  path === link.href
+                    ? "admin-nav-active"
+                    : "text-[var(--muted)] hover:bg-[var(--paper-2)] hover:text-[var(--ink)]",
+                ]}
+              >
+                {link.label}
+              </a>
             ))}
           </div>
         </div>
       ))}
       <div class="border-t border-[var(--line)] pt-4">
-        <a class="block px-3 py-2 text-sm text-[var(--muted)] hover:text-[var(--ink)]" href="/create-bot">Switch or create a Bot</a>
-        <a class="block px-3 py-2 text-sm text-[var(--muted)] hover:text-[var(--ink)]" href="/admin/editorial">EmDash operator console</a>
-        <p class="px-3 text-xs leading-relaxed text-[var(--muted)]">Editorial content and media live in EmDash. Foilbury remains the source of truth for cards, pools, awards and inventory.</p>
+        <a
+          class="block px-3 py-2 text-sm text-[var(--muted)] hover:text-[var(--ink)]"
+          href="/create-bot"
+        >
+          Switch or create a Bot
+        </a>
+        <a
+          class="block px-3 py-2 text-sm text-[var(--muted)] hover:text-[var(--ink)]"
+          href="/admin/editorial"
+        >
+          EmDash operator console
+        </a>
+        <p class="px-3 text-xs leading-relaxed text-[var(--muted)]">
+          Editorial content and media live in EmDash. Foilbury remains the source of truth for
+          cards, pools, awards and inventory.
+        </p>
       </div>
     </nav>
-    <div class="min-w-0"><slot /></div>
+    <div class="min-w-0">
+      <slot />
+    </div>
   </section>
 </BaseLayout>

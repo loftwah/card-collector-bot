@@ -39,6 +39,7 @@ export interface InventoryRow {
   thumbnail_url: string | null;
   back_render_url: string | null;
   edition_id: string;
+  composition_json: string | null;
   subject_asset_id: string;
   background_asset_id: string | null;
   subject_width: number | null;
@@ -56,7 +57,7 @@ const INVENTORY_SELECT = `SELECT ci.id, ci.card_id, ci.variant_id, cd.name AS ca
   ci.acquired_via, ci.acquired_at, cd.status AS card_status, ('/media/render/' || vr.asset_id) AS render_url,
   ('/media/back/' || br.asset_id) AS back_render_url,
   (SELECT '/media/derivative/' || d.id FROM fb_asset_derivatives d WHERE d.tenant_id = vr.tenant_id AND d.source_asset_id = vr.asset_id AND d.size_key = 'thumb' AND d.status = 'ready' LIMIT 1) AS thumbnail_url,
-  v.edition_id, e.subject_asset_id, e.background_asset_id, sa.width AS subject_width, sa.height AS subject_height
+  v.edition_id, e.subject_asset_id, e.background_asset_id, e.composition_json, sa.width AS subject_width, sa.height AS subject_height
   FROM fb_card_instances ci
   JOIN fb_card_definitions cd ON cd.id = ci.card_id
   JOIN fb_variants v ON v.id = ci.variant_id
@@ -71,10 +72,22 @@ const INVENTORY_SELECT = `SELECT ci.id, ci.card_id, ci.variant_id, cd.name AS ca
   LEFT JOIN fb_variant_renders vr ON vr.variant_id = v.id AND vr.tenant_id = v.tenant_id AND vr.status = 'published'
   LEFT JOIN fb_variant_back_renders br ON br.variant_id = v.id AND br.tenant_id = v.tenant_id AND br.status = 'published'`;
 
-export async function getInventory(
-  ctx: Ctx,
-  options: { status?: string; search?: string; favourite?: boolean; setSlug?: string; collection?: string; limit?: number } = {},
-): Promise<InventoryRow[]> {
+interface InventoryQuery {
+  status?: string;
+  search?: string;
+  favourite?: boolean;
+  setSlug?: string;
+  collection?: string;
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * The filter fragment is shared by the list and count queries. A page is never
+ * used as a total: "12 cards kept" must mean the collection, not the rows that
+ * happened to fit in the first request.
+ */
+function inventoryFilter(ctx: Ctx, options: InventoryQuery) {
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in to see your collection.");
   const where = ["ci.tenant_id = ?", "ci.user_id = ?", "ci.status IN ('owned','reserved')"];
@@ -101,18 +114,45 @@ export async function getInventory(
     );
     params.push(options.collection);
   }
+  return { where: where.join(" AND "), params };
+}
+
+export async function countInventory(ctx: Ctx, options: InventoryQuery = {}): Promise<number> {
+  const { where, params } = inventoryFilter(ctx, options);
+  const row = await first<{ count: number }>(
+    ctx.db,
+    `SELECT COUNT(*) AS count
+     FROM fb_card_instances ci
+     JOIN fb_card_definitions cd ON cd.id = ci.card_id
+     JOIN fb_variants v ON v.id = ci.variant_id
+     WHERE ${where}`,
+    ...params,
+  );
+  return Number(row?.count ?? 0);
+}
+
+export async function getInventory(
+  ctx: Ctx,
+  options: InventoryQuery = {},
+): Promise<InventoryRow[]> {
+  const { where, params } = inventoryFilter(ctx, options);
+  const limit = Math.min(500, Math.max(1, options.limit ?? 200));
+  const offset = Math.max(0, Math.floor(options.offset ?? 0));
   return all<InventoryRow>(
     ctx.db,
-    `${INVENTORY_SELECT} WHERE ${where.join(" AND ")} ORDER BY ci.acquired_at DESC LIMIT ?`,
+    `${INVENTORY_SELECT} WHERE ${where} ORDER BY ci.acquired_at DESC, ci.id DESC LIMIT ? OFFSET ?`,
     ...params,
-    Math.min(500, Math.max(1, options.limit ?? 200)),
+    limit,
+    offset,
   );
 }
 
 export async function getInstance(ctx: Ctx, instanceId: string) {
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in to inspect a card.");
-  const instance = await first<InventoryRow & { description: string; card_status: string; acquired_via: string }>(
+  const instance = await first<
+    InventoryRow & { description: string; card_status: string; acquired_via: string }
+  >(
     ctx.db,
     `${INVENTORY_SELECT}
       WHERE ci.tenant_id = ? AND ci.id = ? AND (ci.user_id = ? OR EXISTS (
@@ -123,7 +163,8 @@ export async function getInstance(ctx: Ctx, instanceId: string) {
     user.id,
     user.id,
   );
-  if (!instance) throw new ApiError(404, "instance_not_found", "That card instance is not in your collection.");
+  if (!instance)
+    throw new ApiError(404, "instance_not_found", "That card instance is not in your collection.");
   const history = await all<{
     id: string;
     event: string;
@@ -138,7 +179,13 @@ export async function getInstance(ctx: Ctx, instanceId: string) {
     ctx.tenant.id,
     instanceId,
   );
-  const draws = await all<{ id: string; pool_id: string; pool_revision: number; price: number; created_at: string }>(
+  const draws = await all<{
+    id: string;
+    pool_id: string;
+    pool_revision: number;
+    price: number;
+    created_at: string;
+  }>(
     ctx.db,
     "SELECT id, pool_id, pool_revision, price, created_at FROM fb_draws WHERE tenant_id = ? AND instance_id = ?",
     ctx.tenant.id,
@@ -159,9 +206,16 @@ export async function toggleFavourite(ctx: Ctx, instanceId: string, favourite: b
   if (!row) throw new ApiError(404, "instance_not_found", "That card is not in your collection.");
   await ctx.db.batch([
     ctx.db
-      .prepare("UPDATE fb_card_instances SET favourite = ?, updated_at = ? WHERE id = ? AND tenant_id = ? AND user_id = ?")
+      .prepare(
+        "UPDATE fb_card_instances SET favourite = ?, updated_at = ? WHERE id = ? AND tenant_id = ? AND user_id = ?",
+      )
       .bind(favourite ? 1 : 0, nowIso(), instanceId, ctx.tenant.id, user.id),
-    auditStatement(ctx, favourite ? "instance.favourited" : "instance.unfavourited", "instance", instanceId),
+    auditStatement(
+      ctx,
+      favourite ? "instance.favourited" : "instance.unfavourited",
+      "instance",
+      instanceId,
+    ),
   ]);
   return { id: instanceId, favourite };
 }
@@ -178,7 +232,9 @@ export async function setLocked(ctx: Ctx, instanceId: string, locked: boolean) {
   if (!row) throw new ApiError(404, "instance_not_found", "That card is not in your collection.");
   await ctx.db.batch([
     ctx.db
-      .prepare("UPDATE fb_card_instances SET locked = ?, updated_at = ? WHERE id = ? AND tenant_id = ? AND user_id = ?")
+      .prepare(
+        "UPDATE fb_card_instances SET locked = ?, updated_at = ? WHERE id = ? AND tenant_id = ? AND user_id = ?",
+      )
       .bind(locked ? 1 : 0, nowIso(), instanceId, ctx.tenant.id, user.id),
     auditStatement(ctx, locked ? "instance.locked" : "instance.unlocked", "instance", instanceId),
   ]);
@@ -187,11 +243,18 @@ export async function setLocked(ctx: Ctx, instanceId: string, locked: boolean) {
 
 export async function toggleWishlist(ctx: Ctx, cardId: string, wanted: boolean) {
   const user = ctx.user!;
-  const card = await first<{ id: string }>(ctx.db, "SELECT id FROM fb_card_definitions WHERE id = ? AND tenant_id = ?", cardId, ctx.tenant.id);
+  const card = await first<{ id: string }>(
+    ctx.db,
+    "SELECT id FROM fb_card_definitions WHERE id = ? AND tenant_id = ?",
+    cardId,
+    ctx.tenant.id,
+  );
   if (!card) throw new ApiError(404, "card_not_found", "Card not found.");
   if (wanted) {
     await ctx.db
-      .prepare("INSERT INTO fb_wishlists (tenant_id, user_id, card_id, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(tenant_id, user_id, card_id) DO NOTHING")
+      .prepare(
+        "INSERT INTO fb_wishlists (tenant_id, user_id, card_id, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(tenant_id, user_id, card_id) DO NOTHING",
+      )
       .bind(ctx.tenant.id, user.id, cardId, nowIso())
       .run();
   } else {
@@ -223,15 +286,27 @@ export async function recyclePreview(ctx: Ctx, instanceId: string) {
     instanceId,
     user.id,
   );
-  if (!instance) throw new ApiError(404, "instance_not_found", "That card is not available to recycle.");
-  if (instance.favourite) throw new ApiError(409, "favourite_protected", "Remove the favourite mark before recycling this card.");
-  if (instance.locked) throw new ApiError(409, "locked_protected", "Locked cards cannot be recycled.");
-  const settings = await first<{ recycle_rates_json: string; recycle_enabled: number; currency_symbol: string }>(
+  if (!instance)
+    throw new ApiError(404, "instance_not_found", "That card is not available to recycle.");
+  if (instance.favourite)
+    throw new ApiError(
+      409,
+      "favourite_protected",
+      "Remove the favourite mark before recycling this card.",
+    );
+  if (instance.locked)
+    throw new ApiError(409, "locked_protected", "Locked cards cannot be recycled.");
+  const settings = await first<{
+    recycle_rates_json: string;
+    recycle_enabled: number;
+    currency_symbol: string;
+  }>(
     ctx.db,
     "SELECT recycle_rates_json, recycle_enabled, currency_symbol FROM fb_economy_settings WHERE tenant_id = ?",
     ctx.tenant.id,
   );
-  if (!settings?.recycle_enabled) throw new ApiError(409, "recycle_disabled", "Recycling is disabled in this cabinet.");
+  if (!settings?.recycle_enabled)
+    throw new ApiError(409, "recycle_disabled", "Recycling is disabled in this cabinet.");
   const rates = JSON.parse(settings.recycle_rates_json) as {
     rarity: Record<string, number>;
     material: Record<string, number>;
@@ -243,7 +318,8 @@ export async function recyclePreview(ctx: Ctx, instanceId: string) {
     credit: base + bonus,
     breakdown: { rarity: base, material: bonus },
     currency_symbol: settings.currency_symbol,
-    warning: "Recycling is permanent. The instance leaves your collection and the acquisition history remains in the ledger.",
+    warning:
+      "Recycling is permanent. The instance leaves your collection and the acquisition history remains in the ledger.",
   };
 }
 
@@ -254,9 +330,14 @@ export async function recycleCommit(
   const user = ctx.user!;
   const preview = await recyclePreview(ctx, input.instanceId);
   if (preview.credit !== input.expectedCredit) {
-    throw new ApiError(409, "credit_changed", "The recycle value changed. Review it again before confirming.", {
-      current_credit: preview.credit,
-    });
+    throw new ApiError(
+      409,
+      "credit_changed",
+      "The recycle value changed. Review it again before confirming.",
+      {
+        current_credit: preview.credit,
+      },
+    );
   }
   const receiptId = newId("rcy");
   const now = nowIso();
@@ -266,14 +347,29 @@ export async function recycleCommit(
         .prepare(
           "INSERT INTO fb_recycle_receipts (id, tenant_id, user_id, instance_id, credit_amount, created_at, idempotency_key) VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
-        .bind(receiptId, ctx.tenant.id, user.id, input.instanceId, preview.credit, now, input.idempotencyKey),
-      auditStatement(ctx, "instance.recycled", "instance", input.instanceId, { credit: preview.credit }),
+        .bind(
+          receiptId,
+          ctx.tenant.id,
+          user.id,
+          input.instanceId,
+          preview.credit,
+          now,
+          input.idempotencyKey,
+        ),
+      auditStatement(ctx, "instance.recycled", "instance", input.instanceId, {
+        credit: preview.credit,
+      }),
     ]);
   } catch (error) {
     const message = String(error);
-    if (message.includes("UNIQUE")) throw new ApiError(409, "recycle_conflict", "This recycle request was already processed.");
+    if (message.includes("UNIQUE"))
+      throw new ApiError(409, "recycle_conflict", "This recycle request was already processed.");
     if (message.includes("instance_not_eligible")) {
-      throw new ApiError(409, "instance_not_eligible", "That card is no longer eligible to recycle. You were not credited.");
+      throw new ApiError(
+        409,
+        "instance_not_eligible",
+        "That card is no longer eligible to recycle. You were not credited.",
+      );
     }
     throw error;
   }
@@ -300,7 +396,6 @@ export async function setCounts(ctx: Ctx) {
     user.id,
   );
 }
-
 
 export async function listTenantMembers(ctx: Ctx) {
   return all<{ id: string; display_name: string; email: string; role: string }>(

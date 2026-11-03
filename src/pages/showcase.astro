@@ -5,50 +5,135 @@ import manifest from "../../public/media/showcase/manifest.json";
 const stills = manifest.outputs.filter((item) => item.file.endsWith(".png"));
 const videos = manifest.outputs.filter((item) => item.file.endsWith(".mp4"));
 ---
-<BaseLayout title="Foilbury showcase · real cards, stills and video" description="Public-safe Foilbury showcase assets: real card stills, front/back presentations, finish mastery, a playable 18-second trailer and a silent 9:16 teaser." shareImage="/media/showcase/og-1200x630.png">
+
+<BaseLayout
+  title="Foilbury showcase · real cards, stills and video"
+  description="Public-safe Foilbury showcase assets: real card stills, front/back presentations, finish mastery, a playable 18-second trailer and a silent 9:16 teaser."
+  shareImage="/media/showcase/og-1200x630.png"
+>
   <section class="signal-rule" aria-hidden="true"></section>
   <section class="container py-12 md:py-16">
     <div class="grid gap-8 lg:grid-cols-[1fr_1fr] lg:items-end">
       <div>
         <p class="studio-kicker">Showcase · public-safe</p>
-        <h1 class="display mt-3 text-[clamp(3rem,8vw,7rem)] uppercase">Real cards. Real exports.</h1>
-        <p class="mt-5 max-w-2xl text-lg leading-relaxed text-[var(--muted)]">These are generated from the real public renderer and real persisted state, not stock art or a mock-up. The public trailer uses only approved original-IP showcase cards. Member artwork and private receipts stay private.</p>
+        <h1 class="display mt-3 text-[clamp(3rem,8vw,7rem)] uppercase">
+          Real cards. Real exports.
+        </h1>
+        <p class="mt-5 max-w-2xl text-lg leading-relaxed text-[var(--muted)]">
+          These are generated from the real public renderer and real persisted state, not stock art
+          or a mock-up. The public trailer uses only approved original-IP showcase cards. Member
+          artwork and private receipts stay private.
+        </p>
       </div>
       <div class="border border-[var(--line)] bg-[var(--paper-2)]/45 p-5">
         <p class="studio-stat__label">Export manifest</p>
-        <p class="mt-2 text-sm text-[var(--muted)]">Source commit <span class="font-mono text-[0.62rem]">{manifest.source_commit.slice(0, 12)}</span> · generated {new Date(manifest.generated_at).toLocaleString("en-AU", { timeZone: "Australia/Melbourne" })}.</p>
-        <p class="mt-2 text-sm text-[var(--muted)]">Every output records a SHA-256. The export action never draws, spends, grants or mutates gameplay.</p>
-        <div class="mt-4 flex flex-wrap gap-2"><a class="btn btn-signal btn-sm" href="/media/showcase/manifest.json" download>Download manifest</a><a class="btn btn-secondary btn-sm" href="/brand-kit">Brand kit</a></div>
+        <p class="mt-2 text-sm text-[var(--muted)]">
+          Source commit{" "}
+          <span class="font-mono text-[0.62rem]">{manifest.source_commit.slice(0, 12)}</span> ·
+          generated{" "}
+          {new Date(manifest.generated_at).toLocaleString("en-AU", {
+            timeZone: "Australia/Melbourne",
+          })}
+          .
+        </p>
+        <p class="mt-2 text-sm text-[var(--muted)]">
+          Every output records a SHA-256. The export action never draws, spends, grants or mutates
+          gameplay.
+        </p>
+        <div class="mt-4 flex flex-wrap gap-2">
+          <a class="btn btn-signal btn-sm" href="/media/showcase/manifest.json" download>
+            Download manifest
+          </a>
+          <a class="btn btn-secondary btn-sm" href="/brand-kit">
+            Brand kit
+          </a>
+        </div>
       </div>
     </div>
 
     <section class="mt-10 grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
       <article class="border border-[var(--line)] bg-[var(--paper)] p-3">
-        <video class="w-full border border-[var(--line)]" controls preload="metadata" poster="/media/showcase/card-16x9-1920.png" playsinline>
+        <video
+          class="w-full border border-[var(--line)]"
+          controls
+          preload="none"
+          poster="/media/showcase/card-16x9-1920.png"
+          playsinline
+        >
           <source src="/media/showcase/foilbury-trailer-16x9.mp4" type="video/mp4" />
-          Your browser cannot play this MP4. <a href="/media/showcase/foilbury-trailer-16x9.mp4">Download it instead.</a>
+          Your browser cannot play this MP4.{" "}
+          <a href="/media/showcase/foilbury-trailer-16x9.mp4">Download it instead.</a>
         </video>
-        <div class="mt-3 flex flex-wrap items-center justify-between gap-2"><div><p class="font-semibold">Public product trailer · 18 seconds</p><p class="font-mono text-[0.56rem] uppercase tracking-[0.1em] text-[var(--muted)]">1920×1080 · H.264 · silent · real public renders</p></div><a class="btn btn-secondary btn-sm" href="/media/showcase/foilbury-trailer-16x9.mp4" download>Download MP4</a></div>
+        <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p class="font-semibold">Public product trailer · 18 seconds</p>
+            <p class="font-mono text-[0.56rem] uppercase tracking-[0.1em] text-[var(--muted)]">
+              1920×1080 · H.264 · silent · real public renders
+            </p>
+          </div>
+          <a
+            class="btn btn-secondary btn-sm"
+            href="/media/showcase/foilbury-trailer-16x9.mp4"
+            download
+          >
+            Download MP4
+          </a>
+        </div>
       </article>
       <article class="border border-[var(--line)] bg-[var(--paper)] p-3">
-        <video class="mx-auto w-full max-w-[360px] border border-[var(--line)]" controls preload="metadata" poster="/media/showcase/card-9x16-1080.png" playsinline>
+        <video
+          class="mx-auto w-full max-w-[360px] border border-[var(--line)]"
+          controls
+          preload="none"
+          poster="/media/showcase/card-9x16-1080.png"
+          playsinline
+        >
           <source src="/media/showcase/foilbury-teaser-9x16.mp4" type="video/mp4" />
-          Your browser cannot play this MP4. <a href="/media/showcase/foilbury-teaser-9x16.mp4">Download it instead.</a>
+          Your browser cannot play this MP4.{" "}
+          <a href="/media/showcase/foilbury-teaser-9x16.mp4">Download it instead.</a>
         </video>
-        <div class="mt-3 flex flex-wrap items-center justify-between gap-2"><div><p class="font-semibold">Silent social teaser · 8 seconds</p><p class="font-mono text-[0.56rem] uppercase tracking-[0.1em] text-[var(--muted)]">1080×1920 · H.264 · silent</p></div><a class="btn btn-secondary btn-sm" href="/media/showcase/foilbury-teaser-9x16.mp4" download>Download 9:16</a></div>
+        <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p class="font-semibold">Silent social teaser · 8 seconds</p>
+            <p class="font-mono text-[0.56rem] uppercase tracking-[0.1em] text-[var(--muted)]">
+              1080×1920 · H.264 · silent
+            </p>
+          </div>
+          <a
+            class="btn btn-secondary btn-sm"
+            href="/media/showcase/foilbury-teaser-9x16.mp4"
+            download
+          >
+            Download 9:16
+          </a>
+        </div>
       </article>
     </section>
 
     <section class="mt-12">
       <div class="flex flex-wrap items-end justify-between gap-3 border-b-2 border-[var(--ink)] pb-3">
         <h2 class="display-sm text-3xl uppercase">Stills and crops</h2>
-        <p class="font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[var(--muted)]">1:1 · 4:5 · 9:16 · 16:9 · 1200×630</p>
+        <p class="font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[var(--muted)]">
+          1:1 · 4:5 · 9:16 · 16:9 · 1200×630
+        </p>
       </div>
       <div class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {stills.map((item) => (
           <article class="border border-[var(--line)] bg-[var(--paper)] p-3">
-            <img src={`/${item.file}`} alt="Foilbury showcase still" loading="lazy" class="w-full border border-[var(--line)]" />
-            <div class="mt-2 flex items-center justify-between gap-2"><p class="font-mono text-[0.56rem] uppercase tracking-[0.08em] text-[var(--muted)]">{item.file.split("/").pop()} · {(item.bytes / 1024).toFixed(0)} KB</p><a class="btn btn-ghost btn-sm" href={`/${item.file}`} download>Download</a></div>
+            <img
+              src={`/${item.file}`}
+              alt="Foilbury showcase still"
+              loading="lazy"
+              class="w-full border border-[var(--line)]"
+            />
+            <div class="mt-2 flex items-center justify-between gap-2">
+              <p class="font-mono text-[0.56rem] uppercase tracking-[0.08em] text-[var(--muted)]">
+                {item.file.split("/").pop()} · {(item.bytes / 1024).toFixed(0)} KB
+              </p>
+              <a class="btn btn-ghost btn-sm" href={`/${item.file}`} download>
+                Download
+              </a>
+            </div>
           </article>
         ))}
       </div>
@@ -68,7 +153,10 @@ const videos = manifest.outputs.filter((item) => item.file.endsWith(".mp4"));
         <ul class="mt-3 grid gap-2 text-sm text-[var(--muted)]">
           <li>Member-only franchise art, rosters, bios or badge names in a public post.</li>
           <li>Another member's inventory, wallet, serials or private receipt.</li>
-          <li>The private opening replay under <code>.foilbury/exports</code>; it is a local demo, not marketing.</li>
+          <li>
+            The private opening replay under <code>.foilbury/exports</code>; it is a local demo, not
+            marketing.
+          </li>
         </ul>
       </div>
     </section>

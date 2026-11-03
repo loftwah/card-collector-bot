@@ -1,9 +1,23 @@
 import type { D1Database } from "@cloudflare/workers-types";
-import { ApiError, canManageGlobalCollection, hasCapability, requireGlobalCollectionManager, requireSuperAdminContent, requireUser, type Ctx } from "../context";
+import {
+  ApiError,
+  canManageGlobalCollection,
+  hasCapability,
+  requireGlobalCollectionManager,
+  requireSuperAdminContent,
+  requireUser,
+  type Ctx,
+} from "../context";
 import { all, first, nowIso } from "../db";
 import { newId } from "../ids";
 import { botForTenant } from "./bots";
-import { audienceLabel, canViewAudience, collectionVisibilitySql, publicCollectionSql, viewerAccess } from "./visibility";
+import {
+  audienceLabel,
+  canViewAudience,
+  collectionVisibilitySql,
+  publicCollectionSql,
+  viewerAccess,
+} from "./visibility";
 import { assertTransition } from "../state";
 
 export interface CollectionRow {
@@ -46,12 +60,21 @@ export interface CollectionSummary extends CollectionRow {
 }
 
 function normalizeSlug(value: string): string {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
 }
 
 async function platformCatalogueTenantId(ctx: Ctx): Promise<string> {
   if (ctx.tenant.slug === ctx.config.tenantSlug) return ctx.tenant.id;
-  const main = await first<{ id: string }>(ctx.db, "SELECT id FROM fb_tenants WHERE slug = ?", ctx.config.tenantSlug);
+  const main = await first<{ id: string }>(
+    ctx.db,
+    "SELECT id FROM fb_tenants WHERE slug = ?",
+    ctx.config.tenantSlug,
+  );
   return main?.id ?? ctx.tenant.id;
 }
 
@@ -79,10 +102,10 @@ export async function listCollections(
     : visibility.sql;
   const params: unknown[] = [bot?.id ?? "", options?.includeArchived ? 1 : 0];
   if (options?.includeAll) {
-    if (ctx.user?.globalCollectionScope && !ctx.user.platformAdmin) params.push(...platformScope.params);
+    if (ctx.user?.globalCollectionScope && !ctx.user.platformAdmin)
+      params.push(...platformScope.params);
     params.push(ctx.tenant.id);
-  }
-  else params.push(...visibility.params);
+  } else params.push(...visibility.params);
   const rows = await all<CollectionSummary & { owner_name: string | null }>(
     ctx.db,
     `SELECT c.*,
@@ -161,10 +184,10 @@ export async function getCollection(
     : visibility.sql;
   const params: unknown[] = [bot?.id ?? "", id];
   if (options?.includeAll) {
-    if (ctx.user?.globalCollectionScope && !ctx.user.platformAdmin) params.push(...platformScope.params);
+    if (ctx.user?.globalCollectionScope && !ctx.user.platformAdmin)
+      params.push(...platformScope.params);
     params.push(ctx.tenant.id);
-  }
-  else params.push(...visibility.params);
+  } else params.push(...visibility.params);
   const row = await first<CollectionSummary & { owner_name: string | null }>(
     ctx.db,
     `SELECT c.*,
@@ -184,7 +207,12 @@ export async function getCollection(
       WHERE c.id = ? AND ${identityClause}`,
     ...params,
   );
-  if (!row) throw new ApiError(404, "collection_not_found", "That collection is not available to this account.");
+  if (!row)
+    throw new ApiError(
+      404,
+      "collection_not_found",
+      "That collection is not available to this account.",
+    );
   return {
     ...row,
     enabled: Boolean(row.enabled),
@@ -197,7 +225,11 @@ export async function getCollection(
   };
 }
 
-export async function listCollectionCards(ctx: Ctx, id: string, options?: { includeDrafts?: boolean }) {
+export async function listCollectionCards(
+  ctx: Ctx,
+  id: string,
+  options?: { includeDrafts?: boolean },
+) {
   const collection = await getCollection(ctx, id, { includeAll: options?.includeDrafts });
   const statusClause = options?.includeDrafts ? "" : "AND cd.status = 'published'";
   return all<{
@@ -260,15 +292,26 @@ export async function createCollection(
     requireGlobalCollectionManager(ctx);
   } else {
     const bot = await botForTenant(ctx.db, ctx.tenant.id);
-    if (!bot) throw new ApiError(403, "bot_required", "Create or select a Bot before making a Bot collection.");
+    if (!bot)
+      throw new ApiError(
+        403,
+        "bot_required",
+        "Create or select a Bot before making a Bot collection.",
+      );
     if (user.role !== "owner" && !hasCapability(user, "content")) {
-      throw new ApiError(403, "content_capability_required", "Your Bot role cannot create collections.");
+      throw new ApiError(
+        403,
+        "content_capability_required",
+        "Your Bot role cannot create collections.",
+      );
     }
   }
   const name = input.name.trim().slice(0, 120);
-  if (name.length < 2) throw new ApiError(422, "collection_name_invalid", "Give the collection a name.");
+  if (name.length < 2)
+    throw new ApiError(422, "collection_name_invalid", "Give the collection a name.");
   const slug = normalizeSlug(input.slug || name);
-  if (slug.length < 2) throw new ApiError(422, "collection_slug_invalid", "Choose a URL-friendly collection slug.");
+  if (slug.length < 2)
+    throw new ApiError(422, "collection_slug_invalid", "Choose a URL-friendly collection slug.");
   const id = newId("col");
   const now = nowIso();
   // New collections are never public by default. Approval is an explicit
@@ -277,13 +320,22 @@ export async function createCollection(
   if (audience === "public") {
     requireSuperAdminContent(ctx);
     if ((input.status ?? "draft") !== "published") {
-      throw new ApiError(422, "public_requires_publish", "Publish the collection before approving it for the public showcase.");
+      throw new ApiError(
+        422,
+        "public_requires_publish",
+        "Publish the collection before approving it for the public showcase.",
+      );
     }
   }
   if (input.scope === "bot" && audience === "public") {
-    throw new ApiError(422, "bot_collection_not_public", "Bot collections are members-only; public showcase content is curated by the Super Admin.");
+    throw new ApiError(
+      422,
+      "bot_collection_not_public",
+      "Bot collections are members-only; public showcase content is curated by the Super Admin.",
+    );
   }
-  const ownerTenantId = input.scope === "global" ? await platformCatalogueTenantId(ctx) : ctx.tenant.id;
+  const ownerTenantId =
+    input.scope === "global" ? await platformCatalogueTenantId(ctx) : ctx.tenant.id;
   await ctx.db
     .prepare(
       `INSERT INTO fb_collections
@@ -323,7 +375,9 @@ export async function createCollection(
     const bot = await botForTenant(ctx.db, ctx.tenant.id);
     if (bot) {
       await ctx.db
-        .prepare("INSERT INTO fb_bot_collections (bot_id, collection_id, enabled, updated_by, updated_at) VALUES (?, ?, 1, ?, ?)")
+        .prepare(
+          "INSERT INTO fb_bot_collections (bot_id, collection_id, enabled, updated_by, updated_at) VALUES (?, ?, 1, ?, ?)",
+        )
         .bind(bot.id, id, user.id, now)
         .run();
     }
@@ -355,15 +409,21 @@ export async function updateCollection(
   const collection = await getCollection(ctx, id, { includeAll: true });
   assertManage(ctx, collection);
   if (input.expectedVersion !== undefined && input.expectedVersion !== collection.release_version) {
-    throw new ApiError(409, "stale_write", "This collection changed since you opened it. Reload before saving.", {
-      current_version: collection.release_version,
-    });
+    throw new ApiError(
+      409,
+      "stale_write",
+      "This collection changed since you opened it. Reload before saving.",
+      {
+        current_version: collection.release_version,
+      },
+    );
   }
   const updates: string[] = [];
   const values: unknown[] = [];
   if (input.name !== undefined) {
     const name = input.name.trim().slice(0, 120);
-    if (name.length < 2) throw new ApiError(422, "collection_name_invalid", "Give the collection a name.");
+    if (name.length < 2)
+      throw new ApiError(422, "collection_name_invalid", "Give the collection a name.");
     updates.push("name = ?");
     values.push(name);
   }
@@ -408,12 +468,23 @@ export async function updateCollection(
     if (input.viewAudience === "public") {
       requireSuperAdminContent(ctx);
       if ((input.status ?? collection.status) !== "published") {
-        throw new ApiError(422, "public_requires_publish", "Publish the collection before approving it for the public showcase.");
+        throw new ApiError(
+          422,
+          "public_requires_publish",
+          "Publish the collection before approving it for the public showcase.",
+        );
       }
       if (collection.scope === "bot") {
-        throw new ApiError(422, "bot_collection_not_public", "Bot collections cannot be promoted to the public showcase.");
+        throw new ApiError(
+          422,
+          "bot_collection_not_public",
+          "Bot collections cannot be promoted to the public showcase.",
+        );
       }
-      updates.push("public_approved_at = COALESCE(public_approved_at, ?)", "public_approved_by = COALESCE(public_approved_by, ?)");
+      updates.push(
+        "public_approved_at = COALESCE(public_approved_at, ?)",
+        "public_approved_by = COALESCE(public_approved_by, ?)",
+      );
       values.push(nowIso(), ctx.user?.id ?? "system");
     } else if (collection.view_audience === "public") {
       // Removing public approval is a deliberate visibility change. The caller
@@ -425,9 +496,14 @@ export async function updateCollection(
   }
   if (input.status !== undefined) {
     if (collection.scope === "global") requireGlobalCollectionManager(ctx, collection.id);
-    if (input.status !== collection.status) assertTransition("collection", collection.status, input.status);
+    if (input.status !== collection.status)
+      assertTransition("collection", collection.status, input.status);
     if (input.status !== "published" && collection.view_audience === "public") {
-      updates.push("view_audience = 'members'", "public_approved_at = NULL", "public_approved_by = NULL");
+      updates.push(
+        "view_audience = 'members'",
+        "public_approved_at = NULL",
+        "public_approved_by = NULL",
+      );
     }
     updates.push("status = ?");
     values.push(input.status);
@@ -447,7 +523,10 @@ export async function updateCollection(
   if (!updates.length) return collection;
   updates.push("updated_at = ?", "release_version = release_version + 1");
   values.push(nowIso(), id);
-  await ctx.db.prepare(`UPDATE fb_collections SET ${updates.join(", ")} WHERE id = ?`).bind(...values).run();
+  await ctx.db
+    .prepare(`UPDATE fb_collections SET ${updates.join(", ")} WHERE id = ?`)
+    .bind(...values)
+    .run();
   await auditCollection(ctx, "collection.updated", id, {
     fields: Object.keys(input),
     view_audience: input.viewAudience ?? collection.view_audience,
@@ -455,7 +534,11 @@ export async function updateCollection(
   return (await getCollection(ctx, id, { includeAll: true })) as CollectionRow;
 }
 
-export async function addCollectionCards(ctx: Ctx, id: string, cardIds: string[]): Promise<{ added: number }> {
+export async function addCollectionCards(
+  ctx: Ctx,
+  id: string,
+  cardIds: string[],
+): Promise<{ added: number }> {
   const collection = await getCollection(ctx, id);
   assertManage(ctx, collection);
   const unique = [...new Set(cardIds)].slice(0, 300);
@@ -467,10 +550,16 @@ export async function addCollectionCards(ctx: Ctx, id: string, cardIds: string[]
     ...unique,
   );
   const allowed = cards.filter((card) =>
-    collection.scope === "global" ? card.tenant_id === collection.owner_tenant_id : card.tenant_id === ctx.tenant.id,
+    collection.scope === "global"
+      ? card.tenant_id === collection.owner_tenant_id
+      : card.tenant_id === ctx.tenant.id,
   );
   if (allowed.length !== unique.length) {
-    throw new ApiError(403, "card_scope_invalid", "One or more cards are outside this collection's catalogue scope.");
+    throw new ApiError(
+      403,
+      "card_scope_invalid",
+      "One or more cards are outside this collection's catalogue scope.",
+    );
   }
   const now = nowIso();
   for (const card of allowed) {
@@ -490,16 +579,28 @@ export async function addCollectionCards(ctx: Ctx, id: string, cardIds: string[]
 export async function removeCollectionCard(ctx: Ctx, id: string, cardId: string): Promise<void> {
   const collection = await getCollection(ctx, id);
   assertManage(ctx, collection);
-  await ctx.db.prepare("DELETE FROM fb_collection_cards WHERE collection_id = ? AND card_id = ?").bind(collection.id, cardId).run();
+  await ctx.db
+    .prepare("DELETE FROM fb_collection_cards WHERE collection_id = ? AND card_id = ?")
+    .bind(collection.id, cardId)
+    .run();
   await auditCollection(ctx, "collection.card.removed", id, { card_id: cardId });
 }
 
-export async function enableCollection(ctx: Ctx, collectionId: string, enabled: boolean): Promise<void> {
+export async function enableCollection(
+  ctx: Ctx,
+  collectionId: string,
+  enabled: boolean,
+): Promise<void> {
   const user = requireUser(ctx);
   const bot = await botForTenant(ctx.db, ctx.tenant.id);
-  if (!bot) throw new ApiError(403, "bot_required", "No Bot is attached to this administration area.");
+  if (!bot)
+    throw new ApiError(403, "bot_required", "No Bot is attached to this administration area.");
   if (user.role !== "owner" && !hasCapability(user, "content")) {
-    throw new ApiError(403, "content_capability_required", "Your Bot role cannot change collection availability.");
+    throw new ApiError(
+      403,
+      "content_capability_required",
+      "Your Bot role cannot change collection availability.",
+    );
   }
   const collection = await getCollection(ctx, collectionId);
   await ctx.db
@@ -510,14 +611,23 @@ export async function enableCollection(ctx: Ctx, collectionId: string, enabled: 
     )
     .bind(bot.id, collection.id, enabled ? 1 : 0, user.id, nowIso())
     .run();
-  await auditCollection(ctx, enabled ? "collection.enabled" : "collection.disabled", collection.id, { bot_id: bot.id });
+  await auditCollection(
+    ctx,
+    enabled ? "collection.enabled" : "collection.disabled",
+    collection.id,
+    { bot_id: bot.id },
+  );
 }
 
 /**
  * A card in any collection must have at least one enabled collection for the
  * Bot before it can drop. Cards outside collections keep the legacy behaviour.
  */
-export async function assertCardEnabledForTenant(db: D1Database, tenantId: string, cardId: string): Promise<void> {
+export async function assertCardEnabledForTenant(
+  db: D1Database,
+  tenantId: string,
+  cardId: string,
+): Promise<void> {
   const state = await first<{ collections: number; enabled: number }>(
     db,
     `SELECT
@@ -531,7 +641,11 @@ export async function assertCardEnabledForTenant(db: D1Database, tenantId: strin
     cardId,
   );
   if (state && state.collections > 0 && state.enabled === 0) {
-    throw new ApiError(409, "collection_disabled", "That card's collection is turned off for this Bot. Nothing was charged.");
+    throw new ApiError(
+      409,
+      "collection_disabled",
+      "That card's collection is turned off for this Bot. Nothing was charged.",
+    );
   }
 }
 
@@ -541,9 +655,14 @@ function assertManage(ctx: Ctx, collection: CollectionRow): void {
     return;
   }
   const user = requireUser(ctx);
-  if (collection.owner_tenant_id !== ctx.tenant.id) throw new ApiError(403, "collection_scope_invalid", "That collection belongs to another Bot.");
+  if (collection.owner_tenant_id !== ctx.tenant.id)
+    throw new ApiError(403, "collection_scope_invalid", "That collection belongs to another Bot.");
   if (user.role !== "owner" && !hasCapability(user, "content")) {
-    throw new ApiError(403, "content_capability_required", "Your Bot role cannot manage collections.");
+    throw new ApiError(
+      403,
+      "content_capability_required",
+      "Your Bot role cannot manage collections.",
+    );
   }
 }
 
@@ -555,7 +674,11 @@ export async function setCollectionViewers(
   const collection = await getCollection(ctx, collectionId, { includeAll: true });
   assertManage(ctx, collection);
   if (collection.view_audience !== "private") {
-    throw new ApiError(422, "collection_not_private", "Explicit viewers apply to private collections only.");
+    throw new ApiError(
+      422,
+      "collection_not_private",
+      "Explicit viewers apply to private collections only.",
+    );
   }
   const unique = [...new Set(userIds)].slice(0, 500);
   if (unique.length) {
@@ -564,11 +687,14 @@ export async function setCollectionViewers(
       `SELECT id FROM fb_users WHERE id IN (${unique.map(() => "?").join(",")}) AND disabled_at IS NULL`,
       ...unique,
     );
-    if (found.length !== unique.length) throw new ApiError(422, "viewer_unknown", "One or more viewers do not exist.");
+    if (found.length !== unique.length)
+      throw new ApiError(422, "viewer_unknown", "One or more viewers do not exist.");
   }
   const now = nowIso();
   await ctx.db
-    .prepare("UPDATE fb_collection_viewers SET revoked_at = ? WHERE collection_id = ? AND revoked_at IS NULL")
+    .prepare(
+      "UPDATE fb_collection_viewers SET revoked_at = ? WHERE collection_id = ? AND revoked_at IS NULL",
+    )
     .bind(now, collection.id)
     .run();
   for (const userId of unique) {
@@ -606,11 +732,15 @@ export async function collectionProgress(ctx: Ctx, collectionId: string) {
             COUNT(DISTINCT v.id) AS variants
        FROM fb_collection_cards cc
        JOIN fb_card_definitions cd ON cd.id = cc.card_id AND cd.status = 'published' AND cd.archived_at IS NULL
-       JOIN fb_variants v ON v.card_id = cd.id AND v.status = 'published' AND v.archived_at IS NULL
+       LEFT JOIN fb_variants v ON v.card_id = cd.id AND v.status = 'published' AND v.archived_at IS NULL
       WHERE cc.collection_id = ?`,
     collection.id,
   );
-  const finishTotals = await all<{ card_id: string; material_key: string; effect_key: string | null }>(
+  const finishTotals = await all<{
+    card_id: string;
+    material_key: string;
+    effect_key: string | null;
+  }>(
     ctx.db,
     `SELECT DISTINCT cd.id AS card_id, m.key AS material_key, fx.key AS effect_key
        FROM fb_collection_cards cc
@@ -639,6 +769,7 @@ export async function collectionProgress(ctx: Ctx, collectionId: string) {
     ctx.db,
     `SELECT COUNT(DISTINCT ci.card_id) AS cards, COUNT(DISTINCT ci.variant_id) AS variants, COUNT(*) AS copies
        FROM fb_card_instances ci
+       JOIN fb_card_definitions cd ON cd.id = ci.card_id AND cd.status = 'published' AND cd.archived_at IS NULL
        JOIN fb_collection_cards cc ON cc.card_id = ci.card_id
       WHERE ci.tenant_id = ? AND ci.user_id = ? AND ci.status IN ('owned','reserved')
         AND cc.collection_id = ?`,
@@ -646,10 +777,15 @@ export async function collectionProgress(ctx: Ctx, collectionId: string) {
     user.id,
     collection.id,
   );
-  const ownedFinishRows = await all<{ card_id: string; material_key: string; effect_key: string | null }>(
+  const ownedFinishRows = await all<{
+    card_id: string;
+    material_key: string;
+    effect_key: string | null;
+  }>(
     ctx.db,
     `SELECT ci.card_id, m.key AS material_key, fx.key AS effect_key
        FROM fb_card_instances ci
+       JOIN fb_card_definitions cd ON cd.id = ci.card_id AND cd.status = 'published' AND cd.archived_at IS NULL
        JOIN fb_collection_cards cc ON cc.card_id = ci.card_id
        JOIN fb_variants v ON v.id = ci.variant_id
        JOIN fb_materials m ON m.id = v.material_id
@@ -711,7 +847,13 @@ export async function collectionBinder(ctx: Ctx, collectionId: string) {
     // Older local schemas may not have the ordered material join; the base
     // fields are still useful and the page stays honest about missing media.
     return all<{
-      id: string; slug: string; name: string; subtitle: string | null; status: string; render_url: string | null; thumbnail_url: string | null;
+      id: string;
+      slug: string;
+      name: string;
+      subtitle: string | null;
+      status: string;
+      render_url: string | null;
+      thumbnail_url: string | null;
     }>(
       ctx.db,
       `SELECT cd.id, cd.slug, cd.name, cd.subtitle, cd.status, NULL AS render_url, NULL AS thumbnail_url
@@ -721,7 +863,13 @@ export async function collectionBinder(ctx: Ctx, collectionId: string) {
       collection.id,
     );
   });
-  const ownedRows = await all<{ card_id: string; instance_id: string; material_key: string; effect_key: string | null; render_url: string | null }>(
+  const ownedRows = await all<{
+    card_id: string;
+    instance_id: string;
+    material_key: string;
+    effect_key: string | null;
+    render_url: string | null;
+  }>(
     ctx.db,
     `SELECT ci.card_id, ci.id AS instance_id, m.key AS material_key, fx.key AS effect_key,
             (SELECT vr.public_url FROM fb_variant_renders vr WHERE vr.variant_id = ci.variant_id AND vr.status = 'published' LIMIT 1) AS render_url
@@ -735,9 +883,17 @@ export async function collectionBinder(ctx: Ctx, collectionId: string) {
     user.id,
     collection.id,
   );
-  const byCard = new Map<string, { finishes: Set<string>; render_url: string | null; copies: number; instance_id: string }>();
+  const byCard = new Map<
+    string,
+    { finishes: Set<string>; render_url: string | null; copies: number; instance_id: string }
+  >();
   for (const row of ownedRows) {
-    const current = byCard.get(row.card_id) ?? { finishes: new Set<string>(), render_url: null, copies: 0, instance_id: row.instance_id };
+    const current = byCard.get(row.card_id) ?? {
+      finishes: new Set<string>(),
+      render_url: null,
+      copies: 0,
+      instance_id: row.instance_id,
+    };
     current.finishes.add(finishKeyOf(row.material_key, row.effect_key));
     current.copies += 1;
     if (!current.render_url) current.render_url = row.render_url;
@@ -753,7 +909,11 @@ export async function collectionBinder(ctx: Ctx, collectionId: string) {
         ...row,
         owned: Boolean(owned),
         copies: owned?.copies ?? 0,
-        finishes: owned ? [...owned.finishes].filter((finish) => (CORE_FINISHES as readonly string[]).includes(finish)) : [],
+        finishes: owned
+          ? [...owned.finishes].filter((finish) =>
+              (CORE_FINISHES as readonly string[]).includes(finish),
+            )
+          : [],
         render_url: owned?.render_url ?? null,
         instance_id: owned?.instance_id ?? null,
       };
@@ -771,7 +931,9 @@ function finishKeyOf(material: string, effect: string | null): string {
   return "other";
 }
 
-function emptyFinishProgress(rows: Array<{ card_id: string; material_key: string; effect_key: string | null }>) {
+function emptyFinishProgress(
+  rows: Array<{ card_id: string; material_key: string; effect_key: string | null }>,
+) {
   const out: Record<string, { owned: number; total: number }> = {};
   for (const finish of CORE_FINISHES) out[finish] = { owned: 0, total: 0 };
   const totals = new Map<string, Set<string>>();
@@ -805,7 +967,8 @@ function assetIdFromUrl(value: string | undefined | null): string | null {
   return match ? match[1]! : null;
 }
 
-function safeUrl(value: string | undefined | null): string | null {  if (!value) return null;
+function safeUrl(value: string | undefined | null): string | null {
+  if (!value) return null;
   const trimmed = value.trim();
   if (trimmed.startsWith("/") && !trimmed.startsWith("//")) return trimmed.slice(0, 500);
   try {
@@ -817,7 +980,12 @@ function safeUrl(value: string | undefined | null): string | null {  if (!value)
   return null;
 }
 
-async function auditCollection(ctx: Ctx, action: string, collectionId: string, metadata: Record<string, unknown>): Promise<void> {
+async function auditCollection(
+  ctx: Ctx,
+  action: string,
+  collectionId: string,
+  metadata: Record<string, unknown>,
+): Promise<void> {
   await ctx.db
     .prepare(
       `INSERT INTO fb_audit_events

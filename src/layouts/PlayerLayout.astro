@@ -8,55 +8,103 @@ interface Props {
 }
 const { title, description } = Astro.props;
 const path = Astro.url.pathname;
-const links = [
+const primary = [
   { href: "/play", label: "Overview" },
   { href: "/play/collections", label: "Worlds" },
   { href: "/play/collection", label: "My cards" },
   { href: "/play/draw", label: "Draw room" },
   { href: "/play/rewards", label: "Rewards" },
+];
+const more = [
   { href: "/play/achievements", label: "Achievements" },
   { href: "/play/profile", label: "Showcase" },
   { href: "/play/gifts", label: "Gifts" },
-  { href: "/play/trades", label: "Trades & gifts" },
+  { href: "/play/trades", label: "Trades" },
   { href: "/play/preferences", label: "Preferences" },
-  { href: "/tour", label: "Tour" },
-  { href: "/account/security", label: "Security" },
+  { href: "/tour", label: "Guided tour" },
+  { href: "/account/security", label: "Account security" },
 ];
+const isActive = (href: string) =>
+  href === "/play" ? path === href : path === href || path.startsWith(href + "/");
+const moreActive = more.some((link) => isActive(link.href));
 ---
-<BaseLayout title={title ?? `${user?.displayName ?? "Player"} · Foilbury`} description={description ?? "Your Foilbury album: collection, Foil balance, capsules, achievements and gifts."} noIndex>
-  <section class="border-b border-[var(--line)] bg-[var(--paper-2)]/50">
-    <div class="container py-6">
-      <div class="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p class="display-sm text-3xl md:text-4xl">{user?.displayName ?? "Collector"}</p>
+
+<BaseLayout
+  title={title ?? `${user?.displayName ?? "Player"} · Foilbury`}
+  description={
+    description ??
+    "Your Foilbury album: collection, Foil balance, capsules, achievements and gifts."
+  }
+  noIndex
+>
+  <section class="cabinet-bar">
+    <div class="signal-strip" aria-hidden="true"></div>
+    <div class="container">
+      <div class="flex flex-wrap items-center justify-between gap-3 py-4">
+        <div class="min-w-0">
+          <p class="studio-stat__label">Collector cabinet</p>
+          <p class="display-sm mt-0.5 truncate text-2xl">{user?.displayName ?? "Collector"}</p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          <a class="btn btn-secondary btn-sm" href="/cabinet">Public catalogue</a>
-          <a class="btn btn-secondary btn-sm" href="/play/preferences">Preferences</a>
+          <a class="btn btn-secondary btn-sm" href="/cabinet">
+            Public catalogue
+          </a>
+          <a class="btn btn-ghost btn-sm" href="/play/preferences">
+            Preferences
+          </a>
         </div>
       </div>
-      <nav class="cabinet-tabs mt-5 flex gap-1 overflow-x-auto border-b border-[var(--line)] pb-1" aria-label="Cabinet sections">
-        {links.map((link) => {
-          const active = path === link.href || (link.href !== "/play" && path.startsWith(link.href + "/"));
-          return (
+      <div class="cabinet-nav-wrap">
+        <nav class="cabinet-nav" aria-label="Cabinet sections">
+          {primary.map((link) => (
             <a
               href={link.href}
-              aria-current={active ? "page" : undefined}
-              class:list={[
-                "shrink-0 border-b-2 px-3 py-2.5 font-mono text-[0.65rem] uppercase tracking-[0.1em] no-underline transition-colors",
-                active
-                  ? "border-[var(--brass)] text-[var(--ink)]"
-                  : "border-transparent text-[var(--muted)] hover:text-[var(--ink)]",
-              ]}
+              aria-current={isActive(link.href) ? "page" : undefined}
+              class:list={["cabinet-link", isActive(link.href) && "is-active"]}
             >
               {link.label}
             </a>
-          );
-        })}
-      </nav>
+          ))}
+        </nav>
+        <details class="cabinet-more">
+          <summary
+            class:list={["cabinet-link cabinet-more__summary", moreActive && "is-active"]}
+            aria-label="More cabinet sections"
+          >
+            More
+            <span aria-hidden="true">▾</span>
+          </summary>
+          <div class="cabinet-more__menu">
+            {more.map((link) => (
+              <a
+                href={link.href}
+                aria-current={isActive(link.href) ? "page" : undefined}
+                class:list={["cabinet-more__link", isActive(link.href) && "is-active"]}
+              >
+                {link.label}
+              </a>
+            ))}
+          </div>
+        </details>
+      </div>
     </div>
   </section>
-  <section class="container py-8 md:py-10">
+  <section class="container py-7 md:py-9">
     <slot />
   </section>
 </BaseLayout>
+<script is:inline>
+  // Menus are native <details>. Close them on outside click or Escape so the
+  // dropdown cannot remain over content after the next action.
+  document.addEventListener("click", (event) => {
+    document.querySelectorAll("details.cabinet-more[open]").forEach((details) => {
+      if (!details.contains(event.target)) details.open = false;
+    });
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    document.querySelectorAll("details.cabinet-more[open]").forEach((details) => {
+      details.open = false;
+    });
+  });
+</script>

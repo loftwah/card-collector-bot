@@ -22,7 +22,16 @@ interface Props {
  * actively moving the card, and stops when the component is offscreen or the
  * tab is hidden.
  */
-export default function CardInspector({ frontUrl, backUrl, name, subtitle, finish, collection, serial, fallbackUrl }: Props) {
+export default function CardInspector({
+  frontUrl,
+  backUrl,
+  name,
+  subtitle,
+  finish,
+  collection,
+  serial,
+  fallbackUrl,
+}: Props) {
   const [enabled, setEnabled] = useState(false);
   const [flipped, setFlipped] = useState(false);
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
@@ -45,8 +54,23 @@ export default function CardInspector({ frontUrl, backUrl, name, subtitle, finis
   }, []);
 
   useEffect(() => {
+    if (!enabled) return;
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setTilt({ x: 0, y: 0 });
+      setFlipped(false);
+      setEnabled(false);
+    };
+    document.addEventListener("keydown", onEscape);
+    return () => document.removeEventListener("keydown", onEscape);
+  }, [enabled]);
+
+  useEffect(() => {
     if (!shell.current) return;
-    const observer = new IntersectionObserver(([entry]) => setActive(Boolean(entry?.isIntersecting)), { threshold: 0.05 });
+    const observer = new IntersectionObserver(
+      ([entry]) => setActive(Boolean(entry?.isIntersecting)),
+      { threshold: 0.05 },
+    );
     observer.observe(shell.current);
     const visibility = () => setActive(!document.hidden);
     document.addEventListener("visibilitychange", visibility);
@@ -98,7 +122,10 @@ export default function CardInspector({ frontUrl, backUrl, name, subtitle, finis
       const dx = event.clientX - last.current.x;
       const dy = event.clientY - last.current.y;
       last.current = { x: event.clientX, y: event.clientY };
-      setTilt((current) => ({ x: clamp(current.x - dy * 0.28, -18, 18), y: clamp(current.y + dx * 0.32, -22, 22) }));
+      setTilt((current) => ({
+        x: clamp(current.x - dy * 0.28, -18, 18),
+        y: clamp(current.y + dx * 0.32, -22, 22),
+      }));
       return;
     }
     move(event.clientX, event.clientY);
@@ -152,34 +179,77 @@ export default function CardInspector({ frontUrl, backUrl, name, subtitle, finis
       >
         <div className="card-inspector__object" style={style}>
           <div className="card-inspector__face card-inspector__front" aria-hidden={flipped}>
-            {front ? <img src={front} alt={`${name} front, ${finish} finish`} width={750} height={1050} /> : <div className="card-face-fallback">{name.charAt(0)}</div>}
+            {front ? (
+              <img src={front} alt={`${name} front, ${finish} finish`} width={750} height={1050} />
+            ) : (
+              <div className="card-face-fallback">{name.charAt(0)}</div>
+            )}
           </div>
           <div className="card-inspector__face card-inspector__back" aria-hidden={!flipped}>
-            {back ? <img src={back} alt={`${name} back, ${finish} finish`} width={750} height={1050} loading="lazy" /> : <div className="card-face-fallback">Back</div>}
+            {back ? (
+              <img
+                src={back}
+                alt={`${name} back, ${finish} finish`}
+                width={750}
+                height={1050}
+                loading="lazy"
+              />
+            ) : (
+              <div className="card-face-fallback">Back</div>
+            )}
           </div>
           <div className="card-inspector__edge" aria-hidden="true" />
         </div>
       </div>
 
       <div className="card-inspector__controls">
-        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setFlipped((value) => !value)} aria-pressed={flipped}>
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={() => setFlipped((value) => !value)}
+          aria-pressed={flipped}
+        >
           <RotateCcw size={14} /> {flipped ? "View front" : "View back"}
         </button>
-        <button type="button" className={cn("btn btn-sm", enabled ? "btn-primary" : "btn-secondary")} onClick={() => { setEnabled((value) => { const next = !value; setTilt(next ? { x: -4, y: 7 } : { x: 0, y: 0 }); return next; }); }} aria-pressed={enabled}>
+        <button
+          type="button"
+          className={cn("btn btn-sm", enabled ? "btn-primary" : "btn-secondary")}
+          onClick={() => {
+            setEnabled((value) => {
+              const next = !value;
+              setTilt(next ? { x: -4, y: 7 } : { x: 0, y: 0 });
+              return next;
+            });
+          }}
+          aria-pressed={enabled}
+        >
           <Box size={14} /> {enabled ? "Exit 3D" : "Inspect in 3D"}
         </button>
         {enabled ? (
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setTilt({ x: 0, y: 0 }); setFlipped(false); }}>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => {
+              setTilt({ x: 0, y: 0 });
+              setFlipped(false);
+            }}
+          >
             Reset
           </button>
         ) : null}
       </div>
-      <p className="mt-2 font-mono text-[0.56rem] uppercase tracking-[0.1em] text-[var(--muted)]">
-        {reduced ? "Static inspection · reduced motion is on" : enabled ? "Drag or use arrow keys · F flips · Escape resets" : `Flat view · ${collection ?? "Cabinet"}${serial ? ` · ${serial}` : ""}`}
+      <p className="mt-2 font-mono text-[0.56rem] tracking-[0.1em] text-[var(--muted)] uppercase">
+        {reduced
+          ? "Static inspection · reduced motion is on"
+          : enabled
+            ? "Drag or use arrow keys · F flips · Escape resets"
+            : `Flat view · ${collection ?? "Cabinet"}${serial ? ` · ${serial}` : ""}`}
       </p>
       <p className="sr-only" aria-live="polite">
         {flipped ? "Showing card back" : "Showing card front"}.
-        {canTilt ? ` Tilt ${Math.round(tilt.y)} degrees horizontally, ${Math.round(tilt.x)} degrees vertically.` : ""}
+        {canTilt
+          ? ` Tilt ${Math.round(tilt.y)} degrees horizontally, ${Math.round(tilt.x)} degrees vertically.`
+          : ""}
       </p>
     </div>
   );

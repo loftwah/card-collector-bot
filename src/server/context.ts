@@ -65,7 +65,8 @@ export interface Ctx {
   sessionAssurance: string | null;
   sessionAuthTime: string | null;
   accessIdentity: AccessIdentity | null;
-  accessStatus: "linked" | "unlinked" | "email_mismatch" | "disabled" | "not_member" | "not_required" | null;
+  accessStatus:
+    "linked" | "unlinked" | "email_mismatch" | "disabled" | "not_member" | "not_required" | null;
 }
 
 export class ApiError extends Error {
@@ -89,11 +90,15 @@ export async function loadTenant(db: D1Database, slug: string): Promise<Tenant> 
     "SELECT id, slug, name FROM fb_tenants WHERE slug = ?",
     slug,
   );
-  if (!tenant) throw new ApiError(503, "tenant_not_configured", "This installation has no matching tenant.");
+  if (!tenant)
+    throw new ApiError(503, "tenant_not_configured", "This installation has no matching tenant.");
   return tenant;
 }
 
-export async function buildContext(request: Request, options?: { requireTenant?: boolean }): Promise<Ctx> {
+export async function buildContext(
+  request: Request,
+  options?: { requireTenant?: boolean },
+): Promise<Ctx> {
   const raw = runtimeEnv();
   const config = readConfig(raw);
   const db = raw.DB;
@@ -103,7 +108,12 @@ export async function buildContext(request: Request, options?: { requireTenant?:
   const path = new URL(request.url).pathname;
   let tenant = await loadTenant(db, config.tenantSlug);
   let user: CurrentUser | null = null;
-  let actor: Actor = { type: "system", id: "anonymous", representedUserId: null, label: "Anonymous" };
+  let actor: Actor = {
+    type: "system",
+    id: "anonymous",
+    representedUserId: null,
+    label: "Anonymous",
+  };
   let scopes: string[] | null = null;
   let sessionId: string | null = null;
   let csrfToken = cookie.fb_csrf ?? "";
@@ -139,7 +149,8 @@ export async function buildContext(request: Request, options?: { requireTenant?:
 
   // Administrative routes are re-verified against Cloudflare Access on every
   // request. An old application cookie alone never retains authority.
-  const agentAdminApi = actor.type === "agent" && (path === "/api/v1/admin" || path.startsWith("/api/v1/admin/"));
+  const agentAdminApi =
+    actor.type === "agent" && (path === "/api/v1/admin" || path.startsWith("/api/v1/admin/"));
   if (isAccessProtectedPath(path) && !agentAdminApi) {
     if (config.environment === "production" && !config.access.enabled) {
       throw new ApiError(503, "access_not_configured", "Administrative access is not configured.");
@@ -147,10 +158,18 @@ export async function buildContext(request: Request, options?: { requireTenant?:
     if (config.access.enabled) {
       const assertion = getAccessAssertion(request);
       const audience = audienceForPath(config, path);
-      if (!assertion) throw new ApiError(401, "access_required", "Sign in through Cloudflare Access to continue.");
+      if (!assertion)
+        throw new ApiError(
+          401,
+          "access_required",
+          "Sign in through Cloudflare Access to continue.",
+        );
       accessIdentity = await verifyAccessToken(assertion, config, audience ?? "");
-      const platformPath = path === "/platform-admin" || path.startsWith("/platform-admin/") ||
-        path === "/api/v1/platform" || path.startsWith("/api/v1/platform/");
+      const platformPath =
+        path === "/platform-admin" ||
+        path.startsWith("/platform-admin/") ||
+        path === "/api/v1/platform" ||
+        path.startsWith("/api/v1/platform/");
       if (platformPath) assertPlatformAccessIdentity(accessIdentity, config);
       let resolved = await resolveAccessIdentity(db, config, tenant, accessIdentity, requestId);
       if (resolved.status === "not_member") {
@@ -185,12 +204,22 @@ export async function buildContext(request: Request, options?: { requireTenant?:
           // Foilbury cookie. Dedicated platform audiences admit Cloudflare-account
           // sign-in only. The Bot admin applications also admit email PINs, so
           // their provider must be confirmed by Access's identity endpoint.
-          const strongSessionAge = sessionAuthTime ? Date.now() - new Date(sessionAuthTime).getTime() : Infinity;
+          const strongSessionAge = sessionAuthTime
+            ? Date.now() - new Date(sessionAuthTime).getTime()
+            : Infinity;
           // Gifts use the strictest local proof window (15 minutes).
-          const hasRecentLocalProof = ["passkey", "mfa"].includes(sessionAssurance ?? "") &&
-            strongSessionAge >= 0 && strongSessionAge <= 15 * 60_000;
-          const needsProviderProof = !["GET", "HEAD", "OPTIONS"].includes(request.method) && !hasRecentLocalProof;
-          if (platformPath || (needsProviderProof && await resolveAccessIdentityProvider(assertion, accessIdentity, config) === "cloudflare")) {
+          const hasRecentLocalProof =
+            ["passkey", "mfa"].includes(sessionAssurance ?? "") &&
+            strongSessionAge >= 0 &&
+            strongSessionAge <= 15 * 60_000;
+          const needsProviderProof =
+            !["GET", "HEAD", "OPTIONS"].includes(request.method) && !hasRecentLocalProof;
+          if (
+            platformPath ||
+            (needsProviderProof &&
+              (await resolveAccessIdentityProvider(assertion, accessIdentity, config)) ===
+                "cloudflare")
+          ) {
             sessionAssurance = "access";
             sessionAuthTime = nowIso();
           } else if (sessionAssurance === "access" || !sessionAssurance) {
@@ -205,7 +234,11 @@ export async function buildContext(request: Request, options?: { requireTenant?:
         sessionAuthTime = null;
       }
     } else if (config.environment !== "local") {
-      throw new ApiError(403, "access_required", "Administrative access requires Cloudflare Access.");
+      throw new ApiError(
+        403,
+        "access_required",
+        "Administrative access requires Cloudflare Access.",
+      );
     }
   }
 
@@ -220,11 +253,17 @@ export async function buildContext(request: Request, options?: { requireTenant?:
     const globalRole = roles.find((row) => row.role === "global_collection_admin");
     if (globalRole) {
       try {
-        const parsed = JSON.parse(globalRole.scopes_json) as { all?: unknown; collectionIds?: unknown };
+        const parsed = JSON.parse(globalRole.scopes_json) as {
+          all?: unknown;
+          collectionIds?: unknown;
+        };
         const collectionIds = Array.isArray(parsed.collectionIds)
           ? parsed.collectionIds.filter((id): id is string => typeof id === "string")
           : [];
-        globalCollectionScope = { all: parsed.all !== false || collectionIds.length === 0, collectionIds };
+        globalCollectionScope = {
+          all: parsed.all !== false || collectionIds.length === 0,
+          collectionIds,
+        };
       } catch {
         globalCollectionScope = { all: true, collectionIds: [] };
       }
@@ -292,7 +331,8 @@ export async function resolveSession(
       WHERE s.token_hash = ?`,
     tokenHash,
   );
-  if (!row || row.revoked_at || row.disabled_at || new Date(row.expires_at) <= new Date()) return null;
+  if (!row || row.revoked_at || row.disabled_at || new Date(row.expires_at) <= new Date())
+    return null;
   await db
     .prepare("UPDATE fb_sessions SET last_seen_at = ? WHERE id = ?")
     .bind(nowIso(), row.id)
@@ -301,7 +341,8 @@ export async function resolveSession(
   let capabilities: string[] = [];
   try {
     const parsed = JSON.parse(row.capabilities_json ?? "[]") as unknown;
-    if (Array.isArray(parsed)) capabilities = parsed.filter((item): item is string => typeof item === "string");
+    if (Array.isArray(parsed))
+      capabilities = parsed.filter((item): item is string => typeof item === "string");
   } catch {
     capabilities = [];
   }
@@ -379,7 +420,8 @@ export async function resolveAgent(
   let capabilities: string[] = [];
   try {
     const parsed = JSON.parse(row.capabilities_json ?? "[]") as unknown;
-    if (Array.isArray(parsed)) capabilities = parsed.filter((item): item is string => typeof item === "string");
+    if (Array.isArray(parsed))
+      capabilities = parsed.filter((item): item is string => typeof item === "string");
   } catch {
     capabilities = [];
   }
@@ -498,7 +540,11 @@ export function canManageGlobalCollections(ctx: Ctx): boolean {
   if (!canReadGlobalCollections(ctx)) return false;
   if (ctx.actor.type === "agent") {
     const scopes = ctx.scopes ?? [];
-    return scopes.includes("content:write") || scopes.includes("import:write") || scopes.includes("catalogue:publish");
+    return (
+      scopes.includes("content:write") ||
+      scopes.includes("import:write") ||
+      scopes.includes("catalogue:publish")
+    );
   }
   return true;
 }
@@ -517,12 +563,24 @@ export function requireGlobalCollectionManager(ctx: Ctx, collectionId?: string):
   const user = requireUser(ctx);
   if (!canManageGlobalCollections(ctx)) {
     if (ctx.actor.type === "agent") {
-      throw new ApiError(403, "insufficient_scope", "This agent grant cannot change shared collections.");
+      throw new ApiError(
+        403,
+        "insufficient_scope",
+        "This agent grant cannot change shared collections.",
+      );
     }
-    throw new ApiError(403, "global_collection_admin_required", "Only a scoped Global Collection Admin can change shared collections.");
+    throw new ApiError(
+      403,
+      "global_collection_admin_required",
+      "Only a scoped Global Collection Admin can change shared collections.",
+    );
   }
   if (collectionId && !canManageGlobalCollection(ctx, collectionId)) {
-    throw new ApiError(403, "collection_not_in_scope", "That collection is outside your delegated collection scope.");
+    throw new ApiError(
+      403,
+      "collection_not_in_scope",
+      "That collection is outside your delegated collection scope.",
+    );
   }
   return user;
 }
@@ -530,7 +588,11 @@ export function requireGlobalCollectionManager(ctx: Ctx, collectionId?: string):
 export function requireSuperAdmin(ctx: Ctx): CurrentUser {
   const user = requireUser(ctx);
   if (ctx.actor.type !== "user" || !user.platformAdmin) {
-    throw new ApiError(403, "super_admin_required", "Platform administration is restricted to the provisioned Super Admin.");
+    throw new ApiError(
+      403,
+      "super_admin_required",
+      "Platform administration is restricted to the provisioned Super Admin.",
+    );
   }
   return user;
 }
@@ -543,20 +605,43 @@ export function requireSuperAdmin(ctx: Ctx): CurrentUser {
 export function requireSuperAdminContent(ctx: Ctx): CurrentUser {
   const user = requireUser(ctx);
   if (!user.platformAdmin) {
-    throw new ApiError(403, "super_admin_required", "Platform content is restricted to the provisioned Super Admin.");
+    throw new ApiError(
+      403,
+      "super_admin_required",
+      "Platform content is restricted to the provisioned Super Admin.",
+    );
   }
   if (ctx.actor.type === "agent") {
     const scopes = ctx.scopes ?? [];
-    if (!scopes.includes("content:write") && !scopes.includes("import:write") && !scopes.includes("catalogue:publish")) {
-      throw new ApiError(403, "insufficient_scope", "This agent grant cannot change platform content.");
+    if (
+      !scopes.includes("content:write") &&
+      !scopes.includes("import:write") &&
+      !scopes.includes("catalogue:publish")
+    ) {
+      throw new ApiError(
+        403,
+        "insufficient_scope",
+        "This agent grant cannot change platform content.",
+      );
     }
   } else if (ctx.actor.type !== "user") {
-    throw new ApiError(403, "super_admin_required", "Platform content is restricted to a signed-in Super Admin.");
+    throw new ApiError(
+      403,
+      "super_admin_required",
+      "Platform content is restricted to a signed-in Super Admin.",
+    );
   }
   return user;
 }
 
-export function roleLabel(user: (Pick<CurrentUser, "role"> & { platformAdmin?: boolean; globalCollectionScope?: GlobalCollectionScope | null }) | null): string {
+export function roleLabel(
+  user:
+    | (Pick<CurrentUser, "role"> & {
+        platformAdmin?: boolean;
+        globalCollectionScope?: GlobalCollectionScope | null;
+      })
+    | null,
+): string {
   if (!user) return "Guest";
   if (user.platformAdmin) return "Super Admin";
   if (user.globalCollectionScope) return "Global Collection Admin";
@@ -567,19 +652,37 @@ export function roleLabel(user: (Pick<CurrentUser, "role"> & { platformAdmin?: b
 
 export function requireRecentStrongAuth(ctx: Ctx, maxAgeMinutes = 20): void {
   if (ctx.actor.type !== "user") {
-    throw new ApiError(403, "human_strong_auth_required", "This action requires a signed-in human with recent strong authentication.");
+    throw new ApiError(
+      403,
+      "human_strong_auth_required",
+      "This action requires a signed-in human with recent strong authentication.",
+    );
   }
   const method = ctx.sessionAssurance ?? "";
   if (method === "access" && (!ctx.accessIdentity || ctx.accessStatus !== "linked")) {
-    throw new ApiError(403, "strong_auth_required", "Confirm with a passkey, authenticator code or Cloudflare Access to continue.");
+    throw new ApiError(
+      403,
+      "strong_auth_required",
+      "This action needs recent strong authentication. Confirm with a passkey, authenticator code or Cloudflare Access to continue.",
+    );
   }
   if (!["access", "passkey", "mfa"].includes(method)) {
-    throw new ApiError(403, "strong_auth_required", "Confirm with a passkey, authenticator code or Cloudflare Access to continue.");
+    throw new ApiError(
+      403,
+      "strong_auth_required",
+      "This action needs recent strong authentication. Confirm with a passkey, authenticator code or Cloudflare Access to continue.",
+    );
   }
   if (method !== "access") {
-    const age = ctx.sessionAuthTime ? Date.now() - new Date(ctx.sessionAuthTime).getTime() : Number.POSITIVE_INFINITY;
+    const age = ctx.sessionAuthTime
+      ? Date.now() - new Date(ctx.sessionAuthTime).getTime()
+      : Number.POSITIVE_INFINITY;
     if (!Number.isFinite(age) || age > maxAgeMinutes * 60_000) {
-      throw new ApiError(403, "strong_auth_stale", "Your strong authentication is stale. Confirm again to continue.");
+      throw new ApiError(
+        403,
+        "strong_auth_stale",
+        "Your strong authentication is stale. Confirm again to continue.",
+      );
     }
   }
 }
@@ -602,12 +705,21 @@ export async function requireProtectedAccount(ctx: Ctx): Promise<CurrentUser> {
   // no mailbox (Discord-only players use a non-routable placeholder address).
   // This never merges accounts on an unverified email string and never replaces
   // the separate strong-auth proof required for sensitive mutations.
-  const verifiedIdentity = Boolean(user.emailVerified) || (row?.discord ?? 0) > 0 || (row?.access ?? 0) > 0;
+  const verifiedIdentity =
+    Boolean(user.emailVerified) || (row?.discord ?? 0) > 0 || (row?.access ?? 0) > 0;
   if (!verifiedIdentity) {
-    throw new ApiError(403, "identity_verification_required", "Link a verified email, Discord identity or Cloudflare Access identity before creating or administering a Bot.");
+    throw new ApiError(
+      403,
+      "identity_verification_required",
+      "Link a verified email, Discord identity or Cloudflare Access identity before creating or administering a Bot.",
+    );
   }
   if (!row || (row.passkeys === 0 && row.totp === 0 && row.access === 0)) {
-    throw new ApiError(403, "protected_account_required", "Set up a passkey or authenticator before creating or administering a Bot.");
+    throw new ApiError(
+      403,
+      "protected_account_required",
+      "Set up a passkey or authenticator before creating or administering a Bot.",
+    );
   }
   return user;
 }
@@ -637,4 +749,3 @@ export async function checkRateLimit(
     throw new ApiError(429, "rate_limited", "Too many attempts. Try again shortly.");
   }
 }
-

@@ -28,12 +28,14 @@ export function csrfToken(): string {
 export function apiPath(path: string): string {
   if (typeof window === "undefined") return path;
   if (!(window as unknown as { __FOILBURY_STUDIO__?: boolean }).__FOILBURY_STUDIO__) return path;
-  return path.startsWith("/api/v1/admin/") ? path.replace("/api/v1/admin/", "/api/v1/studio/") : path;
+  return path.startsWith("/api/v1/admin/")
+    ? path.replace("/api/v1/admin/", "/api/v1/studio/")
+    : path;
 }
 
 export async function api<T>(
   path: string,
-  options: { method?: string; body?: unknown; idempotencyKey?: string } = {},
+  options: { method?: string; body?: unknown; idempotencyKey?: string; signal?: AbortSignal } = {},
 ): Promise<T> {
   const target = apiPath(path);
   if (!target.startsWith("/api/v1/studio/")) await ensureAccessApiSession(target);
@@ -47,6 +49,7 @@ export async function api<T>(
     headers,
     credentials: "same-origin",
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    signal: options.signal,
   });
   const text = await response.text();
   let payload: unknown = null;
@@ -56,8 +59,15 @@ export async function api<T>(
     payload = null;
   }
   if (!response.ok) {
-    const error = (payload as { error?: { code?: string; message?: string; details?: Record<string, unknown> } })?.error;
-    throw new ApiClientError(response.status, error?.code ?? "request_failed", error?.message ?? FALLBACK, error?.details);
+    const error = (
+      payload as { error?: { code?: string; message?: string; details?: Record<string, unknown> } }
+    )?.error;
+    throw new ApiClientError(
+      response.status,
+      error?.code ?? "request_failed",
+      error?.message ?? FALLBACK,
+      error?.details,
+    );
   }
   return payload as T;
 }
@@ -68,7 +78,12 @@ export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
   const headers = new Headers({ accept: "application/json" });
   const token = csrfToken();
   if (token) headers.set("x-foilbury-csrf", token);
-  const response = await fetch(target, { method: "POST", headers, credentials: "same-origin", body: form });
+  const response = await fetch(target, {
+    method: "POST",
+    headers,
+    credentials: "same-origin",
+    body: form,
+  });
   const text = await response.text();
   let payload: unknown = null;
   try {
@@ -77,8 +92,15 @@ export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
     payload = null;
   }
   if (!response.ok) {
-    const error = (payload as { error?: { code?: string; message?: string; details?: Record<string, unknown> } })?.error;
-    throw new ApiClientError(response.status, error?.code ?? "request_failed", error?.message ?? FALLBACK, error?.details);
+    const error = (
+      payload as { error?: { code?: string; message?: string; details?: Record<string, unknown> } }
+    )?.error;
+    throw new ApiClientError(
+      response.status,
+      error?.code ?? "request_failed",
+      error?.message ?? FALLBACK,
+      error?.details,
+    );
   }
   return payload as T;
 }
@@ -92,4 +114,3 @@ export function describeError(error: unknown): string {
   if (error instanceof Error) return error.message;
   return FALLBACK;
 }
-

@@ -8,7 +8,14 @@ interface Props {
   emblemUrl?: string | null;
 }
 
-const { artKey = "medal-generic", name, category = "milestone", earned = false, size = 72, emblemUrl = null } = Astro.props;
+const {
+  artKey = "medal-generic",
+  name,
+  category = "milestone",
+  earned = false,
+  size = 72,
+  emblemUrl = null,
+} = Astro.props;
 const palettes: Record<string, { a: string; b: string; c: string }> = {
   "medal-first": { a: "#7d5a26", b: "#e8c98f", c: "#141512" },
   "medal-shelf": { a: "#245c4b", b: "#a7e0c4", c: "#0e231c" },
@@ -37,12 +44,33 @@ const shape =
           ? `<path d="M36 5 L64 20 V52 L36 67 L8 52 V20 Z" fill="${palette.a}" stroke="${palette.b}" stroke-width="2"/><circle cx="36" cy="36" r="13" fill="none" stroke="${palette.b}" stroke-width="3"/>`
           : `<path d="M36 5 L46 24 L67 27 L52 42 L56 64 L36 54 L16 64 L20 42 L5 27 L26 24 Z" fill="${palette.a}" stroke="${palette.b}" stroke-width="2"/>`;
 ---
-<span class:list={["achievement-badge", earned ? "is-earned" : "is-locked"]} style={`--badge-size:${size}px;--badge-a:${palette.a};--badge-b:${palette.b};--badge-c:${palette.c}`} aria-label={`${name}${earned ? " earned" : " locked"}`} role="img">
+
+<span
+  class:list={["achievement-badge", earned ? "is-earned" : "is-locked"]}
+  style={`--badge-size:${size}px;--badge-a:${palette.a};--badge-b:${palette.b};--badge-c:${palette.c}`}
+  aria-label={`${name}${earned ? " earned" : " locked"}`}
+  role="img"
+>
   <svg viewBox="0 0 72 72" width={size} height={size} aria-hidden="true">
-    {shape}
+    <Fragment set:html={shape} />
     <circle cx="36" cy="36" r="8" fill={palette.b} opacity={earned ? 0.95 : 0.35} />
-    <path d="M27 36 H45 M36 27 V45" stroke={palette.c} stroke-width="2" opacity={earned ? 0.8 : 0.3} />
-    {emblemUrl ? <image href={emblemUrl} x="43" y="43" width="25" height="25" preserveAspectRatio="xMidYMid meet" opacity={earned ? 1 : 0.45} /> : null}
+    <path
+      d="M27 36 H45 M36 27 V45"
+      stroke={palette.c}
+      stroke-width="2"
+      opacity={earned ? 0.8 : 0.3}
+    />
+    {emblemUrl ? (
+      <image
+        href={emblemUrl}
+        x="43"
+        y="43"
+        width="25"
+        height="25"
+        preserveAspectRatio="xMidYMid meet"
+        opacity={earned ? 1 : 0.45}
+      />
+    ) : null}
   </svg>
   <span class="sr-only">{name}</span>
 </span>

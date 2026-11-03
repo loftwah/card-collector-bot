@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import sharp from "sharp";
 import { composeCard } from "../art/compose.mjs";
 import { apiForm, apiJson, ensureServer, BASE_URL, agentToken } from "./lib/api.mjs";
 
@@ -55,16 +56,20 @@ while (true) {
     continue;
   }
   try {
-    const subject = await fetch(`${BASE_URL}/api/v1/admin/assets/${payload.subject_asset_id}/bytes`, {
-      headers: { authorization: `Bearer ${agentToken()}` },
-    });
+    const subject = await fetch(
+      `${BASE_URL}/api/v1/admin/assets/${payload.subject_asset_id}/bytes`,
+      {
+        headers: { authorization: `Bearer ${agentToken()}` },
+      },
+    );
     if (!subject.ok) throw new Error(`Subject asset fetch failed (${subject.status}).`);
     const background = payload.background_asset_id
       ? await fetch(`${BASE_URL}/api/v1/admin/assets/${payload.background_asset_id}/bytes`, {
           headers: { authorization: `Bearer ${agentToken()}` },
         })
       : null;
-    if (background && !background.ok) throw new Error(`Background asset fetch failed (${background.status}).`);
+    if (background && !background.ok)
+      throw new Error(`Background asset fetch failed (${background.status}).`);
     const subjectPath = path.join(tmpDir, `${payload.variant_id}-subject.png`);
     const backgroundPath = path.join(tmpDir, `${payload.variant_id}-background.png`);
     fs.writeFileSync(subjectPath, Buffer.from(await subject.arrayBuffer()));
@@ -72,9 +77,14 @@ while (true) {
     let markPath = "";
     const logoUrl = entry.card.collections?.[0]?.logo_url;
     if (logoUrl) {
-      const logo = await fetch(`${BASE_URL}${logoUrl}`, { headers: { authorization: `Bearer ${agentToken()}` } });
+      const logo = await fetch(`${BASE_URL}${logoUrl}`, {
+        headers: { authorization: `Bearer ${agentToken()}` },
+      });
       if (logo.ok) {
-        markPath = path.join(tmpDir, `${payload.variant_id}-mark.${logoUrl.endsWith(".svg") ? "svg" : "png"}`);
+        markPath = path.join(
+          tmpDir,
+          `${payload.variant_id}-mark.${logoUrl.endsWith(".svg") ? "svg" : "png"}`,
+        );
         fs.writeFileSync(markPath, Buffer.from(await logo.arrayBuffer()));
       }
     }
@@ -87,16 +97,28 @@ while (true) {
       name: entry.card.name,
       subtitle: entry.card.subtitle ?? "",
       setName: entry.card.collections?.[0]?.name ?? entry.card.sets[0]?.name ?? "Cabinet",
-      serial: entry.card.collections?.[0]?.view_audience === "public" ? "PUBLIC SHOWCASE" : "MEMBER EDITION",
+      serial:
+        entry.card.collections?.[0]?.view_audience === "public"
+          ? "PUBLIC SHOWCASE"
+          : "MEMBER EDITION",
       className: entry.card.class?.name ?? "",
       rarity: entry.card.rarity?.name ?? "",
+      composition: payload.composition_json ? JSON.parse(payload.composition_json) : null,
       markPath,
       outputPath,
     });
     const renderBytes = fs.readFileSync(outputPath);
     const form = new FormData();
-    form.append("file", new Blob([renderBytes], { type: "image/webp" }), `${payload.variant_id}.webp`);
-    await apiForm(`/api/v1/admin/jobs/${job.id}/complete`, form);
+    form.append(
+      "file",
+      new Blob([renderBytes], { type: "image/webp" }),
+      `${payload.variant_id}.webp`,
+    );
+    const completed = await apiForm(`/api/v1/admin/jobs/${job.id}/complete`, form);
+    /* Album grids should not download full 750x1050 renders. Derivatives are
+       generated from the published bytes, never from the private source art. */
+    if (completed?.assetId) await uploadDerivatives(completed.assetId, outputPath);
+    if (completed?.back?.assetId) await uploadDerivatives(completed.back.assetId, outputPath);
     rendered++;
     log(`  rendered ${entry.card.name} — ${entry.variant.name}`);
     fs.rmSync(subjectPath, { force: true });
@@ -106,13 +128,42 @@ while (true) {
   } catch (error) {
     failed++;
     const message = error instanceof Error ? error.message : String(error);
-    await apiJson(`/api/v1/admin/jobs/${job.id}/fail`, { method: "POST", body: { message } }).catch(() => undefined);
+    await apiJson(`/api/v1/admin/jobs/${job.id}/fail`, { method: "POST", body: { message } }).catch(
+      () => undefined,
+    );
     log(`  failed ${entry.card.name} — ${entry.variant.name}: ${message}`);
   }
 }
 
-const outbox = await apiJson("/api/v1/admin/outbox/process", { method: "POST", body: {} }).catch(() => ({ delivered: 0, suppressed: 0 }));
-const result = { queued: queued.queued, rendered, failed, outbox, elapsed_ms: Date.now() - started };
+async function uploadDerivatives(assetId, sourcePath) {
+  for (const [sizeKey, width, height] of [
+    ["thumb", 300, 420],
+    ["preview", 600, 840],
+  ]) {
+    const bytes = await sharp(sourcePath)
+      .resize(width, height, { fit: "inside", withoutEnlargement: true })
+      .webp({ quality: 82, effort: 5 })
+      .toBuffer();
+    const form = new FormData();
+    form.append("file", new Blob([bytes], { type: "image/webp" }), `${assetId}-${sizeKey}.webp`);
+    form.append("sizeKey", sizeKey);
+    await apiForm(`/api/v1/admin/assets/${assetId}/derivatives`, form);
+  }
+}
+
+const outbox = await apiJson("/api/v1/admin/outbox/process", { method: "POST", body: {} }).catch(
+  () => ({ delivered: 0, suppressed: 0 }),
+);
+const result = {
+  queued: queued.queued,
+  rendered,
+  failed,
+  outbox,
+  elapsed_ms: Date.now() - started,
+};
 if (json) console.log(JSON.stringify(result, null, 2));
-else console.log(`Rendered ${rendered}; failed ${failed}; elapsed ${(result.elapsed_ms / 1000).toFixed(1)}s.`);
+else
+  console.log(
+    `Rendered ${rendered}; failed ${failed}; elapsed ${(result.elapsed_ms / 1000).toFixed(1)}s.`,
+  );
 if (failed > 0) process.exitCode = 1;

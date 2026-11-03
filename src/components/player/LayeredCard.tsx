@@ -28,6 +28,13 @@ export interface LayeredCardProps {
   inspectHref?: string;
   /** Hide the toolbar for pure display surfaces. */
   showToolbar?: boolean;
+  /** Non-destructive edition composition (mode/zoom/offset). */
+  composition?: {
+    mode?: "contain" | "fill" | "medallion";
+    zoom?: number;
+    offsetX?: number;
+    offsetY?: number;
+  } | null;
 }
 
 /**
@@ -59,9 +66,21 @@ export default function LayeredCard({
   href,
   inspectHref,
   showToolbar = true,
+  composition = null,
 }: LayeredCardProps) {
   const [flipped, setFlipped] = useState(false);
-  const medallion = Boolean(subjectWidth && subjectHeight && subjectWidth === subjectHeight);
+  const inferredMedallion = Boolean(
+    subjectWidth && subjectHeight && subjectWidth === subjectHeight,
+  );
+  const mode = composition?.mode ?? (inferredMedallion ? "medallion" : "contain");
+  const medallion = mode === "medallion";
+  const zoom = Math.min(1.6, Math.max(0.6, Number(composition?.zoom ?? 1)));
+  const offsetX = Math.min(20, Math.max(-20, Number(composition?.offsetX ?? 0)));
+  const offsetY = Math.min(20, Math.max(-20, Number(composition?.offsetY ?? 0)));
+  const subjectStyle = {
+    objectFit: mode === "fill" ? ("cover" as const) : ("contain" as const),
+    transform: `translate(${offsetX}%, ${offsetY}%) scale(${zoom})`,
+  };
   const finish = [material, effect && effect !== "none" ? effect : null]
     .filter(Boolean)
     .map((value) => String(value).replace(/^\w/, (letter) => letter.toUpperCase()))
@@ -69,9 +88,15 @@ export default function LayeredCard({
 
   const faces = (
     <>
-      <div className="layered-card__face" data-hidden={flipped ? "true" : "false"} aria-hidden={flipped}>
+      <div
+        className="layered-card__face"
+        data-hidden={flipped ? "true" : "false"}
+        aria-hidden={flipped}
+      >
         <div className="layered-card__art">
-          {backgroundUrl ? <img className="layered-card__bg" src={backgroundUrl} alt="" aria-hidden="true" /> : null}
+          {backgroundUrl ? (
+            <img className="layered-card__bg" src={backgroundUrl} alt="" aria-hidden="true" />
+          ) : null}
           <img
             className={cn("layered-card__subject", medallion && "layered-card__subject--medallion")}
             src={subjectUrl}
@@ -79,34 +104,77 @@ export default function LayeredCard({
             width={750}
             height={1050}
             decoding="async"
+            style={subjectStyle}
           />
         </div>
-        <img className="layered-card__texture" src={`/art/layers/material-${material}.png`} alt="" aria-hidden="true" />
-        <img className="layered-card__frame" src={`/art/layers/frame-${material}.png`} alt="" aria-hidden="true" />
-        {effect && effect !== "none" ? <img className="layered-card__effect" src={`/art/layers/effect-${effect}.png`} alt="" aria-hidden="true" /> : null}
+        <img
+          className="layered-card__texture"
+          src={`/art/layers/material-${material}.webp`}
+          alt=""
+          aria-hidden="true"
+        />
+        <img
+          className="layered-card__frame"
+          src={`/art/layers/frame-${material}.webp`}
+          alt=""
+          aria-hidden="true"
+        />
+        {effect && effect !== "none" ? (
+          <img
+            className="layered-card__effect"
+            src={`/art/layers/effect-${effect}.webp`}
+            alt=""
+            aria-hidden="true"
+          />
+        ) : null}
         {finish ? <span className="layered-card__finish">{finish}</span> : null}
         <div className="layered-card__text">
           <h3 title={name}>{name}</h3>
-          {subtitle ? <p className="layered-card__subtitle" title={subtitle}>{subtitle}</p> : null}
+          {subtitle ? (
+            <p className="layered-card__subtitle" title={subtitle}>
+              {subtitle}
+            </p>
+          ) : null}
           <div className="layered-card__meta">
             <span title={[setName, characterClass, rarity].filter(Boolean).join(" · ")}>
               {setName ?? collectionName ?? "Cabinet"}
-              {characterClass || rarity ? ` · ${[characterClass, rarity].filter(Boolean).join(" · ")}` : ""}
+              {characterClass || rarity
+                ? ` · ${[characterClass, rarity].filter(Boolean).join(" · ")}`
+                : ""}
             </span>
             <span title={serial ?? finish}>{serial ?? finish}</span>
           </div>
         </div>
       </div>
 
-      <div className="layered-card__face layered-card__back" data-hidden={flipped ? "false" : "true"} aria-hidden={!flipped}>
-        <img className="layered-card__back-image" src={cardBackUrl || "/brand/card-back.webp"} alt="" />
+      <div
+        className="layered-card__face layered-card__back"
+        data-hidden={flipped ? "false" : "true"}
+        aria-hidden={!flipped}
+      >
+        <img
+          className="layered-card__back-image"
+          src={cardBackUrl || "/brand/card-back.webp"}
+          alt=""
+        />
         <div className="layered-card__back-copy">
-          {collectionLogo ? <img src={collectionLogo} alt="" className="layered-card__back-logo" /> : null}
-          <p className="font-mono uppercase" style={{ letterSpacing: "0.14em", color: "#d9bf8b", fontSize: "clamp(0.44rem, 2.9cqw, 0.64rem)" }}>
+          {collectionLogo ? (
+            <img src={collectionLogo} alt="" className="layered-card__back-logo" />
+          ) : null}
+          <p
+            className="font-mono uppercase"
+            style={{
+              letterSpacing: "0.14em",
+              color: "#d9bf8b",
+              fontSize: "clamp(0.44rem, 2.9cqw, 0.64rem)",
+            }}
+          >
             {collectionName ?? "Foilbury cabinet"}
           </p>
           <h3>{name}</h3>
-          <p className="layered-card__back-bio">{collectionDescription ?? subtitle ?? "A card worth keeping."}</p>
+          <p className="layered-card__back-bio">
+            {collectionDescription ?? subtitle ?? "A card worth keeping."}
+          </p>
           <p className="layered-card__back-serial">{serial ?? "FOILBURY"}</p>
         </div>
       </div>
@@ -116,11 +184,7 @@ export default function LayeredCard({
   return (
     <div className={cn("layered-card-shell", classNameOverride)}>
       {href ? (
-        <a
-          href={href}
-          className="layered-card block no-underline"
-          aria-label={`Inspect ${name}${serial ? `, serial ${serial}` : ""}`}
-        >
+        <a href={href} className="layered-card block no-underline">
           {faces}
         </a>
       ) : (

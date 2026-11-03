@@ -9,7 +9,7 @@ const ctx = await pageContext(Astro.request);
 const session = Astro.locals.foilbury;
 const user = session?.user ?? null;
 const [allCards, allSets, stats, collections] = await Promise.all([
-  listCards(ctx, { publicOnly: true, limit: 60 }),
+  listCards(ctx, { publicOnly: true, limit: 24 }),
   listSets(ctx, undefined, { publicOnly: true }),
   publicStats(ctx),
   listPublicCollections(ctx),
@@ -17,9 +17,27 @@ const [allCards, allSets, stats, collections] = await Promise.all([
 const publishedSets = allSets.filter((set) => set.status === "published");
 const bySlug = new Map(allCards.map((card) => [card.slug, card]));
 const heroSpecs = [
-  { slug: "loftwah", material: "gold", effect: "holographic", label: "Gold · Holographic", className: "w-[40%] -rotate-[5deg] translate-y-8 sm:w-[32%]" },
-  { slug: "tux", material: "silver", effect: undefined, label: "Silver", className: "w-[52%] z-10 sm:w-[44%]" },
-  { slug: "gabe", material: "gold", effect: undefined, label: "Gold", className: "w-[40%] rotate-[6deg] translate-y-12 sm:w-[32%]" },
+  {
+    slug: "loftwah",
+    material: "gold",
+    effect: "holographic",
+    label: "Gold · Holographic",
+    className: "w-[40%] -rotate-[5deg] translate-y-8 sm:w-[32%]",
+  },
+  {
+    slug: "tux",
+    material: "silver",
+    effect: undefined,
+    label: "Silver",
+    className: "w-[52%] z-10 sm:w-[44%]",
+  },
+  {
+    slug: "gabe",
+    material: "gold",
+    effect: undefined,
+    label: "Gold",
+    className: "w-[40%] rotate-[6deg] translate-y-12 sm:w-[32%]",
+  },
 ];
 const heroCards = heroSpecs
   .map((spec) => {
@@ -30,32 +48,43 @@ const heroCards = heroSpecs
     return { ...spec, card, variant };
   })
   .filter(Boolean) as Array<{
-    slug: string;
-    material: string;
-    label: string;
-    className: string;
-    card: (typeof allCards)[number];
-    variant: NonNullable<ReturnType<typeof pickVariant>>;
-  }>;
+  slug: string;
+  material: string;
+  label: string;
+  className: string;
+  card: (typeof allCards)[number];
+  variant: NonNullable<ReturnType<typeof pickVariant>>;
+}>;
 const featured = allCards
-  .filter((card) => card.editions.some((edition) => edition.variants.some((variant) => variant.render_url)))
+  .filter((card) =>
+    card.editions.some((edition) => edition.variants.some((variant) => variant.render_url)),
+  )
   .slice(0, 10);
 const release = stats.release;
 const primaryHref = user ? "/play" : "/login?next=%2Fplay";
 const collectionTone = ["#e0492f", "#0e5b53", "#4a1e4d", "#b8791f"];
 ---
+
 <BaseLayout
   title="Foilbury — a collector's cabinet"
   description="Foilbury is a free collectible-card album: Loftwah's original worlds in a public showcase, a rich members' album, and cards made to inspect on both sides."
 >
-  <script type="application/ld+json" set:html={JSON.stringify({
-    "@context": "https://schema.org",
-    "@type": "WebSite",
-    name: "Foilbury",
-    url: "https://foilbury.loftwah.com/",
-    description: "A free collectible-card album for Loftwah's original worlds and members' curated collections.",
-    potentialAction: { "@type": "SearchAction", target: "https://foilbury.loftwah.com/cabinet?search={search_term_string}", "query-input": "required name=search_term_string" },
-  })} />
+  <script
+    type="application/ld+json"
+    set:html={JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      name: "Foilbury",
+      url: "https://foilbury.loftwah.com/",
+      description:
+        "A free collectible-card album for Loftwah's original worlds and members' curated collections.",
+      potentialAction: {
+        "@type": "SearchAction",
+        target: "https://foilbury.loftwah.com/cabinet?search={search_term_string}",
+        "query-input": "required name=search_term_string",
+      },
+    })}
+  />
   <section class="relative overflow-hidden border-b border-[var(--line)]">
     <div class="pointer-events-none absolute inset-0 hero-wash" aria-hidden="true"></div>
     <div class="container relative grid min-h-[78vh] items-center gap-12 py-16 lg:grid-cols-[1.1fr_0.9fr] lg:py-24">
@@ -70,40 +99,74 @@ const collectionTone = ["#e0492f", "#0e5b53", "#4a1e4d", "#b8791f"];
         </h1>
         <p class="mt-7 max-w-xl text-lg leading-relaxed text-[var(--muted)]">
           A small, art-directed collection game for the identities that stay with you. Earn Foil,
-          see the odds before you open, and keep a real copy with its own serial, finish and history.
+          see the odds before you open, and keep a real copy with its own serial, finish and
+          history.
         </p>
         <div class="mt-8 flex flex-wrap gap-3">
-          <a class="btn btn-primary" href={primaryHref}>{user ? "Open my album" : "Start collecting"}</a>
-          <a class="btn btn-secondary" href="#showcase">See the public showcase</a>
+          <a class="btn btn-primary" href={primaryHref}>
+            {user ? "Open my album" : "Start collecting"}
+          </a>
+          <a class="btn btn-secondary" href="#showcase">
+            See the public showcase
+          </a>
         </div>
         <div class="mt-10 flex flex-wrap items-center gap-x-8 gap-y-3 border-t border-[var(--line)] pt-5 text-sm">
-          <span><strong class="font-display text-2xl">{stats.cards}</strong> <span class="text-[var(--muted)]">public cards</span></span>
-          <span><strong class="font-display text-2xl">{stats.variants}</strong> <span class="text-[var(--muted)]">public finishes</span></span>
-          <span><strong class="font-display text-2xl">{stats.sets}</strong> <span class="text-[var(--muted)]">releases</span></span>
-          <span class="text-[var(--muted)]">Public showcase · updated {release ? formatDual(release.published_at) : "soon"}</span>
+          <span>
+            <strong class="font-display text-2xl">{stats.cards}</strong>{" "}
+            <span class="text-[var(--muted)]">public cards</span>
+          </span>
+          <span>
+            <strong class="font-display text-2xl">{stats.variants}</strong>{" "}
+            <span class="text-[var(--muted)]">public finishes</span>
+          </span>
+          <span>
+            <strong class="font-display text-2xl">{stats.sets}</strong>{" "}
+            <span class="text-[var(--muted)]">releases</span>
+          </span>
+          <span class="text-[var(--muted)]">
+            Public showcase · updated {release ? formatDual(release.published_at) : "soon"}
+          </span>
         </div>
       </div>
 
-      <div class="relative flex min-h-[430px] items-center justify-center lg:min-h-[640px]" aria-label="Selected cards from the public showcase">
+      <div
+        class="relative flex min-h-[430px] items-center justify-center lg:min-h-[640px]"
+        aria-label="Selected cards from the public showcase"
+      >
         <div class="hero-orbit" aria-hidden="true"></div>
         <div class="flex w-full items-center justify-center">
           {heroCards.map((entry, index) => (
             <a
               href={`/cabinet/${entry.card.slug}`}
-              class:list={["hero-card relative block shrink-0 transition-transform duration-500 hover:z-30 hover:-translate-y-3", entry.className]}
+              class:list={[
+                "hero-card relative block shrink-0 transition-transform duration-500 hover:z-30 hover:-translate-y-3",
+                entry.className,
+              ]}
               style={`--tilt:${index === 0 ? "-5deg" : index === 2 ? "6deg" : "0deg"}`}
               aria-label={`${entry.card.name}, ${entry.label}`}
             >
               <div class="card-face rounded-[7px]">
-                <img src={entry.variant.render_url!} alt={`${entry.card.name} card in ${entry.label} finish`} loading="eager" width="750" height="1050" />
+                <img
+                  src={entry.variant.render_url!}
+                  alt={`${entry.card.name} card in ${entry.label} finish`}
+                  loading="eager"
+                  width="750"
+                  height="1050"
+                />
               </div>
-              <p class="mt-3 text-center font-mono text-[0.55rem] uppercase tracking-[0.12em] text-[var(--muted)]">{entry.card.name} · {entry.label}</p>
+              <p class="mt-3 text-center font-mono text-[0.55rem] uppercase tracking-[0.12em] text-[var(--muted)]">
+                {entry.card.name} · {entry.label}
+              </p>
             </a>
           ))}
         </div>
         <div class="absolute bottom-1 right-0 max-w-[14rem] border-l border-[var(--brass)] pl-4 text-right">
-          <p class="font-mono text-[0.58rem] uppercase tracking-[0.14em] text-[var(--brass)]">Public showcase</p>
-          <p class="mt-1 text-xs text-[var(--muted)]">Loftwah's own worlds, approved for signed-out viewing. Member albums stay private.</p>
+          <p class="font-mono text-[0.58rem] uppercase tracking-[0.14em] text-[var(--brass)]">
+            Public showcase
+          </p>
+          <p class="mt-1 text-xs text-[var(--muted)]">
+            Loftwah's own worlds, approved for signed-out viewing. Member albums stay private.
+          </p>
         </div>
       </div>
     </div>
@@ -113,25 +176,59 @@ const collectionTone = ["#e0492f", "#0e5b53", "#4a1e4d", "#b8791f"];
     <div class="container py-16 md:py-24">
       <div class="grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-end">
         <div>
-          <p class="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-[var(--coral)]">The public showcase</p>
+          <p class="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-[var(--coral)]">
+            The public showcase
+          </p>
           <h2 class="display-sm mt-3 text-4xl md:text-6xl">Four worlds with a front door.</h2>
-          <p class="mt-5 max-w-md text-[var(--muted)]">Bubbles, Fighter, Protocol 11 and the shared cast are Loftwah's own projects. Their public cards are reviewed for viewing without a sign-in. Everything else lives behind membership.</p>
-          <a class="btn btn-secondary mt-6" href="/cabinet">Browse every public card</a>
+          <p class="mt-5 max-w-md text-[var(--muted)]">
+            Bubbles, Fighter, Protocol 11 and the shared cast are Loftwah's own projects. Their
+            public cards are reviewed for viewing without a sign-in. Everything else lives behind
+            membership.
+          </p>
+          <a class="btn btn-secondary mt-6" href="/cabinet">
+            Browse every public card
+          </a>
         </div>
         <div class="grid auto-rows-fr gap-4 sm:grid-cols-2">
           {collections.map((collection, index) => (
-            <a href={`/cabinet?collection=${collection.slug}`} class={`showcase-panel showcase-panel--${(index % 4) + 1} group no-underline`} style={`--panel-tone:${collectionTone[index % collectionTone.length]}`}>
+            <a
+              href={`/cabinet?collection=${collection.slug}`}
+              class={`showcase-panel showcase-panel--${(index % 4) + 1} group no-underline`}
+              style={`--panel-tone:${collectionTone[index % collectionTone.length]}`}
+            >
               <div class="flex items-start justify-between gap-3">
                 <div class="flex items-center gap-3">
-                  {collection.logo_url ? <img src={collection.logo_url} alt="" class="h-12 w-12 object-contain" width="48" height="48" loading="lazy" /> : <span class="grid h-12 w-12 place-items-center border border-current/30 font-display text-xl">{collection.name.charAt(0)}</span>}
+                  {collection.logo_url ? (
+                    <img
+                      src={collection.logo_url}
+                      alt=""
+                      class="h-12 w-12 object-contain"
+                      width="48"
+                      height="48"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <span class="grid h-12 w-12 place-items-center border border-current/30 font-display text-xl">
+                      {collection.name.charAt(0)}
+                    </span>
+                  )}
                   <div>
                     <h3 class="font-display text-2xl leading-tight">{collection.name}</h3>
-                    <p class="font-mono text-[0.56rem] uppercase tracking-[0.12em] text-[var(--muted)]">{collection.card_count} cards · public</p>
+                    <p class="font-mono text-[0.56rem] uppercase tracking-[0.12em] text-[var(--muted)]">
+                      {collection.card_count} cards · public
+                    </p>
                   </div>
                 </div>
-                <span class="text-xl transition-transform duration-300 group-hover:translate-x-1" aria-hidden="true">→</span>
+                <span
+                  class="text-xl transition-transform duration-300 group-hover:translate-x-1"
+                  aria-hidden="true"
+                >
+                  →
+                </span>
               </div>
-              <p class="mt-4 line-clamp-3 text-sm leading-relaxed text-[var(--muted)]">{collection.description}</p>
+              <p class="mt-4 line-clamp-3 text-sm leading-relaxed text-[var(--muted)]">
+                {collection.description}
+              </p>
               <div class="mt-5 flex items-center gap-1.5" aria-hidden="true">
                 <span class="h-1.5 w-10 rounded-full" style="background:var(--coral)"></span>
                 <span class="h-1.5 w-5 rounded-full" style="background:var(--saffron)"></span>
@@ -148,22 +245,44 @@ const collectionTone = ["#e0492f", "#0e5b53", "#4a1e4d", "#b8791f"];
     <div class="flex flex-wrap items-end justify-between gap-5">
       <div>
         <h2 class="display-sm text-4xl md:text-6xl">A small collection, properly made.</h2>
-        <p class="mt-3 max-w-xl text-[var(--muted)]">Every public card has a designed front, a readable back and four collectible finishes. The art leads; the interface gets out of the way.</p>
+        <p class="mt-3 max-w-xl text-[var(--muted)]">
+          Every public card has a designed front, a readable back and four collectible finishes. The
+          art leads; the interface gets out of the way.
+        </p>
       </div>
-      <a class="btn btn-secondary btn-sm" href="/cabinet">See all {allCards.length} public cards</a>
+      <a class="btn btn-secondary btn-sm" href="/cabinet">
+        See all {allCards.length} public cards
+      </a>
     </div>
     <div class="card-grid mt-9">
-      {featured.map((card) => {
-        const variant = card.editions.flatMap((edition) => edition.variants).find((item) => item.render_url);
+      {featured.map((card, index) => {
+        const variant = card.editions
+          .flatMap((edition) => edition.variants)
+          .find((item) => item.render_url);
         return (
-          <a href={`/cabinet/${card.slug}`} class="group no-underline">
+          <a
+            href={`/cabinet/${card.slug}`}
+            class:list={["group no-underline", index >= 6 && "hidden sm:block"]}
+          >
             <div class="card-face">
-              {variant?.render_url ? <img src={variant.thumbnail_url ?? variant.render_url} alt={`${card.name} card`} loading="lazy" width="750" height="1050" /> : <div class="card-face-fallback">{card.name.charAt(0)}</div>}
+              {variant?.render_url ? (
+                <img
+                  src={variant.thumbnail_url ?? variant.render_url}
+                  alt={`${card.name} card`}
+                  loading="lazy"
+                  width="750"
+                  height="1050"
+                />
+              ) : (
+                <div class="card-face-fallback">{card.name.charAt(0)}</div>
+              )}
             </div>
             <div class="mt-2 flex items-start justify-between gap-2">
               <div>
                 <p class="display-sm text-base leading-tight">{card.name}</p>
-                <p class="mt-0.5 text-xs text-[var(--muted)]">{card.subtitle ?? card.collections[0]?.name ?? "Cabinet card"}</p>
+                <p class="mt-0.5 text-xs text-[var(--muted)]">
+                  {card.subtitle ?? card.collections[0]?.name ?? "Cabinet card"}
+                </p>
               </div>
               {card.rarity ? <span class="badge">{card.rarity.name}</span> : null}
             </div>
@@ -178,25 +297,51 @@ const collectionTone = ["#e0492f", "#0e5b53", "#4a1e4d", "#b8791f"];
       <div>
         <h2 class="display-sm text-4xl md:text-6xl">The members' album.</h2>
         <p class="mt-5 max-w-lg text-[var(--muted)]">
-          Sign in with Discord or a one-use email link. Your album holds the collections you are entitled to,
-          with full profiles, spoiler controls, duplicates, provenance and front/back inspection.
+          Sign in with Discord or a one-use email link. Your album holds the collections you are
+          entitled to, with full profiles, spoiler controls, duplicates, provenance and front/back
+          inspection.
         </p>
         <ul class="mt-6 grid gap-3 text-sm">
-          <li class="flex gap-3"><span class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--coral)]"></span><span>Daily Foil, achievements and set completions. Nothing is purchasable.</span></li>
-          <li class="flex gap-3"><span class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--saffron)]"></span><span>Exact odds on every capsule, before you open it.</span></li>
-          <li class="flex gap-3"><span class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--teal)]"></span><span>Member-only franchise albums are not promoted on this public page.</span></li>
+          <li class="flex gap-3">
+            <span class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--coral)]"></span>
+            <span>Daily Foil, achievements and set completions. Nothing is purchasable.</span>
+          </li>
+          <li class="flex gap-3">
+            <span class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--saffron)]"></span>
+            <span>Exact odds on every capsule, before you open it.</span>
+          </li>
+          <li class="flex gap-3">
+            <span class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--teal)]"></span>
+            <span>Member-only franchise albums are not promoted on this public page.</span>
+          </li>
         </ul>
         <div class="mt-7 flex flex-wrap gap-3">
-          <a class="btn btn-primary" href="/login?next=%2Fplay">Join the album</a>
-          <a class="btn btn-secondary" href="/login?next=%2Fplay%2Fcollection">I already have an account</a>
+          <a class="btn btn-primary" href="/login?next=%2Fplay">
+            Join the album
+          </a>
+          <a class="btn btn-secondary" href="/login?next=%2Fplay%2Fcollection">
+            I already have an account
+          </a>
         </div>
       </div>
       <div class="grid auto-rows-fr gap-4 sm:grid-cols-2">
         {[
-          ["Open a capsule", "Pick a collection, see the live odds and the price, then open one card. A lost connection never loses the result."],
-          ["Inspect the object", "Front, back and an on-demand 3D view. Reduced motion gets a clean static inspection instead."],
-          ["Keep the story", "Every card carries a reviewed profile, source boundary and collection context. No invented quotes or stats."],
-          ["Let duplicates travel", "Trade or recycle extras. Your ledger, serials and history stay authoritative."],
+          [
+            "Open a capsule",
+            "Pick a collection, see the live odds and the price, then open one card. A lost connection never loses the result.",
+          ],
+          [
+            "Inspect the object",
+            "Front, back and an on-demand 3D view. Reduced motion gets a clean static inspection instead.",
+          ],
+          [
+            "Keep the story",
+            "Every card carries a reviewed profile, source boundary and collection context. No invented quotes or stats.",
+          ],
+          [
+            "Let duplicates travel",
+            "Trade or recycle extras. Your ledger, serials and history stay authoritative.",
+          ],
         ].map(([title, body]) => (
           <article class="surface-flat p-5">
             <h3 class="display-sm text-2xl">{title}</h3>
@@ -211,27 +356,38 @@ const collectionTone = ["#e0492f", "#0e5b53", "#4a1e4d", "#b8791f"];
     <div class="grid gap-8 md:grid-cols-[0.8fr_1.2fr] md:items-start">
       <div>
         <h2 class="display-sm text-4xl md:text-5xl">Collect a room, not a spreadsheet.</h2>
-        <p class="mt-4 max-w-md text-[var(--muted)]">Releases are curated checklists with a completion reward. A later version never takes back a reward you already earned.</p>
-        <a class="btn btn-secondary mt-6" href={primaryHref}>Open the album</a>
+        <p class="mt-4 max-w-md text-[var(--muted)]">
+          Releases are curated checklists with a completion reward. A later version never takes back
+          a reward you already earned.
+        </p>
+        <a class="btn btn-secondary mt-6" href={primaryHref}>
+          Open the album
+        </a>
       </div>
       <div class="grid gap-3 sm:grid-cols-2">
         {publishedSets.map((set) => (
           <article class="surface-flat p-5">
             <div class="flex items-start justify-between gap-3">
               <div>
-                <p class="font-mono text-[0.56rem] uppercase tracking-[0.12em] text-[var(--muted)]">Release {set.version}</p>
+                <p class="font-mono text-[0.56rem] uppercase tracking-[0.12em] text-[var(--muted)]">
+                  Release {set.version}
+                </p>
                 <h3 class="display-sm mt-1 text-2xl">{set.name}</h3>
               </div>
               <span class="badge">{set.cards.length} cards</span>
             </div>
             <p class="mt-3 text-sm leading-relaxed text-[var(--muted)]">{set.description}</p>
             <div class="mt-5 flex items-center justify-between border-t border-[var(--line)] pt-3">
-              <span class="font-mono text-[0.58rem] uppercase tracking-[0.1em] text-[var(--muted)]">Completion reward</span>
+              <span class="font-mono text-[0.58rem] uppercase tracking-[0.1em] text-[var(--muted)]">
+                Completion reward
+              </span>
               <span class="font-mono text-sm text-[var(--brass)]">✦ {set.reward_amount}</span>
             </div>
           </article>
         ))}
-        {publishedSets.length === 0 ? <p class="text-sm text-[var(--muted)]">The next release is being prepared.</p> : null}
+        {publishedSets.length === 0 ? (
+          <p class="text-sm text-[var(--muted)]">The next release is being prepared.</p>
+        ) : null}
       </div>
     </div>
   </section>
@@ -240,11 +396,17 @@ const collectionTone = ["#e0492f", "#0e5b53", "#4a1e4d", "#b8791f"];
     <div class="container flex flex-wrap items-center justify-between gap-6 py-10">
       <div>
         <p class="font-display text-3xl">Built for collectors, not for checkout.</p>
-        <p class="mt-1 text-sm text-[var(--muted)]">Free play · no payments · no marketplace · no cash-out · no investment language.</p>
+        <p class="mt-1 text-sm text-[var(--muted)]">
+          Free play · no payments · no marketplace · no cash-out · no investment language.
+        </p>
       </div>
       <div class="flex flex-wrap gap-2">
-        <a class="btn btn-secondary btn-sm" href="/journal">Journal</a>
-        <a class="btn btn-ghost btn-sm" href="/docs/agent-guide">Agent guide</a>
+        <a class="btn btn-secondary btn-sm" href="/journal">
+          Journal
+        </a>
+        <a class="btn btn-ghost btn-sm" href="/docs/agent-guide">
+          Agent guide
+        </a>
       </div>
     </div>
   </section>

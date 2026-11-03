@@ -3,7 +3,14 @@ import { ApiError, type Ctx } from "../context";
 import { all, first, nowIso } from "../db";
 import { newId, sha256Hex } from "../ids";
 import { audit, auditStatement } from "../http";
-import { createCard, getCard, normalizeSlug, publishSet, setCardStatus, getTaxonomy } from "./catalogue";
+import {
+  createCard,
+  getCard,
+  normalizeSlug,
+  publishSet,
+  setCardStatus,
+  getTaxonomy,
+} from "./catalogue";
 import { getAsset } from "./assets";
 import { assertTransition } from "../state";
 
@@ -82,10 +89,20 @@ export async function previewImport(ctx: Ctx, manifest: ImportManifest) {
       existingCardId: card?.id ?? null,
       currentVersion: card?.version ?? null,
       expectedVersion: item.expectedVersion ?? null,
-      conflict: Boolean(card && item.expectedVersion !== undefined && card.version !== item.expectedVersion),
+      conflict: Boolean(
+        card && item.expectedVersion !== undefined && card.version !== item.expectedVersion,
+      ),
       sets: item.sets ?? [],
       variants: item.variants,
-      published: card ? (await first<{ status: string }>(ctx.db, "SELECT status FROM fb_card_definitions WHERE id = ?", card.id))?.status === "published" : false,
+      published: card
+        ? (
+            await first<{ status: string }>(
+              ctx.db,
+              "SELECT status FROM fb_card_definitions WHERE id = ?",
+              card.id,
+            )
+          )?.status === "published"
+        : false,
     });
   }
   return {
@@ -101,7 +118,11 @@ export async function previewImport(ctx: Ctx, manifest: ImportManifest) {
   };
 }
 
-async function applyImportedCardMetadata(ctx: Ctx, cardId: string, item: ImportItemInput): Promise<void> {
+async function applyImportedCardMetadata(
+  ctx: Ctx,
+  cardId: string,
+  item: ImportItemInput,
+): Promise<void> {
   const hasMetadata =
     item.bio ||
     item.bioSafe ||
@@ -151,28 +172,48 @@ async function applyImportedCardMetadata(ctx: Ctx, cardId: string, item: ImportI
 }
 
 export async function commitImport(ctx: Ctx, manifest: ImportManifest) {
-  if (manifest.items.length === 0) throw new ApiError(422, "import_empty", "The import manifest has no items.");
-  if (manifest.items.length > 60) throw new ApiError(422, "import_limit", "Import at most 60 cards in one run.");
+  if (manifest.items.length === 0)
+    throw new ApiError(422, "import_empty", "The import manifest has no items.");
+  if (manifest.items.length > 60)
+    throw new ApiError(422, "import_limit", "Import at most 60 cards in one run.");
   const runId = newId("imp");
   const now = nowIso();
   await ctx.db
     .prepare(
       "INSERT INTO fb_import_runs (id, tenant_id, source, mode, status, summary_json, created_at) VALUES (?, ?, ?, ?, 'running', '{}', ?)",
     )
-    .bind(runId, ctx.tenant.id, manifest.source, manifest.publish ? "import-publish" : "import-review", now)
+    .bind(
+      runId,
+      ctx.tenant.id,
+      manifest.source,
+      manifest.publish ? "import-publish" : "import-review",
+      now,
+    )
     .run();
 
-  const results: Array<{ logicalId: string; status: string; cardId?: string; editionId?: string; error?: string }> = [];
+  const results: Array<{
+    logicalId: string;
+    status: string;
+    cardId?: string;
+    editionId?: string;
+    error?: string;
+  }> = [];
   for (const item of manifest.items) {
     try {
       // The current artwork edition's source hash is the authority. An import
       // item row alone can outlive the edition it was applied to, so do not use
       // it to skip reconciliation.
       const subject = await getAsset(ctx, item.subjectAssetId);
-      if (subject.kind !== "subject") throw new ApiError(422, "subject_asset_invalid", "Subject asset must have kind subject.");
+      if (subject.kind !== "subject")
+        throw new ApiError(422, "subject_asset_invalid", "Subject asset must have kind subject.");
       if (item.backgroundAssetId) {
         const background = await getAsset(ctx, item.backgroundAssetId);
-        if (background.kind !== "background") throw new ApiError(422, "background_asset_invalid", "Background asset must have kind background.");
+        if (background.kind !== "background")
+          throw new ApiError(
+            422,
+            "background_asset_invalid",
+            "Background asset must have kind background.",
+          );
       }
       let card = await first<{ id: string; status: string; version: number }>(
         ctx.db,
@@ -181,7 +222,11 @@ export async function commitImport(ctx: Ctx, manifest: ImportManifest) {
         item.logicalId,
       );
       if (card && item.expectedVersion !== undefined && card.version !== item.expectedVersion) {
-        throw new ApiError(409, "import_conflict", "This card changed through the Admin UI after the manifest was prepared. Re-export before importing.");
+        throw new ApiError(
+          409,
+          "import_conflict",
+          "This card changed through the Admin UI after the manifest was prepared. Re-export before importing.",
+        );
       }
       let outcome: "new" | "revision" = "new";
       let previousEdition: {
@@ -323,11 +368,13 @@ export async function commitImport(ctx: Ctx, manifest: ImportManifest) {
         : [];
       for (const spec of item.variants) {
         const material = taxonomy.materials.find((row) => row.key === spec.material);
-        if (!material) throw new ApiError(422, "material_unknown", `Unknown material ${spec.material}.`);
+        if (!material)
+          throw new ApiError(422, "material_unknown", `Unknown material ${spec.material}.`);
         const effect = spec.effect
           ? taxonomy.effects.find((row) => row.key === spec.effect)
           : taxonomy.effects.find((row) => row.key === "none");
-        if (spec.effect && !effect) throw new ApiError(422, "effect_unknown", `Unknown effect ${spec.effect}.`);
+        if (spec.effect && !effect)
+          throw new ApiError(422, "effect_unknown", `Unknown effect ${spec.effect}.`);
         const effectId = effect ? String(effect.id) : null;
         const existing = existingVariants.find(
           (row) => row.material_id === String(material.id) && (row.effect_id ?? null) === effectId,
@@ -336,7 +383,8 @@ export async function commitImport(ctx: Ctx, manifest: ImportManifest) {
         variantIds.push(variantId);
         const materialName = String(material.name);
         const effectName = effect ? String(effect.name) : "None";
-        const variantName = effectName === "None" ? materialName : `${materialName} · ${effectName}`;
+        const variantName =
+          effectName === "None" ? materialName : `${materialName} · ${effectName}`;
         if (existing) {
           statements.push(
             ctx.db
@@ -405,10 +453,14 @@ export async function commitImport(ctx: Ctx, manifest: ImportManifest) {
       if (manifest.publish) {
         await ctx.db.batch([
           ctx.db
-            .prepare("UPDATE fb_artwork_editions SET status = 'published' WHERE id = ? AND tenant_id = ?")
+            .prepare(
+              "UPDATE fb_artwork_editions SET status = 'published' WHERE id = ? AND tenant_id = ?",
+            )
             .bind(editionId, ctx.tenant.id),
           ctx.db
-            .prepare("UPDATE fb_variants SET status = 'published' WHERE edition_id = ? AND tenant_id = ?")
+            .prepare(
+              "UPDATE fb_variants SET status = 'published' WHERE edition_id = ? AND tenant_id = ?",
+            )
             .bind(editionId, ctx.tenant.id),
         ]);
         await setCardStatus(ctx, card.id, "published");
@@ -419,7 +471,14 @@ export async function commitImport(ctx: Ctx, manifest: ImportManifest) {
             `INSERT OR IGNORE INTO fb_collection_cards (collection_id, card_id, tenant_id, sort, added_by, added_at)
              SELECT id, ?, ?, 0, ?, ? FROM fb_collections WHERE slug = ? AND owner_tenant_id = ? AND archived_at IS NULL`,
           )
-          .bind(card.id, ctx.tenant.id, ctx.user?.id ?? "system", nowIso(), item.collectionSlug, ctx.tenant.id)
+          .bind(
+            card.id,
+            ctx.tenant.id,
+            ctx.user?.id ?? "system",
+            nowIso(),
+            item.collectionSlug,
+            ctx.tenant.id,
+          )
           .run();
       }
       if (item.sets?.length) {
@@ -460,7 +519,9 @@ export async function commitImport(ctx: Ctx, manifest: ImportManifest) {
     failed,
   };
   await ctx.db
-    .prepare("UPDATE fb_import_runs SET status = ?, summary_json = ?, completed_at = ? WHERE id = ?")
+    .prepare(
+      "UPDATE fb_import_runs SET status = ?, summary_json = ?, completed_at = ? WHERE id = ?",
+    )
     .bind(failed ? "partial" : "complete", JSON.stringify(summary), nowIso(), runId)
     .run();
   return { runId, summary, results };
@@ -487,7 +548,9 @@ async function appendSetMembership(ctx: Ctx, setSlug: string, cardIds: string[])
     const additions = cardIds.filter((id) => !existing.has(id));
     await ctx.db.batch([
       ctx.db
-        .prepare("UPDATE fb_sets SET version = ?, status = 'draft' WHERE id = ? AND tenant_id = ? AND version = ?")
+        .prepare(
+          "UPDATE fb_sets SET version = ?, status = 'draft' WHERE id = ? AND tenant_id = ? AND version = ?",
+        )
         .bind(nextVersion, set.id, ctx.tenant.id, set.version),
       ctx.db
         .prepare(
@@ -496,15 +559,30 @@ async function appendSetMembership(ctx: Ctx, setSlug: string, cardIds: string[])
         .bind(newId("sr"), nextVersion, set.id, set.version, nowIso(), set.id),
       ...previous.map((row, index) =>
         ctx.db
-          .prepare("INSERT INTO fb_set_memberships (id, tenant_id, set_id, set_version, card_id, sort, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+          .prepare(
+            "INSERT INTO fb_set_memberships (id, tenant_id, set_id, set_version, card_id, sort, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          )
           .bind(newId("smi"), ctx.tenant.id, set.id, nextVersion, row.card_id, index, nowIso()),
       ),
       ...additions.map((cardId, index) =>
         ctx.db
-          .prepare("INSERT INTO fb_set_memberships (id, tenant_id, set_id, set_version, card_id, sort, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-          .bind(newId("smi"), ctx.tenant.id, set.id, nextVersion, cardId, previous.length + index, nowIso()),
+          .prepare(
+            "INSERT INTO fb_set_memberships (id, tenant_id, set_id, set_version, card_id, sort, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          )
+          .bind(
+            newId("smi"),
+            ctx.tenant.id,
+            set.id,
+            nextVersion,
+            cardId,
+            previous.length + index,
+            nowIso(),
+          ),
       ),
-      auditStatement(ctx, "set.membership.imported", "set", set.id, { version: nextVersion, cards: additions.length }),
+      auditStatement(ctx, "set.membership.imported", "set", set.id, {
+        version: nextVersion,
+        cards: additions.length,
+      }),
     ]);
     return;
   }
@@ -519,11 +597,28 @@ async function appendSetMembership(ctx: Ctx, setSlug: string, cardIds: string[])
   const additions = cardIds.filter((id) => !existingIds.has(id));
   if (!additions.length) return;
   await ctx.db.batch(
-    additions.map((cardId, index) =>
-      ctx.db
-        .prepare("INSERT INTO fb_set_memberships (id, tenant_id, set_id, set_version, card_id, sort, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-        .bind(newId("smi"), ctx.tenant.id, set.id, set.version, cardId, existing.length + index, nowIso()),
-    ).concat([auditStatement(ctx, "set.membership.imported", "set", set.id, { version: set.version, cards: additions.length })]),
+    additions
+      .map((cardId, index) =>
+        ctx.db
+          .prepare(
+            "INSERT INTO fb_set_memberships (id, tenant_id, set_id, set_version, card_id, sort, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          )
+          .bind(
+            newId("smi"),
+            ctx.tenant.id,
+            set.id,
+            set.version,
+            cardId,
+            existing.length + index,
+            nowIso(),
+          ),
+      )
+      .concat([
+        auditStatement(ctx, "set.membership.imported", "set", set.id, {
+          version: set.version,
+          cards: additions.length,
+        }),
+      ]),
   );
 }
 
@@ -539,9 +634,10 @@ export async function createRenderJobs(ctx: Ctx, options?: { force?: boolean }) 
     variant_name: string;
     material_key: string;
     effect_key: string | null;
+    composition_json: string | null;
   }>(
     ctx.db,
-    `SELECT v.id AS variant_id, v.card_id, v.edition_id, e.recipe_id, e.subject_asset_id, e.background_asset_id,
+    `SELECT v.id AS variant_id, v.card_id, v.edition_id, e.recipe_id, e.subject_asset_id, e.background_asset_id, e.composition_json,
             cd.name AS card_name, cd.slug AS card_slug, cd.subtitle AS card_subtitle, v.name AS variant_name,
             m.key AS material_key, fx.key AS effect_key
        FROM fb_variants v
@@ -570,14 +666,7 @@ export async function createRenderJobs(ctx: Ctx, options?: { force?: boolean }) 
         .prepare(
           "INSERT INTO fb_jobs (id, tenant_id, kind, status, payload_json, attempts, max_attempts, available_at, created_at, updated_at) VALUES (?, ?, 'render_card', 'pending', ?, 0, 3, ?, ?, ?)",
         )
-        .bind(
-          id,
-          ctx.tenant.id,
-          JSON.stringify(variant),
-          nowIso(),
-          nowIso(),
-          nowIso(),
-        ),
+        .bind(id, ctx.tenant.id, JSON.stringify(variant), nowIso(), nowIso(), nowIso()),
       auditStatement(ctx, "render.queued", "job", id, { variant_id: variant.variant_id }),
     ]);
   }
@@ -639,12 +728,24 @@ export async function failRenderJob(ctx: Ctx, jobId: string, message: string) {
     .prepare(
       "UPDATE fb_jobs SET status = ?, available_at = ?, last_error = ?, updated_at = ? WHERE id = ? AND tenant_id = ?",
     )
-    .bind(retry ? "pending" : "failed", new Date(Date.now() + 15_000).toISOString(), message.slice(0, 500), nowIso(), jobId, ctx.tenant.id)
+    .bind(
+      retry ? "pending" : "failed",
+      new Date(Date.now() + 15_000).toISOString(),
+      message.slice(0, 500),
+      nowIso(),
+      jobId,
+      ctx.tenant.id,
+    )
     .run();
   return { retry };
 }
 
-export async function completeRenderJob(ctx: Ctx, jobId: string, bytes: Uint8Array, backBytes?: Uint8Array) {
+export async function completeRenderJob(
+  ctx: Ctx,
+  jobId: string,
+  bytes: Uint8Array,
+  backBytes?: Uint8Array,
+) {
   const job = await first<{ payload_json: string; status: string }>(
     ctx.db,
     "SELECT payload_json, status FROM fb_jobs WHERE id = ? AND tenant_id = ?",
@@ -652,8 +753,10 @@ export async function completeRenderJob(ctx: Ctx, jobId: string, bytes: Uint8Arr
     ctx.tenant.id,
   );
   if (!job) throw new ApiError(404, "job_not_found", "Job not found.");
-  if (job.status === "succeeded") throw new ApiError(409, "job_already_complete", "This render job already completed.");
-  if (job.status !== "running") throw new ApiError(409, "job_not_running", "Claim the render job before completing it.");
+  if (job.status === "succeeded")
+    throw new ApiError(409, "job_already_complete", "This render job already completed.");
+  if (job.status !== "running")
+    throw new ApiError(409, "job_not_running", "Claim the render job before completing it.");
   const payload = JSON.parse(job.payload_json) as {
     variant_id: string;
     recipe_id: string;
@@ -676,19 +779,30 @@ export async function completeRenderJob(ctx: Ctx, jobId: string, bytes: Uint8Arr
   }
   await ctx.db.batch([
     ctx.db
-      .prepare("UPDATE fb_jobs SET status = 'succeeded', result_json = ?, last_error = NULL, updated_at = ? WHERE id = ? AND tenant_id = ?")
+      .prepare(
+        "UPDATE fb_jobs SET status = 'succeeded', result_json = ?, last_error = NULL, updated_at = ? WHERE id = ? AND tenant_id = ?",
+      )
       .bind(JSON.stringify({ ...render, back }), nowIso(), jobId, ctx.tenant.id),
     ctx.db
       .prepare(
         "INSERT INTO fb_outbox (id, tenant_id, topic, payload_json, status, attempts, available_at, created_at) VALUES (?, ?, 'render.completed', ?, 'pending', 0, ?, ?)",
       )
-      .bind(newId("out"), ctx.tenant.id, JSON.stringify({ job_id: jobId, ...render, back }), nowIso(), nowIso()),
+      .bind(
+        newId("out"),
+        ctx.tenant.id,
+        JSON.stringify({ job_id: jobId, ...render, back }),
+        nowIso(),
+        nowIso(),
+      ),
     auditStatement(ctx, "render.completed", "job", jobId, { ...render, back }),
   ]);
   return { ...render, back };
 }
 
-export async function estimateGenerationPlan(ctx: Ctx, input: { prompt: string; model: string; count: number }) {
+export async function estimateGenerationPlan(
+  ctx: Ctx,
+  input: { prompt: string; model: string; count: number },
+) {
   const unitCost = 40_000;
   const estimated = unitCost * Math.max(1, Math.min(10, input.count));
   return {

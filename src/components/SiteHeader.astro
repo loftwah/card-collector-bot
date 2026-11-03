@@ -11,10 +11,16 @@ const links = [
   { href: "/play/draw", label: "Draw" },
 ];
 if (user) links.push({ href: "/play", label: "My Collection" });
-const canStudio = Boolean(user && (user.platformAdmin || user.globalCollectionScope || ["owner", "editor", "economy_admin"].includes(user.role)));
+const canStudio = Boolean(
+  user &&
+  (user.platformAdmin ||
+    user.globalCollectionScope ||
+    ["owner", "editor", "economy_admin"].includes(user.role)),
+);
 if (canStudio) links.push({ href: "/studio", label: "Studio" });
 if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform" });
 ---
+
 <header class="site-header">
   <div class="container flex min-h-[68px] items-center justify-between gap-4 py-3">
     <a href="/" class="flex items-center gap-2.5 no-underline" aria-label="Foilbury home">
@@ -28,12 +34,14 @@ if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform"
           href={link.href}
           class:list={[
             "border-b-2 px-3 py-2 font-mono text-[0.66rem] uppercase tracking-[0.1em] no-underline transition-colors",
-            (link.href === "/play/draw"
-              ? path.startsWith("/play/draw")
-              : link.href === "/play"
-                ? path.startsWith("/play") && !path.startsWith("/play/draw")
-                : path === link.href || path.startsWith(link.href + "/"))
-              ? "border-[var(--brass)] text-[var(--ink)]"
+            (
+              link.href === "/play/draw"
+                ? path.startsWith("/play/draw")
+                : link.href === "/play"
+                  ? path.startsWith("/play") && !path.startsWith("/play/draw")
+                  : path === link.href || path.startsWith(link.href + "/")
+            )
+              ? "border-[var(--signal)] text-[var(--ink)]"
               : "border-transparent text-[var(--muted)] hover:text-[var(--ink)]",
           ]}
         >
@@ -45,27 +53,77 @@ if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform"
     <div class="flex items-center gap-1.5">
       {user ? (
         <>
-          <a href="/play" class="hidden items-center gap-2 border border-[var(--line)] px-2.5 py-1.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] no-underline sm:flex" title="Your Foil balance">
-            <span class="text-[var(--brass)]">✦</span>
+          <a
+            href="/play"
+            class="hidden items-center gap-2 rounded-[2px] border border-[var(--line)] bg-[var(--panel-2)] px-2.5 py-1.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] no-underline sm:flex"
+            title="Your Foil balance"
+          >
+            <span class="text-[var(--signal)]">✦</span>
             <span data-foil-balance>{session?.wallet ?? 0} Foil</span>
           </a>
-          <a href="/account/security" class="hidden max-w-32 truncate text-xs text-[var(--muted)] hover:text-[var(--ink)] lg:inline">{user.displayName}</a>
-          {!["owner", "editor", "economy_admin"].includes(user.role) ? <a class="btn btn-secondary btn-sm hidden sm:inline-flex" href="/create-bot">Create a Bot</a> : null}          <LogoutButton client:load />
+          <a
+            href="/account/security"
+            class="hidden max-w-32 truncate text-xs text-[var(--muted)] hover:text-[var(--ink)] lg:inline"
+          >
+            {user.displayName}
+          </a>
+          {!["owner", "editor", "economy_admin"].includes(user.role) ? (
+            <a class="btn btn-secondary btn-sm hidden sm:inline-flex" href="/create-bot">
+              Create a Bot
+            </a>
+          ) : null}{" "}
+          <LogoutButton client:load />
         </>
       ) : (
-        <a class="btn btn-primary btn-sm" href="/login">Sign in</a>
+        <a class="btn btn-primary btn-sm" href="/login">
+          Sign in
+        </a>
       )}
       <ThemeToggle client:load />
       <details class="relative md:hidden">
-        <summary class="btn btn-ghost btn-sm cursor-pointer list-none" aria-label="Open menu">Menu</summary>
+        <summary class="btn btn-ghost btn-sm cursor-pointer list-none" aria-label="Open menu">
+          Menu
+        </summary>
         <div class="absolute right-0 top-11 z-30 min-w-52 border border-[var(--line-strong)] bg-[var(--paper)] p-2 shadow-xl">
           {links.map((link) => (
-            <a class="block px-3 py-2 font-mono text-[0.68rem] uppercase tracking-[0.08em] text-[var(--muted)] no-underline hover:bg-[var(--ink)]/5 hover:text-[var(--ink)]" href={link.href}>{link.label}</a>
+            <a
+              class="block px-3 py-2 font-mono text-[0.68rem] uppercase tracking-[0.08em] text-[var(--muted)] no-underline hover:bg-[var(--ink)]/5 hover:text-[var(--ink)]"
+              href={link.href}
+            >
+              {link.label}
+            </a>
           ))}
-          {user ? <a class="block px-3 py-2 font-mono text-[0.68rem] uppercase tracking-[0.08em] text-[var(--muted)] no-underline hover:bg-[var(--ink)]/5 hover:text-[var(--ink)]" href="/account/security">Account security</a> : null}
-          {!user ? <a class="block px-3 py-2 font-mono text-[0.68rem] uppercase tracking-[0.08em] text-[var(--muted)] no-underline hover:bg-[var(--ink)]/5 hover:text-[var(--ink)]" href="/create-bot">Create a Bot</a> : null}
+          {user ? (
+            <a
+              class="block px-3 py-2 font-mono text-[0.68rem] uppercase tracking-[0.08em] text-[var(--muted)] no-underline hover:bg-[var(--ink)]/5 hover:text-[var(--ink)]"
+              href="/account/security"
+            >
+              Account security
+            </a>
+          ) : null}
+          {!user ? (
+            <a
+              class="block px-3 py-2 font-mono text-[0.68rem] uppercase tracking-[0.08em] text-[var(--muted)] no-underline hover:bg-[var(--ink)]/5 hover:text-[var(--ink)]"
+              href="/create-bot"
+            >
+              Create a Bot
+            </a>
+          ) : null}
         </div>
       </details>
     </div>
   </div>
 </header>
+<script is:inline>
+  document.addEventListener("click", (event) => {
+    document.querySelectorAll(".site-header details[open]").forEach((details) => {
+      if (!details.contains(event.target)) details.open = false;
+    });
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    document.querySelectorAll(".site-header details[open]").forEach((details) => {
+      details.open = false;
+    });
+  });
+</script>

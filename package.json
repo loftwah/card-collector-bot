@@ -66,7 +66,12 @@
     "test:privacy": "node scripts/test-privacy.mjs",
     "test:seo": "node scripts/test-seo.mjs",
     "test:achievements": "vitest run --config vitest.workers.config.ts tests/workers/achievements.test.ts tests/workers/gifts.test.ts tests/workers/visibility.test.ts",
-    "test:deployed": "node scripts/test-deployed.mjs"
+    "test:deployed": "node scripts/test-deployed.mjs",
+    "test:product": "node scripts/test-product-qa.mjs",
+    "test:artwork": "node scripts/test-artwork-editor.mjs",
+    "perf:local": "node scripts/measure-product-performance.mjs",
+    "plan:rerender": "node scripts/production-rerender-plan.mjs",
+    "content:derivatives": "node scripts/content/backfill-derivatives.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "14.4.3",
@@ -139,4 +144,3 @@
     ]
   }
 }
-
