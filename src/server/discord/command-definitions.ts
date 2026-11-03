@@ -14,6 +14,7 @@ export const DISCORD_COMMANDS = [
         ],
       },
       { type: 1, name: "daily", description: "Claim today's free allowance" },
+      { type: 1, name: "missions", description: "View today's optional missions and claim Foil" },
       { type: 1, name: "collection", description: "View your owned cards" },
       {
         type: 1,
@@ -101,6 +102,7 @@ export const HELP_TEXT = [
   "",
   "`/foilbury open [pool]` — open a capsule now; pool is optional and defaults to cabinet-draw",
   "`/foilbury daily` — claim the shared daily allowance",
+  "`/foilbury missions` — view optional daily missions and claim earned Foil",
   "`/foilbury collection` — see your owned cards and duplicates",
   "`/foilbury card <query>` — inspect a catalogue card",
   "`/foilbury packs` — list eligible pools and prices",

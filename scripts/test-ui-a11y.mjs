@@ -104,6 +104,9 @@ try {
     await page.goto("/play/wishlist");
     await page.getByRole("heading", { name: /what you are still looking for/i }).waitFor();
     await audit(page, `${scheme} wishlist`, `ui-wishlist-${scheme}.png`);
+    await page.goto("/play/missions");
+    await page.getByRole("heading", { name: /a little extra foil/i }).waitFor();
+    await audit(page, `${scheme} daily missions`, `ui-missions-${scheme}.png`);
     await page.goto("/play/rivals");
     await page.getByRole("heading", { name: /the cabinet has regulars/i }).waitFor();
     await audit(page, `${scheme} NPC lounge`, `ui-rivals-${scheme}.png`);

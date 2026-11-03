@@ -186,6 +186,18 @@ async function main() {
   if (command === "wallet") return out(await apiJson("/api/v1/wallet", { token }));
   if (command === "reward" && sub === "claim") return out(await apiJson("/api/v1/rewards/claim", { method: "POST", token, body: {}, idempotencyKey: `cli-${crypto.randomUUID()}` }));
   if (command === "reward") return fail("unknown reward command", 2);
+  if (command === "missions") {
+    if (sub === "claim") {
+      const key = rest[0];
+      if (!key) return fail("missions claim needs a mission key", 2);
+      return out(await apiJson("/api/v1/missions/daily/claim", { method: "POST", token, body: { key }, idempotencyKey: `cli-mission-${crypto.randomUUID()}` }));
+    }
+    const result = await apiJson("/api/v1/missions/daily", { token });
+    if (json) return out(result);
+    console.log(`Daily missions · ${result.day} UTC · earned ${result.earned_today}/${result.cap} · reset ${result.reset_local}`);
+    for (const mission of result.missions) console.log(`  ${mission.claimed ? "claimed " : mission.complete ? "ready   " : `${mission.progress}/${mission.target}   `} ${mission.key.padEnd(10)} ✦ ${mission.reward}  ${mission.title}`);
+    return;
+  }
 
   if (command === "draw") {
     const slug = rest[0];

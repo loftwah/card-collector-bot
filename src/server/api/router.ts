@@ -172,6 +172,10 @@ import {
   setMemberStatus,
 } from "../modules/membership";
 import {
+  claimDailyMission,
+  getDailyMissions,
+} from "../modules/missions";
+import {
   compareNpc,
   createNpc,
   createNpcBatch,
@@ -821,6 +825,19 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     playerWrite(ctx);
     requireScope(ctx, "profile:write");
     return json(await revokeShareLink(ctx, segments[1]));
+  }
+
+  // Daily missions: trusted committed events, one claim per mission per UTC day.
+  if (segments[0] === "missions" && segments[1] === "daily" && segments.length === 2 && method === "GET") {
+    playerWrite(ctx);
+    requireScope(ctx, "missions:read");
+    return json(await getDailyMissions(ctx));
+  }
+  if (segments[0] === "missions" && segments[1] === "daily" && segments[2] === "claim" && segments.length === 3 && method === "POST") {
+    playerWrite(ctx);
+    requireScope(ctx, "missions:claim");
+    const body = await readJson(request, z.object({ key: z.string().min(2).max(40) }));
+    return json(await claimDailyMission(ctx, body.key, request.headers.get("idempotency-key") ?? undefined));
   }
 
   // Persistent synthetic NPC collectors. Human-readable lounge views are

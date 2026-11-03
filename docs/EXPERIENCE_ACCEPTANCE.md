@@ -260,3 +260,14 @@ migration or member render was performed.
 Cleanup: the owned dev server is stopped before handoff; every browser context,
 temporary NPC and EmDash token created by the new scripts is closed/deleted in
 `finally`. Unrelated processes from other projects were not touched.
+
+### 10.6 New issues raised during execution
+
+| Issue | State | Evidence / next |
+| --- | --- | --- |
+| #22 Discord core loop | Implemented locally, live-blocked | default `/foilbury open`, real-draw test, empty-default picker, no-funds recovery, `docs/DISCORD_CORE_LOOP.md`; real client still required |
+| #23 Daily missions | Implemented locally | stable UTC-day assignments, trusted events, one-claim trigger, Web/API/CLI/MCP/Discord claim, 9 worker tests + Discord handler test; production economy review still open |
+| #24 Discord presentation | Parallel workstream | reusable builders + structural tests/docs; real desktop/mobile/spectator review still required |
+| #25 Discord setup | Parallel workstream | read-only inspect/propose/diff + approval-gated apply scripts/docs; no guild mutation performed |
+| #26 Brand systems | Parallel workstream | three complete icon/banner systems and selection board; owner selection and application remain open |
+| #27 Multi-print cards | Parallel workstream | additive print-proposal/review foundation, tests and vertical-slice plan; no catalogue-wide prints or paid generation |

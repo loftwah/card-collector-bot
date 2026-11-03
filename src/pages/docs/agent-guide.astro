@@ -29,7 +29,7 @@ pnpm exec astro dev status</code></pre>
         <li><strong>player</strong> — represented member <code>player@foilbury.local</code>, player scopes only.</li>
       </ul>
       <p>The tokens are in <code>.foilbury/agents.json</code>. An agent token is scoped, revocable, hashed at rest, and records both the agent and the represented member in audit events. An agent cannot create, expand or revoke grants. A human owner creates grants in Administration → Agents or through the API.</p>
-      <p>Available scopes: <code>content:read</code>, <code>content:write</code>, <code>catalogue:publish</code>, <code>import:write</code>, <code>render:write</code>, <code>economy:read</code>, <code>economy:write</code>, <code>economy:grant</code>, <code>inventory:read</code>, <code>inventory:write</code>, <code>profile:read</code>, <code>profile:write</code>, <code>draw:execute</code>, <code>reward:claim</code>, <code>trade:write</code>, <code>recycle:write</code>, <code>settings:write</code>, <code>ops:read</code>.</p>
+      <p>Available scopes: <code>content:read</code>, <code>content:write</code>, <code>catalogue:publish</code>, <code>import:write</code>, <code>render:write</code>, <code>economy:read</code>, <code>economy:write</code>, <code>economy:grant</code>, <code>inventory:read</code>, <code>inventory:write</code>, <code>profile:read</code>, <code>profile:write</code>, <code>missions:read</code>, <code>missions:claim</code>, <code>draw:execute</code>, <code>reward:claim</code>, <code>trade:write</code>, <code>recycle:write</code>, <code>settings:write</code>, <code>ops:read</code>.</p>
       <p>Every player route checks the named scope for that operation. A token with only <code>inventory:read</code> cannot change favourites, wishlists, sharing, preferences or rewards; denied calls make no state change.</p>
       <p>Money-like and destructive commands require an idempotency key scoped to tenant, actor and operation. Reuse the same key when retrying a transport failure. A changed body with the same key returns <code>409 idempotency_conflict</code>.</p>
 
@@ -41,6 +41,8 @@ pnpm foilbury draw preview cabinet-draw
 pnpm foilbury inventory --as player
 pnpm foilbury wallet --as player
 pnpm foilbury reward claim --as player
+pnpm foilbury missions --as player
+pnpm foilbury missions claim explore --as player
 pnpm foilbury draw execute cabinet-draw --revision 1 --as player
 pnpm foilbury pools list
 pnpm foilbury agents list</code></pre>
@@ -82,7 +84,7 @@ FOILBURY_AGENT=owner pnpm mcp
     &#125;
   &#125;
 &#125;</code></pre>
-      <p>Tools include <code>foilbury_status</code>, <code>foilbury_whoami</code>, <code>foilbury_catalogue_list</code>, <code>foilbury_content_create</code>, <code>foilbury_taxonomy_list</code>, <code>foilbury_pools_list</code>, <code>foilbury_pool_preview</code>, <code>foilbury_draw_execute</code>, <code>foilbury_inventory_list</code>, <code>foilbury_reward_claim</code>, <code>foilbury_trade_create</code>, <code>foilbury_recycle_commit</code>, <code>foilbury_agents_list</code>, <code>foilbury_imports_apply</code>, <code>foilbury_renders_queue</code>, <code>foilbury_catalogue_publish</code>, <code>foilbury_ops_status</code> and <code>foilbury_outbox_process</code>.</p>
+      <p>Tools include <code>foilbury_status</code>, <code>foilbury_whoami</code>, <code>foilbury_catalogue_list</code>, <code>foilbury_content_create</code>, <code>foilbury_taxonomy_list</code>, <code>foilbury_pools_list</code>, <code>foilbury_pool_preview</code>, <code>foilbury_draw_execute</code>, <code>foilbury_inventory_list</code>, <code>foilbury_reward_claim</code>, <code>foilbury_missions_daily</code>, <code>foilbury_mission_claim</code>, <code>foilbury_trade_create</code>, <code>foilbury_recycle_commit</code>, <code>foilbury_agents_list</code>, <code>foilbury_imports_apply</code>, <code>foilbury_renders_queue</code>, <code>foilbury_catalogue_publish</code>, <code>foilbury_ops_status</code> and <code>foilbury_outbox_process</code>.</p>
       <p>The test suite invokes the MCP server with the official SDK client. A listed tool name is not the evidence; the actual invocation is recorded in <code>docs/LOCAL_ACCEPTANCE.md</code>.</p>
 
       <h2>6. Workflow examples</h2>
@@ -100,6 +102,8 @@ pnpm foilbury catalogue publish</code></pre>
       <h3>Player workflow</h3>
       <pre><code>pnpm foilbury draw preview cabinet-draw --as player
 pnpm foilbury reward claim --as player
+pnpm foilbury missions --as player
+pnpm foilbury missions claim explore --as player
 pnpm foilbury draw execute cabinet-draw --revision 1 --as player
 pnpm foilbury inventory --as player</code></pre>
 

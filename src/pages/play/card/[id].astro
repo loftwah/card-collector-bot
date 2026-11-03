@@ -8,6 +8,7 @@ import { getInstance } from "../../../server/modules/collection";
 import { getCard, listSets } from "../../../server/modules/catalogue";
 import { getWishlist } from "../../../server/modules/collection";
 import { displayFinish, formatDual } from "../../../lib/utils";
+import { recordDailyInteraction } from "../../../server/modules/missions";
 
 const ctx = await pageContext(Astro.request);
 const instanceId = Astro.params.id ?? "";
@@ -18,6 +19,7 @@ try {
   return Astro.redirect("/play/collection");
 }
 const { instance, history, draws } = detail;
+await recordDailyInteraction(ctx, "card.inspected", instance.card_id);
 const sets = await listSets(ctx, ctx.user!.id);
 const set = sets.find(
   (item) => item.cards.some((card) => card.id === instance.card_id) && item.status === "published",

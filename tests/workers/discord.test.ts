@@ -721,6 +721,31 @@ describe("Discord HTTP interactions", () => {
     expect(draws?.count).toBe(0);
   });
 
+  it("shows daily missions and claims exactly once from a button", async () => {
+    await send(interaction(command("profile"), { id: "mission-profile" }));
+    const identity = await runtime.DB.prepare("SELECT user_id FROM fb_discord_identities WHERE discord_user_id = ?").bind(DISCORD_USER_ID).first<{ user_id: string }>();
+    const tenantId = (await ctxFor("cabinet", "player@foilbury.local")).tenant.id;
+    await runtime.DB.prepare(
+      "INSERT INTO fb_domain_events (id, tenant_id, user_id, event_type, object_type, object_id, dedupe_key, payload_json, created_at) VALUES ('evt_mission_explore', ?, ?, 'collection.explored', 'collection', 'col_test_public', ?, '{}', ?)",
+    ).bind(tenantId, identity!.user_id, `mission-explore:${identity!.user_id}`, new Date().toISOString()).run();
+    const view = await send(interaction(command("missions"), { id: "missions-view" }));
+    expect(view.payload.data?.embeds?.[0]?.title).toContain("Daily missions");
+    expect(view.payload.data?.flags).toBe(64);
+    const claimButton = (view.payload.data?.components ?? []).flatMap((row) => row.components ?? []).find((component) => component.custom_id === "foilbury:mission:claim:explore");
+    expect(claimButton).toBeTruthy();
+    const before = await runtime.DB.prepare("SELECT balance FROM fb_wallets WHERE tenant_id = ? AND user_id = ?").bind(tenantId, identity!.user_id).first<{ balance: number }>();
+    const claimed = await send(interaction({ custom_id: "foilbury:mission:claim:explore", component_type: 2 }, { id: "mission-claim", type: 3 }));
+    expect(JSON.stringify(claimed.payload.data)).toContain("Foil credited");
+    const after = await runtime.DB.prepare("SELECT balance FROM fb_wallets WHERE tenant_id = ? AND user_id = ?").bind(tenantId, identity!.user_id).first<{ balance: number }>();
+    expect(after!.balance).toBe(before!.balance + 60);
+    const replay = await send(interaction({ custom_id: "foilbury:mission:claim:explore", component_type: 2 }, { id: "mission-claim-replay", type: 3 }));
+    expect(JSON.stringify(replay.payload.data)).toContain("Foil credited");
+    const afterReplay = await runtime.DB.prepare("SELECT balance FROM fb_wallets WHERE tenant_id = ? AND user_id = ?").bind(tenantId, identity!.user_id).first<{ balance: number }>();
+    expect(afterReplay!.balance).toBe(after!.balance);
+    const claims = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_reward_claims WHERE tenant_id = ? AND user_id = ? AND rule_key LIKE '%:explore'").bind(tenantId, identity!.user_id).first<{ count: number }>();
+    expect(claims?.count).toBe(1);
+  });
+
   it("shows a labelled NPC profile and comparison on demand", async () => {
     const owner = await ctxFor("cabinet", "owner@foilbury.local");
     const npc = await createNpc(owner, { name: "Discord Rival", presetKey: "variety_collector", bio: "A clearly synthetic collector used only for the Discord inspection test." });

@@ -196,9 +196,9 @@ export async function getInstance(ctx: Ctx, instanceId: string) {
 
 export async function toggleFavourite(ctx: Ctx, instanceId: string, favourite: boolean) {
   const user = ctx.user!;
-  const row = await first<{ id: string }>(
+  const row = await first<{ id: string; card_id: string }>(
     ctx.db,
-    "SELECT id FROM fb_card_instances WHERE id = ? AND tenant_id = ? AND user_id = ? AND status = 'owned'",
+    "SELECT id, card_id FROM fb_card_instances WHERE id = ? AND tenant_id = ? AND user_id = ? AND status = 'owned'",
     instanceId,
     ctx.tenant.id,
     user.id,
@@ -217,14 +217,18 @@ export async function toggleFavourite(ctx: Ctx, instanceId: string, favourite: b
       instanceId,
     ),
   ]);
+  if (favourite) {
+    const { recordDailyInteraction } = await import("./missions");
+    await recordDailyInteraction(ctx, "card.favourited", row.card_id);
+  }
   return { id: instanceId, favourite };
 }
 
 export async function setLocked(ctx: Ctx, instanceId: string, locked: boolean) {
   const user = ctx.user!;
-  const row = await first<{ id: string }>(
+  const row = await first<{ id: string; card_id: string }>(
     ctx.db,
-    "SELECT id FROM fb_card_instances WHERE id = ? AND tenant_id = ? AND user_id = ? AND status = 'owned'",
+    "SELECT id, card_id FROM fb_card_instances WHERE id = ? AND tenant_id = ? AND user_id = ? AND status = 'owned'",
     instanceId,
     ctx.tenant.id,
     user.id,
