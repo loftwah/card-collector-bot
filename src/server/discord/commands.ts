@@ -18,6 +18,7 @@ import { executeDraw, getPoolPreview, listPools } from "../modules/pools";
 import { finishKey, listAchievements } from "../modules/achievements";
 import { compareNpc, listNpcProfiles } from "../modules/npcs";
 import { claimDailyMission, getDailyMissions } from "../modules/missions";
+import { missionProgressMessage } from "./presentation";
 import { audienceRank, canViewCard, effectiveCardAudience } from "../modules/visibility";
 import { HELP_TEXT } from "./command-definitions";
 import { channelAudienceFor, isBotAdmin, requireBotAdmin } from "./context";
@@ -975,44 +976,27 @@ async function npcView(ctx: Ctx, query: string): Promise<DiscordCallback> {
 
 async function missionsView(ctx: Ctx, notice?: string): Promise<DiscordCallback> {
   const state = await getDailyMissions(ctx);
-  const rows = state.missions.map((mission) => {
-    const status = mission.claimed
-      ? "claimed"
-      : mission.complete
-        ? "ready to claim"
-        : `${mission.progress}/${mission.target}`;
-    return {
-      name: `${mission.title} · ✦ ${mission.reward}`,
-      value: `${mission.description}\n**${status}**`,
-      inline: false,
-    };
+  return missionProgressMessage({
+    day: state.day,
+    resetAt: state.reset_at,
+    cap: state.cap,
+    earnedToday: state.earned_today,
+    currencySymbol: state.currency_symbol,
+    ...(notice ? { notice } : {}),
+    missions: state.missions.map((mission) => ({
+      key: mission.key,
+      title: mission.title,
+      description: mission.description,
+      progress: mission.progress,
+      target: mission.target,
+      reward: mission.reward,
+      complete: mission.complete,
+      claimed: mission.claimed,
+      claimable: mission.claimable,
+      ...(mission.claimable ? { claimCustomId: `foilbury:mission:claim:${mission.key}` } : {}),
+    })),
+    missionsUrl: absoluteUrl(ctx.config.publicOrigin, "/play/missions")!,
   });
-  const claimable = state.missions.filter((mission) => mission.claimable).slice(0, 4);
-  return callback(
-    {
-      embeds: [
-        {
-          title: "Daily missions",
-          description: `${notice ? `${notice}\n\n` : ""}Earned today: **✦ ${state.earned_today} / ${state.cap}**. Reset ${state.reset_local} (${state.day} UTC). Missions use the same wallet and ledger as the website.`,
-          color: 0x00c8b8,
-          fields: rows,
-          footer: { text: "Optional · no purchase · no streak penalty" },
-        },
-      ],
-      components: components([
-        ...(claimable.length
-          ? [claimable.map((mission) => ({
-              type: 2,
-              style: 1,
-              label: `Claim ${mission.title} · ✦${mission.reward}`.slice(0, 80),
-              custom_id: `foilbury:mission:claim:${mission.key}`,
-            }))]
-          : []),
-        [{ type: 2, style: 5, label: "Open missions on the web", url: absoluteUrl(ctx.config.publicOrigin, "/play/missions")! }],
-      ]),
-    },
-    true,
-  );
 }
 
 function help(ctx: Ctx): DiscordCallback {

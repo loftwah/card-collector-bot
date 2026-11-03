@@ -27,6 +27,7 @@ interface State {
   reset_local: string;
   cap: number;
   earned_today: number;
+  currency_symbol: string;
   missions: Mission[];
 }
 
@@ -68,7 +69,7 @@ export default function DailyMissions({ initial }: { initial: State }) {
           </div>
           <div className="text-right">
             <p className="eyebrow">Earned today</p>
-            <p className="display-sm mt-1 text-3xl text-[var(--brass)]">✦ {state.earned_today} <span className="text-base text-[var(--muted)]">/ {state.cap}</span></p>
+            <p className="display-sm mt-1 text-3xl text-[var(--brass)]">{state.currency_symbol} {state.earned_today} <span className="text-base text-[var(--muted)]">/ {state.cap}</span></p>
             <p className="mt-1 flex items-center justify-end gap-1 text-xs text-[var(--muted)]"><Clock3 size={12} /> {state.reset_local}</p>
           </div>
         </div>
@@ -90,14 +91,14 @@ export default function DailyMissions({ initial }: { initial: State }) {
                     <div className="h-full bg-[var(--signal)]" style={{ width: `${percent}%` }}></div>
                   </div>
                   <span className="font-mono text-[0.62rem] uppercase tracking-[0.08em] text-[var(--muted)]">{mission.progress}/{mission.target}</span>
-                  <span className="badge">✦ {mission.reward}</span>
+                  <span className="badge">{state.currency_symbol} {mission.reward}</span>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                 {!mission.complete && !mission.claimed ? <a className="btn btn-secondary btn-sm" href={mission.href}>{mission.action}</a> : null}
                 {mission.claimable ? (
                   <Button size="sm" onClick={() => claim(mission)} disabled={busy === mission.key}>
-                    <Sparkles size={14} /> {busy === mission.key ? "Claiming…" : `Claim ✦ ${mission.reward}`}
+                    <Sparkles size={14} /> {busy === mission.key ? "Claiming…" : `Claim ${state.currency_symbol} ${mission.reward}`}
                   </Button>
                 ) : null}
                 {mission.claimed ? <span className="text-xs text-[var(--muted)]">Credited {mission.claimed_at ? new Date(mission.claimed_at).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" }) : ""}</span> : null}
@@ -112,7 +113,7 @@ export default function DailyMissions({ initial }: { initial: State }) {
 
       <section className="grid gap-3 sm:grid-cols-3">
         <div className="studio-stat"><p className="studio-stat__label">Reset</p><p className="text-sm font-semibold">{state.reset_local}</p><p className="mt-1 text-xs text-[var(--muted)]">{state.reset_at}</p></div>
-        <div className="studio-stat"><p className="studio-stat__label">Daily cap</p><p className="display-sm text-3xl">✦ {state.cap}</p><p className="mt-1 text-xs text-[var(--muted)]">Across all missions</p></div>
+        <div className="studio-stat"><p className="studio-stat__label">Daily cap</p><p className="display-sm text-3xl">{state.currency_symbol} {state.cap}</p><p className="mt-1 text-xs text-[var(--muted)]">Across all missions</p></div>
         <div className="studio-stat"><p className="studio-stat__label">Also available</p><p className="text-sm font-semibold"><a className="underline underline-offset-4" href="/play">Daily allowance</a></p><p className="mt-1 text-xs text-[var(--muted)]">Separate from missions</p></div>
       </section>
     </div>

@@ -95,6 +95,7 @@ export interface DailyMissionState {
   reset_local: string;
   cap: number;
   earned_today: number;
+  currency_symbol: string;
   missions: Array<
     MissionDefinition & {
       progress: number;
@@ -217,6 +218,11 @@ export async function getDailyMissions(ctx: Ctx): Promise<DailyMissionState> {
     })
     .filter((mission): mission is MissionDefinition => Boolean(mission));
   const eventTypes = [...new Set(definitions.flatMap((mission) => mission.eventTypes))];
+  const economy = await first<{ currency_symbol: string }>(
+    ctx.db,
+    "SELECT currency_symbol FROM fb_economy_settings WHERE tenant_id = ?",
+    ctx.tenant.id,
+  );
   const [events, claims] = await Promise.all([
     eventTypes.length
       ? ctx.db
@@ -263,6 +269,7 @@ export async function getDailyMissions(ctx: Ctx): Promise<DailyMissionState> {
     }).format(new Date(nextUtcReset(now)))} Melbourne time`,
     cap: DAILY_MISSION_CAP,
     earned_today: claims.reduce((sum, row) => sum + row.amount, 0),
+    currency_symbol: economy?.currency_symbol ?? "✦",
     missions,
   };
 }
