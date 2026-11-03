@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Activity, ArrowUpRight, Bot, Boxes, KeyRound, RefreshCw, ShieldCheck, Users } from "lucide-react";
 import { api, describeError } from "@/lib/client";
 import { Button } from "../ui/button";
+import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Field, Input } from "../ui/input";
 
 type Section = "overview" | "accounts" | "bots" | "installations" | "audit" | "collections";
@@ -62,7 +63,20 @@ export default function PlatformAdminApp({ section }: { section: Section }) {
     } catch (cause) { setError(describeError(cause)); } finally { setBusy(""); }
   }
 
-  if (!overview) return <div className="skeleton h-64" />;
+  if (!overview) {
+    if (!error) return <div className="skeleton h-64" />;
+    return (
+      <div className="grid justify-items-start gap-3">
+        <Alert variant="destructive">
+          <AlertTitle>Administration could not load</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+        <Button variant="secondary" onClick={() => window.location.reload()}>
+          <RefreshCw data-icon="inline-start" /> Reload administration
+        </Button>
+      </div>
+    );
+  }
 
   const counts = overview.counts;
   return (
@@ -260,3 +274,4 @@ function InstallationCard({ installation, onSaved }: { installation: Record<stri
     </article>
   );
 }
+

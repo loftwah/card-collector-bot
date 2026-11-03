@@ -35,21 +35,41 @@ This correction:
 - Always installs EmDash's supported Access adapter, reads
   `FOILBURY_ACCESS_EDITORIAL_AUD` at Worker runtime, and preserves existing CMS
   user provisioning and role settings.
+- Establishes each separate admin API application's session with a read-only
+  probe before operational requests. An Access redirect becomes one top-level
+  handoff, returning only to a validated page in the same admin area. A marker
+  prevents repeated handoffs; it is not authentication evidence. No mutation is
+  sent before admission or replayed afterwards. Initial Platform Admin errors
+  are shown with a reload action instead of an indefinite loading placeholder.
 
 ### Validation and release gates
 
-The dependency-free configuration suite passes 9/9 checks, and changed JavaScript
-and TypeScript files pass Node syntax checks. Token, provider and request-context
-regressions are covered in the Vitest suite. The review environment has Node
-24.22.1 and pnpm 11.25.0 without project dependencies, so a full `pnpm check`, build
-and browser suite have not been claimed there. The pull-request workflow uses
-the repository's required Node 22.23.4 and pnpm 10.34.4 and runs `pnpm check`.
+The pull-request workflow uses the repository's required Node 22.23.4 and pnpm
+10.34.4. It runs configuration tests, typechecking, unit and Workers tests, then
+the production build before any local environment file exists. It verifies that
+`dist/server/.dev.vars` is absent. Chromium then exercises authentication,
+Foilbury card editorial, album and privacy journeys against a local Worker.
+The workflow run for the final source commit is the authoritative test record.
+
+`scripts/setup-ci-fixtures.mjs` creates explicitly labelled synthetic fixtures
+from tracked Foilbury brand images for these local journeys. It requires CI,
+loopback port 5173, the configured local environment, disabled external
+providers and an empty catalogue. It never resets existing data. No launch
+manifest, private roster, production credential or external artwork import is
+used. Real local front/back renders and a positive member search are required
+before running privacy assertions, so those checks cannot pass on missing data.
+
+These local suites do not prove delivered email, production launch-data
+integrity or native EmDash console admission. The documented existing Dean CMS
+mapping has not been independently verified in a live native-console session.
 
 Before release, the full check and relevant local auth/editorial browser tests
 must pass. After the approved Access change and Worker deployment, use an
 authorised fresh browser session to verify `/platform-admin`, its API,
 `/admin`, its API and `/_emdash/admin`. Explicitly verify page-to-API admission
-without manual API warm-up; successful redirects alone do not establish this.
+without manual API warm-up: the handoff completes, its probe returns 204,
+operational requests succeed, and the navigation marker disappears. Successful
+redirects alone do not establish this.
 Verify the existing Dean identities and roles, successful permitted operations,
 cross-user denial, non-owner denial and expired-token denial. Do not mark these
 live cases passed from a fixture, mock, a 302 or a screenshot of the gate.

@@ -56,29 +56,16 @@ jobs:
           FOILBURY_URL: http://localhost:5173
         run: |
           pnpm setup:local --skip-sources
-          node --input-type=module <<'NODE'
-          import { readFileSync } from "node:fs";
-          import { apiForm } from "./scripts/lib/api.mjs";
+          node scripts/setup-ci-fixtures.mjs
 
-          for (const [kind, file] of [
-            ["subject", "public/art/layers/mark.png"],
-            ["background", "public/art/layers/material-plain.png"],
-          ]) {
-            const form = new FormData();
-            form.append("file", new Blob([readFileSync(file)], { type: "image/png" }), `${kind}.png`);
-            form.append("kind", kind);
-            form.append("name", `CI ${kind}`);
-            form.append("credit", "Foilbury repository CI fixture");
-            await apiForm("/api/v1/admin/assets", form);
-          }
-          NODE
-
-      - name: Check authentication and editorial browser journeys
+      - name: Check authentication, editorial, album and privacy journeys
         env:
           FOILBURY_URL: http://localhost:5173
         run: |
           pnpm test:auth
           pnpm test:editorial
+          pnpm test:album
+          pnpm test:privacy
 
       - name: Stop local server
         if: always()

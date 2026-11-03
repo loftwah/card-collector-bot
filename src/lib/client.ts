@@ -1,5 +1,7 @@
 "use client";
 
+import { ensureAccessApiSession } from "./access-session";
+
 const FALLBACK = "This action could not be completed.";
 
 export class ApiClientError extends Error {
@@ -21,6 +23,7 @@ export async function api<T>(
   path: string,
   options: { method?: string; body?: unknown; idempotencyKey?: string } = {},
 ): Promise<T> {
+  await ensureAccessApiSession(path);
   const headers = new Headers({ accept: "application/json" });
   const token = csrfToken();
   if (token) headers.set("x-foilbury-csrf", token);
@@ -47,6 +50,7 @@ export async function api<T>(
 }
 
 export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
+  await ensureAccessApiSession(path);
   const headers = new Headers({ accept: "application/json" });
   const token = csrfToken();
   if (token) headers.set("x-foilbury-csrf", token);
@@ -74,3 +78,4 @@ export function describeError(error: unknown): string {
   if (error instanceof Error) return error.message;
   return FALLBACK;
 }
+
