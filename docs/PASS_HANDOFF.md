@@ -259,12 +259,30 @@ SHA-256 `08ea0ebe8927a02547a5ac9a1705066bc4c762e1df1ed30773506281c537cb31`).
 - Launch coverage: **560/560** variants have a render bound to the current
   edition source hash; **0** placeholder subjects; **0** duplicate launch
   editions; **140/140** sourced credits.
-- Ledger/inventory baseline preserved: 10 instances (10 owned), 19 ledger rows,
-  1,880 Foil total, unchanged by the corrective import.
+- Ledger/inventory baseline preserved by the corrective import: 10 instances
+  (10 owned), 19 ledger rows, 1,880 Foil total.
 - Temporary production agent grant and Access service token were revoked/removed
   after the import. Administration is back to the human Access path.
 - Guild command `/foilbury` re-registered with the `achievements` option; the
   existing command ID and unrelated commands were preserved.
+- Live Discord pilot (authorised `#card-collector-test`, real Loftwah account):
+  - `/foilbury open` drew **Anakt Garden — Gold**, serial `FB-4-DE-7A6A37`,
+    balance 440 Foil. This was one intentional test draw: −80 Foil, one owned
+    instance and one ledger row.
+  - `/foilbury card Anakt Garden` returned the real sourced front, private
+    `View back` / `View front` / `Details` controls, and the album link.
+  - `/foilbury achievements` returned earned 3/45, closest milestones and the
+    “Open achievements” link.
+  - `/foilbury collection` returned 10 owned / 8 unique / 2 duplicates and the
+    440 Foil balance.
+  - Viewing the back, front and details did not charge, redraw or award another
+    copy. The only new ledger row is the recorded 80 Foil draw.
+  - Two live defects were found and fixed during this pilot: link buttons were
+    encoded as component type 5 instead of button type 2, and ephemeral card
+    attachments were sent by PATCH instead of an ephemeral follow-up POST. The
+    final Worker `a3c55bc4-008d-4a76-ada0-ebc9c3c1025d` delivers both correctly.
+- Production after the intentional live draw: 11 instances (11 owned), 20
+  ledger rows, 1,800 Foil total, owner balance 440.
 
 ## Honest remaining gaps
 

@@ -1,7 +1,7 @@
 {
   "generated_at": "2026-11-03T00:30:00Z",
   "source_commit": "31f9148",
-  "worker_version": "17e140dc-9652-43cb-9d13-abbdcff9c396",
+  "worker_version": "a3c55bc4-008d-4a76-ada0-ebc9c3c1025d",
   "content_import_worker": "f7d76d03-55ad-417a-9618-8f2ca0d45041",
   "migrations": [
     "0010_render_source_hash.sql",
@@ -33,10 +33,10 @@
     "catalogue_release": 3
   },
   "production_after": {
-    "instances": 10,
-    "owned_instances": 10,
-    "ledger_rows": 19,
-    "total_balance": 1880,
+    "instances": 11,
+    "owned_instances": 11,
+    "ledger_rows": 20,
+    "total_balance": 1800,
     "collections": 21,
     "cards": 156,
     "editions": 159,
@@ -74,6 +74,30 @@
       "status": 200,
       "cache_control": "private, no-store"
     }
+  },
+  "live_discord": {
+    "channel": "#card-collector-test",
+    "guild": "Loftwah",
+    "open": {
+      "card": "Anakt Garden",
+      "finish": "Gold",
+      "serial": "FB-4-DE-7A6A37",
+      "price": 80,
+      "balance_after": 440,
+      "intentional_test_draw": true
+    },
+    "achievements": { "earned": 3, "total": 45, "status": "PASS" },
+    "collection": { "owned": 10, "unique": 8, "duplicates": 2, "balance": 440, "status": "PASS" },
+    "card_inspection": {
+      "front": "PASS",
+      "back": "PASS",
+      "details": "PASS",
+      "extra_charge_or_draw": false
+    },
+    "defects_found_and_fixed": [
+      "Link buttons were encoded as component type 5 instead of button type 2.",
+      "Ephemeral card attachments were sent by PATCH instead of an ephemeral follow-up POST."
+    ]
   },
   "temporary_access_cleanup": {
     "agent_grant_revoked": true,
