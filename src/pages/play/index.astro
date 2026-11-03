@@ -12,7 +12,7 @@ import { getPoolPreview } from "../../server/modules/pools";
 import { listCollections } from "../../server/modules/collections";
 import { listAchievements } from "../../server/modules/achievements";
 import { first } from "../../server/db";
-import { formatDual } from "../../lib/utils";
+import { formatDual, printTitle as editionPrintTitle } from "../../lib/utils";
 
 const ctx = await pageContext(Astro.request);
 const user = ctx.user!;
@@ -57,8 +57,7 @@ const canClaim = !nextEligible || new Date(nextEligible) <= new Date();
 const completed = sets.filter((set) => set.progress?.complete && !set.progress.claimed);
 const featured = inventory[0] ?? null;
 const recent = inventory.slice(1, 7);
-const printTitleOf = (item: (typeof inventory)[number] | null) =>
-  item?.edition_name?.includes(" — ") ? item.edition_name.split(" — ").slice(1).join(" — ") : null;
+const printTitleOf = (item: (typeof inventory)[number] | null) => editionPrintTitle(item?.edition_name);
 const featuredPrint = printTitleOf(featured);
 const enabledCollections = collections.filter((collection) => collection.enabled);
 const publishedSets = sets.filter((set) => set.status === "published");

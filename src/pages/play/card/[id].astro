@@ -7,7 +7,7 @@ import { pageContext } from "../../../server/page";
 import { getInstance } from "../../../server/modules/collection";
 import { getCard, listSets } from "../../../server/modules/catalogue";
 import { getWishlist } from "../../../server/modules/collection";
-import { displayFinish, formatDual } from "../../../lib/utils";
+import { displayFinish, formatDual, printTitle as editionPrintTitle } from "../../../lib/utils";
 import { recordDailyInteraction } from "../../../server/modules/missions";
 
 const ctx = await pageContext(Astro.request);
@@ -52,9 +52,7 @@ const eventLabel: Record<string, string> = {
 };
 // Multi-print editions are named "Subject — Print title". Keep the subject as
 // the card identity and surface the print title as the human-readable edition.
-const printTitle = instance.edition_name?.includes(" — ")
-  ? instance.edition_name.split(" — ").slice(1).join(" — ")
-  : null;
+const cardPrintTitle = editionPrintTitle(instance.edition_name);
 ---
 
 <PlayerLayout title={`${instance.card_name} · Collection`}>
@@ -74,7 +72,7 @@ const printTitle = instance.edition_name?.includes(" — ")
         backUrl={instance.back_render_url}
         fallbackUrl="/brand/card-back.webp"
         name={instance.card_name}
-        subtitle={printTitle ?? instance.subtitle}
+        subtitle={cardPrintTitle ?? instance.subtitle}
         finish={displayFinish(instance.variant_name, instance.material_key, instance.effect_key)}
         collection={instance.collection_name}
         serial={instance.serial}
@@ -152,7 +150,7 @@ const printTitle = instance.edition_name?.includes(" — ")
       </div>
       <h1 class="page-title mt-3">{instance.card_name}</h1>
       <p class="mt-2 text-lg text-[var(--signal)]">
-        {printTitle ? `Print · ${printTitle}` : instance.subtitle}
+        {cardPrintTitle ? `Print · ${cardPrintTitle}` : instance.subtitle}
       </p>
       <p class="prose mt-5 text-[var(--muted)]">
         {instance.bio_safe || instance.bio || instance.description}
@@ -226,7 +224,7 @@ const printTitle = instance.edition_name?.includes(" — ")
           kind="card"
           targetId={instance.id}
           title={instance.card_name}
-          description={`${printTitle ? `${printTitle} · ` : ""}${displayFinish(instance.variant_name, instance.material_key, instance.effect_key)} · ${instance.collection_name ?? "Cabinet"}. Choose the exact audience before creating a link.`}
+          description={`${cardPrintTitle ? `${cardPrintTitle} · ` : ""}${displayFinish(instance.variant_name, instance.material_key, instance.effect_key)} · ${instance.collection_name ?? "Cabinet"}. Choose the exact audience before creating a link.`}
           frontUrl={instance.render_url}
           backUrl={instance.back_render_url}
         />

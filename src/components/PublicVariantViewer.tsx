@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Box, RotateCcw, Sparkles } from "lucide-react";
-import { displayFinish } from "@/lib/utils";
+import { displayFinish, printTitle as editionPrintTitle } from "@/lib/utils";
 import CardInspector from "./player/CardInspector";
 import { cn } from "@/lib/utils";
 
@@ -17,9 +17,7 @@ interface Variant {
 }
 
 function printTitleOf(variant?: Variant): string | null {
-  return variant?.edition_name?.includes(" — ")
-    ? variant.edition_name.split(" — ").slice(1).join(" — ")
-    : null;
+  return editionPrintTitle(variant?.edition_name);
 }
 
 export default function PublicVariantViewer({

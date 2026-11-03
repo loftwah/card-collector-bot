@@ -72,3 +72,14 @@ export function displayFinish(name: string | null | undefined, material?: string
   if (material === "diamond" && (!effect || effect === "none")) return "Holographic";
   return name ?? "Plain";
 }
+
+/**
+ * A multi-print edition is named "Subject — Print title". The legacy source
+ * edition is not a second print and must not be presented as one.
+ */
+export function printTitle(editionName: string | null | undefined): string | null {
+  if (!editionName?.includes(" — ")) return null;
+  const title = editionName.split(" — ").slice(1).join(" — ").trim();
+  if (!title || /^source edition$/i.test(title)) return null;
+  return title;
+}

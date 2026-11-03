@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Heart, Loader2, Lock, Search } from "lucide-react";
 import { api, describeError } from "@/lib/client";
-import { cn } from "@/lib/utils";
+import { cn, printTitle } from "@/lib/utils";
 
 interface Item {
   id: string;
@@ -323,7 +323,7 @@ export default function CollectionBrowser({
                     {item.render_url ? (
                       <img
                         src={item.thumbnail_url ?? item.render_url}
-                        alt={`${item.card_name} — ${item.edition_name?.includes(" — ") ? item.edition_name.split(" — ").slice(1).join(" — ") : item.variant_name}`}
+                        alt={`${item.card_name} — ${printTitle(item.edition_name) ?? item.variant_name}`}
                         loading={index < 4 ? "eager" : "lazy"}
                         width="300"
                         height="420"
@@ -340,9 +340,7 @@ export default function CollectionBrowser({
                       {item.status === "reserved" ? <span className="badge">Reserved</span> : null}
                     </div>
                     <p className="mt-0.5 truncate text-xs text-[var(--muted)]">
-                      {item.edition_name?.includes(" — ")
-                        ? `${item.edition_name.split(" — ").slice(1).join(" — ")} · `
-                        : ""}
+                      {printTitle(item.edition_name) ? `${printTitle(item.edition_name)} · ` : ""}
                       {item.variant_name}
                     </p>
                     <p className="mt-1 font-mono text-[0.56rem] tracking-[0.1em] text-[var(--muted)] uppercase">
