@@ -50,14 +50,25 @@ export async function createUser(
   },
 ): Promise<{ id: string; email: string }> {
   const email = input.email.trim().toLowerCase();
-  const existing = await first<{ id: string }>(db, "SELECT id FROM fb_users WHERE email = ?", email);
+  const existing = await first<{ id: string }>(
+    db,
+    "SELECT id FROM fb_users WHERE email = ?",
+    email,
+  );
   if (existing) throw new ApiError(409, "email_exists", "That email is already registered.");
   const id = newId("usr");
   await db
     .prepare(
       "INSERT INTO fb_users (id, email, display_name, password_hash, platform_admin, created_at) VALUES (?, ?, ?, ?, ?, ?)",
     )
-    .bind(id, email, input.displayName.trim(), await hashPassword(input.password), input.platformAdmin ? 1 : 0, nowIso())
+    .bind(
+      id,
+      email,
+      input.displayName.trim(),
+      await hashPassword(input.password),
+      input.platformAdmin ? 1 : 0,
+      nowIso(),
+    )
     .run();
   return { id, email };
 }
@@ -65,7 +76,13 @@ export async function createUser(
 export async function findUserByEmail(
   db: D1Database,
   email: string,
-): Promise<{ id: string; email: string; display_name: string; email_verified_at: string | null; disabled_at: string | null } | null> {
+): Promise<{
+  id: string;
+  email: string;
+  display_name: string;
+  email_verified_at: string | null;
+  disabled_at: string | null;
+} | null> {
   return first(
     db,
     "SELECT id, email, display_name, email_verified_at, disabled_at FROM fb_users WHERE email = ?",
@@ -80,14 +97,21 @@ export async function createEmailUser(
   const email = input.email.trim().toLowerCase();
   const existing = await findUserByEmail(db, email);
   if (existing) {
-    if (existing.disabled_at) throw new ApiError(403, "account_disabled", "This account is disabled.");
+    if (existing.disabled_at)
+      throw new ApiError(403, "account_disabled", "This account is disabled.");
     if (!existing.email_verified_at) {
-      await db.prepare("UPDATE fb_users SET email_verified_at = ? WHERE id = ?").bind(nowIso(), existing.id).run();
+      await db
+        .prepare("UPDATE fb_users SET email_verified_at = ? WHERE id = ?")
+        .bind(nowIso(), existing.id)
+        .run();
     }
     return { id: existing.id, email: existing.email, displayName: existing.display_name };
   }
   const id = newId("usr");
-  const displayName = (input.displayName?.trim() || email.split("@")[0] || "Collector").slice(0, 80);
+  const displayName = (input.displayName?.trim() || email.split("@")[0] || "Collector").slice(
+    0,
+    80,
+  );
   await db
     .prepare(
       "INSERT INTO fb_users (id, email, display_name, password_hash, platform_admin, created_at, email_verified_at) VALUES (?, ?, ?, 'passwordless$no_password', 0, ?, ?)",
@@ -98,7 +122,10 @@ export async function createEmailUser(
 }
 
 export async function markEmailVerified(db: D1Database, userId: string): Promise<void> {
-  await db.prepare("UPDATE fb_users SET email_verified_at = COALESCE(email_verified_at, ?) WHERE id = ?").bind(nowIso(), userId).run();
+  await db
+    .prepare("UPDATE fb_users SET email_verified_at = COALESCE(email_verified_at, ?) WHERE id = ?")
+    .bind(nowIso(), userId)
+    .run();
 }
 
 const DEFAULT_CAPABILITIES: Record<Role, string[]> = {
@@ -113,7 +140,12 @@ export async function addMembership(
   tenantId: string,
   userId: string,
   role: Role,
-  options?: { capabilities?: string[]; status?: "active" | "invited" | "revoked"; invitedBy?: string | null; acceptedAt?: string | null },
+  options?: {
+    capabilities?: string[];
+    status?: "active" | "invited" | "revoked";
+    invitedBy?: string | null;
+    acceptedAt?: string | null;
+  },
 ): Promise<void> {
   const capabilities = options?.capabilities ?? DEFAULT_CAPABILITIES[role];
   const now = nowIso();
@@ -144,7 +176,11 @@ export async function addMembership(
     .run();
 }
 
-export async function ensureWallet(db: D1Database, tenantId: string, userId: string): Promise<void> {
+export async function ensureWallet(
+  db: D1Database,
+  tenantId: string,
+  userId: string,
+): Promise<void> {
   await db
     .prepare(
       "INSERT INTO fb_wallets (tenant_id, user_id, balance, updated_at) VALUES (?, ?, 0, ?) ON CONFLICT(tenant_id, user_id) DO NOTHING",
@@ -177,7 +213,8 @@ export async function login(
     email.trim().toLowerCase(),
     tenant.id,
   );
-  if (!row || row.disabled_at) throw new ApiError(401, "invalid_credentials", "Email or password is incorrect.");
+  if (!row || row.disabled_at)
+    throw new ApiError(401, "invalid_credentials", "Email or password is incorrect.");
   const valid = await verifyPassword(password, row.password_hash);
   if (!valid) throw new ApiError(401, "invalid_credentials", "Email or password is incorrect.");
   return createSession(db, tenant, {
@@ -196,21 +233,39 @@ export async function createSession(
   tenant: Tenant,
   user: CurrentUser,
   options?: {
-    authMethod?: "password" | "discord" | "magic_link" | "passkey" | "mfa" | "cloudflare_access" | "session_switch";
+    authMethod?:
+      | "password"
+      | "discord"
+      | "magic_link"
+      | "passkey"
+      | "mfa"
+      | "cloudflare_access"
+      | "session_switch";
     assurance?: "password" | "email" | "discord" | "access" | "passkey" | "mfa";
     accessSubject?: string | null;
     userAgent?: string | null;
     ipHash?: string | null;
     ttlSeconds?: number;
+    /** Preserve an existing strong-auth timestamp when minting a switched session. */
+    authTime?: string | null;
   },
-): Promise<{ token: string; csrf: string; expiresAt: string; user: CurrentUser; assurance: string }> {
+): Promise<{
+  token: string;
+  csrf: string;
+  expiresAt: string;
+  user: CurrentUser;
+  assurance: string;
+}> {
   const raw = token("fbs");
   const csrf = token("fbc");
   const id = newId("ses");
   const createdAt = nowIso();
-  const expiresAt = new Date(Date.now() + 1000 * (options?.ttlSeconds ?? 60 * 60 * 24 * 14)).toISOString();
+  const expiresAt = new Date(
+    Date.now() + 1000 * (options?.ttlSeconds ?? 60 * 60 * 24 * 14),
+  ).toISOString();
   const authMethod = options?.authMethod ?? "password";
   const assurance = options?.assurance ?? "password";
+  const authTime = options?.authTime ?? createdAt;
   await db
     .prepare(
       `INSERT INTO fb_sessions
@@ -229,7 +284,7 @@ export async function createSession(
       createdAt,
       authMethod,
       assurance,
-      createdAt,
+      authTime,
       options?.userAgent ?? null,
       options?.ipHash ?? null,
       options?.accessSubject ?? null,
@@ -238,18 +293,45 @@ export async function createSession(
   return { token: raw, csrf, expiresAt, user, assurance };
 }
 
+/**
+ * Mint a session for a Bot switch without laundering an old strong-auth
+ * timestamp. Switching Bots is a session convenience, not a fresh MFA event.
+ */
+export async function createSwitchedSession(
+  db: D1Database,
+  tenant: Tenant,
+  user: CurrentUser,
+  ctx: Pick<Ctx, "sessionAssurance" | "sessionAuthTime">,
+  userAgent?: string | null,
+) {
+  return createSession(db, tenant, user, {
+    authMethod: "session_switch",
+    assurance:
+      (ctx.sessionAssurance as
+        "password" | "email" | "discord" | "access" | "passkey" | "mfa" | null) ?? "password",
+    authTime: ctx.sessionAuthTime,
+    userAgent: userAgent ?? null,
+  });
+}
+
 export async function upgradeSessionAssurance(
   db: D1Database,
   sessionId: string,
   assurance: "passkey" | "mfa" | "access",
 ): Promise<void> {
   await db
-    .prepare("UPDATE fb_sessions SET assurance = ?, auth_time = ?, last_seen_at = ? WHERE id = ? AND revoked_at IS NULL")
+    .prepare(
+      "UPDATE fb_sessions SET assurance = ?, auth_time = ?, last_seen_at = ? WHERE id = ? AND revoked_at IS NULL",
+    )
     .bind(assurance, nowIso(), nowIso(), sessionId)
     .run();
 }
 
-export async function listSessions(db: D1Database, userId: string, currentSessionId?: string | null) {
+export async function listSessions(
+  db: D1Database,
+  userId: string,
+  currentSessionId?: string | null,
+) {
   return all<{
     id: string;
     auth_method: string;
@@ -270,17 +352,29 @@ export async function listSessions(db: D1Database, userId: string, currentSessio
   );
 }
 
-export async function revokeSessionById(db: D1Database, userId: string, sessionId: string): Promise<boolean> {
+export async function revokeSessionById(
+  db: D1Database,
+  userId: string,
+  sessionId: string,
+): Promise<boolean> {
   const result = await db
-    .prepare("UPDATE fb_sessions SET revoked_at = ?, revoked_reason = 'user_revoked' WHERE id = ? AND user_id = ? AND revoked_at IS NULL")
+    .prepare(
+      "UPDATE fb_sessions SET revoked_at = ?, revoked_reason = 'user_revoked' WHERE id = ? AND user_id = ? AND revoked_at IS NULL",
+    )
     .bind(nowIso(), sessionId, userId)
     .run();
   return (result.meta?.changes ?? 0) > 0;
 }
 
-export async function revokeOtherSessions(db: D1Database, userId: string, keepSessionId: string): Promise<void> {
+export async function revokeOtherSessions(
+  db: D1Database,
+  userId: string,
+  keepSessionId: string,
+): Promise<void> {
   await db
-    .prepare("UPDATE fb_sessions SET revoked_at = ?, revoked_reason = 'user_revoked_others' WHERE user_id = ? AND id <> ? AND revoked_at IS NULL")
+    .prepare(
+      "UPDATE fb_sessions SET revoked_at = ?, revoked_reason = 'user_revoked_others' WHERE user_id = ? AND id <> ? AND revoked_at IS NULL",
+    )
     .bind(nowIso(), userId, keepSessionId)
     .run();
 }
@@ -312,7 +406,8 @@ export async function issueAgentGrant(
 }> {
   const unique = [...new Set(input.scopes)];
   const invalid = unique.filter((scope) => !ALL_SCOPES.includes(scope as Scope));
-  if (invalid.length) throw new ApiError(422, "unknown_scope", `Unknown scopes: ${invalid.join(", ")}`);
+  if (invalid.length)
+    throw new ApiError(422, "unknown_scope", `Unknown scopes: ${invalid.join(", ")}`);
   if (!unique.length) throw new ApiError(422, "scope_required", "Choose at least one scope.");
   if (input.expiresInDays < 1 || input.expiresInDays > 365) {
     throw new ApiError(422, "expiry_invalid", "Grant expiry must be between 1 and 365 days.");
@@ -323,7 +418,12 @@ export async function issueAgentGrant(
     tenant.id,
     input.representedUserId,
   );
-  if (!member) throw new ApiError(422, "represented_user_invalid", "The represented user is not in this tenant.");
+  if (!member)
+    throw new ApiError(
+      422,
+      "represented_user_invalid",
+      "The represented user is not in this tenant.",
+    );
   const grantId = newId("agt");
   const agentId = newId("agent");
   const raw = token("fba");
@@ -370,7 +470,11 @@ export async function createAgentGrant(
   },
 ) {
   if (ctx.actor.type === "agent") {
-    throw new ApiError(403, "agents_cannot_administer_agents", "An agent cannot create or expand grants.");
+    throw new ApiError(
+      403,
+      "agents_cannot_administer_agents",
+      "An agent cannot create or expand grants.",
+    );
   }
   if (ctx.user?.role !== "owner") {
     throw new ApiError(403, "owner_required", "Only the tenant owner can create agent grants.");
@@ -389,16 +493,25 @@ export async function createAgentGrant(
 
 export async function revokeAgentGrant(ctx: Ctx, grantId: string): Promise<void> {
   if (ctx.actor.type === "agent") {
-    throw new ApiError(403, "agents_cannot_administer_agents", "An agent cannot revoke or alter grants.");
+    throw new ApiError(
+      403,
+      "agents_cannot_administer_agents",
+      "An agent cannot revoke or alter grants.",
+    );
   }
-  if (ctx.user?.role !== "owner") throw new ApiError(403, "owner_required", "Only the owner can revoke grants.");
+  if (ctx.user?.role !== "owner")
+    throw new ApiError(403, "owner_required", "Only the owner can revoke grants.");
   const now = nowIso();
   await ctx.db.batch([
     ctx.db
-      .prepare("UPDATE fb_agent_grants SET status = 'revoked', revoked_at = ? WHERE id = ? AND tenant_id = ?")
+      .prepare(
+        "UPDATE fb_agent_grants SET status = 'revoked', revoked_at = ? WHERE id = ? AND tenant_id = ?",
+      )
       .bind(now, grantId, ctx.tenant.id),
     ctx.db
-      .prepare("UPDATE fb_agent_tokens SET revoked_at = ? WHERE grant_id = ? AND revoked_at IS NULL")
+      .prepare(
+        "UPDATE fb_agent_tokens SET revoked_at = ? WHERE grant_id = ? AND revoked_at IS NULL",
+      )
       .bind(now, grantId),
     auditStatement(ctx, "agent.grant.revoked", "agent_grant", grantId),
   ]);
@@ -446,7 +559,11 @@ export async function changePassword(
   currentPassword: string,
   newPassword: string,
 ): Promise<void> {
-  const row = await first<{ password_hash: string }>(db, "SELECT password_hash FROM fb_users WHERE id = ?", userId);
+  const row = await first<{ password_hash: string }>(
+    db,
+    "SELECT password_hash FROM fb_users WHERE id = ?",
+    userId,
+  );
   if (!row) throw new ApiError(404, "user_not_found", "User not found.");
   if (!(await verifyPassword(currentPassword, row.password_hash))) {
     throw new ApiError(403, "invalid_credentials", "Current password is incorrect.");
@@ -546,7 +663,6 @@ export async function seedIdentityTaxonomy(db: D1Database, tenantId: string): Pr
   await db.batch(allStatements);
 }
 
-
 /** Explicit local-only convenience. The API route enforces loopback + FOILBURY_LOCAL_MODE + FOILBURY_DEV_LOGIN. */
 export async function devLogin(db: D1Database, tenant: Tenant, email: string) {
   const row = await first<{
@@ -566,7 +682,12 @@ export async function devLogin(db: D1Database, tenant: Tenant, email: string) {
     email.trim().toLowerCase(),
     tenant.id,
   );
-  if (!row || row.disabled_at) throw new ApiError(404, "dev_account_not_found", "That local development account does not exist.");
+  if (!row || row.disabled_at)
+    throw new ApiError(
+      404,
+      "dev_account_not_found",
+      "That local development account does not exist.",
+    );
   return createSession(db, tenant, {
     id: row.id,
     email: row.email,

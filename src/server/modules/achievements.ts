@@ -3,6 +3,7 @@ import { all, first, nowIso } from "../db";
 import { newId } from "../ids";
 import { auditStatement } from "../http";
 import { creditWallet } from "./wallet";
+import { visibleCollectionIds } from "./visibility";
 
 export interface AchievementDefinition {
   id: string;
@@ -94,12 +95,20 @@ async function fulfilAchievementReward(
         rewardLedgerId = credit.ledgerId;
       } catch (error) {
         await ctx.db
-          .prepare("UPDATE fb_achievement_unlocks SET reward_state = 'failed', reward_ledger_id = NULL WHERE id = ? AND tenant_id = ?")
+          .prepare(
+            "UPDATE fb_achievement_unlocks SET reward_state = 'failed', reward_ledger_id = NULL WHERE id = ? AND tenant_id = ?",
+          )
           .bind(unlock.id, ctx.tenant.id)
           .run()
           .catch(() => undefined);
         console.error(
-          JSON.stringify({ level: "error", message: "achievement reward failed", achievement: definition.key, unlock: unlock.id, error: String(error) }),
+          JSON.stringify({
+            level: "error",
+            message: "achievement reward failed",
+            achievement: definition.key,
+            unlock: unlock.id,
+            error: String(error),
+          }),
         );
         return { rewardState: "failed", notificationState: unlock.notification_state };
       }
@@ -128,14 +137,20 @@ async function fulfilAchievementReward(
         .bind(
           newId("obx"),
           ctx.tenant.id,
-          JSON.stringify({ unlock_id: unlock.id, user_id: unlock.user_id, achievement_id: unlock.achievement_id }),
+          JSON.stringify({
+            unlock_id: unlock.id,
+            user_id: unlock.user_id,
+            achievement_id: unlock.achievement_id,
+          }),
           nowIso(),
           nowIso(),
         )
         .run();
     } else if (outbox.status === "failed") {
       await ctx.db
-        .prepare("UPDATE fb_outbox SET status = 'pending', attempts = 0, available_at = ?, last_error = NULL WHERE id = ? AND tenant_id = ?")
+        .prepare(
+          "UPDATE fb_outbox SET status = 'pending', attempts = 0, available_at = ?, last_error = NULL WHERE id = ? AND tenant_id = ?",
+        )
         .bind(nowIso(), outbox.id, ctx.tenant.id)
         .run();
     } else if (outbox.status === "delivered") {
@@ -152,7 +167,10 @@ async function fulfilAchievementReward(
   return { rewardState, notificationState };
 }
 
-export function finishKey(material: string, effect: string | null | undefined): "plain" | "silver" | "gold" | "holographic" | "other" {
+export function finishKey(
+  material: string,
+  effect: string | null | undefined,
+): "plain" | "silver" | "gold" | "holographic" | "other" {
   if (effect === "holographic" || material === "diamond") return "holographic";
   if (material === "silver") return "silver";
   if (material === "gold") return "gold";
@@ -185,9 +203,19 @@ export async function evaluateAchievements(
 ): Promise<{ evaluated: number; unlocked: AchievementView[] }> {
   const user = ctx.user;
   const userId = input.userId ?? user?.id;
-  if (!userId) throw new ApiError(401, "authentication_required", "Sign in to evaluate achievements.");
-  if (input.userId && input.userId !== user?.id && !user?.platformAdmin && !["owner", "editor"].includes(user?.role ?? "")) {
-    throw new ApiError(403, "insufficient_role", "You cannot evaluate another member's achievements.");
+  if (!userId)
+    throw new ApiError(401, "authentication_required", "Sign in to evaluate achievements.");
+  if (
+    input.userId &&
+    input.userId !== user?.id &&
+    !user?.platformAdmin &&
+    !["owner", "editor"].includes(user?.role ?? "")
+  ) {
+    throw new ApiError(
+      403,
+      "insufficient_role",
+      "You cannot evaluate another member's achievements.",
+    );
   }
 
   const definitions = await all<AchievementDefinition>(
@@ -278,7 +306,8 @@ export async function evaluateAchievements(
     } else if (type === "finish_set") {
       let complete = 0;
       for (const set of finishByCard.values()) {
-        if (set.has("plain") && set.has("silver") && set.has("gold") && set.has("holographic")) complete += 1;
+        if (set.has("plain") && set.has("silver") && set.has("gold") && set.has("holographic"))
+          complete += 1;
       }
       progress = complete;
       target = 1;
@@ -324,7 +353,8 @@ export async function evaluateAchievements(
       continue;
     }
 
-    const state: AchievementProgress["state"] = progress >= target ? "earned" : progress > 0 ? "in_progress" : "locked";
+    const state: AchievementProgress["state"] =
+      progress >= target ? "earned" : progress > 0 ? "in_progress" : "locked";
     const now = nowIso();
     await ctx.db
       .prepare(
@@ -338,8 +368,6 @@ export async function evaluateAchievements(
       )
       .bind(ctx.tenant.id, userId, definition.id, definition.version, progress, target, state, now)
       .run();
-
-    if (state !== "earned") continue;
 
     const existing = await first<{
       id: string;
@@ -360,13 +388,15 @@ export async function evaluateAchievements(
       definition.version,
     );
     if (existing) {
+      // An entitlement is permanent once earned. Fulfilment is retried even if
+      // the player has since traded, recycled or lost the qualifying card.
       const fulfilled = await fulfilAchievementReward(ctx, existing, definition);
       unlocked.push(
         toView(
           definition,
           criteria,
           reward,
-          { progress, target, state },
+          { progress: Math.max(progress, target), target, state: "earned" },
           existing.earned_at,
           existing.reward_amount,
           fulfilled.rewardState,
@@ -375,6 +405,8 @@ export async function evaluateAchievements(
       );
       continue;
     }
+
+    if (state !== "earned") continue;
 
     const unlockId = newId("unl");
     const rewardAmount = Math.max(0, Math.floor(Number(reward.foil ?? 0)));
@@ -385,7 +417,18 @@ export async function evaluateAchievements(
             (id, tenant_id, user_id, achievement_id, achievement_version, event_id, earned_at, reward_state, reward_amount, notification_state, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
         )
-        .bind(unlockId, ctx.tenant.id, userId, definition.id, definition.version, input.eventId ?? null, now, rewardAmount > 0 ? "pending" : "none", rewardAmount, now)
+        .bind(
+          unlockId,
+          ctx.tenant.id,
+          userId,
+          definition.id,
+          definition.version,
+          input.eventId ?? null,
+          now,
+          rewardAmount > 0 ? "pending" : "none",
+          rewardAmount,
+          now,
+        )
         .run();
     } catch (error) {
       if (!String(error).includes("UNIQUE")) throw error;
@@ -466,14 +509,35 @@ export async function listAchievements(ctx: Ctx, userId?: string): Promise<Achie
       ORDER BY sort, name`,
     ctx.tenant.id,
   );
+  // Achievement names, criteria and progress must not reveal a collection the
+  // viewer cannot enter. Collection-linked definitions inherit that
+  // collection's audience; anonymous viewers never receive member-only badges.
+  const visibleCollections = await visibleCollectionIds(ctx);
+  const visible = definitions.filter((definition) => {
+    const criteria = parseJson<Record<string, unknown>>(definition.criteria_json, {});
+    const collectionId = typeof criteria.collection_id === "string" ? criteria.collection_id : "";
+    if (collectionId && !visibleCollections.has(collectionId)) return false;
+    if (definition.visibility === "private") {
+      return targetUserId === ctx.user?.id || Boolean(ctx.user?.platformAdmin);
+    }
+    if (definition.visibility === "public") return true;
+    return Boolean(ctx.user);
+  });
   if (!targetUserId) {
-    return definitions
-      .filter((definition) => definition.visibility !== "private")
-      .map((definition) => {
-        const criteria = parseJson<Record<string, unknown>>(definition.criteria_json, {});
-        const reward = parseJson<Record<string, unknown>>(definition.reward_json, {});
-        return toView(definition, criteria, reward, { progress: 0, target: criteriaTarget(criteria), state: "locked" }, null, 0, null, null);
-      });
+    return visible.map((definition) => {
+      const criteria = parseJson<Record<string, unknown>>(definition.criteria_json, {});
+      const reward = parseJson<Record<string, unknown>>(definition.reward_json, {});
+      return toView(
+        definition,
+        criteria,
+        reward,
+        { progress: 0, target: criteriaTarget(criteria), state: "locked" },
+        null,
+        0,
+        null,
+        null,
+      );
+    });
   }
   const progressRows = await all<{
     achievement_id: string;
@@ -500,31 +564,33 @@ export async function listAchievements(ctx: Ctx, userId?: string): Promise<Achie
     ctx.tenant.id,
     targetUserId,
   );
-  const progressMap = new Map(progressRows.map((row) => [`${row.achievement_id}:${row.achievement_version}`, row]));
-  const unlockMap = new Map(unlocks.map((row) => [`${row.achievement_id}:${row.achievement_version}`, row]));
-  return definitions
-    .filter((definition) => definition.visibility !== "private" || targetUserId === ctx.user?.id || ctx.user?.platformAdmin)
-    .map((definition) => {
-      const criteria = parseJson<Record<string, unknown>>(definition.criteria_json, {});
-      const reward = parseJson<Record<string, unknown>>(definition.reward_json, {});
-      const key = `${definition.id}:${definition.version}`;
-      const progress = progressMap.get(key);
-      const unlock = unlockMap.get(key);
-      return toView(
-        definition,
-        criteria,
-        reward,
-        {
-          progress: progress?.progress ?? 0,
-          target: progress?.target ?? criteriaTarget(criteria),
-          state: unlock ? "earned" : (progress?.state ?? "locked"),
-        },
-        unlock?.earned_at ?? null,
-        unlock?.reward_amount ?? 0,
-        unlock?.reward_state ?? null,
-        unlock?.notification_state ?? null,
-      );
-    });
+  const progressMap = new Map(
+    progressRows.map((row) => [`${row.achievement_id}:${row.achievement_version}`, row]),
+  );
+  const unlockMap = new Map(
+    unlocks.map((row) => [`${row.achievement_id}:${row.achievement_version}`, row]),
+  );
+  return visible.map((definition) => {
+    const criteria = parseJson<Record<string, unknown>>(definition.criteria_json, {});
+    const reward = parseJson<Record<string, unknown>>(definition.reward_json, {});
+    const key = `${definition.id}:${definition.version}`;
+    const progress = progressMap.get(key);
+    const unlock = unlockMap.get(key);
+    return toView(
+      definition,
+      criteria,
+      reward,
+      {
+        progress: progress?.progress ?? 0,
+        target: progress?.target ?? criteriaTarget(criteria),
+        state: unlock ? "earned" : (progress?.state ?? "locked"),
+      },
+      unlock?.earned_at ?? null,
+      unlock?.reward_amount ?? 0,
+      unlock?.reward_state ?? null,
+      unlock?.notification_state ?? null,
+    );
+  });
 }
 
 export async function recordCollectionExploration(ctx: Ctx, collectionId: string): Promise<void> {
@@ -537,7 +603,14 @@ export async function recordCollectionExploration(ctx: Ctx, collectionId: string
        VALUES (?, ?, ?, 'collection.explored', 'collection', ?, ?, '{}', ?)
        ON CONFLICT(tenant_id, dedupe_key) DO NOTHING`,
     )
-    .bind(newId("evt"), ctx.tenant.id, user.id, collectionId, `explore:${user.id}:${collectionId}`, now)
+    .bind(
+      newId("evt"),
+      ctx.tenant.id,
+      user.id,
+      collectionId,
+      `explore:${user.id}:${collectionId}`,
+      now,
+    )
     .run()
     .catch(() => undefined);
 }
@@ -600,17 +673,24 @@ export async function createAchievement(
     requireSuperAdminContent(ctx);
   }
   if (input.scope === "bot" && user.role !== "owner" && !["owner", "editor"].includes(user.role)) {
-    throw new ApiError(403, "insufficient_role", "Only the Bot Owner or an editor can create Bot achievements.");
+    throw new ApiError(
+      403,
+      "insufficient_role",
+      "Only the Bot Owner or an editor can create Bot achievements.",
+    );
   }
   const now = nowIso();
   const id = newId("ach");
-  const version = (await first<{ version: number }>(
-    ctx.db,
-    "SELECT COALESCE(MAX(version), 0) + 1 AS version FROM fb_achievement_definitions WHERE scope = ? AND COALESCE(tenant_id, '') = ? AND key = ?",
-    input.scope,
-    input.scope === "platform" ? "" : ctx.tenant.id,
-    input.key,
-  ))?.version ?? 1;
+  const version =
+    (
+      await first<{ version: number }>(
+        ctx.db,
+        "SELECT COALESCE(MAX(version), 0) + 1 AS version FROM fb_achievement_definitions WHERE scope = ? AND COALESCE(tenant_id, '') = ? AND key = ?",
+        input.scope,
+        input.scope === "platform" ? "" : ctx.tenant.id,
+        input.key,
+      )
+    )?.version ?? 1;
   await ctx.db
     .prepare(
       `INSERT INTO fb_achievement_definitions
@@ -635,10 +715,12 @@ export async function createAchievement(
       now,
     )
     .run();
-  await auditStatement(ctx, "achievement.created", "achievement", id, { key: input.key, version }).run();
+  await auditStatement(ctx, "achievement.created", "achievement", id, {
+    key: input.key,
+    version,
+  }).run();
   return id;
 }
-
 
 /**
  * Resumable, idempotent backfill. Every unlock and reward credit is unique, so

@@ -23,6 +23,7 @@ export const DISCORD_COMMANDS = [
       },
       { type: 1, name: "packs", description: "List eligible capsule pools" },
       { type: 1, name: "achievements", description: "View your achievements and next milestones" },
+      { type: 1, name: "tour", description: "Start the guided Foilbury tour" },
       { type: 1, name: "profile", description: "View your player profile" },
       { type: 1, name: "help", description: "Explain Foilbury commands and next steps" },
       {
@@ -98,6 +99,7 @@ export const HELP_TEXT = [
   "`/foilbury card <query>` — inspect a catalogue card",
   "`/foilbury packs` — list eligible pools and prices",
   "`/foilbury achievements` — see earned badges and what is close",
+  "`/foilbury tour` — run the guided welcome, album, opening and sharing tour",
   "`/foilbury profile` — see your balance and daily status",
   "",
   "Admin commands: `/foilbury admin status|settings|pools|enable|disable|grant`.",

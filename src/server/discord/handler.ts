@@ -62,10 +62,29 @@ async function recordFinish(
 
 function isEphemeralInteraction(interaction: DiscordInteraction): boolean {
   if (interaction.type === 3) {
-    return !interaction.data?.custom_id?.startsWith("foilbury:open:");
+    const customId = interaction.data?.custom_id ?? "";
+    if (customId.startsWith("foilbury:tourshare:")) return false;
+    return !customId.startsWith("foilbury:open:");
   }
   const top = interaction.data?.options?.find((option) => option.type === 1 || option.type === 2);
   return top?.name !== "open";
+}
+
+/**
+ * Admin controls must remain reachable while Discord gameplay is disabled, so
+ * an authorised Bot Owner can turn the installation back on. Authorisation is
+ * still enforced by every admin command and confirmation handler.
+ */
+function isAdminInteraction(interaction: DiscordInteraction): boolean {
+  if (interaction.type === 2) {
+    const top = interaction.data?.options?.find((option) => option.type === 1 || option.type === 2);
+    return top?.name === "admin";
+  }
+  if (interaction.type === 3) {
+    const customId = interaction.data?.custom_id ?? "";
+    return customId.startsWith("foilbury:confirm:") || customId.startsWith("foilbury:cancel:");
+  }
+  return false;
 }
 
 async function discordBody(
@@ -73,7 +92,10 @@ async function discordBody(
   callback: DiscordCallback,
 ): Promise<{ body: BodyInit; headers: Record<string, string> }> {
   if (!callback.attachments?.length) {
-    return { body: JSON.stringify(callback.data ?? {}), headers: { "content-type": "application/json" } };
+    return {
+      body: JSON.stringify(callback.data ?? {}),
+      headers: { "content-type": "application/json" },
+    };
   }
   const form = new FormData();
   form.append("payload_json", JSON.stringify(callback.data ?? {}));
@@ -82,13 +104,21 @@ async function discordBody(
     const object = await env.MEDIA.get(attachment.r2Key);
     if (!object) continue;
     const bytes = await object.arrayBuffer();
-    form.append(`files[${index}]`, new Blob([bytes as unknown as BlobPart], { type: attachment.contentType }), attachment.filename);
+    form.append(
+      `files[${index}]`,
+      new Blob([bytes as unknown as BlobPart], { type: attachment.contentType }),
+      attachment.filename,
+    );
     index += 1;
   }
   return { body: form, headers: {} };
 }
 
-async function editOriginal(env: DiscordEnv, interaction: DiscordInteraction, callback: DiscordCallback): Promise<void> {
+async function editOriginal(
+  env: DiscordEnv,
+  interaction: DiscordInteraction,
+  callback: DiscordCallback,
+): Promise<void> {
   const request = await discordBody(env, callback);
   const response = await fetch(
     `https://discord.com/api/v10/webhooks/${encodeURIComponent(interaction.application_id)}/${encodeURIComponent(interaction.token)}/messages/@original`,
@@ -108,7 +138,11 @@ async function editOriginal(env: DiscordEnv, interaction: DiscordInteraction, ca
   }
 }
 
-async function sendFollowUp(env: DiscordEnv, interaction: DiscordInteraction, callback: DiscordCallback): Promise<string | null> {
+async function sendFollowUp(
+  env: DiscordEnv,
+  interaction: DiscordInteraction,
+  callback: DiscordCallback,
+): Promise<string | null> {
   const request = await discordBody(env, callback);
   const response = await fetch(
     `https://discord.com/api/v10/webhooks/${encodeURIComponent(interaction.application_id)}/${encodeURIComponent(interaction.token)}?wait=true`,
@@ -147,7 +181,11 @@ async function deleteOriginal(interaction: DiscordInteraction): Promise<void> {
   ).catch(() => undefined);
 }
 
-async function processDeferred(env: DiscordEnv, interaction: DiscordInteraction, applicationId: string): Promise<void> {
+async function processDeferred(
+  env: DiscordEnv,
+  interaction: DiscordInteraction,
+  applicationId: string,
+): Promise<void> {
   try {
     const guildId = interaction.guild_id;
     if (!guildId) {
@@ -155,13 +193,19 @@ async function processDeferred(env: DiscordEnv, interaction: DiscordInteraction,
         env,
         interaction,
         errorCallback(
-          new ApiError(403, "discord_guild_required", "Foilbury only works in a server where this Bot is installed."),
+          new ApiError(
+            403,
+            "discord_guild_required",
+            "Foilbury only works in a server where this Bot is installed.",
+          ),
         ),
       );
       await recordFinish(env, interaction.id, "failed", "discord_guild_required");
       return;
     }
-    const resolved = await resolveInstallation(env, interaction, applicationId);
+    const resolved = await resolveInstallation(env, interaction, applicationId, {
+      allowDisabledGame: isAdminInteraction(interaction),
+    });
     const discordUser = interactionUser(interaction);
     const player = await ensureDiscordPlayer(env, resolved.tenant, discordUser);
     const ctx = buildDiscordContext(env, resolved.tenant, player.user, interaction);
@@ -171,8 +215,21 @@ async function processDeferred(env: DiscordEnv, interaction: DiscordInteraction,
         ? await runCommand(ctx, interaction, resolved.installation)
         : await runComponent(ctx, interaction, resolved.installation);
     const needsAttachmentFollowUp = Boolean(callback.attachments?.length);
-    if (isEphemeralInteraction(interaction) && !needsAttachmentFollowUp) {
-      await editOriginal(env, interaction, callback);
+    const wantsEphemeral = Boolean((callback.data?.flags ?? 0) & 64);
+    if ((isEphemeralInteraction(interaction) || wantsEphemeral) && !needsAttachmentFollowUp) {
+      if (wantsEphemeral && !isEphemeralInteraction(interaction)) {
+        // The deferred acknowledgement was public, but the completed result is
+        // restricted. Deliver an ephemeral follow-up and remove the placeholder.
+        const delivered = await sendFollowUp(env, interaction, callback);
+        if (delivered) {
+          const original = await originalMessageId(interaction);
+          if (original && original !== delivered) await deleteOriginal(interaction);
+        } else {
+          await editOriginal(env, interaction, callback);
+        }
+      } else {
+        await editOriginal(env, interaction, callback);
+      }
     } else {
       // Card reveals are delivered as a normal follow-up with the render
       // attached, so the artwork is visible even when Discord's external image
@@ -205,7 +262,12 @@ async function processDeferred(env: DiscordEnv, interaction: DiscordInteraction,
       env,
       interaction,
       errorCallback(
-        api ?? new ApiError(500, "internal_error", "Foilbury could not complete that interaction. Nothing was changed."),
+        api ??
+          new ApiError(
+            500,
+            "internal_error",
+            "Foilbury could not complete that interaction. Nothing was changed.",
+          ),
       ),
     );
   }
@@ -221,7 +283,11 @@ async function processDeferred(env: DiscordEnv, interaction: DiscordInteraction,
 export async function handleDiscordInteraction(
   request: Request,
   env: DiscordEnv,
-  options?: { publicKey?: string; nowSeconds?: number; waitUntil?: (promise: Promise<unknown>) => void },
+  options?: {
+    publicKey?: string;
+    nowSeconds?: number;
+    waitUntil?: (promise: Promise<unknown>) => void;
+  },
 ): Promise<Response> {
   if (request.method !== "POST") {
     return jsonResponse({ error: "Use POST for Discord interactions." }, 405);
@@ -244,7 +310,10 @@ export async function handleDiscordInteraction(
     });
   } catch (error) {
     const api = error instanceof ApiError ? error : null;
-    return jsonResponse({ error: api?.message ?? "Discord signature verification failed." }, api?.status ?? 401);
+    return jsonResponse(
+      { error: api?.message ?? "Discord signature verification failed." },
+      api?.status ?? 401,
+    );
   }
 
   let interaction: DiscordInteraction;
@@ -253,7 +322,12 @@ export async function handleDiscordInteraction(
   } catch {
     return jsonResponse({ error: "The interaction body is not valid JSON." }, 400);
   }
-  if (!interaction || typeof interaction !== "object" || typeof interaction.id !== "string" || typeof interaction.token !== "string") {
+  if (
+    !interaction ||
+    typeof interaction !== "object" ||
+    typeof interaction.id !== "string" ||
+    typeof interaction.token !== "string"
+  ) {
     return jsonResponse({ error: "The interaction payload is malformed." }, 400);
   }
 
@@ -262,7 +336,10 @@ export async function handleDiscordInteraction(
     return jsonResponse({ error: "The Discord application ID is not configured." }, 503);
   }
   if (interaction.application_id !== applicationId) {
-    return jsonResponse({ error: "This interaction belongs to a different Discord application." }, 401);
+    return jsonResponse(
+      { error: "This interaction belongs to a different Discord application." },
+      401,
+    );
   }
 
   if (interaction.type === 1) {
@@ -289,11 +366,17 @@ export async function handleDiscordInteraction(
     if (!guildId) {
       return jsonResponse(
         errorCallback(
-          new ApiError(403, "discord_guild_required", "Foilbury only works in a server where this Bot is installed."),
+          new ApiError(
+            403,
+            "discord_guild_required",
+            "Foilbury only works in a server where this Bot is installed.",
+          ),
         ),
       );
     }
-    const resolved = await resolveInstallation(env, interaction, applicationId);
+    const resolved = await resolveInstallation(env, interaction, applicationId, {
+      allowDisabledGame: isAdminInteraction(interaction),
+    });
     const discordUser = interactionUser(interaction);
     const player = await ensureDiscordPlayer(env, resolved.tenant, discordUser);
     const ctx = buildDiscordContext(env, resolved.tenant, player.user, interaction);
@@ -322,7 +405,12 @@ export async function handleDiscordInteraction(
     }
     return jsonResponse(
       errorCallback(
-        api ?? new ApiError(500, "internal_error", "Foilbury could not complete that interaction. Nothing was changed."),
+        api ??
+          new ApiError(
+            500,
+            "internal_error",
+            "Foilbury could not complete that interaction. Nothing was changed.",
+          ),
       ),
     );
   }

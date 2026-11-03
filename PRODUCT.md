@@ -23,7 +23,7 @@ Foilbury is a collectible-card cabinet. A player claims a free allowance, opens 
 - Player cabinet: collection filtered by collection and set, draw studio, rewards, trades, preferences and share links.
 - Bot administration at `/admin/*`: catalogue, artwork editions, collections, team invitations, sets, pools, economy, availability, imports, render studio and audit.
 - Platform Administration at `/platform-admin`: accounts, Access links, Bots, installations, global collections, explicit Super Admin record and audit.
-- Discord HTTP interactions at `/api/discord/interactions`: `/foilbury open`, `daily`, `collection`, `card`, `packs`, `profile`, `help` and guarded `admin` subcommands.
+- Discord HTTP interactions at `/api/discord/interactions`: `/foilbury open`, `daily`, `collection`, `card`, `packs`, `achievements`, `tour`, `profile`, `help` and guarded `admin` subcommands. The guided tour is private by default and shares only after explicit audience checks.
 - Headless REST API, CLI and stdio MCP server using scoped agent grants.
 - EmDash is the editorial CMS for journal drafts and media; Foilbury remains the source of truth for card identity, artwork editions, categories, tags, pools, awards and inventory.
 

@@ -54,6 +54,8 @@
     "test:album": "node scripts/test-album-e2e.mjs",
     "demo": "node scripts/demo-walkthrough.mjs",
     "demo:show": "node scripts/demo-walkthrough.mjs --headed --open",
+    "demo:album": "node scripts/demo-album.mjs",
+    "demo:discord:check": "node scripts/discord/preflight.mjs",
     "test:privacy": "node scripts/test-privacy.mjs",
     "test:seo": "node scripts/test-seo.mjs",
     "test:achievements": "vitest run --config vitest.workers.config.ts tests/workers/achievements.test.ts tests/workers/gifts.test.ts tests/workers/visibility.test.ts",
