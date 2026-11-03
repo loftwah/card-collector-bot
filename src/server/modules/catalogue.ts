@@ -277,59 +277,78 @@ async function hydrateCards(ctx: Ctx, rows: CardRow[]): Promise<CardView[]> {
     ...ids,
   );
   const editionIds = editions.map((edition) => edition.id);
-  const variants =
-    editionIds.length > 0
-      ? await all<
-          VariantRow & {
-            material_key: string;
-            material_name: string;
-            effect_key: string | null;
-            effect_name: string | null;
-          }
-        >(
-          ctx.db,
-          `SELECT v.*, m.key AS material_key, m.name AS material_name, e.key AS effect_key, e.name AS effect_name
-             FROM fb_variants v JOIN fb_materials m ON m.id = v.material_id AND m.tenant_id = v.tenant_id
-             LEFT JOIN fb_effects e ON e.id = v.effect_id AND e.tenant_id = v.tenant_id
-            WHERE v.tenant_id = ? AND v.edition_id IN (${editionIds.map(() => "?").join(",")}) AND v.archived_at IS NULL
-            ORDER BY m.sort, e.sort`,
-          ctx.tenant.id,
-          ...editionIds,
-        )
-      : [];
+  // D1 allows a limited number of bound parameters per statement. Multi-print
+  // subjects can push a 20-card hydration batch over that budget, so each
+  // IN(...) query is chunked. This is a parameter bound, not a behavioural cap.
+  const inChunks = async <T>(
+    values: string[],
+    run: (chunk: string[]) => Promise<T[]>,
+    size = 80,
+  ): Promise<T[]> => {
+    const rows: T[] = [];
+    for (let index = 0; index < values.length; index += size) {
+      rows.push(...(await run(values.slice(index, index + size))));
+    }
+    return rows;
+  };
+  const variants = await inChunks<VariantRow & {
+    material_key: string;
+    material_name: string;
+    effect_key: string | null;
+    effect_name: string | null;
+  }>(editionIds, (chunk) =>
+    all(
+      ctx.db,
+      `SELECT v.*, m.key AS material_key, m.name AS material_name, e.key AS effect_key, e.name AS effect_name
+         FROM fb_variants v JOIN fb_materials m ON m.id = v.material_id AND m.tenant_id = v.tenant_id
+         LEFT JOIN fb_effects e ON e.id = v.effect_id AND e.tenant_id = v.tenant_id
+        WHERE v.tenant_id = ? AND v.edition_id IN (${chunk.map(() => "?").join(",")}) AND v.archived_at IS NULL
+        ORDER BY m.sort, e.sort`,
+      ctx.tenant.id,
+      ...chunk,
+    ),
+  );
   const variantIds = variants.map((variant) => variant.id);
-  const renders =
-    variantIds.length > 0
-      ? await all<{ variant_id: string; asset_id: string; public_url: string; status: string }>(
-          ctx.db,
-          `SELECT variant_id, asset_id, public_url, status FROM fb_variant_renders
-            WHERE tenant_id = ? AND variant_id IN (${variantIds.map(() => "?").join(",")}) AND status = 'published'`,
-          ctx.tenant.id,
-          ...variantIds,
-        )
-      : [];
+  const renders = await inChunks<{
+    variant_id: string;
+    asset_id: string;
+    public_url: string;
+    status: string;
+  }>(variantIds, (chunk) =>
+    all(
+      ctx.db,
+      `SELECT variant_id, asset_id, public_url, status FROM fb_variant_renders
+        WHERE tenant_id = ? AND variant_id IN (${chunk.map(() => "?").join(",")}) AND status = 'published'`,
+      ctx.tenant.id,
+      ...chunk,
+    ),
+  );
   const renderMap = new Map(renders.map((render) => [render.variant_id, render]));
-  const backRenders =
-    variantIds.length > 0
-      ? await all<{ variant_id: string; asset_id: string }>(
-          ctx.db,
-          `SELECT variant_id, asset_id FROM fb_variant_back_renders
-            WHERE tenant_id = ? AND variant_id IN (${variantIds.map(() => "?").join(",")}) AND status = 'published'`,
-          ctx.tenant.id,
-          ...variantIds,
-        )
-      : [];
+  const backRenders = await inChunks<{ variant_id: string; asset_id: string }>(
+    variantIds,
+    (chunk) =>
+      all(
+        ctx.db,
+        `SELECT variant_id, asset_id FROM fb_variant_back_renders
+          WHERE tenant_id = ? AND variant_id IN (${chunk.map(() => "?").join(",")}) AND status = 'published'`,
+        ctx.tenant.id,
+        ...chunk,
+      ),
+  );
   const backMap = new Map(backRenders.map((render) => [render.variant_id, render]));
-  const derivativeRows =
-    variantIds.length > 0
-      ? await all<{ id: string; source_asset_id: string; size_key: string }>(
-          ctx.db,
-          `SELECT id, source_asset_id, size_key FROM fb_asset_derivatives
-            WHERE tenant_id = ? AND source_asset_id IN (${renders.map(() => "?").join(",")}) AND status = 'ready'`,
-          ctx.tenant.id,
-          ...renders.map((render) => render.asset_id),
-        )
-      : [];
+  const derivativeRows = await inChunks<{
+    id: string;
+    source_asset_id: string;
+    size_key: string;
+  }>(renders.map((render) => render.asset_id), (chunk) =>
+    all(
+      ctx.db,
+      `SELECT id, source_asset_id, size_key FROM fb_asset_derivatives
+        WHERE tenant_id = ? AND source_asset_id IN (${chunk.map(() => "?").join(",")}) AND status = 'ready'`,
+      ctx.tenant.id,
+      ...chunk,
+    ),
+  );
   const derivativeMap = new Map(
     derivativeRows.map((row) => [`${row.source_asset_id}:${row.size_key}`, row.id]),
   );
