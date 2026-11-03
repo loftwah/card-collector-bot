@@ -1,9 +1,15 @@
 # Foilbury quality recovery — 2026-11-03 evening
 
-Source commit: `8aa40848f0b453a17d1d8b72f37ab5e272bf6f6c` (`8aa4084`).
+Source commit at the time of this report: `8aa40848f0b453a17d1d8b72f37ab5e272bf6f6c` (`8aa4084`).
 Deployed Worker at the time of this report: `c6f0b94a-c2f6-4461-ae59-321db9b7079e`.
-**This local work is not deployed.** The production site still serves the previous
-build; deployment and the bounded member re-render remain approval-gated.
+
+**Update 2026/11/04:** this quality-recovery work is now deployed as part of
+Worker `23bd6238-e2af-4467-8c9b-53d35b622be7` from source `1947875`, schema
+through `0023`. The production catalogue read-back is 672/672 fronts and 672/672
+backs, with no pending render jobs; a Monokuma Gold sample shows the full body
+inside the new art window. The release also fixed a D1 bound-parameter
+regression in catalogue hydration. Keep this document as the historical
+before/after record.
 
 Status vocabulary: **PASS**, **FAIL**, **BLOCKED**, **PARTIAL**. A passing test or a
 clean axe report is not a substitute for the owner looking at the product.

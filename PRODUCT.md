@@ -67,5 +67,5 @@ Foilbury is a collectible-card cabinet. A player claims a free allowance, opens 
 - Production member card renders for the pre-existing 560 variants were generated with the previous composure; a bounded re-render/publication plan is prepared. Do not claim those old member renders are the new composure.
 - The Signal Fold identity is selected and applied to the Foilbury application; the Loftwah guild icon was not changed and the server banner is blocked by the Boost entitlement. The bot profile banner remains a Developer Portal step.
 - The multi-print proof has eight reviewed original-IP prints and a dedicated pool locally; production publication is the remaining release step. The wider collection-by-collection rollout is not complete.
-- Paid generation is now run for the reviewed original-IP print set only (fal.ai, about US$2.25). ElevenLabs and other billed providers remain intentionally unrun.
+- Paid generation is now run for the reviewed original-IP print set only (fal.ai, about US$2.10). ElevenLabs and other billed providers remain intentionally unrun.
 

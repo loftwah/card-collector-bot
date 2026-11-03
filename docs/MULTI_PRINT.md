@@ -366,8 +366,7 @@ The candidate contact sheet is `.foilbury/evidence/print-contact-sheet.jpg`.
 Selections and rejection notes are in `.foilbury/content/print-selections.json`.
 Paid generation used `fal-ai/nano-banana-pro/edit` at 1K, 1–2 candidates per
 print. The ledger is `.foilbury/evidence/art-budget-ledger.json`: 15 submitted
-jobs, 14 successful images, **US$2.10 recorded spend** (plus the first
-US$0.15 candidate seeded into the same ledger, for **US$2.25 total**). One
+jobs and 14 successful images. Recorded spend: **US$2.10** (the first candidate plus 13 generated images, all at US$0.15). One
 `gabe/02` candidate failed at transport before a result existed; it was not
 blind-retried, and the second candidate was reviewed and used.
 

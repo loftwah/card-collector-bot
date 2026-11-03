@@ -153,22 +153,34 @@ quality-recovery pass.
 
 | Item | Actual value |
 | --- | --- |
-| Starting local HEAD | `7766623` on `main`, 17 commits ahead of `origin/main`, clean tree |
-| Final source | the commit containing this document; `git log` is authoritative |
-| Production Worker | `c4581234-fa70-4247-9f89-70a35d5a1ec1` from source `2c133ee` |
-| Production schema | through `0014_scoped_roles_and_shares.sql` |
-| Migrations prepared, not applied | `0015_artwork_composition`, `0016_collection_preferences`, `0017_npc_collectors`, `0018_artwork_revisions`, `0019_finish_wishlists` |
-| Production catalogue | 156 cards, 640 variants, 640 published fronts, 640 published backs, 0 pending render jobs |
+| Repository main | `1947875` (pushed to `origin/main`) |
+| Deployed runtime source | `1947875`; Worker `23bd6238-e2af-4467-8c9b-53d35b622be7` |
+| Production schema | through `0023_print_reviewer_kind.sql` |
+| Applied migrations | `0015`–`0023`, all additive or trigger-replacement only |
+| Production catalogue | 156 cards, 672 variants, 672 published fronts, 672 published backs, 0 pending render jobs |
 | Production collections | 21 published collections, 21 with identity logos, 17 with covers |
-| Release plan | `.foilbury/evidence/release-plan-a6364b36e913.json` (clean tree, no leaked env, secret markers absent, migrations listed) |
-| Local DB | migrated through `0019`; rendered fixtures and demo identities are local only |
+| Print proof | 8 print editions, 32 variants, 32 fronts + 32 designed backs; `second-print-capsule` active at 80 Foil with 32 current entries |
+| Release receipts | `.foilbury/evidence/release-receipt-1947875a2ad9.json` (runtime) and `release-receipt-75b9676ad50d.json` |
+| Backups | `.foilbury/backups/prod-pre-release-fc325f5-2026-11-04.json` (before migrations/deploy) and `prod-pre-print-set-2026-11-04.json` (before print data) |
+| Local DB | migrated through `0023`; local fixtures and demo identities remain local only |
 
-The release helper now refuses a dirty tree, a bundled `.dev.vars`, or secret
-markers in the server bundle, and records source/build/migration identity in a
-plan/receipt. It was run in `--check` mode only. No production write, deployment,
-migration or member render was performed.
+The release entrypoint refuses a dirty tree, a bundled `.dev.vars`, or secret
+markers in the server bundle. It records source/build/migration identity in a
+plan/receipt. It does **not** yet enforce per-issue acceptance evidence or
+approved/pushed source; that is the residual #19 enforcement gap.
+
+The release also exposed and fixed a real D1 regression: after the print
+editions landed, `hydrateCards` exceeded the bound-parameter budget and `/` and
+`/cabinet` returned 500. The hydration queries now chunk `IN(...)`, with a
+25-card/100-variant regression test. Production read-back is 200 on `/`,
+`/cabinet` and `/cabinet/tux`.
 
 ### 10.2 Issue disposition
+
+> **2026/11/04 release receipt:** the rows below record the prior local pass.
+> The deployed status and residual criteria for every open issue are now in the
+> GitHub issue comments posted on 2026/11/04 and in `docs/MULTI_PRINT.md`. Do not
+> read “no new deploy” below as current state; the release is deployed.
 
 | Issue | Implemented | Locally verified | Integrated | Deployed | Live/client accepted |
 | --- | --- | --- | --- | --- | --- |
