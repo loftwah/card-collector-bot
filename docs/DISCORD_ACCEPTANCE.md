@@ -173,3 +173,48 @@ The following require Dean's real Discord client and/or a legitimately controlle
 5. A live member-only channel-visible reveal in a channel whose `@everyone` access is denied.
 
 See `docs/DISCORD_TOUR.md` for the exact host script and PASS/FAIL/BLOCKED matrix.
+
+---
+
+# Command-handler acceptance extension — 2026-11-03 evening
+
+Source `8aa4084`; **not deployed**. This section separates the command contract
+from the live Discord client.
+
+## Proven without impersonating a Discord user
+
+- `pnpm demo:discord:check` re-ran against production: **15 PASS, 0 FAIL,
+  2 BLOCKED** (channel visibility and spectator setup). No draw, grant, spend,
+  message or paid provider call.
+- `tests/workers/discord.test.ts` (17 tests) now includes a full tour journey:
+  welcome → album → free play → open → a real draw → private inspection →
+  progress. The draw created one D1 draw and one instance, spent 80 Foil, wrote
+  the −80 ledger row, attached `foilbury-card.webp` at 750×1050 and is replay-safe.
+- A separate real local draw through the same domain service produced
+  **Till — Silver · FB-32-JU-F0C4DD · 80 Foil · 0.40% shown chance**; replaying
+  the idempotency key returned the stored receipt (`replayed: true`).
+- The local Danganronpa album is 8/8 unique, 18 copies, 10 duplicates, and
+  `Three schools` is earned with a 640 Foil reward. This completion is from the
+  documented administrator demo-gift flow, **not** a pull; it is labelled as a
+  completion demonstration.
+- Website parity: `.foilbury/evidence/album-danganronpa-dark.png`,
+  `card-monokuma-front-dark.png`, `card-monokuma-back-dark.png`. The card front
+  and back are the same published renders Discord attaches.
+
+## Still BLOCKED (human client / spectator / channel policy)
+
+1. Dean runs `/foilbury tour` in the real Discord desktop client in
+   `#card-collector-test`, including one charged opening, front/back inspection,
+   progress, a public share and the private admin appendix.
+2. Dean repeats the tour on the real mobile client and captures mobile layout.
+3. A controlled second account verifies that ephemeral tour responses are not
+   visible and only the explicit public share is.
+4. The test channel has no `@everyone` View Channel deny. Member-only art stays
+   ephemeral there. A safe fix is a genuinely private channel with
+   `@everyone` View Channel denied, Foilbury added with View Channel, Send
+   Messages and Attach Files, and the channel audience recorded in Bot Admin.
+   No permission change was made by this task.
+
+The smallest owner action is item 1: open Discord desktop, run the existing
+`/foilbury tour`, and record the screen. That one action unblocks the live
+command and opening; the spectator item still needs a second controlled account.

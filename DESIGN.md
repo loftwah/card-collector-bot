@@ -22,14 +22,14 @@ Cloudflare clone and never uses Cloudflare orange.
 The signature is **deep current + electric aqua + ice + signal lime**, on warm
 bone paper in light mode and near-black green in dark mode.
 
-| Token | Light | Dark | Use |
-|---|---|---|---|
-| Deep current | `#044e4a` | `#8af2e5` | anchors, collection grounds |
-| Electric aqua | `#00a99c` / `#2ce3d3` | `#4fe0d1` / `#7cf6e8` | primary signal, progress, active |
-| Ice | `#c8f4ee` | `#0d3b35` | quiet surfaces, secondary text on dark |
-| Signal lime | `#c9f25f` | `#d6ff79` | one high-energy accent, stamps, mastery |
-| Carbon | `#07110f` | `#07110f` | admin band, card back, type |
-| Bone | `#eff5f1` | `#e9f5f0` | paper / light type |
+| Token         | Light                 | Dark                  | Use                                     |
+| ------------- | --------------------- | --------------------- | --------------------------------------- |
+| Deep current  | `#044e4a`             | `#8af2e5`             | anchors, collection grounds             |
+| Electric aqua | `#00a99c` / `#2ce3d3` | `#4fe0d1` / `#7cf6e8` | primary signal, progress, active        |
+| Ice           | `#c8f4ee`             | `#0d3b35`             | quiet surfaces, secondary text on dark  |
+| Signal lime   | `#c9f25f`             | `#d6ff79`             | one high-energy accent, stamps, mastery |
+| Carbon        | `#07110f`             | `#07110f`             | admin band, card back, type             |
+| Bone          | `#eff5f1`             | `#e9f5f0`             | paper / light type                      |
 
 Use colour as a second channel. Rarity, progress and state always carry text,
 shape or a label as well. Do not use aqua as a generic "success" green; keep
@@ -56,12 +56,20 @@ shape or a label as well. Do not use aqua as a generic "success" green; keep
   offscreen. Reduced motion gets a static front/back. It never changes ownership.
 - Album views show unique subjects, owned copies, duplicates and each core
   finish separately. Roster completion is not finish mastery.
+- One web card contract: a 5:7 object with a reserved art window and information
+  band. Controls sit outside the object, never over the serial or metadata.
+  Type is container-relative. Square opaque avatars may use a medallion; every
+  other source is contained, not cropped by an aspect-ratio guess. Member
+  surfaces display the saved front/back renders; only the admin composition
+  preview re-composes private layers.
 
 ## Surfaces
 
 - Player: the cards lead. Progress is legible without turning the album into a
   dashboard. Binder slots make missing subjects obvious; finish bars name the
-  next target.
+  next target. Page, panel, raised and card-object surfaces are distinct in both
+  themes; a dark panel must not merge into a dark page. Navigation is five
+  primary destinations plus a deliberate More menu, not twelve equal tabs.
 - Studio: operational, explicit scope, auditable actions. The dark band plus
   aqua signal separates it from the member album without hiding the product.
 - Platform Administration: quiet, dense, high-contrast tables. It remains a

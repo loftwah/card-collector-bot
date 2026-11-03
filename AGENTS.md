@@ -64,3 +64,27 @@ Record source → installed location → actual use → findings → changes →
 - Production data changes require a JSON backup first
   (`node scripts/backup-d1-json.mjs`), a reversible migration and a live smoke
   check. Do not seed over live edits.
+
+## Product quality gate (2026-11-03)
+
+A change is not complete because unit tests pass or a detector is clean. Before
+deployment, run the real product:
+
+- `pnpm test:ui` — rendered axe, light/dark, mobile and 200% zoom.
+- `pnpm test:product` — public/member journeys, real totals, card 5:7 geometry,
+  no nested interactive controls, forced failure/retry, no-JS filters, admin and
+  mobile, plus deliberate negative controls.
+- `pnpm test:artwork` — local editor preview, strong-auth gate, TOTP recovery,
+  save, persisted composition and cleanup.
+- `pnpm perf:local` — record LCP/CLS/bytes; do not treat Vite dev JS as the
+  production bundle.
+- Inspect the same screens before and after. A screenshot that still contains the
+  reported defect is not a pass. Keep private screenshots under `.foilbury/`.
+
+Card contract: one 5:7 object; art and information bands are reserved; controls
+live outside the object; type is container-relative; only square opaque avatars
+get a medallion crop; tall/wide art is contained. Member surfaces show the saved
+front/back renders, not re-composed private source layers.
+
+Deployment and production render batches remain approval-gated. A successful
+local run is not a deployed revision.
