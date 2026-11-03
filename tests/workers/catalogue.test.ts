@@ -26,6 +26,86 @@ describe("catalogue lifecycle", () => {
     expect(publicCards[0]!.slug).toBe("test-one");
   });
 
+  it("hydrates a multi-print catalogue beyond the D1 bound-parameter budget", async () => {
+    await bootstrap();
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const fixture = await fixturePool(owner);
+    const materials = (
+      await runtime.DB.prepare(
+        "SELECT id, key FROM fb_materials WHERE tenant_id = ? AND key IN ('plain','silver','gold','diamond') ORDER BY key",
+      )
+        .bind(owner.tenant.id)
+        .all<{ id: string; key: string }>()
+    ).results;
+    const effect = await runtime.DB.prepare(
+      "SELECT id FROM fb_effects WHERE tenant_id = ? AND key = 'none'",
+    )
+      .bind(owner.tenant.id)
+      .first<{ id: string }>();
+    const recipe = await runtime.DB.prepare(
+      "SELECT id FROM fb_recipes WHERE tenant_id = ? ORDER BY version DESC LIMIT 1",
+    )
+      .bind(owner.tenant.id)
+      .first<{ id: string }>();
+    const now = new Date().toISOString();
+    const statements = [];
+    for (let cardIndex = 1; cardIndex <= 25; cardIndex += 1) {
+      const cardId = `crd_hydrate_${cardIndex}`;
+      const editionId = `edt_hydrate_${cardIndex}`;
+      statements.push(
+        runtime.DB.prepare(
+          `INSERT INTO fb_card_definitions
+            (id, tenant_id, logical_id, slug, name, description, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, 'Hydration fixture', 'published', ?, ?)`,
+        ).bind(
+          cardId,
+          owner.tenant.id,
+          `hydrate:${cardIndex}`,
+          `hydrate-${cardIndex}`,
+          `Hydrate ${cardIndex}`,
+          now,
+          now,
+        ),
+        runtime.DB.prepare(
+          `INSERT INTO fb_artwork_editions
+            (id, tenant_id, card_id, name, subject_asset_id, recipe_id, status, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'published', ?)`,
+        ).bind(
+          editionId,
+          owner.tenant.id,
+          cardId,
+          `Hydrate ${cardIndex} — print one`,
+          fixture.subjectAsset,
+          recipe!.id,
+          now,
+        ),
+      );
+      for (const material of materials) {
+        statements.push(
+          runtime.DB.prepare(
+            `INSERT INTO fb_variants
+              (id, tenant_id, card_id, edition_id, material_id, effect_id, name, status, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 'published', ?)`,
+          ).bind(
+            `var_hydrate_${cardIndex}_${material.key}`,
+            owner.tenant.id,
+            cardId,
+            editionId,
+            material.id,
+            effect!.id,
+            material.key,
+            now,
+          ),
+        );
+      }
+    }
+    await runtime.DB.batch(statements);
+    const cards = await listCards(owner, { limit: 100 });
+    expect(cards.length).toBeGreaterThanOrEqual(25);
+    const hydrated = cards.find((card) => card.slug === "hydrate-25");
+    expect(hydrated?.editions[0]?.variants).toHaveLength(4);
+  });
+
   it("blocks a release when a published card has no finished render", async () => {
     await bootstrap();
     const owner = await ctxFor("cabinet", "owner@foilbury.local");
