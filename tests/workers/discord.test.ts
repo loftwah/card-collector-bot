@@ -47,7 +47,16 @@ async function send(
     body: raw,
   });
   const response = await handleDiscordInteraction(request, env(), { publicKey: publicKeyHex });
-  const payload = (await response.json()) as { type?: number; data?: { content?: string; embeds?: Array<{ title?: string; description?: string }>; flags?: number }; error?: string };
+  const payload = (await response.json()) as {
+    type?: number;
+    data?: {
+      content?: string;
+      embeds?: Array<{ title?: string; description?: string }>;
+      flags?: number;
+      components?: Array<{ components?: Array<{ type?: number; style?: number; url?: string }> }>;
+    };
+    error?: string;
+  };
   return { response, payload };
 }
 
@@ -178,6 +187,12 @@ describe("Discord HTTP interactions", () => {
     expect(text).toContain("Your collection");
     expect(text).toContain("Test One");
     expect(title).toContain("Test One");
+    const card = await send(interaction(command("card", [{ name: "query", type: 3, value: "Test One" }]), { id: "card-link" }));
+    const actionRow = card.payload.data?.components?.[0];
+    const link = actionRow?.components?.find((component) => component.style === 5);
+    expect(link?.type).toBe(2);
+    expect(link?.style).toBe(5);
+    expect(link?.url).toContain("/play/collection");
   });
 
   it("rejects the wrong guild, the wrong channel, and unbound installations", async () => {

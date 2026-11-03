@@ -382,7 +382,7 @@ async function card(ctx: Ctx, query: string): Promise<DiscordCallback> {
           ? [[
               button("View back", `foilbury:card:${found.id}:${imageVariant.id}:back`, 2),
               button("Details", `foilbury:card:${found.id}:${imageVariant.id}:details`, 2),
-              { type: 5, style: 5, label: "Open my album", url: absoluteUrl(ctx.config.publicOrigin, "/play/collection")! },
+              { type: 2, style: 5, label: "Open my album", url: absoluteUrl(ctx.config.publicOrigin, "/play/collection")! },
             ]]
           : []),
       ]),
@@ -437,7 +437,7 @@ async function cardFace(
         [
           button(side === "front" ? "View back" : "View front", `foilbury:card:${found.id}:${variant.id}:${side === "front" ? "back" : "front"}`, 2),
           button("Details", `foilbury:card:${found.id}:${variant.id}:details`, 2),
-          { type: 5, style: 5, label: "Open my album", url: absoluteUrl(ctx.config.publicOrigin, "/play/collection")! },
+          { type: 2, style: 5, label: "Open my album", url: absoluteUrl(ctx.config.publicOrigin, "/play/collection")! },
         ],
       ]),
     },
@@ -531,7 +531,7 @@ async function achievements(ctx: Ctx): Promise<DiscordCallback> {
           footer: { text: "Open the website album for full progress, criteria and earned dates" },
         },
       ],
-      components: components([[{ type: 5, style: 5, label: "Open achievements", url: absoluteUrl(ctx.config.publicOrigin, "/play/achievements")! }]]),
+      components: components([[{ type: 2, style: 5, label: "Open achievements", url: absoluteUrl(ctx.config.publicOrigin, "/play/achievements")! }]]),
     },
     true,
   );

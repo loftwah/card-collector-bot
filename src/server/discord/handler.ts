@@ -95,12 +95,14 @@ async function editOriginal(env: DiscordEnv, interaction: DiscordInteraction, ca
     { method: "PATCH", headers: request.headers, body: request.body },
   );
   if (!response.ok) {
+    const detail = await response.text().catch(() => "");
     console.error(
       JSON.stringify({
         level: "error",
         request_id: `discord:${interaction.id}`,
         message: "Discord follow-up delivery failed",
         status: response.status,
+        detail: detail.slice(0, 800),
       }),
     );
   }
@@ -113,12 +115,14 @@ async function sendFollowUp(env: DiscordEnv, interaction: DiscordInteraction, ca
     { method: "POST", headers: request.headers, body: request.body },
   );
   if (!response.ok) {
+    const detail = await response.text().catch(() => "");
     console.error(
       JSON.stringify({
         level: "error",
         request_id: `discord:${interaction.id}`,
         message: "Discord follow-up message failed",
         status: response.status,
+        detail: detail.slice(0, 800),
       }),
     );
     return null;
@@ -166,7 +170,8 @@ async function processDeferred(env: DiscordEnv, interaction: DiscordInteraction,
       interaction.type === 2
         ? await runCommand(ctx, interaction, resolved.installation)
         : await runComponent(ctx, interaction, resolved.installation);
-    if (isEphemeralInteraction(interaction)) {
+    const needsAttachmentFollowUp = Boolean(callback.attachments?.length);
+    if (isEphemeralInteraction(interaction) && !needsAttachmentFollowUp) {
       await editOriginal(env, interaction, callback);
     } else {
       // Card reveals are delivered as a normal follow-up with the render
