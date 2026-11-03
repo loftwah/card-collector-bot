@@ -7,6 +7,7 @@
  * or secrets. Run with --apply to mutate; default is a read-only plan.
  */
 import "dotenv/config";
+import { ensureAccessApplication } from "./lib/cloudflare-access-app.mjs";
 
 const apply = process.argv.includes("--apply");
 const account = process.env.CF_ACCOUNT_ID;
@@ -33,6 +34,7 @@ function log(action, value) {
 
 const org = await api("/access/organizations");
 log("organization", org.auth_domain);
+log("organization MFA enforcement (unchanged)", { mfa_required_for_all_apps: org.mfa_required_for_all_apps ?? null });
 
 const providers = await api("/access/identity_providers");
 const cloudflare = providers.find((provider) => provider.type === "cloudflare");
@@ -64,7 +66,6 @@ if (!creators) {
 }
 
 const apps = await api("/access/apps");
-const byName = (name) => apps.find((app) => app.name === name);
 
 async function ensurePolicy(app, policy) {
   const current = await api(`/access/apps/${app.id}/policies`);
@@ -81,57 +82,14 @@ async function ensurePolicy(app, policy) {
   });
 }
 
-async function updateApp(app, changes) {
-  const merged = {
-    name: app.name,
-    domain: app.domain,
-    type: app.type,
-    session_duration: changes.session_duration ?? app.session_duration,
-    allowed_idps: changes.allowed_idps ?? app.allowed_idps,
-    auto_redirect_to_identity: changes.auto_redirect_to_identity ?? app.auto_redirect_to_identity,
-    app_launcher_visible: changes.app_launcher_visible ?? app.app_launcher_visible,
-    skip_interstitial: changes.skip_interstitial ?? app.skip_interstitial,
-    ...(changes.mfa_config ? { mfa_config: changes.mfa_config } : {}),
-  };
-  log(`update app · ${app.name}`, merged);
-  if (!apply) return app;
-  return api(`/access/apps/${app.id}`, { method: "PUT", body: JSON.stringify(merged) });
-}
-
 async function ensureApp(name, domain, allowedIdps, options = {}) {
-  let app = byName(name);
-  if (!app) {
-    log("create app", { name, domain });
-    if (!apply) return null;
-    app = await api("/access/apps", {
-      method: "POST",
-      body: JSON.stringify({
-        name,
-        domain,
-        type: "self_hosted",
-        session_duration: "8h",
-        allowed_idps: allowedIdps,
-        auto_redirect_to_identity: options.autoRedirect ?? true,
-        app_launcher_visible: false,
-        skip_interstitial: true,
-      }),
-    });
-  } else {
-    app = await updateApp(app, {
-      allowed_idps: allowedIdps,
-      auto_redirect_to_identity: options.autoRedirect ?? false,
-      app_launcher_visible: false,
-      skip_interstitial: true,
-      session_duration: "8h",
-      ...(options.mfaConfig ? { mfa_config: options.mfaConfig } : {}),
-    });
-  }
-  return app;
+  return ensureAccessApplication({ api, apps, apply, log }, name, domain, allowedIdps, options);
 }
 
 const dean = { email: { email: "dean@deanlofts.xyz" } };
 const otpId = otp?.id ?? "<one-time-pin-id>";
-const mfaConfig = { mfa_disabled: false, session_duration: "8h", allowed_authenticators: ["totp", "biometrics", "security_key"] };
+// Use the existing Cloudflare identity flow. These apps inherit organisation
+// MFA policy instead of adding a separate Foilbury enrolment/challenge.
 
 const adminApp = await ensureApp("Foilbury Administration", "foilbury.loftwah.com/admin", [cloudflare.id, otpId], {
   autoRedirect: false,
@@ -141,15 +99,15 @@ const adminApiApp = await ensureApp("Foilbury Admin API", "foilbury.loftwah.com/
 });
 const platformApp = await ensureApp("Foilbury Platform Administration", "foilbury.loftwah.com/platform-admin", [cloudflare.id], {
   autoRedirect: true,
-  mfaConfig,
+  inheritMfa: true,
 });
 const platformApiApp = await ensureApp("Foilbury Platform Admin API", "foilbury.loftwah.com/api/v1/platform", [cloudflare.id], {
   autoRedirect: true,
-  mfaConfig,
+  inheritMfa: true,
 });
 const editorialApp = await ensureApp("Foilbury Editorial", "foilbury.loftwah.com/_emdash", [cloudflare.id], {
   autoRedirect: true,
-  mfaConfig,
+  inheritMfa: true,
 });
 
 for (const app of [adminApp, adminApiApp].filter(Boolean)) {
@@ -177,3 +135,4 @@ if (apply) {
     .map((app) => ({ name: app.name, domain: app.domain, id: app.id, aud: app.aud, allowed_idps: app.allowed_idps, auto_redirect_to_identity: app.auto_redirect_to_identity, mfa_config: app.mfa_config ?? null }));
   console.log(JSON.stringify({ apps: report, creators_group_id: creators?.id ?? null, otp_idp_id: otp?.id ?? null }, null, 2));
 }
+

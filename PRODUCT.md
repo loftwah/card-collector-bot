@@ -56,8 +56,9 @@ Foilbury is a collectible-card cabinet. A player claims a free allowance, opens 
 
 ## Known gaps
 
-- Dean's human Cloudflare Access MFA enrollment and first authenticated `/admin` visit remain a human step; the policy, JWT verification and application session path are implemented and unit-tested.
+- Dean's administration uses his existing Cloudflare-account sign-in. A separate Access MFA enrolment is not an intended onboarding step. The authentication correction is prepared; deployment and a complete authenticated administration journey remain to be verified (see `docs/AUTH_ACCEPTANCE.md`).
 - The production EmDash operator console is protected by Access and configured for the existing Dean account; a human authenticated editorial session is still required to exercise the native console.
 - A local Discord OAuth callback is registered at `http://localhost:5173/auth/discord/callback`; a completed local Discord consent is a human step. Production OAuth remains preserved.
 - A real second Discord guild installation and a second-person acceptance matrix require an authorised human participant.
 - Paid generation, FAL, ElevenLabs and other billed providers remain intentionally unrun.
+
