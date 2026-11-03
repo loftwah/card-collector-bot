@@ -101,7 +101,7 @@ export default function DailyMissions({ initial }: { initial: State }) {
                     <Sparkles size={14} /> {busy === mission.key ? "Claiming…" : `Claim ${state.currency_symbol} ${mission.reward}`}
                   </Button>
                 ) : null}
-                {mission.claimed ? <span className="text-xs text-[var(--muted)]">Credited {mission.claimed_at ? new Date(mission.claimed_at).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" }) : ""}</span> : null}
+                {mission.claimed ? <span className="text-xs text-[var(--muted)]">Credited today</span> : null}
               </div>
             </li>
           );
