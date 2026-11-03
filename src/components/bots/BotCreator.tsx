@@ -35,7 +35,7 @@ export default function BotCreator({ ready, displayName }: { ready: boolean; dis
       <div className="surface p-6">
         <p className="eyebrow">One step first</p>
         <h2 className="display-sm mt-1 text-2xl">Protect the account that will own a Bot.</h2>
-        <p className="mt-2 text-sm text-[var(--muted)]">A Bot can issue cards, change an economy and invite other administrators. Before you create one, verify your email and add a passkey or authenticator. Cloudflare Access admission is separate and does not count as a Foilbury role.</p>
+        <p className="mt-2 text-sm text-[var(--muted)]">A Bot can issue cards, change an economy and invite other administrators. Before you create one, link a verified email or Discord identity and add a passkey or authenticator. Cloudflare Access admission is separate and does not count as a Foilbury role.</p>
         <div className="mt-4 flex flex-wrap gap-2">
           <a className="btn btn-primary" href="/account/security">Set up account security <ArrowRight size={15} /></a>
           <a className="btn btn-secondary" href="/login">Verify email with a magic link</a>

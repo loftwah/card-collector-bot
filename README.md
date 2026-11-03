@@ -41,6 +41,12 @@ pnpm demo:show            # headed walkthrough; opens the storyboard
 pnpm demo:album           # dry-run the local 7/8 -> 8/8 album demonstration
 pnpm demo:album --mode seven --apply
 pnpm demo:discord:check   # read-only Discord tour preflight; no draws or posts
+pnpm brand:generate       # regenerate reviewed marks, avatars, banners and OG
+pnpm export:showcase      # real public stills + playable MP4 trailer/teaser
+pnpm roles:provision      # dry-run the scoped Global Collection Admin grant
+pnpm achievements:mastery # dry-run the finish/mastery definition catalogue
+pnpm content:backs        # dry-run designed public card backs
+pnpm content:requeue      # dry-run a bounded re-render queue for one collection
 pnpm test:e2e             # real Chrome E2E, screenshots into docs/evidence
 pnpm test:agent           # real stdio MCP client plus CLI against the running service
 pnpm test:persistence     # stop/start the local server and compare inventory/ledger state
@@ -65,6 +71,22 @@ pnpm acceptance:local     # run the full local acceptance gate and write evidenc
 - `docs/evidence/` — E2E screenshots, MCP/CLI evidence, persistence evidence.
 
 ## What is in the cabinet
+
+The public showcase is four approved original-IP worlds; the members' album
+contains the versioned launch catalogue.
+
+The product now has:
+
+- a scoped **Studio** at `/studio` for Bot Owners/Admins and Global Collection
+  Admins, with no implicit platform root;
+- a **People & roles** area at `/platform-admin/people` with search, explicit
+  scopes, idempotent grant/revoke and audit;
+- a public **brand kit** at `/brand-kit` with downloadable marks, Discord
+  avatars, banners, wordmarks and OG assets;
+- a **website tour** at `/tour` and a real **showcase** at `/showcase` with
+  playable MP4 stills/trailer exports;
+- versioned finish-mastery achievements: first card, all Plain, all Silver, all
+  Gold, all Holographic and core mastery for each frozen collection roster.
 
 The seed catalogue is a curated selection, not a franchise whitelist:
 
@@ -93,7 +115,7 @@ tests/                unit, real workerd/D1/R2 integration, E2E and agent tests
 
 UI, REST, CLI and MCP call the same authorised commands. Ownership and money-like accounting are relational in D1. Draws use a conditional single-batch transaction with trigger guards: a draw cannot overspend, double-issue, reroll on retry or run against a stale pool revision. Wallets use an append-only ledger; corrections are compensating entries. The outbox and job queue are durable, retry-safe and processed locally.
 
-EmDash 1.4 is mounted at `/_emdash` on the same local D1/R2. It owns editorial drafts, media, taxonomy and journal entries. The journal is served at `/journal`; the owner editorial desk is at `/admin/editorial`. Editorial publication cannot issue cards or mutate a wallet.
+EmDash 1.4 is mounted at `/_emdash` on the same local D1/R2. It owns editorial drafts, media, taxonomy and journal entries. The journal is served at `/journal`; the owner editorial desk is at `/admin/editorial`, and `/studio` is the normal signed-in scoped workspace. Editorial publication cannot issue cards or mutate a wallet. See `docs/EMDASH_BOUNDARY.md`.
 
 ## Agent access
 

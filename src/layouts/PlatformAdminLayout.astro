@@ -5,6 +5,7 @@ const path = Astro.url.pathname;
 const links = [
   { href: "/platform-admin", label: "Overview" },
   { href: "/platform-admin/accounts", label: "Accounts" },
+  { href: "/platform-admin/people", label: "People & roles" },
   { href: "/platform-admin/bots", label: "Bots" },
   { href: "/platform-admin/installations", label: "Installations" },
   { href: "/platform-admin/collections", label: "Global collections" },
@@ -21,7 +22,8 @@ const links = [
           <p class="mt-2 max-w-2xl text-sm leading-relaxed text-[#cfc8b9]">Account and Access links, Bot lifecycle, installations, global collections and audit. This area does not invent operational metrics, and Cloudflare Access admission is never treated as a Foilbury role.</p>
         </div>
         <div class="flex flex-wrap gap-2">
-          <a class="btn btn-brass btn-sm" href="/admin">Bot administration</a>
+          <a class="btn btn-brass btn-sm" href="/studio">Studio</a>
+          <a class="btn btn-secondary btn-sm !border-[#5c594d] !text-[#f4f0e6]" href="/admin">Bot administration</a>
           <a class="btn btn-secondary btn-sm !border-[#5c594d] !text-[#f4f0e6]" href="/account/security">Account security</a>
           <a class="btn btn-secondary btn-sm !border-[#5c594d] !text-[#f4f0e6]" href="/logout">Sign out</a>
         </div>

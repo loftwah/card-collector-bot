@@ -1,6 +1,7 @@
 ---
 import PlayerLayout from "../../layouts/PlayerLayout.astro";
 import AchievementBadge from "../../components/player/AchievementBadge.astro";
+import ShareLinkButton from "../../components/player/ShareLinkButton";
 import { pageContext } from "../../server/page";
 import { listAchievements } from "../../server/modules/achievements";
 import { getWalletSummary } from "../../server/modules/wallet";
@@ -52,7 +53,7 @@ const labels: Record<string, string> = {
       <div class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {earned.map((item) => (
           <article class="achievement-card is-earned">
-            <AchievementBadge artKey={item.art_key} name={item.name} category={item.category} earned />
+            <AchievementBadge artKey={item.art_key} name={item.name} category={item.category} earned emblemUrl={item.collection_logo_url} />
             <div class="min-w-0">
               <p class="font-mono text-[0.54rem] uppercase tracking-[0.16em] text-[var(--brass)]">{labels[item.category] ?? item.category}</p>
               <h4 class="display-sm mt-1 text-2xl leading-tight">{item.name}</h4>
@@ -60,6 +61,7 @@ const labels: Record<string, string> = {
               <p class="mt-3 font-mono text-[0.56rem] uppercase tracking-[0.08em] text-[var(--green)]">
                 Earned {item.earned_at ? formatDual(item.earned_at) : ""}{item.reward_amount ? ` · +${item.reward_amount} Foil` : ""}
               </p>
+              {item.unlock_id ? <div class="mt-2"><ShareLinkButton client:load kind="achievement" targetId={item.unlock_id} label="Share badge" /></div> : null}
             </div>
           </article>
         ))}

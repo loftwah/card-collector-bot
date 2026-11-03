@@ -40,7 +40,8 @@ function CollectionMark({ collection }: { collection: Collection }) {
   return <span className="grid h-12 w-12 place-items-center border border-[var(--line-strong)] bg-[var(--paper-3)] font-display text-xl">{collection.name.slice(0, 1)}</span>;
 }
 
-export default function AdminCollections({ platformAdmin }: { platformAdmin: boolean }) {
+export default function AdminCollections({ platformAdmin, globalCollectionAdmin = false, botAdmin = false }: { platformAdmin: boolean; globalCollectionAdmin?: boolean; botAdmin?: boolean }) {
+  const canCreateGlobal = platformAdmin || globalCollectionAdmin;
   const [collections, setCollections] = useState<Collection[]>([]);
   const [cards, setCards] = useState<CardRow[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -49,7 +50,7 @@ export default function AdminCollections({ platformAdmin }: { platformAdmin: boo
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState("");
-  const [form, setForm] = useState({ name: "", slug: "", description: "", scope: platformAdmin ? "global" : "bot", logoUrl: "", accent: "brass", status: "draft", viewAudience: "members", sourceWork: "" });
+  const [form, setForm] = useState({ name: "", slug: "", description: "", scope: canCreateGlobal ? "global" : "bot", logoUrl: "", accent: "aqua", status: "draft", viewAudience: "members", sourceWork: "" });
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
 
@@ -101,7 +102,7 @@ export default function AdminCollections({ platformAdmin }: { platformAdmin: boo
       if (logoFile) logoUrl = await uploadBrand(logoFile, "logo", form.viewAudience, form.scope);
       if (coverFile) bannerUrl = await uploadBrand(coverFile, "cover", form.viewAudience, form.scope);
       const result = await api<{ collection: Collection }>("/api/v1/admin/collections", { method: "POST", body: { ...form, logoUrl: logoUrl || undefined, bannerUrl, viewAudience: form.viewAudience, sourceWork: form.sourceWork || undefined } });
-      setForm({ name: "", slug: "", description: "", scope: platformAdmin ? "global" : "bot", logoUrl: "", accent: "brass", status: "draft", viewAudience: "members", sourceWork: "" });
+      setForm({ name: "", slug: "", description: "", scope: canCreateGlobal ? "global" : "bot", logoUrl: "", accent: "aqua", status: "draft", viewAudience: "members", sourceWork: "" });
       setLogoFile(null);
       setCoverFile(null);
       setMessage(`${result.collection.scope === "global" ? "Global" : "Bot"} collection created.`);
@@ -169,7 +170,7 @@ export default function AdminCollections({ platformAdmin }: { platformAdmin: boo
   return (
     <div>
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--line)] pb-5">
-        <div><p className="eyebrow">Collections</p><h2 className="display-sm mt-1 text-4xl">Worlds with a front door.</h2><p className="mt-2 max-w-3xl text-sm text-[var(--muted)]">A collection is a named world with a logo, description and card membership. Global collections are curated once by the Super Admin and can be turned on or off per Bot. Your Bot collections are private to this Bot.</p></div>
+        <div><p className="eyebrow">Collections</p><h2 className="display-sm mt-1 text-4xl">Worlds with a front door.</h2><p className="mt-2 max-w-3xl text-sm text-[var(--muted)]">A collection is a named world with a logo, description and card membership. Global collections are curated by the Super Admin or a scoped Global Collection Admin and can be turned on or off per Bot. Your Bot collections are private to this Bot.</p></div>
       </div>
       {error ? <div className="error-box mt-4" role="alert">{error}</div> : null}
       {message ? <div className="success-box mt-4" role="status">{message}</div> : null}
@@ -188,9 +189,9 @@ export default function AdminCollections({ platformAdmin }: { platformAdmin: boo
                     <p className="mt-1 font-mono text-[0.58rem] uppercase tracking-[0.08em] text-[var(--muted)]">{collection.card_count} cards · {collection.status} · {collection.view_audience === "public" ? "public showcase" : collection.view_audience} · {collection.owner_name}</p>
                   </button>
                   <div className="grid justify-items-end gap-2">
-                    {collection.scope === "global" && !platformAdmin ? <span className="text-[0.58rem] uppercase tracking-wider text-[var(--muted)]"><Lock size={11} className="inline" /> Read-only</span> : null}
-                    <Switch checked={collection.enabled} onCheckedChange={() => toggle(collection)} aria-label={`${collection.enabled ? "Disable" : "Enable"} ${collection.name} for this Bot`} disabled={Boolean(busy)} />
-                    <span className="text-[0.56rem] uppercase tracking-wider text-[var(--muted)]">{collection.enabled ? "On" : "Off"}</span>
+                    {collection.scope === "global" && !collection.manageable ? <span className="text-[0.58rem] uppercase tracking-wider text-[var(--muted)]"><Lock size={11} className="inline" /> Read-only</span> : null}
+                    {botAdmin ? <Switch checked={collection.enabled} onCheckedChange={() => toggle(collection)} aria-label={`${collection.enabled ? "Disable" : "Enable"} ${collection.name} for this Bot`} disabled={Boolean(busy)} /> : null}
+                    {botAdmin ? <span className="text-[0.56rem] uppercase tracking-wider text-[var(--muted)]">{collection.enabled ? "On" : "Off"}</span> : null}
                   </div>
                 </div>
               </div>
@@ -226,7 +227,7 @@ export default function AdminCollections({ platformAdmin }: { platformAdmin: boo
                   <Field label="Upload a logo" hint="PNG, JPEG or WebP up to 8 MB."><Input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setLogoFile(event.target.files?.[0] ?? null)} disabled={!selected.manageable} /></Field>
                   <Field label="Upload a cover" hint="Used on the collection panel and album header."><Input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setCoverFile(event.target.files?.[0] ?? null)} disabled={!selected.manageable} /></Field>
                 </div>
-                {selected.manageable ? <Button size="sm" onClick={saveCollection} disabled={busy === "save"}>{busy === "save" ? "Saving…" : "Save collection details"}</Button> : <p className="text-xs text-[var(--muted)]">Global collections are managed by the Super Admin. You can still turn this collection on or off for your Bot.</p>}
+                {selected.manageable ? <Button size="sm" onClick={saveCollection} disabled={busy === "save"}>{busy === "save" ? "Saving…" : "Save collection details"}</Button> : <p className="text-xs text-[var(--muted)]">This collection is outside your scope. Ask the Super Admin for a scoped assignment.</p>}
               </div>
             </>
           ) : <p className="text-sm text-[var(--muted)]">Choose a collection to inspect it.</p>}
@@ -265,14 +266,14 @@ export default function AdminCollections({ platformAdmin }: { platformAdmin: boo
 
       <section className="surface mt-6 p-5">
         <p className="eyebrow">Create a collection</p>
-        <h3 className="display-sm mt-1 text-2xl">{platformAdmin ? "A shared world, or one for this Bot." : "A world for this Bot."}</h3>
-        <p className="mt-1 text-sm text-[var(--muted)]">{platformAdmin ? "Global collections are visible to every Bot and can be enabled per Bot. Bot collections stay with this tenant." : "Your collection is private to this Bot. You will see global collections alongside it, but you cannot edit them."}</p>
+        <h3 className="display-sm mt-1 text-2xl">{platformAdmin ? "A shared world, or one for this Bot." : globalCollectionAdmin ? "A shared world, curated with care." : "A world for this Bot."}</h3>
+        <p className="mt-1 text-sm text-[var(--muted)]">{platformAdmin ? "Global collections are visible to every Bot and can be enabled per Bot. Bot collections stay with this tenant." : globalCollectionAdmin ? "Your assignment covers shared collections only. You can edit metadata, branding and release state; public showcase approval and platform root remain with the Super Admin." : "Your collection is private to this Bot. You will see global collections alongside it, but you cannot edit them."}</p>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           <Field label="Name"><Input value={form.name} onChange={(event) => { setForm({ ...form, name: event.target.value }); if (!form.slug) setForm((current) => ({ ...current, name: event.target.value, slug: event.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") })); }} placeholder="NBA Nights" /></Field>
           <Field label="Slug"><Input value={form.slug} onChange={(event) => setForm({ ...form, slug: event.target.value })} placeholder="nba-nights" /></Field>
           <Field label="Description"><Textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="A courtside cabinet of icons, rookies and deep cuts." /></Field>
           <Field label="Logo URL" hint="Use a licensed logo you have rights to. Local path or HTTPS."><Input value={form.logoUrl} onChange={(event) => setForm({ ...form, logoUrl: event.target.value })} placeholder="/art/collections/your-world.svg" /></Field>
-          <Field label="Scope"><Select value={form.scope} onChange={(event) => setForm({ ...form, scope: event.target.value })} disabled={!platformAdmin}>{platformAdmin ? <><option value="global">Global · visible to every Bot</option><option value="bot">Bot · private to this Bot</option></> : <option value="bot">Bot · private to this Bot</option>}</Select></Field>
+          <Field label="Scope"><Select value={form.scope} onChange={(event) => setForm({ ...form, scope: event.target.value })} disabled={!canCreateGlobal}>{canCreateGlobal ? <><option value="global">Global · visible to every Bot</option><option value="bot">Bot · private to this Bot</option></> : <option value="bot">Bot · private to this Bot</option>}</Select></Field>
           <Field label="Initial status"><Select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}><option value="draft">Draft</option><option value="published">Published</option></Select></Field>
           <Field label="Viewing audience"><Select value={form.viewAudience} onChange={(event) => setForm({ ...form, viewAudience: event.target.value })}>{platformAdmin && form.scope === "global" ? <option value="public">Public showcase (Super Admin approval)</option> : null}<option value="members">Members only</option><option value="private">Private</option></Select></Field>
           <Field label="Source work"><Input value={form.sourceWork} onChange={(event) => setForm({ ...form, sourceWork: event.target.value })} placeholder="e.g. Original Foilbury project" /></Field>

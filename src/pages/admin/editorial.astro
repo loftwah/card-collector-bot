@@ -24,7 +24,7 @@ try {
   <div class="mt-6 grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
     <section class="surface-flat p-5">
       <div class="flex flex-wrap items-center justify-between gap-3">
-        <div><p class="eyebrow">Recent journal entries</p><p class="mt-1 text-sm text-[var(--muted)]">Read from EmDash on the same D1 database.</p></div>
+        <div><p class="eyebrow">Recent journal entries · read-only</p><p class="mt-1 text-sm text-[var(--muted)]">Read from EmDash on the same D1 database. This is a handoff, not a second CMS.</p></div>
         <a class="btn btn-primary btn-sm" href="/_emdash/admin" target="_blank" rel="noreferrer">Open EmDash admin ↗</a>
       </div>
       {offline ? <div class="empty mt-4"><p>The editorial database is not available yet. Core gameplay is unaffected. Finish EmDash setup or use the local dev bypass.</p></div> : null}
@@ -43,6 +43,7 @@ try {
       <div class="surface-flat p-5">
         <p class="eyebrow">Source of truth</p>
         <p class="mt-2 text-sm text-[var(--muted)]">EmDash is the editable source for journal titles, bodies and media. Foilbury is the source of truth for card identity, artwork editions, categories, tags, pools, awards and inventory. There is no two-way catalogue sync loop or second editable card catalogue.</p>
+        <p class="mt-3 font-mono text-[0.58rem] uppercase tracking-[0.1em] text-[var(--muted)]">Boundary: docs/EMDASH_BOUNDARY.md</p>
       </div>
       <div class="surface-flat p-5">
         <p class="eyebrow">Release sequence</p>

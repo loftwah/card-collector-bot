@@ -6,17 +6,19 @@ const user = session?.user ?? null;
 const path = Astro.url.pathname;
 const links = [
   { href: "/cabinet", label: "The Cabinet" },
+  { href: "/tour", label: "Tour" },
   { href: "/journal", label: "Journal" },
   { href: "/play/draw", label: "Draw" },
 ];
 if (user) links.push({ href: "/play", label: "My Collection" });
-if (user && ["owner", "editor", "economy_admin"].includes(user.role)) links.push({ href: "/admin", label: "Bot admin" });
+const canStudio = Boolean(user && (user.platformAdmin || user.globalCollectionScope || ["owner", "editor", "economy_admin"].includes(user.role)));
+if (canStudio) links.push({ href: "/studio", label: "Studio" });
 if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform" });
 ---
 <header class="site-header">
   <div class="container flex min-h-[68px] items-center justify-between gap-4 py-3">
     <a href="/" class="flex items-center gap-2.5 no-underline" aria-label="Foilbury home">
-      <img src="/brand/mark.png" alt="" width="30" height="30" class="h-[30px] w-[30px] rounded-[6px]" />
+      <img src="/brand/mark.png" alt="" width="30" height="30" class="h-[30px] w-[30px]" />
       <span class="font-display text-[1.35rem] tracking-[-0.03em]">Foilbury</span>
     </a>
 
@@ -48,8 +50,7 @@ if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform"
             <span data-foil-balance>{session?.wallet ?? 0} Foil</span>
           </a>
           <a href="/account/security" class="hidden max-w-32 truncate text-xs text-[var(--muted)] hover:text-[var(--ink)] lg:inline">{user.displayName}</a>
-          {!["owner", "editor", "economy_admin"].includes(user.role) ? <a class="btn btn-secondary btn-sm hidden sm:inline-flex" href="/create-bot">Create a Bot</a> : null}
-          <LogoutButton client:load />
+          {!["owner", "editor", "economy_admin"].includes(user.role) ? <a class="btn btn-secondary btn-sm hidden sm:inline-flex" href="/create-bot">Create a Bot</a> : null}          <LogoutButton client:load />
         </>
       ) : (
         <a class="btn btn-primary btn-sm" href="/login">Sign in</a>

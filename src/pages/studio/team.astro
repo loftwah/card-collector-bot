@@ -1,0 +1,20 @@
+---
+import StudioLayout from "../../layouts/StudioLayout.astro";
+import AdminTeam from "../../components/admin/AdminTeam";
+const session = Astro.locals.foilbury;
+const user = session?.user ?? null;
+const scope = user?.globalCollectionScope;
+const isBotAdmin = ["owner", "editor", "economy_admin"].includes(user?.role ?? "");
+if (!isBotAdmin) return Astro.redirect("/studio");
+---
+<StudioLayout>
+  <div class="studio-rule">
+    <div>
+      <h2 class="display-sm text-4xl uppercase">People in this Bot.</h2>
+      <p class="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--muted)]">Invitations are expiring, single-use and bound to the invitee's email. Revocation removes this Bot's authority; it never deletes the person's account, cards or history.</p>
+    </div>
+  </div>
+  <div class="mt-6">
+    <AdminTeam client:load />
+  </div>
+</StudioLayout>

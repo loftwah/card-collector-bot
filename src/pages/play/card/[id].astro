@@ -2,9 +2,10 @@
 import PlayerLayout from "../../../layouts/PlayerLayout.astro";
 import CardInspector from "../../../components/player/CardInspector";
 import CardDetailActions from "../../../components/player/CardDetailActions";
+import SharePanel from "../../../components/player/SharePanel";
 import { pageContext } from "../../../server/page";
 import { getInstance } from "../../../server/modules/collection";
-import { listSets } from "../../../server/modules/catalogue";
+import { getCard, listSets } from "../../../server/modules/catalogue";
 import { getWishlist } from "../../../server/modules/collection";
 import { displayFinish, formatDual } from "../../../lib/utils";
 
@@ -21,6 +22,19 @@ const sets = await listSets(ctx, ctx.user!.id);
 const set = sets.find((item) => item.cards.some((card) => card.id === instance.card_id) && item.status === "published");
 const wishlist = await getWishlist(ctx);
 const wished = wishlist.some((item) => item.card_id === instance.card_id);
+const cardCatalogue = await getCard(ctx, instance.card_slug).catch(() => null);
+const variantComparisons = cardCatalogue ? cardCatalogue.editions.flatMap((edition) =>
+  edition.variants
+    .filter((variant) => variant.render_url)
+    .map((variant) => ({
+      id: variant.id,
+      name: variant.name,
+      material: variant.material_key,
+      effect: variant.effect_key,
+      render_url: variant.render_url,
+      owned: variant.id === instance.variant_id,
+    })),
+).slice(0, 6) : [];
 const eventLabel: Record<string, string> = {
   drawn: "Drawn from a cabinet pool",
   traded: "Transferred in a trade",
@@ -50,6 +64,20 @@ const eventLabel: Record<string, string> = {
         <p class="font-mono text-[0.58rem] uppercase tracking-[0.12em] text-[var(--muted)]">Your copy · {displayFinish(instance.variant_name, instance.material_key, instance.effect_key)}</p>
         {instance.render_url ? <a class="font-mono text-[0.58rem] uppercase tracking-[0.12em] text-[var(--green)]" href={instance.render_url} target="_blank" rel="noreferrer">Open full-size front ↗</a> : null}
       </div>
+      {variantComparisons.length > 1 ? (
+        <div class="mt-5 border border-[var(--line)] bg-[var(--paper-2)]/35 p-3">
+          <div class="flex items-end justify-between gap-3"><p class="studio-stat__label">Variant comparison</p><p class="font-mono text-[0.52rem] uppercase tracking-[0.08em] text-[var(--muted)]">Preview only · ownership unchanged</p></div>
+          <div class="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+            {variantComparisons.map((variant) => (
+              <div class:list={["border p-1", variant.owned ? "border-[var(--signal)]" : "border-[var(--line)]"]}>
+                {variant.render_url ? <img src={variant.render_url} alt={`${instance.card_name} in ${variant.name}`} class="aspect-[5/7] w-full object-cover" loading="lazy" width="150" height="210" /> : null}
+                <p class="mt-1 truncate text-[0.6rem] font-semibold">{displayFinish(variant.name, variant.material, variant.effect)}</p>
+                <p class:list={["font-mono text-[0.48rem] uppercase tracking-[0.06em]", variant.owned ? "text-[var(--signal)]" : "text-[var(--muted)]"]}>{variant.owned ? "Your copy" : "Preview only"}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <p class="mt-2 text-xs text-[var(--muted)]">The 3D view is an inspection aid. Your ownership, finish and serial are fixed in your album, not changed by the camera.</p>
     </div>
 
@@ -91,6 +119,18 @@ const eventLabel: Record<string, string> = {
 
       <div class="mt-7">
         <CardDetailActions client:load instanceId={instance.id} cardId={instance.card_id} initialFavourite={Boolean(instance.favourite)} initialLocked={Boolean(instance.locked)} initialWishlist={wished} reserved={instance.status === "reserved"} />
+      </div>
+
+      <div class="mt-7">
+        <SharePanel
+          client:load
+          kind="card"
+          targetId={instance.id}
+          title={instance.card_name}
+          description={`${displayFinish(instance.variant_name, instance.material_key, instance.effect_key)} · ${instance.collection_name ?? "Cabinet"}. Choose the exact audience before creating a link.`}
+          frontUrl={instance.render_url}
+          backUrl={instance.back_render_url}
+        />
       </div>
 
       <dl class="mt-8 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-[var(--line)] pt-5 text-sm">

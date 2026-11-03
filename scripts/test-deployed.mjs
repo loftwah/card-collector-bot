@@ -18,11 +18,25 @@ async function get(url, options = {}) {
 }
 
 try {
-  for (const route of ["/", "/cabinet", "/cabinet/tux", "/login", "/sitemap-public.xml", "/robots.txt"]) {
+  for (const route of ["/", "/cabinet", "/cabinet/tux", "/login", "/tour", "/brand-kit", "/showcase", "/sitemap-public.xml", "/robots.txt"]) {
     const response = await get(route);
     if (response.status !== 200) throw new Error(`${route} returned ${response.status}`);
     pass(`production ${route} responds 200`);
   }
+  const brand = await get("/brand-kit");
+  if (!brand.body.includes("Signal Fold") || !brand.body.includes("avatar-carbon-512.png")) throw new Error("Brand kit is missing reviewed assets or downloads.");
+  pass("production brand kit exposes reviewed marks, avatars and banners");
+  const tour = await get("/tour");
+  if (!tour.body.includes("Hold it to the light") && !tour.body.includes("Inspect both faces")) throw new Error("Website tour is missing its inspection stage.");
+  pass("production website tour is present and uses real public cards");
+  const showcase = await get("/showcase");
+  if (!showcase.body.includes("foilbury-trailer-16x9.mp4")) throw new Error("Showcase page is missing the playable trailer.");
+  pass("production showcase exposes playable public video");
+  const studio = await get("/studio");
+  if (![301, 302, 303, 307, 308].includes(studio.status)) throw new Error(`/studio returned ${studio.status}, expected a login redirect.`);
+  const studioApi = await get("/api/v1/studio/collections");
+  if (studioApi.status !== 401) throw new Error(`/api/v1/studio/collections returned ${studioApi.status}, expected 401.`);
+  pass("production Studio requires a signed-in scoped session");
   const home = await get("/");
   for (const secret of ["Shai Gilgeous-Alexander", "nba-opening-night", "Chainsaw Man", "Death Note"]) {
     if (home.body.includes(secret)) throw new Error(`Production homepage leaks ${secret}`);

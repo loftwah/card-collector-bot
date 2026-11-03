@@ -1116,11 +1116,11 @@ function AdminTopics() {
   );
 }
 
-export default function AdminApp({ section, platformAdmin = false }: { section: AdminSection; platformAdmin?: boolean }) {
+export default function AdminApp({ section, platformAdmin = false, globalCollectionAdmin = false, botAdmin = false }: { section: AdminSection; platformAdmin?: boolean; globalCollectionAdmin?: boolean; botAdmin?: boolean }) {
   switch (section) {
     case "overview": return <AdminOverview />;
     case "catalogue": return <AdminCatalogue />;
-    case "collections": return <AdminCollections platformAdmin={platformAdmin} />;
+    case "collections": return <AdminCollections platformAdmin={platformAdmin} globalCollectionAdmin={globalCollectionAdmin} botAdmin={botAdmin} />;
     case "team": return <AdminTeam />;
     case "taxonomy": return <AdminTaxonomy />;
     case "topics": return <AdminTopics />;

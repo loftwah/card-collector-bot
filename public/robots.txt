@@ -6,6 +6,8 @@ Disallow: /account
 Disallow: /api
 Disallow: /_emdash
 Disallow: /platform-admin
+Disallow: /studio
+Disallow: /s/
 Disallow: /create-bot
 Disallow: /invite
 

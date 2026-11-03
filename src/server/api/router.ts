@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { all, first, nowIso } from "../db";
 import { newId } from "../ids";
-import { ApiError, assertCsrf, canManageContent, canManageEconomy, hasCapability, requireRecentStrongAuth, requireRole, requireScope, requireSuperAdmin, requireUser, type Ctx, type Role } from "../context";
+import { ApiError, assertCsrf, canManageContent, canManageEconomy, canManageGlobalCollection, canManageGlobalCollections, hasCapability, isGlobalCollectionAdmin, requireGlobalCollectionManager, requireRecentStrongAuth, requireRole, requireScope, requireSuperAdmin, requireUser, type Ctx, type Role } from "../context";
 import { apiErrorResponse, audit, json, pagination, readJson, idempotencyInput } from "../http";
 import {
   archiveCard,
@@ -47,6 +47,7 @@ import {
   getLedger,
   getPreferences,
   listAudit,
+  listShareLinks,
   backupManifest,
   operationsStatus,
   processOutbox,
@@ -54,6 +55,13 @@ import {
   updateEconomy,
   updatePreferences,
 } from "../modules/economy";
+import {
+  assignPlatformRole,
+  listPlatformPeople,
+  listPlatformRoleAssignments,
+  revokePlatformRole,
+  SCOPED_PLATFORM_ROLES,
+} from "../modules/platform-roles";
 import {
   getInstance,
   getInventory,
@@ -242,6 +250,37 @@ function ensureContentWrite(ctx: Ctx) {
   if (user.role !== "owner" && !hasCapability(user, "content")) throw new ApiError(403, "insufficient_role", "Your Bot role cannot edit content.");
 }
 
+/**
+ * Collection routes have their own authority because a Global Collection Admin
+ * is not a Bot role and must not inherit card, economy or platform powers.
+ */
+function ensureCollectionsRead(ctx: Ctx) {
+  if (ctx.user && (ctx.user.platformAdmin || isGlobalCollectionAdmin(ctx.user))) {
+    if (ctx.actor.type === "agent") requireScope(ctx, "content:read");
+    return;
+  }
+  ensureContentRead(ctx);
+}
+
+function ensureCollectionsWrite(ctx: Ctx) {
+  if (ctx.user && (ctx.user.platformAdmin || isGlobalCollectionAdmin(ctx.user))) {
+    if (ctx.actor.type === "agent") {
+      requireScope(ctx, "content:write");
+      if (!canManageGlobalCollections(ctx)) throw new ApiError(403, "insufficient_scope", "This agent grant cannot change shared collections.");
+    }
+    return;
+  }
+  ensureContentWrite(ctx);
+}
+
+function ensureStudioCatalogueRead(ctx: Ctx) {
+  if (ctx.user && (ctx.user.platformAdmin || isGlobalCollectionAdmin(ctx.user))) {
+    if (ctx.actor.type === "agent") requireScope(ctx, "content:read");
+    return;
+  }
+  ensureContentRead(ctx);
+}
+
 function ensureEconomyRead(ctx: Ctx) {
   if (ctx.actor.type === "agent") {
     requireScope(ctx, "economy:read");
@@ -297,6 +336,8 @@ function playerWrite(ctx: Ctx) {
 
 export async function routeApi(request: Request, ctx: Ctx, path: string): Promise<Response> {
   const segments = path.split("/").filter(Boolean);
+  const isStudio = segments[0] === "studio";
+  if (isStudio) segments[0] = "admin";
   const method = request.method.toUpperCase();
   const url = new URL(request.url);
   const isRead = method === "GET" || method === "HEAD";
@@ -552,10 +593,18 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     playerWrite(ctx);
     return json({ items: await listMyGiftReceipts(ctx) });
   }
+  if (segments[0] === "shares" && segments.length === 1 && method === "GET") {
+    playerWrite(ctx);
+    return json({ items: await listShareLinks(ctx) });
+  }
   if (segments[0] === "shares" && segments.length === 1 && method === "POST") {
     playerWrite(ctx);
-    const body = await readJson(request, z.object({ expiresInDays: z.number().int().min(1).max(30).optional() }));
-    return json(await createShareLink(ctx, body.expiresInDays));
+    const body = await readJson(request, z.object({
+      expiresInDays: z.number().int().min(1).max(30).optional(),
+      kind: z.enum(["cabinet", "card", "collection", "achievement", "wishlist", "latest", "profile"]).optional(),
+      targetId: idSchema.optional(),
+    }));
+    return json(await createShareLink(ctx, body));
   }
   if (segments[0] === "shares" && segments[1] && segments[2] === "revoke" && method === "POST") {
     playerWrite(ctx);
@@ -564,6 +613,36 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
 
   // Content administration
   if (segments[0] === "admin" && segments[1] === "cards" && segments.length === 2 && method === "GET") {
+    if (isStudio) {
+      ensureStudioCatalogueRead(ctx);
+      if (ctx.user?.platformAdmin || isGlobalCollectionAdmin(ctx.user)) {
+        const main = await first<{ id: string; slug: string; name: string }>(ctx.db, "SELECT id, slug, name FROM fb_tenants WHERE slug = ?", ctx.config.tenantSlug);
+        const catalogueCtx: Ctx = main ? { ...ctx, tenant: main } : ctx;
+        const allCards = await listCards(catalogueCtx, {
+          includeDrafts: true,
+          search: url.searchParams.get("search") ?? undefined,
+          limit: Number(url.searchParams.get("limit") ?? 500),
+        });
+        const globalIds = await all<{ card_id: string }>(ctx.db,
+          ctx.user?.globalCollectionScope && !ctx.user.platformAdmin
+            ? `SELECT DISTINCT cc.card_id FROM fb_collection_cards cc
+                 JOIN fb_collections c ON c.id = cc.collection_id
+                WHERE c.scope = 'global' AND c.archived_at IS NULL AND c.id IN (${ctx.user.globalCollectionScope.all ? "SELECT id FROM fb_collections WHERE scope='global'" : ctx.user.globalCollectionScope.collectionIds.map(() => "?").join(",") || "NULL"})`
+            : `SELECT DISTINCT cc.card_id FROM fb_collection_cards cc
+                 JOIN fb_collections c ON c.id = cc.collection_id
+                WHERE c.scope = 'global' AND c.archived_at IS NULL`,
+          ...(ctx.user?.globalCollectionScope && !ctx.user.globalCollectionScope.all ? ctx.user.globalCollectionScope.collectionIds : []));
+        const allowed = new Set(globalIds.map((row) => row.card_id));
+        return json({ items: allCards.filter((card) => allowed.has(card.id)) });
+      }
+      return json({
+        items: await listCards(ctx, {
+          includeDrafts: true,
+          search: url.searchParams.get("search") ?? undefined,
+          limit: Number(url.searchParams.get("limit") ?? 200),
+        }),
+      });
+    }
     ensureContentRead(ctx);
     return json({
       items: await listCards(ctx, {
@@ -812,17 +891,20 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
 
   // Assets, imports and render jobs
   if (segments[0] === "admin" && segments[1] === "assets" && segments.length === 2 && method === "GET") {
-    ensureContentRead(ctx);
+    ensureCollectionsRead(ctx);
     return json({ items: await listAssets(ctx, (url.searchParams.get("kind") as AssetKind) ?? undefined) });
   }
   if (segments[0] === "admin" && segments[1] === "assets" && segments.length === 2 && method === "POST") {
-    ensureContentWrite(ctx);
+    ensureCollectionsWrite(ctx);
     ensureStepUp(ctx);
     requireScope(ctx, "import:write");
     const form = await request.formData();
     const file = form.get("file");
     if (!(file instanceof File)) throw new ApiError(422, "file_required", "Upload an image file.");
     const kind = String(form.get("kind") ?? "subject") as AssetKind;
+    if (ctx.user && isGlobalCollectionAdmin(ctx.user) && !ctx.user.platformAdmin && kind !== "brand") {
+      throw new ApiError(403, "asset_scope_invalid", "A Global Collection Admin can upload collection branding only.");
+    }
     if (!["subject", "background", "frame", "material", "effect", "brand"].includes(kind)) {
       throw new ApiError(422, "kind_invalid", "Unsupported asset kind.");
     }
@@ -1028,8 +1110,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       bot,
       admins: await listBotAdmins(ctx, bot.id),
       invitations: await listBotInvitations(ctx, bot.id),
-      current_role: ctx.user?.platformAdmin ? "Super Admin" : ctx.user?.role === "owner" ? "Bot Owner" : "Bot Admin",
-    });
+      current_role: ctx.user?.platformAdmin ? "Super Admin" : ctx.user?.role === "owner" ? "Bot Owner" : "Bot Admin",    });
   }
   if (segments[0] === "admin" && segments[1] === "bot" && segments[2] === "invitations" && method === "POST") {
     ensureStepUp(ctx);
@@ -1054,11 +1135,11 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
 
   // Collections (global and Bot-scoped)
   if (segments[0] === "admin" && segments[1] === "collections" && segments.length === 2 && method === "GET") {
-    ensureContentRead(ctx);
+    ensureCollectionsRead(ctx);
     return json({ items: await listCollections(ctx, { includeAll: true }) });
   }
   if (segments[0] === "admin" && segments[1] === "collections" && segments.length === 2 && method === "POST") {
-    ensureContentWrite(ctx);
+    ensureCollectionsWrite(ctx);
     ensureStepUp(ctx);
     const body = await readJson(request, z.object({
       name: z.string().min(2).max(120),
@@ -1079,11 +1160,11 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ collection: await createCollection(ctx, body) }, 201);
   }
   if (segments[0] === "admin" && segments[1] === "collections" && segments[2] && segments.length === 3 && method === "GET") {
-    ensureContentRead(ctx);
+    ensureCollectionsRead(ctx);
     return json({ collection: await getCollection(ctx, segments[2]), cards: await listCollectionCards(ctx, segments[2]) });
   }
   if (segments[0] === "admin" && segments[1] === "collections" && segments[2] && segments.length === 3 && method === "PATCH") {
-    ensureContentWrite(ctx);
+    ensureCollectionsWrite(ctx);
     ensureStepUp(ctx);
     const body = await readJson(request, z.object({
       name: z.string().min(2).max(120).optional(),
@@ -1104,36 +1185,35 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ collection: await updateCollection(ctx, segments[2], body) });
   }
   if (segments[0] === "admin" && segments[1] === "collections" && segments[2] && segments[3] === "cards" && method === "POST") {
-    ensureContentWrite(ctx);
+    ensureCollectionsWrite(ctx);
     ensureStepUp(ctx);
     const body = await readJson(request, z.object({ cardIds: z.array(idSchema).min(1).max(300) }));
     return json(await addCollectionCards(ctx, segments[2], body.cardIds));
   }
   if (segments[0] === "admin" && segments[1] === "collections" && segments[2] && segments[3] === "cards" && segments[4] && method === "DELETE") {
-    ensureContentWrite(ctx);
+    ensureCollectionsWrite(ctx);
     ensureStepUp(ctx);
     await removeCollectionCard(ctx, segments[2], segments[4]);
     return json({ ok: true });
   }
   if (segments[0] === "admin" && segments[1] === "collections" && segments[2] && segments[3] === "enable" && method === "POST") {
     ensureContentWrite(ctx);
-    ensureStepUp(ctx);
-    const body = await readJson(request, z.object({ enabled: z.boolean() }));
+    ensureStepUp(ctx);    const body = await readJson(request, z.object({ enabled: z.boolean() }));
     await enableCollection(ctx, segments[2], body.enabled);
     return json({ ok: true });
   }
   if (segments[0] === "admin" && segments[1] === "collections" && segments[2] && segments[3] === "viewers" && method === "GET") {
-    ensureContentRead(ctx);
+    ensureCollectionsRead(ctx);
     return json({ items: await listCollectionViewers(ctx, segments[2]) });
   }
   if (segments[0] === "admin" && segments[1] === "collections" && segments[2] && segments[3] === "viewers" && method === "POST") {
-    ensureContentWrite(ctx);
+    ensureCollectionsWrite(ctx);
     ensureStepUp(ctx);
     const body = await readJson(request, z.object({ userIds: z.array(idSchema).max(500) }));
     return json(await setCollectionViewers(ctx, segments[2], body.userIds));
   }
   if (segments[0] === "admin" && segments[1] === "collections" && segments[2] && segments[3] === "progress" && method === "GET") {
-    ensureContentRead(ctx);
+    ensureCollectionsRead(ctx);
     return json(await collectionProgress(ctx, segments[2]));
   }
 
@@ -1198,6 +1278,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       (SELECT COUNT(*) FROM fb_card_instances WHERE status = 'owned') AS owned_instances,
       (SELECT COUNT(*) FROM fb_ledger_entries) AS ledger_entries,
       (SELECT COUNT(*) FROM fb_platform_admins WHERE status = 'active') AS super_admins,
+      (SELECT COUNT(*) FROM fb_platform_role_assignments WHERE status = 'active') AS global_collection_admins,
       (SELECT COUNT(*) FROM fb_bot_invitations WHERE status = 'pending' AND expires_at > datetime('now')) AS pending_invitations`);
     const bots = await all<Record<string, unknown>>(ctx.db,
       `SELECT b.id, b.name, b.slug, b.status, b.created_at, t.id AS tenant_id, t.slug AS tenant_slug,
@@ -1230,6 +1311,43 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
               (SELECT COUNT(*) FROM fb_access_identities a WHERE a.user_id = u.id AND a.revoked_at IS NULL) AS access_links
          FROM fb_users u ORDER BY u.created_at`);
     return json({ items: accounts });
+  }
+  if (segments[0] === "platform" && segments[1] === "people" && method === "GET") {
+    requireSuperAdmin(ctx);
+    return json({
+      items: await listPlatformPeople(ctx, {
+        search: url.searchParams.get("search") ?? undefined,
+        role: url.searchParams.get("role") ?? undefined,
+      }),
+      roles: SCOPED_PLATFORM_ROLES,
+    });
+  }
+  if (segments[0] === "platform" && segments[1] === "roles" && segments.length === 2 && method === "GET") {
+    requireSuperAdmin(ctx);
+    return json({ items: await listPlatformRoleAssignments(ctx) });
+  }
+  if (segments[0] === "platform" && segments[1] === "roles" && segments.length === 2 && method === "POST") {
+    requireSuperAdmin(ctx);
+    ensureStepUp(ctx);
+    const body = await readJson(request, z.object({
+      userId: idSchema,
+      role: z.enum(SCOPED_PLATFORM_ROLES),
+      scopes: z.object({
+        all: z.boolean().optional(),
+        collectionIds: z.array(idSchema).max(200).optional(),
+      }).optional(),
+      reason: z.string().min(3).max(500),
+    }));
+    return json(await assignPlatformRole(ctx, body), 201);
+  }
+  if (segments[0] === "platform" && segments[1] === "roles" && segments[2] && segments[3] === "revoke" && method === "POST") {
+    requireSuperAdmin(ctx);
+    ensureStepUp(ctx);
+    const body = await readJson(request, z.object({
+      role: z.enum(SCOPED_PLATFORM_ROLES),
+      reason: z.string().min(3).max(500),
+    }));
+    return json(await revokePlatformRole(ctx, segments[2], body.role, body.reason));
   }
   if (segments[0] === "platform" && segments[1] === "installations" && segments[2] && method === "PATCH") {
     requireSuperAdmin(ctx);

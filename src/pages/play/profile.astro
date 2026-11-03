@@ -1,0 +1,94 @@
+---
+import PlayerLayout from "../../layouts/PlayerLayout.astro";
+import AchievementBadge from "../../components/player/AchievementBadge.astro";
+import ShareLinkButton from "../../components/player/ShareLinkButton";
+import { pageContext } from "../../server/page";
+import { getInventory } from "../../server/modules/collection";
+import { listAchievements } from "../../server/modules/achievements";
+import { listCollections, collectionProgress } from "../../server/modules/collections";
+
+const ctx = await pageContext(Astro.request);
+const user = ctx.user!;
+const [inventory, achievements, collections] = await Promise.all([
+  getInventory(ctx, { limit: 300, favourite: true }),
+  listAchievements(ctx, user.id),
+  listCollections(ctx),
+]);
+const earned = achievements.filter((item) => item.state === "earned").slice(0, 8);
+const progress = await Promise.all(collections.slice(0, 6).map(async (collection) => ({ collection, stat: await collectionProgress(ctx, collection.id) })));
+const activeWorlds = progress.filter((item) => item.stat.total_cards > 0 && item.stat.owned_cards > 0).sort((a, b) => (b.stat.owned_cards / Math.max(1, b.stat.total_cards)) - (a.stat.owned_cards / Math.max(1, a.stat.total_cards))).slice(0, 4);
+const favourites = inventory.slice(0, 8);
+const totalCards = progress.reduce((sum, item) => sum + item.stat.owned_cards, 0);
+const completeWorlds = progress.filter((item) => item.stat.complete).length;
+---
+<PlayerLayout title="Collector showcase · Foilbury">
+  <section class="border-b border-[var(--line)] pb-7">
+    <div class="flex flex-wrap items-end justify-between gap-5">
+      <div>
+        <p class="studio-kicker text-[var(--teal)]">Collector showcase</p>
+        <h1 class="display mt-2 text-[clamp(2.8rem,7vw,5.6rem)] uppercase">{user.displayName}</h1>
+        <p class="mt-3 max-w-2xl text-[var(--muted)]">A curated view of what you keep. Favourites, the worlds you are closest to finishing, and the badges you actually earned. Your wallet, email and account ID are not part of this page.</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <ShareLinkButton client:load kind="profile" label="Share showcase" />
+        <a class="btn btn-secondary btn-sm" href="/play/preferences">Sharing settings</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="mt-7 grid gap-3 sm:grid-cols-3">
+    <div class="studio-stat"><p class="studio-stat__label">Subjects held</p><p class="studio-stat__value">{totalCards}</p></div>
+    <div class="studio-stat"><p class="studio-stat__label">Worlds complete</p><p class="studio-stat__value">{completeWorlds}</p></div>
+    <div class="studio-stat"><p class="studio-stat__label">Badges earned</p><p class="studio-stat__value">{achievements.filter((item) => item.state === "earned").length}</p></div>
+  </section>
+
+  <section class="mt-9">
+    <div class="flex flex-wrap items-end justify-between gap-3 border-b border-[var(--line)] pb-3">
+      <h2 class="display-sm text-3xl uppercase">Pinned cards</h2>
+      <a class="font-mono text-[0.6rem] uppercase tracking-[0.1em] underline underline-offset-4" href="/play/collection">Manage favourites →</a>
+    </div>
+    {favourites.length ? (
+      <div class="card-grid mt-5">
+        {favourites.map((card) => (
+          <a href={`/play/card/${card.id}`} class="group no-underline">
+            <div class="card-face">{card.render_url ? <img src={card.render_url} alt={`${card.card_name} — ${card.variant_name}`} loading="lazy" /> : <div class="card-face-fallback">{card.card_name.charAt(0)}</div>}</div>
+            <p class="display-sm mt-2 text-base">{card.card_name}</p>
+            <p class="text-xs text-[var(--muted)]">{card.variant_name} · {card.serial}</p>
+          </a>
+        ))}
+      </div>
+    ) : (
+      <div class="empty mt-5"><div><p class="display-sm text-2xl">No favourites pinned yet.</p><p class="mt-2 text-sm">Favourite a card in your collection and it appears here, ready for a curated share.</p></div></div>
+    )}
+  </section>
+
+  <section class="mt-10 grid gap-6 lg:grid-cols-[1fr_1fr]">
+    <div>
+      <div class="border-b border-[var(--line)] pb-3"><h2 class="display-sm text-3xl uppercase">Closest worlds</h2></div>
+      <div class="mt-3 grid gap-2">
+        {activeWorlds.map(({ collection, stat }) => {
+          const pct = stat.total_cards ? Math.round((stat.owned_cards / stat.total_cards) * 100) : 0;
+          return (
+            <a href={`/play/collection?collection=${collection.slug}`} class="flex items-center gap-3 border border-[var(--line)] bg-[var(--paper)] p-3 no-underline hover:border-[var(--ink)]">
+              {collection.logo_url ? <img src={collection.logo_url} alt="" class="h-10 w-10 object-contain" width="40" height="40" /> : null}
+              <div class="min-w-0 flex-1"><p class="truncate font-semibold">{collection.name}</p><p class="font-mono text-[0.56rem] uppercase tracking-[0.08em] text-[var(--muted)]">{stat.owned_cards}/{stat.total_cards} subjects · {pct}%</p><div class="mt-1 h-1.5 bg-[var(--paper-3)]"><div class="h-full bg-[var(--signal)]" style={`width:${pct}%`}></div></div></div>
+            </a>
+          );
+        })}
+        {activeWorlds.length === 0 ? <p class="empty">Open a capsule to start a world.</p> : null}
+      </div>
+    </div>
+    <div>
+      <div class="border-b border-[var(--line)] pb-3"><h2 class="display-sm text-3xl uppercase">Earned badges</h2></div>
+      <div class="mt-3 grid gap-2">
+        {earned.map((item) => (
+          <div class="flex items-center gap-3 border border-[var(--line)] bg-[var(--paper)] p-3">
+            <AchievementBadge artKey={item.art_key} name={item.name} category={item.category} earned size={44} emblemUrl={item.collection_logo_url} />
+            <div class="min-w-0"><p class="truncate font-semibold">{item.name}</p><p class="font-mono text-[0.54rem] uppercase tracking-[0.08em] text-[var(--muted)]">{item.category} · earned</p></div>
+          </div>
+        ))}
+        {earned.length === 0 ? <p class="empty">Your first badge is one capsule away.</p> : null}
+      </div>
+    </div>
+  </section>
+</PlayerLayout>

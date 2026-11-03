@@ -16,6 +16,9 @@ export const GET: APIRoute = async ({ request }) => {
   const urls = [
     { loc: `${origin}/`, priority: "1.0" },
     { loc: `${origin}/cabinet`, priority: "0.9" },
+    { loc: `${origin}/tour`, priority: "0.8" },
+    { loc: `${origin}/brand-kit`, priority: "0.6" },
+    { loc: `${origin}/showcase`, priority: "0.6" },
     { loc: `${origin}/journal`, priority: "0.7" },
     { loc: `${origin}/login`, priority: "0.4" },
     ...collections.map((collection) => ({ loc: `${origin}/cabinet?collection=${encodeURIComponent(collection.slug)}`, priority: "0.7" })),

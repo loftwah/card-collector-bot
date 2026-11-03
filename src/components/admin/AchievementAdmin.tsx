@@ -39,6 +39,7 @@ export default function AchievementAdmin({ platformAdmin }: { platformAdmin: boo
     type: "collection_unique",
     target: 5,
     collectionId: "",
+    finish: "plain",
     foil: 240,
     artKey: "medal-collection",
     visibility: "member",
@@ -67,7 +68,8 @@ export default function AchievementAdmin({ platformAdmin }: { platformAdmin: boo
     setNotice("");
     try {
       const criteria: Record<string, unknown> = { type: form.type, target: Number(form.target) };
-      if (form.type === "collection_unique" || form.type === "collection_complete") criteria.collection_id = form.collectionId;
+      if (["collection_unique", "collection_complete", "collection_finish_set", "collection_core_set", "first_in_collection"].includes(form.type)) criteria.collection_id = form.collectionId;
+      if (form.type === "collection_finish_set") criteria.finish = form.finish;
       await api("/api/v1/admin/achievements", {
         method: "POST",
         body: {
@@ -134,6 +136,9 @@ export default function AchievementAdmin({ platformAdmin }: { platformAdmin: boo
               <Select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value })}>
                 <option value="collection_unique">Collect unique subjects in a collection</option>
                 <option value="collection_complete">Complete a collection roster</option>
+                <option value="first_in_collection">First card in a collection</option>
+                <option value="collection_finish_set">All of one finish in a collection</option>
+                <option value="collection_core_set">All four core finishes for every subject</option>
                 <option value="unique_cards">Collect unique subjects overall</option>
                 <option value="finish_first">Find a finish</option>
                 <option value="finish_set">Complete a core finish set</option>
@@ -142,11 +147,21 @@ export default function AchievementAdmin({ platformAdmin }: { platformAdmin: boo
             </Field>
             <Field label="Target"><Input type="number" min={1} value={form.target} onChange={(event) => setForm({ ...form, target: Number(event.target.value) })} /></Field>
           </div>
-          {form.type === "collection_unique" || form.type === "collection_complete" ? (
+          {["collection_unique", "collection_complete", "collection_finish_set", "collection_core_set", "first_in_collection"].includes(form.type) ? (
             <Field label="Collection">
               <Select value={form.collectionId} onChange={(event) => setForm({ ...form, collectionId: event.target.value })}>
                 <option value="">Choose a collection</option>
                 {collections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>)}
+              </Select>
+            </Field>
+          ) : null}
+          {form.type === "collection_finish_set" ? (
+            <Field label="Finish">
+              <Select value={form.finish} onChange={(event) => setForm({ ...form, finish: event.target.value })}>
+                <option value="plain">Plain</option>
+                <option value="silver">Silver</option>
+                <option value="gold">Gold</option>
+                <option value="holographic">Holographic</option>
               </Select>
             </Field>
           ) : null}
@@ -174,7 +189,7 @@ export default function AchievementAdmin({ platformAdmin }: { platformAdmin: boo
           </Field>
           {error ? <p className="error-box" role="alert">{error}</p> : null}
           {notice ? <p className="success-box" role="status">{notice}</p> : null}
-          <Button onClick={create} disabled={busy !== "" || form.name.length < 2 || form.key.length < 2 || form.description.length < 2 || ((form.type === "collection_unique" || form.type === "collection_complete") && !form.collectionId)}>
+          <Button onClick={create} disabled={busy !== "" || form.name.length < 2 || form.key.length < 2 || form.description.length < 2 || (["collection_unique", "collection_complete", "collection_finish_set", "collection_core_set", "first_in_collection"].includes(form.type) && !form.collectionId)}>
             {busy === "create" ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Create achievement
           </Button>
         </div>

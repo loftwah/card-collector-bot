@@ -373,7 +373,7 @@ try {
     bullets: [
       "Real published renders lead the page.",
       "The cabinet/sign-in path is visible without exposing member content.",
-      "Typography, paper and brass establish the collector's-cabinet world.",
+      "Bold Manrope typography, deep current and electric aqua establish the Foilbury Signal identity.",
     ],
   });
   await visit(publicPage, {
@@ -398,6 +398,42 @@ try {
       "Artwork and metadata are readable at desktop size.",
       "The card is framed as a collectible, not a dashboard tile.",
       "Source credit is honest and visible.",
+    ],
+  });
+  await visit(publicPage, {
+    name: "Guided website tour",
+    route: "/tour",
+    waitFor: "h1",
+    caption:
+      "A short, skippable and resumable tour through the real product. It uses real public cards, explains free play and shows the difference between roster completion and finish mastery.",
+    bullets: [
+      "The tour is a route into the live product, not a storyboard.",
+      "Member-only content stays behind membership.",
+      "The operator appendix appears only for an authorised account.",
+    ],
+  });
+  await visit(publicPage, {
+    name: "Brand kit",
+    route: "/brand-kit",
+    waitFor: "h1",
+    caption:
+      "Four reviewed marks, sixteen Discord avatars, eight server/social banners, wordmarks and OG assets, all downloadable.",
+    bullets: [
+      "Signal Fold is the canonical working identity.",
+      "Palette and clear-space rules are documented.",
+      "No paid generation and no borrowed franchise emblem.",
+    ],
+  });
+  await visit(publicPage, {
+    name: "Showcase and video",
+    route: "/showcase",
+    waitFor: "h1",
+    caption:
+      "Real public stills and playable MP4 exports, with an export manifest and public-safe boundary.",
+    bullets: [
+      "The 18-second trailer is generated from real public renders.",
+      "The 9:16 teaser is silent and playable.",
+      "The private opening replay is not published as marketing.",
     ],
   });
   await visit(publicPage, {
@@ -478,7 +514,10 @@ try {
     ],
   });
   await memberPage.getByRole("button", { name: /Draw for/ }).click();
-  await memberPage.getByText(/New subject|Another copy/).waitFor({ timeout: 20000 });
+  await memberPage.getByText(/New subject|Duplicate/).waitFor({ timeout: 20000 });
+  await memberPage.getByRole("button", { name: /Show result now/ }).click().catch(() => undefined);
+  await memberPage.locator(".draw-reveal.is-revealed").waitFor({ timeout: 20000 });
+  await memberPage.waitForTimeout(300);
   await capture(memberPage, {
     name: "Draw result",
     caption:
@@ -691,6 +730,32 @@ try {
       "Accounts, Access links, Bots, installations and global collections are separate from Bot Admin.",
       "The account shown is the provisioned local Super Admin, not a Discord moderator.",
       "Local development sign-in is clearly a fixture and is absent in production.",
+    ],
+  });
+  await visit(adminPage, {
+    name: "People and roles",
+    route: "/platform-admin/people",
+    waitFor: "h1, h2",
+    fullPage: true,
+    caption:
+      "Searchable people, explicit scopes, audited role assignment and a plain-language permission matrix. Global Collection Admin is not Super Admin.",
+    bullets: [
+      "Super Admin remains explicitly provisioned.",
+      "A scoped role can be granted, changed and revoked idempotently.",
+      "Bot roles and platform roles are shown separately.",
+    ],
+  });
+  await visit(adminPage, {
+    name: "Scoped Studio",
+    route: "/studio",
+    waitFor: "h1, h2",
+    fullPage: false,
+    caption:
+      "The Studio is a normal signed-in workspace with live role checks. It does not depend on Cloudflare Access and cannot grant platform root, secrets or another Bot.",
+    bullets: [
+      "Bot Owners/Admins and scoped collection admins share one surface.",
+      "The API enforces the same scope as the UI.",
+      "Editorial remains a handoff to EmDash rather than a second CMS.",
     ],
   });
   // EmDash's local dev bypass is a development-only route. Production uses the

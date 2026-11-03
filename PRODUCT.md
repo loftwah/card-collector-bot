@@ -8,6 +8,7 @@ Foilbury is a collectible-card cabinet. A player claims a free allowance, opens 
 - **User** — an ordinary player. A verified Discord interaction creates a lightweight player without a website registration step.
 - **Bot Owner** — the account that owns a Foilbury Bot. This is not platform administration.
 - **Bot Admin** — an account explicitly authorised for a named Bot, with a capability set, expiring invitation and revocation path.
+- **Global Collection Admin** — an audited, scoped platform role for shared collection curation. It is not platform root and cannot approve public showcase content.
 - **Super Admin** — platform-wide authority. Only the explicitly provisioned Dean account has it; it is not inferred from guild ownership, email suffix, first sign-up or Cloudflare membership.
 - **Installation** — a server-to-Bot binding. A guild is resolved on the server; a tenant or guild ID in an interaction payload is not authority.
 
@@ -20,16 +21,20 @@ Foilbury is a collectible-card cabinet. A player claims a free allowance, opens 
 - Generous free-play defaults (800 welcome / 480 daily), truthful finish odds and scoped administrator gifts.
 - Passwordless player sign-in: Discord OAuth, one-use email magic links, passkeys; authenticator TOTP and recovery codes for step-up.
 - Account security: passkeys, authenticator, recovery codes, session review and revocation.
-- Player cabinet: collection filtered by collection and set, draw studio, rewards, trades, preferences and share links.
+- Player cabinet: collection filtered by collection and set, draw studio, rewards, trades, preferences, collector showcase and share links.
 - Bot administration at `/admin/*`: catalogue, artwork editions, collections, team invitations, sets, pools, economy, availability, imports, render studio and audit.
-- Platform Administration at `/platform-admin`: accounts, Access links, Bots, installations, global collections, explicit Super Admin record and audit.
+- Scoped Studio at `/studio`: a normal signed-in workspace for Bot Owners/Admins and Global Collection Admins. It does not require Cloudflare Access and cannot grant platform root.
+- Platform Administration at `/platform-admin`: accounts, People & roles, Access links, Bots, installations, global collections, explicit Super Admin record and audit.
+- Brand kit at `/brand-kit`: four reviewed marks, Discord avatars, server/social banners, wordmarks and OG assets. The canonical working identity is Signal Fold.
+- Website tour at `/tour`: public-safe, skippable and resumable, with a member continuation and a private operator appendix.
+- Showcase at `/showcase`: real public stills and playable MP4 exports with an export manifest and audience label.
 - Discord HTTP interactions at `/api/discord/interactions`: `/foilbury open`, `daily`, `collection`, `card`, `packs`, `achievements`, `tour`, `profile`, `help` and guarded `admin` subcommands. The guided tour is private by default and shares only after explicit audience checks.
 - Headless REST API, CLI and stdio MCP server using scoped agent grants.
 - EmDash is the editorial CMS for journal drafts and media; Foilbury remains the source of truth for card identity, artwork editions, categories, tags, pools, awards and inventory.
 
 ## Collections
 
-- **Global collection** — curated by the Super Admin, reusable by every Bot, enabled or disabled per Bot. The Bot reads it; it does not edit or clone it.
+- **Global collection** — curated by the Super Admin or a scoped Global Collection Admin, reusable by every Bot, enabled or disabled per Bot. The Bot reads it; it does not edit or clone it.
 - **Bot collection** — private to one Bot, managed by its Bot Owner or a Bot Admin with content capability.
 - `view_audience` is independent of scope and status: **public** (approved showcase), **members** (active album/Bot membership) or **private** (owner scope plus explicit viewers).
 - New collections default to members-only. Only the Super Admin can approve public showcase material or promote a collection to public.
@@ -50,15 +55,16 @@ Foilbury is a collectible-card cabinet. A player claims a free allowance, opens 
 
 - 17 launch collections are delivered as private manifests and imported through the validated pipeline: NBA (12) plus 16 properties (8 each). See `docs/CONTENT_COVERAGE.md`.
 - The launch catalogue is members-only. Approved Loftwah originals remain the public showcase.
-- Achievements: 11 platform definitions plus collection milestones, versioned criteria, idempotent unlocks and separated reward/notification delivery.
+- Achievements: 11 platform definitions plus collection milestones and a versioned mastery catalogue (first card, all Plain/Silver/Gold/Holographic per collection, core mastery, roster progress), frozen criteria, idempotent unlocks and separated reward/notification delivery.
 - Gifts: Foil, opening and card, scoped to the Bot, capped by role, previewed and idempotent.
 - No paid generation was run. Franchise cards use publicly published reference images with recorded provenance; the card design and finishes remain Foilbury originals. They are third-party images in a private, non-commercial member album, not official or licensed artwork.
 
 ## Known gaps
 
-- Dean's administration uses his existing Cloudflare-account sign-in. A separate Access MFA enrolment is not an intended onboarding step. The authentication correction is prepared; deployment and a complete authenticated administration journey remain to be verified (see `docs/AUTH_ACCEPTANCE.md`).
+- Dean's administration uses his existing Cloudflare-account sign-in. The authentication correction is deployed; a fresh human Access session and a complete authenticated Production Administration journey still need to be recorded (see `docs/AUTH_ACCEPTANCE.md`).
 - The production EmDash operator console is protected by Access and configured for the existing Dean account; a human authenticated editorial session is still required to exercise the native console.
 - A local Discord OAuth callback is registered at `http://localhost:5173/auth/discord/callback`; a completed local Discord consent is a human step. Production OAuth remains preserved.
-- A real second Discord guild installation and a second-person acceptance matrix require an authorised human participant.
+- A real second Discord guild installation and a second-person acceptance matrix require an authorised human participant. The channel visibility and spectator items remain BLOCKED in the preflight.
+- Production card renders were deployed with the previous composure; the new emblem/proof-label pipeline is proven locally and needs an authorised production re-render. Do not claim the old published renders are the new design.
 - Paid generation, FAL, ElevenLabs and other billed providers remain intentionally unrun.
 

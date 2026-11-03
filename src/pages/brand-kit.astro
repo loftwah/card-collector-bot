@@ -1,0 +1,139 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import manifest from "../../public/brand/kit/manifest.json";
+
+const canonical = "signal-fold";
+const mark = (manifest.marks.find((item) => item.slug === canonical) ?? manifest.marks[0])!;
+const marks = manifest.marks;
+const banners = manifest.banners;
+const wordmarks = manifest.wordmarks;
+const social = manifest.social;
+---
+<BaseLayout title="Foilbury brand kit · marks, avatars and banners" description="Download the reviewed Foilbury identity: Signal Fold marks, Discord avatars, server banners, wordmarks and social previews." shareImage="/brand/kit/social/og-1200x630.png">
+  <section class="signal-rule" aria-hidden="true"></section>
+  <section class="container py-12 md:py-16">
+    <div class="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
+      <div>
+        <p class="studio-kicker">Brand kit · Foilbury Signal</p>
+        <h1 class="display mt-3 text-[clamp(3rem,8vw,7rem)] uppercase">A mark for the cabinet.</h1>
+        <p class="mt-5 max-w-2xl text-lg leading-relaxed text-[var(--muted)]">Deep current, electric aqua, ice and signal lime. A bold, geometric identity built around a card being folded, filed and kept. No orange, no borrowed franchise marks, no random generation.</p>
+      </div>
+      <div class="border border-[var(--line)] bg-[var(--paper-2)] p-5">
+        <p class="studio-stat__label">Canonical working identity</p>
+        <div class="mt-3 flex items-center gap-4">
+          <img src={mark.png} alt="Signal Fold mark" width="88" height="88" class="h-[88px] w-[88px]" />
+          <div><p class="display-sm text-2xl uppercase">Signal Fold</p><p class="mt-1 text-sm text-[var(--muted)]">{mark.note}</p></div>
+        </div>
+        <div class="mt-4 flex flex-wrap gap-2">
+          <a class="btn btn-signal btn-sm" href={mark.png} download>Download mark PNG</a>
+          <a class="btn btn-secondary btn-sm" href={mark.svg} download>SVG master</a>
+        </div>
+      </div>
+    </div>
+
+    <section class="mt-12">
+      <div class="flex flex-wrap items-end justify-between gap-4 border-b-2 border-[var(--ink)] pb-3">
+        <h2 class="display-sm text-3xl uppercase">Mark options</h2>
+        <p class="font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[var(--muted)]">Four reviewed directions · choose one per destination</p>
+      </div>
+      <div class="brand-grid mt-5">
+        {marks.map((item) => (
+          <article class="brand-tile">
+            <div class="brand-tile__art"><img src={item.png} alt={`${item.label} mark`} width="1024" height="1024" loading="lazy" /></div>
+            <div>
+              <div class="flex items-start justify-between gap-2"><h3 class="display-sm text-xl uppercase">{item.label}</h3>{item.slug === canonical ? <span class="badge badge-signal">Canonical</span> : <span class="badge">Option</span>}</div>
+              <p class="mt-1 text-xs leading-relaxed text-[var(--muted)]">{item.note}</p>
+              <div class="mt-3 flex flex-wrap gap-2">
+                <a class="btn btn-secondary btn-sm" href={item.png} download>1024 PNG</a>
+                <a class="btn btn-ghost btn-sm" href={item.svg} download>SVG</a>
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+
+    <section class="mt-12">
+      <div class="flex flex-wrap items-end justify-between gap-4 border-b-2 border-[var(--ink)] pb-3">
+        <h2 class="display-sm text-3xl uppercase">Discord avatars</h2>
+        <p class="font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[var(--muted)]">512×512 · four grounds</p>
+      </div>
+      <div class="brand-grid mt-5">
+        {mark.avatars.map((src, index) => (
+          <article class="brand-tile">
+            <div class="brand-tile__art"><img src={src} alt={`Signal Fold avatar, ${["deep current", "ice", "signal aqua", "carbon"][index]} ground`} width="512" height="512" loading="lazy" /></div>
+            <div class="flex items-center justify-between gap-2"><p class="text-sm font-semibold">{["Deep current", "Ice", "Signal aqua", "Carbon"][index]}</p><a class="btn btn-secondary btn-sm" href={src} download>Download</a></div>
+          </article>
+        ))}
+      </div>
+    </section>
+
+    <section class="mt-12">
+      <div class="flex flex-wrap items-end justify-between gap-4 border-b-2 border-[var(--ink)] pb-3">
+        <h2 class="display-sm text-3xl uppercase">Server banners</h2>
+        <p class="font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[var(--muted)]">960×540 Discord · 1920×1080 social</p>
+      </div>
+      <div class="mt-5 grid gap-5 md:grid-cols-2">
+        {banners.map((item) => (
+          <article class="border border-[var(--line)] bg-[var(--paper)] p-3">
+            <img src={item.discord} alt={`${item.label} banner`} width="960" height="540" loading="lazy" class="w-full border border-[var(--line)]" />
+            <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+              <p class="font-semibold">{item.label}</p>
+              <div class="flex gap-2"><a class="btn btn-secondary btn-sm" href={item.discord} download>Discord 960</a><a class="btn btn-ghost btn-sm" href={item.social} download>Social 1920</a></div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+
+    <section class="mt-12 grid gap-8 lg:grid-cols-[1fr_1fr]">
+      <div>
+        <div class="border-b-2 border-[var(--ink)] pb-3"><h2 class="display-sm text-3xl uppercase">Wordmarks</h2></div>
+        <div class="mt-4 grid gap-3">
+          {wordmarks.map((item) => (
+            <article class="flex flex-wrap items-center justify-between gap-3 border border-[var(--line)] bg-[var(--paper)] p-3">
+              <div class="min-w-0"><p class="font-semibold">{item.label}</p><p class="font-mono text-[0.56rem] uppercase tracking-[0.08em] text-[var(--muted)]">1600×400 · transparent included</p></div>
+              <div class="flex flex-wrap gap-2"><a class="btn btn-secondary btn-sm" href={item.png} download>PNG</a><a class="btn btn-ghost btn-sm" href={item.transparent} download>Transparent</a><a class="btn btn-ghost btn-sm" href={item.svg} download>SVG</a></div>
+            </article>
+          ))}
+        </div>
+      </div>
+      <div>
+        <div class="border-b-2 border-[var(--ink)] pb-3"><h2 class="display-sm text-3xl uppercase">Social and site</h2></div>
+        <div class="mt-4 grid gap-3">
+          {social.map((item) => (
+            <article class="border border-[var(--line)] bg-[var(--paper)] p-3">
+              <img src={item.png} alt={item.label} loading="lazy" class="w-full border border-[var(--line)]" />
+              <div class="mt-2 flex items-center justify-between gap-2"><p class="text-sm font-semibold">{item.label} · {item.dimensions}</p><a class="btn btn-secondary btn-sm" href={item.png} download>Download</a></div>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <section class="mt-12 border border-[var(--line)] bg-[var(--paper-2)]/45 p-6">
+      <div class="grid gap-6 lg:grid-cols-[1fr_1fr]">
+        <div>
+          <h2 class="display-sm text-2xl uppercase">Palette</h2>
+          <div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {[["Deep current", "#044e4a"], ["Electric aqua", "#00c8b8"], ["Ice", "#c8f4ee"], ["Signal lime", "#c9f25f"], ["Carbon", "#07110f"], ["Bone", "#eff5f1"], ["Aqua bright", "#2ce3d3"], ["Marine", "#0a6b63"]].map(([label, hex]) => (
+              <div><div class="h-16 border border-[var(--line-strong)]" style={`background:${hex}`}></div><p class="mt-1 text-xs font-semibold">{label}</p><p class="font-mono text-[0.56rem] uppercase text-[var(--muted)]">{hex}</p></div>
+            ))}
+          </div>
+        </div>
+        <div>
+          <h2 class="display-sm text-2xl uppercase">Use it well</h2>
+          <ul class="mt-4 grid gap-2 text-sm text-[var(--muted)]">
+            <li><strong class="text-[var(--ink)]">Canonical:</strong> Signal Fold on Deep Current, with Electric Aqua and Signal Lime as the two signals.</li>
+            <li><strong class="text-[var(--ink)]">Clear space:</strong> keep at least one quarter of the mark's width on every side.</li>
+            <li><strong class="text-[var(--ink)]">Minimum size:</strong> 32px for the mark; use the wordmark only above 240px wide.</li>
+            <li><strong class="text-[var(--ink)]">Do not:</strong> recolour a franchise emblem, add a drop shadow, stretch the mark, or place it on a busy card render.</li>
+            <li><strong class="text-[var(--ink)]">Bot owners:</strong> the generator is parameterised; duplicate the pattern with your own name, slug and palette. Foilbury's own identity stays first.</li>
+          </ul>
+          <p class="mt-4 text-xs text-[var(--muted)]">Generated from original vector geometry and the self-hosted Manrope face. The manifest records every rendition. No paid image generation was used.</p>
+          <div class="mt-4 flex flex-wrap gap-2"><a class="btn btn-primary btn-sm" href="/brand/kit/manifest.json" download>Download manifest</a><a class="btn btn-secondary btn-sm" href="/docs/agent-guide">Asset workflow</a></div>
+        </div>
+      </div>
+    </section>
+  </section>
+</BaseLayout>

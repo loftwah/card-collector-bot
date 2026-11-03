@@ -388,27 +388,209 @@ export async function operationsStatus(ctx: Ctx) {
   };
 }
 
-export async function createShareLink(ctx: Ctx, expiresInDays = 7) {
+export type ShareKind = "cabinet" | "card" | "collection" | "achievement" | "wishlist" | "latest" | "profile";
+
+export async function createShareLink(
+  ctx: Ctx,
+  input: number | { expiresInDays?: number; kind?: ShareKind; targetId?: string } = 7,
+) {
+  const options = typeof input === "number" ? { expiresInDays: input } : input;
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in to share your cabinet.");
   const prefs = await getPreferences(ctx);
   if (!prefs.sharing_enabled) {
     throw new ApiError(409, "sharing_disabled", "Enable explicit sharing in preferences before creating a public link.");
   }
+  const kind = options.kind ?? "cabinet";
+  const targetId = options.targetId ?? null;
+  if (kind !== "cabinet" && kind !== "wishlist" && !targetId) {
+    throw new ApiError(422, "share_target_required", "Choose the exact object to share.");
+  }
+  let audience: "public" | "member" | "private" = "private";
+  let payload: Record<string, unknown> = { label: "Cabinet snapshot" };
+  let ownerDisplayName = user.displayName;
+
+  if (kind === "card" || kind === "latest") {
+    const instance = await first<{
+      id: string; card_id: string; variant_id: string; card_name: string; card_slug: string; subtitle: string | null;
+      variant_name: string; material_key: string; effect_key: string | null; serial: string; collection_id: string | null;
+      collection_name: string | null; collection_audience: string | null; collection_approved_at: string | null;
+      render_url: string | null; back_url: string | null;
+    }>(
+      ctx.db,
+      `SELECT ci.id, ci.card_id, ci.variant_id, cd.name AS card_name, cd.slug AS card_slug, cd.subtitle,
+              v.name AS variant_name, m.key AS material_key, fx.key AS effect_key, ci.serial,
+              c.id AS collection_id, c.name AS collection_name, c.view_audience AS collection_audience, c.public_approved_at AS collection_approved_at,
+              (SELECT vr.public_url FROM fb_variant_renders vr WHERE vr.variant_id = v.id AND vr.status = 'published' LIMIT 1) AS render_url,
+              (SELECT ('/media/back/' || ba.asset_id) FROM fb_variant_back_renders ba WHERE ba.variant_id = v.id AND ba.status = 'published' LIMIT 1) AS back_url
+         FROM fb_card_instances ci
+         JOIN fb_card_definitions cd ON cd.id = ci.card_id AND cd.tenant_id = ci.tenant_id
+         JOIN fb_variants v ON v.id = ci.variant_id AND v.tenant_id = ci.tenant_id
+         JOIN fb_materials m ON m.id = v.material_id
+         LEFT JOIN fb_effects fx ON fx.id = v.effect_id
+         LEFT JOIN fb_collection_cards cc ON cc.card_id = ci.card_id
+         LEFT JOIN fb_collections c ON c.id = cc.collection_id
+        WHERE ci.id = ? AND ci.tenant_id = ? AND ci.user_id = ? AND ci.status IN ('owned','reserved')
+        ORDER BY CASE c.view_audience WHEN 'public' THEN 0 WHEN 'members' THEN 1 ELSE 2 END
+        LIMIT 1`,
+      targetId,
+      ctx.tenant.id,
+      user.id,
+    );
+    if (!instance) throw new ApiError(404, "instance_not_found", "That copy is not in your collection.");
+    audience = instance.collection_audience === "public" && instance.collection_approved_at ? "public" : "member";
+    payload = {
+      label: kind === "latest" ? "Latest pull" : "Card",
+      card_id: instance.card_id,
+      card_name: instance.card_name,
+      card_slug: instance.card_slug,
+      subtitle: instance.subtitle,
+      variant_name: instance.variant_name,
+      finish: instance.effect_key && instance.effect_key !== "none" ? `${instance.material_key} · ${instance.effect_key}` : instance.variant_name,
+      serial: instance.serial,
+      collection_id: instance.collection_id,
+      collection_name: instance.collection_name,
+      render_url: instance.render_url,
+      back_url: instance.back_url,
+      audience,
+      captured_at: nowIso(),
+    };
+  } else if (kind === "collection") {
+    const collection = await first<{ id: string; name: string; slug: string; view_audience: string; public_approved_at: string | null; logo_url: string | null; description: string }>(
+      ctx.db,
+      "SELECT id, name, slug, view_audience, public_approved_at, logo_url, description FROM fb_collections WHERE id = ? AND archived_at IS NULL",
+      targetId,
+    );
+    if (!collection) throw new ApiError(404, "collection_not_found", "That collection does not exist.");
+    audience = collection.view_audience === "public" && collection.public_approved_at ? "public" : "member";
+    payload = {
+      label: "Collection",
+      collection_id: collection.id,
+      collection_name: collection.name,
+      collection_slug: collection.slug,
+      logo_url: collection.logo_url,
+      description: collection.description,
+      audience,
+      captured_at: nowIso(),
+    };
+  } else if (kind === "achievement") {
+    const unlock = await first<{ id: string; achievement_id: string; earned_at: string; name: string; description: string; art_key: string; category: string }>(
+      ctx.db,
+      `SELECT u.id, u.achievement_id, u.earned_at, d.name, d.description, d.art_key, d.category
+         FROM fb_achievement_unlocks u JOIN fb_achievement_definitions d ON d.id = u.achievement_id
+        WHERE u.id = ? AND u.tenant_id = ? AND u.user_id = ?`,
+      targetId,
+      ctx.tenant.id,
+      user.id,
+    );
+    if (!unlock) throw new ApiError(404, "achievement_not_found", "That badge is not in your cabinet.");
+    const definitionRow = await first<{ criteria_json: string }>(ctx.db, "SELECT criteria_json FROM fb_achievement_definitions WHERE id = ?", unlock.achievement_id);
+    let collectionLogo: string | null = null;
+    try {
+      const criteria = JSON.parse(definitionRow?.criteria_json ?? "{}") as { collection_id?: string };
+      if (criteria.collection_id) {
+        const logo = await first<{ logo_url: string | null }>(ctx.db, "SELECT logo_url FROM fb_collections WHERE id = ?", criteria.collection_id);
+        collectionLogo = logo?.logo_url ?? null;
+      }
+    } catch {}
+    audience = "member";
+    payload = {
+      label: "Achievement",
+      achievement_id: unlock.achievement_id,
+      achievement_name: unlock.name,
+      achievement_description: unlock.description,
+      art_key: unlock.art_key,
+      category: unlock.category,
+      earned_at: unlock.earned_at,
+      collection_logo_url: collectionLogo,
+      audience,
+      captured_at: nowIso(),
+    };
+  } else if (kind === "wishlist") {
+    const wishes = await all<{ card_name: string; card_slug: string }>(
+      ctx.db,
+      `SELECT cd.name AS card_name, cd.slug AS card_slug FROM fb_wishlists w
+         JOIN fb_card_definitions cd ON cd.id = w.card_id
+        WHERE w.tenant_id = ? AND w.user_id = ? ORDER BY cd.name LIMIT 100`,
+      ctx.tenant.id,
+      user.id,
+    );
+    audience = "member";
+    payload = { label: "Wishlist", items: wishes, audience, captured_at: nowIso() };
+  } else if (kind === "profile") {
+    const [counts, favourites, badges] = await Promise.all([
+      first<{ cards: number; favourites: number }>(
+        ctx.db,
+        "SELECT COUNT(*) AS cards, COALESCE(SUM(favourite), 0) AS favourites FROM fb_card_instances WHERE tenant_id = ? AND user_id = ? AND status IN ('owned','reserved')",
+        ctx.tenant.id,
+        user.id,
+      ),
+      all<{ name: string; variant_name: string; render_url: string | null }>(
+        ctx.db,
+        `SELECT cd.name, v.name AS variant_name,
+                (SELECT vr.public_url FROM fb_variant_renders vr WHERE vr.variant_id = v.id AND vr.status = 'published' LIMIT 1) AS render_url
+           FROM fb_card_instances ci
+           JOIN fb_card_definitions cd ON cd.id = ci.card_id
+           JOIN fb_variants v ON v.id = ci.variant_id
+          WHERE ci.tenant_id = ? AND ci.user_id = ? AND ci.status IN ('owned','reserved') AND ci.favourite = 1
+          ORDER BY ci.updated_at DESC LIMIT 6`,
+        ctx.tenant.id,
+        user.id,
+      ),
+      all<{ name: string; art_key: string; category: string }>(
+        ctx.db,
+        `SELECT d.name, d.art_key, d.category FROM fb_achievement_unlocks u
+           JOIN fb_achievement_definitions d ON d.id = u.achievement_id
+          WHERE u.tenant_id = ? AND u.user_id = ? ORDER BY u.earned_at DESC LIMIT 6`,
+        ctx.tenant.id,
+        user.id,
+      ),
+    ]);
+    audience = "member";
+    payload = {
+      label: "Collector profile",
+      display_name: user.displayName,
+      cards: counts?.cards ?? 0,
+      favourites: counts?.favourites ?? 0,
+      favourite_cards: favourites,
+      badges,
+      audience,
+      captured_at: nowIso(),
+    };
+  } else {
+    const counts = await first<{ cards: number; favourites: number }>(
+      ctx.db,
+      `SELECT COUNT(*) AS cards, COALESCE(SUM(favourite), 0) AS favourites FROM fb_card_instances WHERE tenant_id = ? AND user_id = ? AND status IN ('owned','reserved')`,
+      ctx.tenant.id,
+      user.id,
+    );
+    payload = { label: "Cabinet", cards: counts?.cards ?? 0, favourites: counts?.favourites ?? 0, audience: "private", captured_at: nowIso() };
+  }
+
   const raw = token("fbshare");
   const { sha256Hex } = await import("../ids");
   const id = newId("shr");
   const now = nowIso();
+  const expiresInDays = options.expiresInDays ?? 7;
   const expiresAt = new Date(Date.now() + Math.min(30, Math.max(1, expiresInDays)) * 86400 * 1000).toISOString();
   await ctx.db.batch([
     ctx.db
       .prepare(
-        "INSERT INTO fb_share_links (id, tenant_id, user_id, token_hash, status, expires_at, created_at) VALUES (?, ?, ?, ?, 'active', ?, ?)",
+        "INSERT INTO fb_share_links (id, tenant_id, user_id, token_hash, status, expires_at, created_at, kind, target_id, payload_json) VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)",
       )
-      .bind(id, ctx.tenant.id, user.id, await sha256Hex(raw), expiresAt, now),
-    auditStatement(ctx, "share.created", "share_link", id, { expires_at: expiresAt }),
+      .bind(id, ctx.tenant.id, user.id, await sha256Hex(raw), expiresAt, now, kind, targetId, JSON.stringify(payload)),
+    auditStatement(ctx, "share.created", "share_link", id, { kind, target_id: targetId, audience, expires_at: expiresAt }),
   ]);
-  return { id, token: raw, url: `${ctx.config.publicOrigin}/s/${raw}`, expires_at: expiresAt };
+  return {
+    id,
+    token: raw,
+    url: `${ctx.config.publicOrigin}/s/${raw}`,
+    kind,
+    audience,
+    preview: payload,
+    owner_display_name: ownerDisplayName,
+    expires_at: expiresAt,
+  };
 }
 
 /**
@@ -493,4 +675,20 @@ export async function revokeShareLink(ctx: Ctx, id: string) {
     auditStatement(ctx, "share.revoked", "share_link", id),
   ]);
   return { id, status: "revoked" };
+}
+
+export async function listShareLinks(ctx: Ctx) {
+  const user = ctx.user;
+  if (!user) throw new ApiError(401, "authentication_required", "Sign in to review your shares.");
+  const rows = await all<{ id: string; kind: string; target_id: string | null; status: string; created_at: string; expires_at: string; payload_json: string }>(
+    ctx.db,
+    "SELECT id, kind, target_id, status, created_at, expires_at, payload_json FROM fb_share_links WHERE tenant_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 100",
+    ctx.tenant.id,
+    user.id,
+  );
+  return rows.map((row) => {
+    let preview: Record<string, unknown> = {};
+    try { preview = JSON.parse(row.payload_json) as Record<string, unknown>; } catch { preview = {}; }
+    return { ...row, payload_json: undefined, preview };
+  });
 }

@@ -19,6 +19,8 @@ export interface ViewerAccess {
   signedIn: boolean;
   userId: string | null;
   platformAdmin: boolean;
+  globalCollectionAdmin: boolean;
+  globalCollectionIds: Set<string> | null;
   /** Every tenant where the account has an active, non-revoked membership. */
   memberTenantIds: Set<string>;
   /** Tenants where the account holds an administrative role. */
@@ -51,6 +53,8 @@ export async function viewerAccess(ctx: Ctx): Promise<ViewerAccess> {
       signedIn: false,
       userId: null,
       platformAdmin: false,
+      globalCollectionAdmin: false,
+      globalCollectionIds: null,
       memberTenantIds: new Set(),
       adminTenantIds: new Set(),
       mainAlbumTenantId: ctx.tenant.id,
@@ -72,10 +76,13 @@ export async function viewerAccess(ctx: Ctx): Promise<ViewerAccess> {
   );
   const managesCurrentTenant =
     user.platformAdmin || user.role === "owner" || user.role === "editor" || user.role === "economy_admin";
+  const globalScope = user.globalCollectionScope;
   return {
     signedIn: true,
     userId: user.id,
     platformAdmin: Boolean(user.platformAdmin),
+    globalCollectionAdmin: Boolean(globalScope),
+    globalCollectionIds: globalScope && !globalScope.all ? new Set(globalScope.collectionIds) : null,
     memberTenantIds: new Set(memberships.map((row) => row.tenant_id)),
     adminTenantIds: new Set(
       memberships.filter((row) => ["owner", "editor", "economy_admin"].includes(row.role)).map((row) => row.tenant_id),
@@ -98,7 +105,13 @@ export function canViewAudience(
   },
 ): boolean {
   if (collection.status !== "published") {
+    if (access.globalCollectionAdmin && collection.scope === "global") {
+      return !access.globalCollectionIds || access.globalCollectionIds.has(collection.id);
+    }
     return access.platformAdmin || access.managesCurrentTenant;
+  }
+  if (access.globalCollectionAdmin && collection.scope === "global") {
+    if (!access.globalCollectionIds || access.globalCollectionIds.has(collection.id)) return true;
   }
   if (collection.view_audience === "public") {
     return Boolean(collection.public_approved_at);
@@ -165,6 +178,18 @@ export function collectionVisibilitySql(
 
   publishedVisible.push(`(${alias}.view_audience = 'public' AND ${alias}.public_approved_at IS NOT NULL)`);
 
+  if (access.globalCollectionAdmin) {
+    if (access.globalCollectionIds) {
+      const ids = [...access.globalCollectionIds];
+      if (ids.length) {
+        publishedVisible.push(`(${alias}.scope = 'global' AND ${alias}.id IN (${ids.map(() => "?").join(",")}))`);
+        params.push(...ids);
+      }
+    } else {
+      publishedVisible.push(`(${alias}.scope = 'global')`);
+    }
+  }
+
   if (access.signedIn) {
     if (access.platformAdmin) {
       publishedVisible.push("1 = 1");
@@ -197,11 +222,19 @@ export function collectionVisibilitySql(
 
   // Admin management lists may include drafts of the current tenant. Card and
   // media reads pass includeDrafts=false and therefore never serve a draft.
+  // A Global Collection Admin may inspect drafts inside their explicit scope.
   const draftClause =
     options.includeDrafts && access.managesCurrentTenant
       ? ` OR (${alias}.status <> 'published' AND (${alias}.scope = 'global' OR ${alias}.owner_tenant_id = ?))`
-      : "";
-  if (draftClause) params.push(access.mainAlbumTenantId ?? "__none__");
+      : options.includeDrafts && access.globalCollectionAdmin
+        ? access.globalCollectionIds
+          ? ` OR (${alias}.status <> 'published' AND ${alias}.scope = 'global' AND ${alias}.id IN (${[...access.globalCollectionIds].map(() => "?").join(",") || "NULL"}))`
+          : ` OR (${alias}.status <> 'published' AND ${alias}.scope = 'global')`
+        : "";
+  if (draftClause) {
+    if (options.includeDrafts && access.managesCurrentTenant) params.push(access.mainAlbumTenantId ?? "__none__");
+    else if (access.globalCollectionIds) params.push(...access.globalCollectionIds);
+  }
   clauses.push(`((${publishedVisible.join(" OR ")})${draftClause})`);
   return { sql: clauses.join(" AND "), params };
 }

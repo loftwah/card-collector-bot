@@ -10,10 +10,36 @@ authorisation.
 - `/cabinet` — public collection browser and filters.
 - `/cabinet/:slug` — public card details, only when every collection the card
   belongs to is public-approved.
+- `/tour` — public-safe guided tour, real public cards only.
+- `/brand-kit` — reviewed identity assets and downloads.
+- `/showcase` — public-safe stills, playable trailer/teaser and export manifest.
 - `/journal` — existing EmDash editorial index.
-- `/sitemap-public.xml` — generated from public collections and public cards only.
+- `/sitemap-public.xml` — generated from public collections, public cards and
+  the fixed public routes only.
 - `/robots.txt` — allows the public surface and disallows administration, play,
-  account, API, EmDash, platform administration, invitations and Bot creation.
+  account, API, EmDash, platform administration, invitations, Studio and Bot creation.
+
+## Route contract
+
+| Surface | Audience | Indexable | Canonical | Metadata | Structured data | Cache |
+|---|---|---|---|---|---|---|
+| `/` | Signed out | Yes | `/` | Showcase title/description | `WebSite` | Public |
+| `/cabinet` | Signed out | Yes | `/cabinet` | Public catalogue | `CollectionPage` in page | Public |
+| `/cabinet/:slug` | Signed out, public card only | Yes | card path | Card title/description, public render image | `VisualArtwork` + breadcrumbs | Public |
+| `/tour` | Signed out | Yes | `/tour` | Tour title/description | None needed | Public |
+| `/brand-kit` | Signed out | Yes | `/brand-kit` | Brand kit title/description, OG asset | None needed | Public |
+| `/showcase` | Signed out | Yes | `/showcase` | Public media | OG image; no private video | Public |
+| `/journal` | Signed out | Yes | `/journal` | Editorial | `Article` on post | Public |
+| `/play/*` | Signed in member | No | path | Generic/private | None | `no-store` |
+| `/studio/*` | Signed in scoped role | No | path | Generic/private | None | `no-store` |
+| `/admin/*`, `/platform-admin/*` | Access + role | No | path | Generic/private | None | `no-store` |
+| `/s/:token` | Explicit share, rechecked | No | share path | Generic for non-public; member gate | None | `no-store` |
+| `/api/*` | Authorised | No | n/a | JSON | None | `no-store` |
+
+The public sitemap includes only the fixed public routes, approved public
+collections and approved public cards. It never includes `/play`, `/studio`,
+`/admin`, `/platform-admin`, `/_emdash`, `/s/:token`, member collections, member
+cards or personal media.
 
 ## Deliberately not indexed
 

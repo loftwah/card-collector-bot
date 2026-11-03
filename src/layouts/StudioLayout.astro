@@ -1,0 +1,68 @@
+---
+import BaseLayout from "./BaseLayout.astro";
+import { roleLabel } from "../server/context";
+const session = Astro.locals.foilbury;
+const user = session?.user ?? null;
+const path = Astro.url.pathname;
+const isPlatform = Boolean(user?.platformAdmin);
+const isGlobalCollectionAdmin = Boolean(user?.globalCollectionScope);
+const isBotAdmin = ["owner", "editor", "economy_admin"].includes(user?.role ?? "");
+const groups = [
+  {
+    label: "Your workspace",
+    links: [
+      { href: "/studio", label: "Overview" },
+      ...(isBotAdmin || isGlobalCollectionAdmin ? [{ href: "/studio/collections", label: isGlobalCollectionAdmin && !isBotAdmin ? "Shared collections" : "Collections" }] : []),
+      ...(isBotAdmin ? [{ href: "/studio/team", label: "Team & invitations" }] : []),
+      ...(isGlobalCollectionAdmin ? [{ href: "/studio/access", label: "Your access" }] : []),
+    ],
+  },
+  {
+    label: "Craft",
+    links: [
+      { href: "/brand-kit", label: "Brand kit" },
+      ...(isBotAdmin ? [{ href: "/admin/editorial", label: "EmDash editorial" }] : []),
+      ...(isPlatform ? [{ href: "/platform-admin", label: "Platform administration" }] : []),
+    ],
+  },
+];
+const label = roleLabel(user);
+---
+<BaseLayout title={`Studio · ${session?.tenantSlug ?? "Foilbury"}`} description="Foilbury Studio: scoped collection and Bot administration without platform-root access." noIndex>
+  <script is:inline>window.__FOILBURY_STUDIO__ = true;</script>
+  <section class="studio-band">
+    <div class="container py-8 md:py-10">
+      <div class="flex flex-wrap items-end justify-between gap-5">
+        <div>
+          <p class="studio-kicker">Studio · {label}</p>
+          <h1 class="display-sm mt-2 text-4xl uppercase md:text-5xl">{isGlobalCollectionAdmin && !isBotAdmin ? "Shared worlds, scoped." : "The cabinet office."}</h1>
+          <p class="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--paper)]/75">A normal Foilbury session with live role checks. No Cloudflare Access is required here, and this surface never grants platform root, secrets, wallets or another Bot.</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          {isPlatform ? <a class="btn btn-signal btn-sm" href="/platform-admin">Platform root ↗</a> : null}
+          <a class="btn btn-secondary btn-sm !border-white/30 !text-[var(--paper)]" href="/account/security">Account security</a>
+          <a class="btn btn-secondary btn-sm !border-white/30 !text-[var(--paper)]" href="/play">My album</a>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section class="container grid gap-8 py-8 lg:grid-cols-[230px_1fr] lg:items-start">
+    <nav class="grid gap-5 lg:sticky lg:top-24" aria-label="Studio sections">
+      {groups.map((group) => (
+        <div>
+          <p class="mb-1 px-3 font-mono text-[0.58rem] uppercase tracking-[0.14em] text-[var(--muted)]">{group.label}</p>
+          <div class="grid gap-0.5">
+            {group.links.map((link) => (
+              <a href={link.href} class:list={["rounded-[1px] px-3 py-2 font-mono text-[0.66rem] uppercase tracking-[0.1em] no-underline transition-colors", path === link.href ? "studio-nav-active" : "text-[var(--muted)] hover:bg-[var(--paper-2)] hover:text-[var(--ink)]"]}>{link.label}</a>
+            ))}
+          </div>
+        </div>
+      ))}
+      <div class="border-t border-[var(--line)] pt-4 text-xs leading-relaxed text-[var(--muted)]">
+        <p class="px-3">Editorial lives in EmDash. Cards, pools, inventory and awards live here. No second card catalogue exists in the CMS.</p>
+        <a class="mt-2 block px-3 underline underline-offset-4" href="/docs/agent-guide">Agent and API guide</a>
+      </div>
+    </nav>
+    <div class="min-w-0"><slot /></div>
+  </section>
+</BaseLayout>

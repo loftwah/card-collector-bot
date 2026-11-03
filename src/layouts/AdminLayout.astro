@@ -45,6 +45,7 @@ const label = roleLabel(user);
         </div>
         <div class="flex flex-wrap gap-2">
           {user?.platformAdmin ? <a class="btn btn-brass btn-sm" href="/platform-admin">Platform administration</a> : null}
+          {user?.globalCollectionScope ? <a class="btn btn-secondary btn-sm !border-[#5c594d] !text-[#f4f0e6]" href="/studio">Studio</a> : null}
           <a class="btn btn-secondary btn-sm !border-[#5c594d] !text-[#f4f0e6]" href="/account/security">Account security</a>
           <a class="btn btn-secondary btn-sm !border-[#5c594d] !text-[#f4f0e6]" href="/cabinet">Public catalogue</a>
         </div>

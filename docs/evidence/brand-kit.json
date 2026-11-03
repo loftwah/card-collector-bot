@@ -1,0 +1,137 @@
+{
+  "generated_at": "2026-11-03T06:12:40.995Z",
+  "palette": {
+    "ink": "#07110f",
+    "paper": "#eff5f1",
+    "aqua": "#00c8b8",
+    "aquaBright": "#2ce3d3",
+    "ice": "#c8f4ee",
+    "lime": "#c9f25f",
+    "deep": "#044e4a"
+  },
+  "marks": [
+    {
+      "slug": "signal-fold",
+      "label": "Signal Fold",
+      "note": "Stacked planes and a folded foil edge. The most direct expression of a card being handled.",
+      "svg": "/brand/kit/signal-fold/mark.svg",
+      "png": "/brand/kit/signal-fold/mark-1024.png",
+      "avatars": [
+        "/brand/kit/signal-fold/avatar-current-512.png",
+        "/brand/kit/signal-fold/avatar-ice-512.png",
+        "/brand/kit/signal-fold/avatar-signal-512.png",
+        "/brand/kit/signal-fold/avatar-carbon-512.png"
+      ]
+    },
+    {
+      "slug": "bastion",
+      "label": "Bastion",
+      "note": "A heavy architectural F. Reads clearly at 32px and holds up as a server stamp.",
+      "svg": "/brand/kit/bastion/mark.svg",
+      "png": "/brand/kit/bastion/mark-1024.png",
+      "avatars": [
+        "/brand/kit/bastion/avatar-current-512.png",
+        "/brand/kit/bastion/avatar-ice-512.png",
+        "/brand/kit/bastion/avatar-signal-512.png",
+        "/brand/kit/bastion/avatar-carbon-512.png"
+      ]
+    },
+    {
+      "slug": "aperture",
+      "label": "Aperture",
+      "note": "A circular card aperture with three foil planes. Softer, more collectible, still geometric.",
+      "svg": "/brand/kit/aperture/mark.svg",
+      "png": "/brand/kit/aperture/mark-1024.png",
+      "avatars": [
+        "/brand/kit/aperture/avatar-current-512.png",
+        "/brand/kit/aperture/avatar-ice-512.png",
+        "/brand/kit/aperture/avatar-signal-512.png",
+        "/brand/kit/aperture/avatar-carbon-512.png"
+      ]
+    },
+    {
+      "slug": "index",
+      "label": "Index",
+      "note": "A catalogue index with a cropped corner. The most editorial of the four.",
+      "svg": "/brand/kit/index/mark.svg",
+      "png": "/brand/kit/index/mark-1024.png",
+      "avatars": [
+        "/brand/kit/index/avatar-current-512.png",
+        "/brand/kit/index/avatar-ice-512.png",
+        "/brand/kit/index/avatar-signal-512.png",
+        "/brand/kit/index/avatar-carbon-512.png"
+      ]
+    }
+  ],
+  "avatars": [],
+  "banners": [
+    {
+      "slug": "grid-signal",
+      "label": "Grid Signal",
+      "discord": "/brand/kit/banners/grid-signal-960x540.png",
+      "social": "/brand/kit/banners/grid-signal-1920x1080.png"
+    },
+    {
+      "slug": "aqua-field",
+      "label": "Aqua Field",
+      "discord": "/brand/kit/banners/aqua-field-960x540.png",
+      "social": "/brand/kit/banners/aqua-field-1920x1080.png"
+    },
+    {
+      "slug": "ice-cabinet",
+      "label": "Ice Cabinet",
+      "discord": "/brand/kit/banners/ice-cabinet-960x540.png",
+      "social": "/brand/kit/banners/ice-cabinet-1920x1080.png"
+    },
+    {
+      "slug": "aperture-night",
+      "label": "Aperture Night",
+      "discord": "/brand/kit/banners/aperture-night-960x540.png",
+      "social": "/brand/kit/banners/aperture-night-1920x1080.png"
+    }
+  ],
+  "wordmarks": [
+    {
+      "slug": "signal",
+      "label": "Signal wordmark",
+      "svg": "/brand/kit/wordmarks/signal.svg",
+      "png": "/brand/kit/wordmarks/signal-1600x400.png",
+      "transparent": "/brand/kit/wordmarks/signal-transparent-1600x400.png"
+    },
+    {
+      "slug": "reverse",
+      "label": "Reverse wordmark",
+      "svg": "/brand/kit/wordmarks/reverse.svg",
+      "png": "/brand/kit/wordmarks/reverse-1600x400.png",
+      "transparent": "/brand/kit/wordmarks/reverse-transparent-1600x400.png"
+    },
+    {
+      "slug": "lime",
+      "label": "Signal Lime wordmark",
+      "svg": "/brand/kit/wordmarks/lime.svg",
+      "png": "/brand/kit/wordmarks/lime-1600x400.png",
+      "transparent": "/brand/kit/wordmarks/lime-transparent-1600x400.png"
+    },
+    {
+      "slug": "editorial",
+      "label": "Editorial wordmark",
+      "svg": "/brand/kit/wordmarks/editorial.svg",
+      "png": "/brand/kit/wordmarks/editorial-1600x400.png",
+      "transparent": "/brand/kit/wordmarks/editorial-transparent-1600x400.png"
+    }
+  ],
+  "social": [
+    {
+      "slug": "og",
+      "label": "Open Graph / social preview",
+      "png": "/brand/kit/social/og-1200x630.png",
+      "dimensions": "1200x630"
+    },
+    {
+      "slug": "hero",
+      "label": "Website / social hero",
+      "png": "/brand/kit/social/hero-1920x1080.png",
+      "dimensions": "1920x1080"
+    }
+  ]
+}

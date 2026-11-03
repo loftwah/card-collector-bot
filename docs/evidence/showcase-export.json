@@ -1,0 +1,76 @@
+{
+  "generated_at": "2026-11-03T06:24:13.066Z",
+  "source_commit": "51b6a0d260d1c3911b9dd70734cfd7008a337063",
+  "audience": "public-safe Foilbury originals",
+  "public_card": {
+    "name": "Drop Bear",
+    "collection": "Fighter",
+    "render": "/media/render/rnd_mw0awxb49p0gxshse61t17zy"
+  },
+  "outputs": [
+    {
+      "file": "public/media/showcase/card-16x9-1920.png",
+      "sha256": "c834c76237a98cfa8b0dd957ec855413b8708320efc4497952cc4911d4ca313a",
+      "bytes": 1407067
+    },
+    {
+      "file": "public/media/showcase/card-1x1-1080.png",
+      "sha256": "a182a3be19aca16ae33dac16ff561583c4d19f46b403028c06543a00ec426ece",
+      "bytes": 886621
+    },
+    {
+      "file": "public/media/showcase/card-4x5-1080.png",
+      "sha256": "8e79de881faf2f457e68f3e702c8af1aadbb5d794e42135146ce574e18b97e52",
+      "bytes": 1075668
+    },
+    {
+      "file": "public/media/showcase/card-9x16-1080.png",
+      "sha256": "f68941ce93636cf2e45e2583c5d752932807bcd360b81636023348bd31dacd79",
+      "bytes": 1285594
+    },
+    {
+      "file": "public/media/showcase/finish-mastery-16x9-1920.png",
+      "sha256": "89af3d5104347c364f0cf9919b3f29f9228907312a873ba09a0697222d56a263",
+      "bytes": 1666296
+    },
+    {
+      "file": "public/media/showcase/foilbury-teaser-9x16.mp4",
+      "sha256": "620ca147fccb4a8c75de771ae681fe683f50ad70d65758e838c1c0a15a7d8e32",
+      "bytes": 1411034
+    },
+    {
+      "file": "public/media/showcase/foilbury-trailer-16x9.mp4",
+      "sha256": "9f07b6e64e14c5ff98d60023aa4352e4543f1e5c7153b8d98d3fd18f047b2327",
+      "bytes": 2424619
+    },
+    {
+      "file": "public/media/showcase/manifest.json",
+      "sha256": "08cac18b106cb43e01606a78e0d943af741c99694772e5595c8f575624aee729",
+      "bytes": 2550
+    },
+    {
+      "file": "public/media/showcase/og-1200x630.png",
+      "sha256": "31d148ee8395e88e94edd6e9edfb7a96ba502127dd3f83124f1097fba00c6b6e",
+      "bytes": 574746
+    }
+  ],
+  "private_demo": {
+    "draw_id": "drw_mw085m93255v4akj73bbfvw4",
+    "instance_id": "ins_mw085m93cxphatwvap8a9tcn",
+    "receipt_created_at": "2026-11-03T05:05:43.911Z",
+    "card": "Editorial Proof 1793682342624",
+    "variant": "Plain",
+    "serial": "FB-1-RO-D72B92",
+    "pool_revision": 1,
+    "audience": "local-demo-private",
+    "image_note": "Persisted local draw receipt; render unavailable, using the public hero still for the poster only.",
+    "output": ".foilbury/exports/opening-replay-9x16.mp4"
+  },
+  "regeneration": "node scripts/export-showcase.mjs",
+  "notes": [
+    "Stills and public trailer use only approved public showcase renders.",
+    "The opening replay is a real persisted local draw receipt, kept private and labelled local demo.",
+    "Video is silent by design; no music or voice rights are implied.",
+    "The export action never draws, spends, grants or mutates gameplay."
+  ]
+}

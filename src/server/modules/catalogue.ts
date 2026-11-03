@@ -93,7 +93,7 @@ export interface CardView extends CardRow {
   category: { id: string; slug: string; name: string } | null;
   rarity: { id: string; key: string; name: string; tone: string } | null;
   tags: Array<{ id: string; slug: string; name: string }>;
-  collections: Array<{ id: string; slug: string; name: string; scope: string; logo_url: string | null; accent: string }>;
+  collections: Array<{ id: string; slug: string; name: string; scope: string; logo_url: string | null; accent: string; view_audience: string }>;
   card_back_url: string;
   editions: Array<EditionRow & { variants: VariantRow[] }>;
   sets: Array<{ id: string; slug: string; name: string; version: number }>;
@@ -324,9 +324,9 @@ async function hydrateCards(ctx: Ctx, rows: CardRow[]): Promise<CardView[]> {
     ...ids,
   );
 
-  const collectionRows = await all<{ card_id: string; id: string; slug: string; name: string; scope: string; logo_url: string | null; accent: string }>(
+  const collectionRows = await all<{ card_id: string; id: string; slug: string; name: string; scope: string; logo_url: string | null; accent: string; view_audience: string }>(
     ctx.db,
-    `SELECT cc.card_id, c.id, c.slug, c.name, c.scope, c.logo_url, c.accent
+    `SELECT cc.card_id, c.id, c.slug, c.name, c.scope, c.logo_url, c.accent, c.view_audience
        FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id
       WHERE cc.card_id IN (${placeholders}) AND c.archived_at IS NULL
       ORDER BY c.scope, c.sort, c.name`,
@@ -363,7 +363,7 @@ async function hydrateCards(ctx: Ctx, rows: CardRow[]): Promise<CardView[]> {
         ? { id: row.rarity_id, key: row.rarity_key!, name: row.rarity_name!, tone: row.rarity_tone ?? "neutral" }
         : null,
       tags: tagRows.filter((tag) => tag.card_id === row.id).map(({ id, slug, name }) => ({ id, slug, name })),
-      collections: collectionRows.filter((collection) => collection.card_id === row.id).map(({ id, slug, name, scope, logo_url, accent }) => ({ id, slug, name, scope, logo_url, accent })),
+      collections: collectionRows.filter((collection) => collection.card_id === row.id).map(({ id, slug, name, scope, logo_url, accent, view_audience }) => ({ id, slug, name, scope, logo_url, accent, view_audience })),
       card_back_url: "/brand/card-back.webp",
       editions: cardEditions,
       sets: setRows.filter((set) => set.card_id === row.id).map(({ id, slug, name, version }) => ({ id, slug, name, version })),

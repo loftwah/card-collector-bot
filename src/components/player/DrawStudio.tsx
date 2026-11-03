@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, Eye, EyeOff, Sparkles } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, RotateCcw, Sparkles } from "lucide-react";
 import { api, describeError, idempotencyKey } from "@/lib/client";
 import { Button } from "../ui/button";
+import ShareLinkButton from "./ShareLinkButton";
 import { cn, pct } from "@/lib/utils";
 
 interface PoolSummary {
@@ -59,6 +60,7 @@ interface DrawResult {
   random_commitment: string;
   filters: Preview["filters"];
   odds: Array<{ card_name: string; variant_name: string; probability_bps: number; weight: number }>;
+  achievements: Array<{ id: string; name: string; reward_amount: number }>;
   replayed: boolean;
 }
 
@@ -72,6 +74,8 @@ export default function DrawStudio({ pools, initialBalance }: { pools: PoolSumma
   const [error, setError] = useState("");
   const [result, setResult] = useState<DrawResult | null>(null);
   const [revealed, setRevealed] = useState(false);
+  const [revealStage, setRevealStage] = useState<"idle" | "anticipation" | "revealed">("idle");
+  const [reduced, setReduced] = useState(false);
   const [balance, setBalance] = useState(initialBalance);
   const [pendingKey, setPendingKey] = useState(idempotencyKey("draw"));
 
@@ -115,12 +119,21 @@ export default function DrawStudio({ pools, initialBalance }: { pools: PoolSumma
     return () => { previewRequest.current += 1; };
   }, [slug, channel]);
 
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReduced(query.matches);
+    const change = () => setReduced(query.matches);
+    query.addEventListener("change", change);
+    return () => query.removeEventListener("change", change);
+  }, []);
+
   async function draw() {
     if (!preview || blocked) return;
     setDrawing(true);
     setError("");
     setResult(null);
     setRevealed(false);
+    setRevealStage("anticipation");
     try {
       const data = await api<DrawResult>("/api/v1/draws", {
         method: "POST",
@@ -128,17 +141,31 @@ export default function DrawStudio({ pools, initialBalance }: { pools: PoolSumma
         idempotencyKey: pendingKey,
       });
       setResult(data);
-      setRevealed(true);
       setBalance(data.balance_after);
       document.querySelectorAll<HTMLElement>("[data-foil-balance]").forEach((node) => { node.textContent = `${data.balance_after} Foil`; });
       setPendingKey(idempotencyKey("draw"));
       void loadPreview(slug, channel);
+      const delay = reduced ? 0 : 950;
+      window.setTimeout(() => {
+        setRevealed(true);
+        setRevealStage("revealed");
+      }, delay);
     } catch (cause) {
       setError(describeError(cause));
+      setRevealStage("idle");
       void loadPreview(slug, channel);
     } finally {
       setDrawing(false);
     }
+  }
+
+  function replayReveal() {
+    setRevealed(false);
+    setRevealStage("anticipation");
+    window.setTimeout(() => {
+      setRevealed(true);
+      setRevealStage("revealed");
+    }, reduced ? 0 : 850);
   }
 
   const sorted = useMemo(() => (preview ? [...preview.entries].sort((a, b) => b.probability_bps - a.probability_bps) : []), [preview]);
@@ -236,34 +263,50 @@ export default function DrawStudio({ pools, initialBalance }: { pools: PoolSumma
             ) : null}
 
             {result ? (
-              <div className="mt-5 border border-[var(--brass)] bg-[color-mix(in_srgb,var(--brass)_6%,transparent)] p-5">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="eyebrow">Draw receipt {result.replayed ? "· replayed safely" : ""}</p>
-                    <h3 className="display-sm mt-1 text-3xl">{result.card_name}</h3>
-                    <p className="text-sm text-[var(--brass)]">{result.variant_name} · {result.serial}</p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <span className="badge">{result.new_subject ? "New subject" : `Another copy · ${result.owned_copies} owned`}</span>
-                      <span className="badge">{result.new_finish ? "New finish" : "Finish already in your album"}</span>
-                    </div>
+              <div className={cn("draw-reveal mt-5", revealStage === "revealed" && "is-revealed")} data-stage={revealStage} aria-live="polite">
+                <div className="draw-reveal__stage">
+                  <div className="draw-reveal__beam" aria-hidden="true"></div>
+                  <div className="draw-reveal__card">
+                    {result.render_url ? <img src={result.render_url} alt={`${result.card_name} — ${result.variant_name}`} decoding="sync" /> : <div className="card-face-fallback">Card render unavailable</div>}
                   </div>
-                  <Button variant="secondary" size="sm" onClick={() => setRevealed((value) => !value)}>
-                    {revealed ? <EyeOff size={14} /> : <Eye size={14} />} {revealed ? "Hide card" : "Reveal card"}
-                  </Button>
+                  {revealStage === "anticipation" ? <div className="draw-reveal__wait"><span>Committing the receipt…</span><button type="button" className="underline underline-offset-4" onClick={() => { setRevealed(true); setRevealStage("revealed"); }}>Show result now</button></div> : null}
                 </div>
-                {revealed ? (
-                  <div className="mt-5 grid gap-5 sm:grid-cols-[180px_1fr] sm:items-start">
-                    {result.render_url ? <img src={result.render_url} alt={`${result.card_name} — ${result.variant_name}`} className="draw-result-image w-full rounded-[4px] border border-[var(--line)]" decoding="sync" /> : null}
-                    <div className="text-sm text-[var(--muted)]">
-                      <p>Paid <span className="font-mono text-[var(--brass)]">✦ {result.price}</span>. Balance after: <span className="font-mono text-[var(--ink)]">✦ {result.balance_after}</span>.</p>
-                      <p className="mt-2">This copy was selected at {pct(result.probability_bps)} chance. Your draw record is saved with this copy.</p>
-                      <p className="mt-2 break-all font-mono text-[0.56rem] text-[var(--muted)]">draw proof {result.random_commitment.slice(0, 24)}…</p>
-                      <a className="btn btn-primary btn-sm mt-4" href={`/play/card/${result.instance_id}`}>Inspect this instance <ArrowRight size={14} /></a>
+                <div className="draw-reveal__receipt">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="studio-kicker">{result.replayed ? "Recorded result · replayed safely" : "Committed draw receipt"}</p>
+                      <h3 className="display-sm mt-1 text-3xl uppercase">{result.card_name}</h3>
+                      <p className="text-sm text-[var(--brass)]">{result.variant_name} · {result.serial}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={replayReveal}><RotateCcw size={14} /> Replay</button>
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setRevealed((value) => !value); }}>{revealed ? <EyeOff size={14} /> : <Eye size={14} />} {revealed ? "Hide" : "Show"}</button>
                     </div>
                   </div>
-                ) : (
-                  <p className="mt-3 text-sm text-[var(--muted)]">The card is already in your collection. The reveal is optional; nothing is hidden from your inventory.</p>
-                )}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className={cn("badge", result.new_subject && "badge-signal")}>{result.new_subject ? "New subject" : `Duplicate · ${result.owned_copies} owned`}</span>
+                    <span className={cn("badge", result.new_finish && "badge-signal")}>{result.new_finish ? "New finish" : "Finish already held"}</span>
+                    <span className="badge">Paid ✦ {result.price}</span>
+                    <span className="badge">Balance ✦ {result.balance_after}</span>
+                    <span className="badge">{pct(result.probability_bps)} shown chance</span>
+                  </div>
+                  <div className={cn("mt-4 overflow-hidden transition-all duration-500", revealed ? "max-h-[38rem] opacity-100" : "max-h-0 opacity-0")}>
+                    <p className="text-sm text-[var(--muted)]">This exact copy was selected from pool revision {result.pool_revision}. The result was committed before this animation. A retry or reload reads the same receipt and can never reroll or charge twice.</p>
+                    {result.achievements?.length ? (
+                      <div className="mt-3 border border-[var(--signal)] bg-[var(--ice)]/30 p-3">
+                        <p className="studio-stat__label">Unlocked with this draw</p>
+                        <ul className="mt-1 grid gap-1 text-sm">{result.achievements.slice(0, 4).map((achievement) => <li key={achievement.id}><strong>{achievement.name}</strong>{achievement.reward_amount ? ` · +${achievement.reward_amount} Foil` : " · cosmetic badge"}</li>)}{result.achievements.length > 4 ? <li className="text-xs text-[var(--muted)]">+{result.achievements.length - 4} more in the achievement cabinet</li> : null}</ul>
+                      </div>
+                    ) : null}
+                    <p className="mt-2 break-all font-mono text-[0.56rem] text-[var(--muted)]">draw proof {result.random_commitment.slice(0, 32)}…</p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <a className="btn btn-primary btn-sm" href={`/play/card/${result.instance_id}`}>Inspect this copy <ArrowRight size={14} /></a>
+                      <ShareLinkButton kind="latest" targetId={result.instance_id} label="Share latest pull" />
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={draw} disabled={blocked}><Sparkles size={14} /> Open again</button>
+                    </div>
+                  </div>
+                  {!revealed ? <p className="mt-3 text-sm text-[var(--muted)]">The card is already saved in your album. Reveal it, replay the moment, or inspect it later — nothing is lost.</p> : null}
+                </div>
               </div>
             ) : null}
 

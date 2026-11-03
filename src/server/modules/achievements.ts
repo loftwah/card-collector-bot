@@ -36,6 +36,8 @@ export interface AchievementView extends AchievementDefinition {
   reward_amount: number;
   reward_state: string | null;
   notification_state: string | null;
+  unlock_id?: string | null;
+  collection_logo_url?: string | null;
   criteria: Record<string, unknown>;
   reward: Record<string, unknown>;
 }
@@ -338,6 +340,41 @@ export async function evaluateAchievements(
       } else {
         progress = collectionCounts.get(collectionId) ?? 0;
       }
+    } else if (type === "collection_finish_set") {
+      const roster = Array.isArray(criteria.roster_card_ids)
+        ? criteria.roster_card_ids.map((id) => String(id)).filter(Boolean)
+        : [];
+      const finish = String(criteria.finish ?? "");
+      if (!["plain", "silver", "gold", "holographic"].includes(finish)) {
+        throw new ApiError(500, "achievement_criteria_invalid", "A collection finish achievement has an unknown finish.");
+      }
+      if (!roster.length) {
+        throw new ApiError(500, "achievement_roster_missing", "A collection finish achievement has no frozen roster.");
+      }
+      progress = roster.filter((cardId) => finishByCard.get(cardId)?.has(finish)).length;
+      target = roster.length;
+    } else if (type === "collection_core_set") {
+      const roster = Array.isArray(criteria.roster_card_ids)
+        ? criteria.roster_card_ids.map((id) => String(id)).filter(Boolean)
+        : [];
+      if (!roster.length) {
+        throw new ApiError(500, "achievement_roster_missing", "A collection mastery achievement has no frozen roster.");
+      }
+      progress = roster.filter((cardId) => {
+        const finishes = finishByCard.get(cardId);
+        return Boolean(finishes && finishes.has("plain") && finishes.has("silver") && finishes.has("gold") && finishes.has("holographic"));
+      }).length;
+      target = roster.length;
+    } else if (type === "first_in_collection") {
+      const roster = Array.isArray(criteria.roster_card_ids)
+        ? criteria.roster_card_ids.map((id) => String(id)).filter(Boolean)
+        : [];
+      if (!roster.length) {
+        throw new ApiError(500, "achievement_roster_missing", "A first-in-collection achievement has no frozen roster.");
+      }
+      const ownedCards = new Set(owned.map((row) => row.card_id));
+      progress = roster.some((id) => ownedCards.has(id)) ? 1 : 0;
+      target = 1;
     } else if (type === "explore_collections") {
       progress = explored?.count ?? 0;
     } else if (type === "gift_received") {
@@ -523,20 +560,32 @@ export async function listAchievements(ctx: Ctx, userId?: string): Promise<Achie
     if (definition.visibility === "public") return true;
     return Boolean(ctx.user);
   });
+  const collectionIds = [...visibleCollections];
+  const logoRows = collectionIds.length
+    ? await all<{ id: string; logo_url: string | null }>(ctx.db, `SELECT id, logo_url FROM fb_collections WHERE id IN (${collectionIds.map(() => "?").join(",")})`, ...collectionIds)
+    : [];
+  const logos = new Map(logoRows.map((row) => [row.id, row.logo_url]));
+  const emblemFor = (definition: AchievementDefinition) => {
+    const criteria = parseJson<Record<string, unknown>>(definition.criteria_json, {});
+    return typeof criteria.collection_id === "string" ? logos.get(criteria.collection_id) ?? null : null;
+  };
   if (!targetUserId) {
     return visible.map((definition) => {
       const criteria = parseJson<Record<string, unknown>>(definition.criteria_json, {});
       const reward = parseJson<Record<string, unknown>>(definition.reward_json, {});
-      return toView(
-        definition,
-        criteria,
-        reward,
-        { progress: 0, target: criteriaTarget(criteria), state: "locked" },
-        null,
-        0,
-        null,
-        null,
-      );
+      return {
+        ...toView(
+          definition,
+          criteria,
+          reward,
+          { progress: 0, target: criteriaTarget(criteria), state: "locked" },
+          null,
+          0,
+          null,
+          null,
+        ),
+        collection_logo_url: emblemFor(definition),
+      };
     });
   }
   const progressRows = await all<{
@@ -552,6 +601,7 @@ export async function listAchievements(ctx: Ctx, userId?: string): Promise<Achie
     targetUserId,
   );
   const unlocks = await all<{
+    id: string;
     achievement_id: string;
     achievement_version: number;
     earned_at: string;
@@ -560,7 +610,7 @@ export async function listAchievements(ctx: Ctx, userId?: string): Promise<Achie
     notification_state: string;
   }>(
     ctx.db,
-    "SELECT achievement_id, achievement_version, earned_at, reward_state, reward_amount, notification_state FROM fb_achievement_unlocks WHERE tenant_id = ? AND user_id = ?",
+    "SELECT id, achievement_id, achievement_version, earned_at, reward_state, reward_amount, notification_state FROM fb_achievement_unlocks WHERE tenant_id = ? AND user_id = ?",
     ctx.tenant.id,
     targetUserId,
   );
@@ -576,20 +626,24 @@ export async function listAchievements(ctx: Ctx, userId?: string): Promise<Achie
     const key = `${definition.id}:${definition.version}`;
     const progress = progressMap.get(key);
     const unlock = unlockMap.get(key);
-    return toView(
-      definition,
-      criteria,
-      reward,
-      {
-        progress: progress?.progress ?? 0,
-        target: progress?.target ?? criteriaTarget(criteria),
-        state: unlock ? "earned" : (progress?.state ?? "locked"),
-      },
-      unlock?.earned_at ?? null,
-      unlock?.reward_amount ?? 0,
-      unlock?.reward_state ?? null,
-      unlock?.notification_state ?? null,
-    );
+    return {
+      ...toView(
+        definition,
+        criteria,
+        reward,
+        {
+          progress: progress?.progress ?? 0,
+          target: progress?.target ?? criteriaTarget(criteria),
+          state: unlock ? "earned" : (progress?.state ?? "locked"),
+        },
+        unlock?.earned_at ?? null,
+        unlock?.reward_amount ?? 0,
+        unlock?.reward_state ?? null,
+        unlock?.notification_state ?? null,
+      ),
+      unlock_id: unlock?.id ?? null,
+      collection_logo_url: emblemFor(definition),
+    };
   });
 }
 

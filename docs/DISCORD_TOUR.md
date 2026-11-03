@@ -29,6 +29,15 @@ The preflight does not draw, grant, spend, post or call a paid provider. Current
 4. For a member-only reveal to be channel-visible, the channel must deny `View Channel` to `@everyone` and the installation must record the verified channel audience. The current test channel has no `@everyone` deny, so the preflight reports this as **BLOCKED** and the bot keeps restricted reveals ephemeral. Do not work around this by posting restricted art publicly.
 5. A second controlled Discord account is needed for a genuine spectator view. Do not use another person's account. If no second account is available, the spectator item stays **BLOCKED**.
 
+## Before the Discord tour: the website route
+
+Start with `/tour` on the website. It is the same narrative and the same domain
+state: a complete set, free play, front/back inspection, roster versus finish
+mastery, and deliberate sharing. A signed-in member continues to their real
+album; a signed-out visitor sees only the approved public showcase. The tour is
+skippable, resumable by step, and never draws or grants. The operator appendix at
+the bottom appears only for an authorised account.
+
 ## Host script
 
 Start in `#card-collector-test`. The tour is private by default: each response is visible only to the person who runs the command. Buttons that move between stages never draw, spend or grant anything.

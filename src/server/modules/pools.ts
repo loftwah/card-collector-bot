@@ -354,7 +354,7 @@ export async function executeDraw(
     throw error;
   }
   const after = await getWallet(ctx.db, ctx.tenant.id, user.id);
-  let achievements: Array<{ name: string; reward_amount: number }> = [];
+  let achievements: Array<{ id: string; name: string; reward_amount: number }> = [];
   try {
     const { evaluateAchievements, recordDomainEvent } = await import("./achievements");
     const eventId = await recordDomainEvent(ctx, {
@@ -366,7 +366,7 @@ export async function executeDraw(
       payload: { card_id: selected.card_id, variant_id: selected.variant_id, instance_id: instanceId },
     });
     const result = await evaluateAchievements(ctx, { userId: user.id, eventId });
-    achievements = result.unlocked.map((item) => ({ name: item.name, reward_amount: item.reward_amount }));
+    achievements = result.unlocked.map((item) => ({ id: item.id, name: item.name, reward_amount: item.reward_amount }));
   } catch (error) {
     console.error(JSON.stringify({ level: "error", message: "achievement evaluation after draw failed", draw_id: drawId, error: String(error) }));
   }

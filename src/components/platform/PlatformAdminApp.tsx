@@ -94,6 +94,7 @@ export default function PlatformAdminApp({ section }: { section: Section }) {
               { label: "Owned cards", value: counts.owned_instances, icon: Boxes },
               { label: "Ledger rows", value: counts.ledger_entries, icon: KeyRound },
               { label: "Super Admins", value: counts.super_admins, icon: ShieldCheck },
+              { label: "Global Collection Admins", value: counts.global_collection_admins, icon: Users },
               { label: "Pending invitations", value: counts.pending_invitations, icon: Users },
               { label: "Catalogue cards", value: counts.cards, icon: Boxes },
             ].map((item) => (
@@ -130,6 +131,7 @@ export default function PlatformAdminApp({ section }: { section: Section }) {
                   </div>
                 ))}
                 <p className="text-xs leading-relaxed text-[var(--muted)]">Cloudflare membership and Access admission never create this role. Provisioning is a separate audited operator action.</p>
+                <a className="btn btn-secondary btn-sm" href="/platform-admin/people">Open People &amp; roles</a>
               </div>
             </section>
           </div>

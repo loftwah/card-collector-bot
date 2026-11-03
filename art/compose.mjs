@@ -33,6 +33,7 @@ export async function composeCard(input) {
     serial = "",
     className = "",
     rarity = "",
+    markPath = "",
     outputPath,
   } = input;
 
@@ -165,7 +166,7 @@ export async function composeCard(input) {
         .toBuffer()
     : withFrame;
 
-  const textSvg = cardTextSvg({ name, subtitle, setName, serial, className, rarity, material, effect });
+  const textSvg = cardTextSvg({ name, subtitle, setName, serial, className, rarity, material, effect, markData: await markDataUri(markPath) });
   const textPng = new Resvg(textSvg, {
     fitTo: { mode: "width", value: W },
     font: { fontFiles, loadSystemFonts: false, defaultFontFamily: "Manrope" },
@@ -197,6 +198,37 @@ function escapeXml(value) {
     .replaceAll("'", "&apos;");
 }
 
+async function markDataUri(markPath) {
+  try {
+    if (!markPath || !fs.existsSync(markPath)) return "";
+    const ext = path.extname(markPath).replace(".", "").toLowerCase();
+    if (ext === "svg") {
+      return `data:image/svg+xml;base64,${fs.readFileSync(markPath).toString("base64")}`;
+    }
+    // Collection marks are often supplied as black artwork on a white field.
+    // Knock out near-white pixels so the supplied square does not become a
+    // white sticker on every card. Preserve dark pixels and antialiasing.
+    const image = sharp(markPath).resize(128, 128, { fit: "contain", background: { r: 255, g: 255, b: 255, alpha: 0 } }).ensureAlpha();
+    const { data, info } = await image.raw().toBuffer({ resolveWithObject: true });
+    const corner = (x, y) => {
+      const index = (y * info.width + x) * 4;
+      return data[index] >= 238 && data[index + 1] >= 238 && data[index + 2] >= 238 && data[index + 3] > 200;
+    };
+    const whiteField = corner(0, 0) && corner(info.width - 1, 0) && corner(0, info.height - 1) && corner(info.width - 1, info.height - 1);
+    if (whiteField) {
+      for (let index = 0; index < data.length; index += 4) {
+        if (data[index] >= 238 && data[index + 1] >= 238 && data[index + 2] >= 238) {
+          data[index + 3] = 0;
+        }
+      }
+    }
+    const png = await sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer();
+    return `data:image/png;base64,${png.toString("base64")}`;
+  } catch {
+    return "";
+  }
+}
+
 function truncate(value, max) {
   const text = String(value ?? "").trim();
   return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
@@ -219,7 +251,7 @@ function wrapName(name) {
   return lines.slice(0, 3);
 }
 
-function cardTextSvg({ name, subtitle, setName, serial, className, rarity, material, effect }) {
+function cardTextSvg({ name, subtitle, setName, serial, className, rarity, material, effect, markData }) {
   const lines = wrapName(name);
   const longest = Math.max(...lines.map((line) => line.length), 1);
   const nameSize = lines.length >= 3 ? 40 : longest > 20 ? 40 : lines.length > 1 ? 46 : 54;
@@ -233,6 +265,10 @@ function cardTextSvg({ name, subtitle, setName, serial, className, rarity, mater
   const metaY = subtitleY + 32;
   const materialLabel = `${material.toUpperCase()}${effect && effect !== "none" ? ` · ${effect.toUpperCase()}` : ""}`;
   const meta = [setName, className, rarity].filter(Boolean).map((value) => escapeXml(truncate(value, 52))).join(" · ");
+  const headerX = markData ? 136 : 64;
+  const markMarkup = markData
+    ? `<svg x="64" y="50" width="58" height="58" viewBox="0 0 58 58"><rect width="58" height="58" fill="#07110F" opacity=".82"/><image href="${markData}" x="4" y="4" width="50" height="50" preserveAspectRatio="xMidYMid meet"/></svg>`
+    : "";
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
     <defs>
       <linearGradient id="shade" x1="0" y1="0" x2="0" y2="1">
@@ -242,9 +278,10 @@ function cardTextSvg({ name, subtitle, setName, serial, className, rarity, mater
       </linearGradient>
     </defs>
     <rect x="0" y="720" width="${W}" height="330" fill="url(#shade)"/>
-    <text x="64" y="116" font-family="IBM Plex Mono" font-size="16" letter-spacing="3.2" fill="#D9BF8B">${escapeXml(setName.toUpperCase())}</text>
-    <text x="${W - 64}" y="116" text-anchor="end" font-family="IBM Plex Mono" font-size="14" letter-spacing="2.2" fill="#F4F0E6" opacity=".78">${escapeXml(materialLabel)}</text>
-    <path d="M64 134 H260" stroke="#B08A52" stroke-width="1.2" opacity=".8"/>
+    ${markMarkup}
+    <text x="${headerX}" y="${markData ? 84 : 116}" font-family="IBM Plex Mono" font-size="16" letter-spacing="3.2" fill="#D9BF8B">${escapeXml(setName.toUpperCase())}</text>
+    <text x="${W - 64}" y="${markData ? 84 : 116}" text-anchor="end" font-family="IBM Plex Mono" font-size="14" letter-spacing="2.2" fill="#F4F0E6" opacity=".78">${escapeXml(materialLabel)}</text>
+    <path d="M64 ${markData ? 110 : 134} H260" stroke="#B08A52" stroke-width="1.2" opacity=".8"/>
     <text x="64" y="${nameY}" font-family="Fraunces" font-weight="600" font-size="${nameSize}" fill="#F4F0E6">${nameMarkup}</text>
     ${subtitle ? `<text x="64" y="${subtitleY}" font-family="Manrope" font-size="19" fill="#F4F0E6" opacity=".82">${escapeXml(truncate(subtitle, 44))}</text>` : ""}
     <text x="64" y="${metaY}" font-family="IBM Plex Mono" font-size="13" letter-spacing="1.8" fill="#D9BF8B">${meta.toUpperCase()}</text>

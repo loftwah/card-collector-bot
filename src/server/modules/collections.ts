@@ -1,5 +1,5 @@
 import type { D1Database } from "@cloudflare/workers-types";
-import { ApiError, hasCapability, requireSuperAdminContent, requireUser, type Ctx } from "../context";
+import { ApiError, canManageGlobalCollection, hasCapability, requireGlobalCollectionManager, requireSuperAdminContent, requireUser, type Ctx } from "../context";
 import { all, first, nowIso } from "../db";
 import { newId } from "../ids";
 import { botForTenant } from "./bots";
@@ -49,6 +49,21 @@ function normalizeSlug(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
 }
 
+async function platformCatalogueTenantId(ctx: Ctx): Promise<string> {
+  if (ctx.tenant.slug === ctx.config.tenantSlug) return ctx.tenant.id;
+  const main = await first<{ id: string }>(ctx.db, "SELECT id FROM fb_tenants WHERE slug = ?", ctx.config.tenantSlug);
+  return main?.id ?? ctx.tenant.id;
+}
+
+function globalScopeClause(user: Ctx["user"]): { sql: string; params: unknown[] } {
+  const scope = user?.globalCollectionScope;
+  if (!scope) return { sql: "", params: [] };
+  if (scope.all) return { sql: "(c.scope = 'global')", params: [] };
+  const ids = scope.collectionIds;
+  if (!ids.length) return { sql: "(c.scope = 'global' AND 0 = 1)", params: [] };
+  return { sql: `(c.scope = 'global' AND c.id IN (${ids.map(() => "?").join(",")}))`, params: ids };
+}
+
 export async function listCollections(
   ctx: Ctx,
   options?: { includeArchived?: boolean; includeAll?: boolean },
@@ -56,11 +71,17 @@ export async function listCollections(
   const bot = await botForTenant(ctx.db, ctx.tenant.id);
   const access = await viewerAccess(ctx);
   const visibility = collectionVisibilitySql(access);
+  const platformScope = globalScopeClause(ctx.user);
   const scopeClause = options?.includeAll
-    ? "(c.scope = 'global' OR c.owner_tenant_id = ?)"
+    ? ctx.user?.globalCollectionScope && !ctx.user.platformAdmin
+      ? `((${platformScope.sql}) OR (c.scope = 'bot' AND c.owner_tenant_id = ?))`
+      : "(c.scope = 'global' OR c.owner_tenant_id = ?)"
     : visibility.sql;
   const params: unknown[] = [bot?.id ?? "", options?.includeArchived ? 1 : 0];
-  if (options?.includeAll) params.push(ctx.tenant.id);
+  if (options?.includeAll) {
+    if (ctx.user?.globalCollectionScope && !ctx.user.platformAdmin) params.push(...platformScope.params);
+    params.push(ctx.tenant.id);
+  }
   else params.push(...visibility.params);
   const rows = await all<CollectionSummary & { owner_name: string | null }>(
     ctx.db,
@@ -89,7 +110,7 @@ export async function listCollections(
     enabled: Boolean(row.enabled),
     manageable:
       row.scope === "global"
-        ? Boolean(ctx.user?.platformAdmin)
+        ? canManageGlobalCollection(ctx, row.id)
         : Boolean(ctx.user && (ctx.user.role === "owner" || hasCapability(ctx.user, "content"))),
     owner_name: row.owner_name ?? "Foilbury global",
     audience_label: audienceLabel(row.view_audience),
@@ -132,11 +153,17 @@ export async function getCollection(
   const bot = await botForTenant(ctx.db, ctx.tenant.id);
   const access = await viewerAccess(ctx);
   const visibility = collectionVisibilitySql(access);
+  const platformScope = globalScopeClause(ctx.user);
   const identityClause = options?.includeAll
-    ? "(c.scope = 'global' OR c.owner_tenant_id = ?)"
+    ? ctx.user?.globalCollectionScope && !ctx.user.platformAdmin
+      ? `((${platformScope.sql}) OR (c.scope = 'bot' AND c.owner_tenant_id = ?))`
+      : "(c.scope = 'global' OR c.owner_tenant_id = ?)"
     : visibility.sql;
   const params: unknown[] = [bot?.id ?? "", id];
-  if (options?.includeAll) params.push(ctx.tenant.id);
+  if (options?.includeAll) {
+    if (ctx.user?.globalCollectionScope && !ctx.user.platformAdmin) params.push(...platformScope.params);
+    params.push(ctx.tenant.id);
+  }
   else params.push(...visibility.params);
   const row = await first<CollectionSummary & { owner_name: string | null }>(
     ctx.db,
@@ -163,7 +190,7 @@ export async function getCollection(
     enabled: Boolean(row.enabled),
     manageable:
       row.scope === "global"
-        ? Boolean(ctx.user?.platformAdmin)
+        ? canManageGlobalCollection(ctx, row.id)
         : Boolean(ctx.user && (ctx.user.role === "owner" || hasCapability(ctx.user, "content"))),
     owner_name: row.owner_name ?? "Foilbury global",
     audience_label: audienceLabel(row.view_audience),
@@ -230,7 +257,7 @@ export async function createCollection(
 ): Promise<CollectionRow> {
   const user = requireUser(ctx);
   if (input.scope === "global") {
-    requireSuperAdminContent(ctx);
+    requireGlobalCollectionManager(ctx);
   } else {
     const bot = await botForTenant(ctx.db, ctx.tenant.id);
     if (!bot) throw new ApiError(403, "bot_required", "Create or select a Bot before making a Bot collection.");
@@ -256,6 +283,7 @@ export async function createCollection(
   if (input.scope === "bot" && audience === "public") {
     throw new ApiError(422, "bot_collection_not_public", "Bot collections are members-only; public showcase content is curated by the Super Admin.");
   }
+  const ownerTenantId = input.scope === "global" ? await platformCatalogueTenantId(ctx) : ctx.tenant.id;
   await ctx.db
     .prepare(
       `INSERT INTO fb_collections
@@ -271,7 +299,7 @@ export async function createCollection(
       name,
       input.description?.slice(0, 2000) ?? "",
       input.scope,
-      ctx.tenant.id,
+      ownerTenantId,
       safeUrl(input.logoUrl),
       safeUrl(input.bannerUrl),
       safeUrl(input.backUrl),
@@ -396,7 +424,7 @@ export async function updateCollection(
     values.push(input.viewAudience);
   }
   if (input.status !== undefined) {
-    if (collection.scope === "global") requireSuperAdminContent(ctx);
+    if (collection.scope === "global") requireGlobalCollectionManager(ctx, collection.id);
     if (input.status !== collection.status) assertTransition("collection", collection.status, input.status);
     if (input.status !== "published" && collection.view_audience === "public") {
       updates.push("view_audience = 'members'", "public_approved_at = NULL", "public_approved_by = NULL");
@@ -509,7 +537,7 @@ export async function assertCardEnabledForTenant(db: D1Database, tenantId: strin
 
 function assertManage(ctx: Ctx, collection: CollectionRow): void {
   if (collection.scope === "global") {
-    requireSuperAdminContent(ctx);
+    requireGlobalCollectionManager(ctx, collection.id);
     return;
   }
   const user = requireUser(ctx);
@@ -582,6 +610,17 @@ export async function collectionProgress(ctx: Ctx, collectionId: string) {
       WHERE cc.collection_id = ?`,
     collection.id,
   );
+  const finishTotals = await all<{ card_id: string; material_key: string; effect_key: string | null }>(
+    ctx.db,
+    `SELECT DISTINCT cd.id AS card_id, m.key AS material_key, fx.key AS effect_key
+       FROM fb_collection_cards cc
+       JOIN fb_card_definitions cd ON cd.id = cc.card_id AND cd.status = 'published' AND cd.archived_at IS NULL
+       JOIN fb_variants v ON v.card_id = cd.id AND v.status = 'published' AND v.archived_at IS NULL
+       JOIN fb_materials m ON m.id = v.material_id
+       LEFT JOIN fb_effects fx ON fx.id = v.effect_id
+      WHERE cc.collection_id = ?`,
+    collection.id,
+  );
   if (!user) {
     return {
       collection: collection.slug,
@@ -590,12 +629,15 @@ export async function collectionProgress(ctx: Ctx, collectionId: string) {
       total_variants: totals?.variants ?? 0,
       owned_cards: 0,
       owned_variants: 0,
+      owned_copies: 0,
+      duplicates: 0,
+      finishes: emptyFinishProgress(finishTotals),
       complete: false,
     };
   }
-  const owned = await first<{ cards: number; variants: number }>(
+  const owned = await first<{ cards: number; variants: number; copies: number }>(
     ctx.db,
-    `SELECT COUNT(DISTINCT ci.card_id) AS cards, COUNT(DISTINCT ci.variant_id) AS variants
+    `SELECT COUNT(DISTINCT ci.card_id) AS cards, COUNT(DISTINCT ci.variant_id) AS variants, COUNT(*) AS copies
        FROM fb_card_instances ci
        JOIN fb_collection_cards cc ON cc.card_id = ci.card_id
       WHERE ci.tenant_id = ? AND ci.user_id = ? AND ci.status IN ('owned','reserved')
@@ -604,16 +646,157 @@ export async function collectionProgress(ctx: Ctx, collectionId: string) {
     user.id,
     collection.id,
   );
+  const ownedFinishRows = await all<{ card_id: string; material_key: string; effect_key: string | null }>(
+    ctx.db,
+    `SELECT ci.card_id, m.key AS material_key, fx.key AS effect_key
+       FROM fb_card_instances ci
+       JOIN fb_collection_cards cc ON cc.card_id = ci.card_id
+       JOIN fb_variants v ON v.id = ci.variant_id
+       JOIN fb_materials m ON m.id = v.material_id
+       LEFT JOIN fb_effects fx ON fx.id = v.effect_id
+      WHERE ci.tenant_id = ? AND ci.user_id = ? AND ci.status IN ('owned','reserved')
+        AND cc.collection_id = ?`,
+    ctx.tenant.id,
+    user.id,
+    collection.id,
+  );
   const totalCards = totals?.cards ?? 0;
+  const ownedCards = owned?.cards ?? 0;
+  const totalVariants = totals?.variants ?? 0;
+  const ownedVariants = owned?.variants ?? 0;
   return {
     collection: collection.slug,
     audience: collection.view_audience,
     total_cards: totalCards,
-    total_variants: totals?.variants ?? 0,
-    owned_cards: owned?.cards ?? 0,
-    owned_variants: owned?.variants ?? 0,
-    complete: totalCards > 0 && (owned?.cards ?? 0) >= totalCards,
+    total_variants: totalVariants,
+    owned_cards: ownedCards,
+    owned_variants: ownedVariants,
+    owned_copies: owned?.copies ?? 0,
+    duplicates: Math.max(0, (owned?.copies ?? 0) - ownedCards),
+    finishes: finishProgress(finishTotals, ownedFinishRows),
+    complete: totalCards > 0 && ownedCards >= totalCards,
+    variant_complete: totalVariants > 0 && ownedVariants >= totalVariants,
   };
+}
+
+export async function collectionBinder(ctx: Ctx, collectionId: string) {
+  const collection = await getCollection(ctx, collectionId);
+  const user = ctx.user;
+  if (!user) throw new ApiError(401, "authentication_required", "Sign in to open the album.");
+  const rows = await all<{
+    id: string;
+    slug: string;
+    name: string;
+    subtitle: string | null;
+    status: string;
+    render_url: string | null;
+    thumbnail_url: string | null;
+  }>(
+    ctx.db,
+    `SELECT cd.id, cd.slug, cd.name, cd.subtitle, cd.status,
+            (SELECT vr.public_url FROM fb_variants v2
+               JOIN fb_variant_renders vr ON vr.variant_id = v2.id AND vr.status = 'published'
+              WHERE v2.card_id = cd.id AND v2.status = 'published' AND v2.archived_at IS NULL
+              ORDER BY v2.name LIMIT 1) AS render_url,
+            (SELECT vr.public_url FROM fb_variants v2
+               JOIN fb_variant_renders vr ON vr.variant_id = v2.id AND vr.status = 'published'
+              WHERE v2.card_id = cd.id AND v2.status = 'published' AND v2.archived_at IS NULL
+              ORDER BY v2.name LIMIT 1) AS thumbnail_url
+       FROM fb_collection_cards cc
+       JOIN fb_card_definitions cd ON cd.id = cc.card_id AND cd.status = 'published' AND cd.archived_at IS NULL
+      WHERE cc.collection_id = ?
+      ORDER BY cc.sort, cd.name`,
+    collection.id,
+  ).catch(async () => {
+    // Older local schemas may not have the ordered material join; the base
+    // fields are still useful and the page stays honest about missing media.
+    return all<{
+      id: string; slug: string; name: string; subtitle: string | null; status: string; render_url: string | null; thumbnail_url: string | null;
+    }>(
+      ctx.db,
+      `SELECT cd.id, cd.slug, cd.name, cd.subtitle, cd.status, NULL AS render_url, NULL AS thumbnail_url
+         FROM fb_collection_cards cc
+         JOIN fb_card_definitions cd ON cd.id = cc.card_id AND cd.status = 'published' AND cd.archived_at IS NULL
+        WHERE cc.collection_id = ? ORDER BY cc.sort, cd.name`,
+      collection.id,
+    );
+  });
+  const ownedRows = await all<{ card_id: string; instance_id: string; material_key: string; effect_key: string | null; render_url: string | null }>(
+    ctx.db,
+    `SELECT ci.card_id, ci.id AS instance_id, m.key AS material_key, fx.key AS effect_key,
+            (SELECT vr.public_url FROM fb_variant_renders vr WHERE vr.variant_id = ci.variant_id AND vr.status = 'published' LIMIT 1) AS render_url
+       FROM fb_card_instances ci
+       JOIN fb_collection_cards cc ON cc.card_id = ci.card_id
+       JOIN fb_variants v ON v.id = ci.variant_id
+       JOIN fb_materials m ON m.id = v.material_id
+       LEFT JOIN fb_effects fx ON fx.id = v.effect_id
+      WHERE ci.tenant_id = ? AND ci.user_id = ? AND ci.status IN ('owned','reserved') AND cc.collection_id = ?`,
+    ctx.tenant.id,
+    user.id,
+    collection.id,
+  );
+  const byCard = new Map<string, { finishes: Set<string>; render_url: string | null; copies: number; instance_id: string }>();
+  for (const row of ownedRows) {
+    const current = byCard.get(row.card_id) ?? { finishes: new Set<string>(), render_url: null, copies: 0, instance_id: row.instance_id };
+    current.finishes.add(finishKeyOf(row.material_key, row.effect_key));
+    current.copies += 1;
+    if (!current.render_url) current.render_url = row.render_url;
+    byCard.set(row.card_id, current);
+  }
+  return {
+    collection: collection.slug,
+    name: collection.name,
+    total: rows.length,
+    cards: rows.map((row) => {
+      const owned = byCard.get(row.id);
+      return {
+        ...row,
+        owned: Boolean(owned),
+        copies: owned?.copies ?? 0,
+        finishes: owned ? [...owned.finishes].filter((finish) => (CORE_FINISHES as readonly string[]).includes(finish)) : [],
+        render_url: owned?.render_url ?? null,
+        instance_id: owned?.instance_id ?? null,
+      };
+    }),
+  };
+}
+
+const CORE_FINISHES = ["plain", "silver", "gold", "holographic"] as const;
+
+function finishKeyOf(material: string, effect: string | null): string {
+  if (effect === "holographic" || material === "diamond") return "holographic";
+  if (material === "silver") return "silver";
+  if (material === "gold") return "gold";
+  if (material === "plain") return "plain";
+  return "other";
+}
+
+function emptyFinishProgress(rows: Array<{ card_id: string; material_key: string; effect_key: string | null }>) {
+  const out: Record<string, { owned: number; total: number }> = {};
+  for (const finish of CORE_FINISHES) out[finish] = { owned: 0, total: 0 };
+  const totals = new Map<string, Set<string>>();
+  for (const row of rows) {
+    const key = finishKeyOf(row.material_key, row.effect_key);
+    if (!totals.has(key)) totals.set(key, new Set());
+    totals.get(key)!.add(row.card_id);
+  }
+  for (const finish of CORE_FINISHES) out[finish]!.total = totals.get(finish)?.size ?? 0;
+  return out;
+}
+
+function finishProgress(
+  totalsRows: Array<{ card_id: string; material_key: string; effect_key: string | null }>,
+  ownedRows: Array<{ card_id: string; material_key: string; effect_key: string | null }>,
+) {
+  const out = emptyFinishProgress(totalsRows);
+  const owned = new Map<string, Set<string>>();
+  for (const row of ownedRows) {
+    const key = finishKeyOf(row.material_key, row.effect_key);
+    if (!owned.has(key)) owned.set(key, new Set());
+    owned.get(key)!.add(row.card_id);
+  }
+  for (const finish of CORE_FINISHES) out[finish]!.owned = owned.get(finish)?.size ?? 0;
+  return out;
 }
 
 function assetIdFromUrl(value: string | undefined | null): string | null {

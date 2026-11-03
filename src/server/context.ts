@@ -4,7 +4,7 @@ import { readConfig, type RawEnv, type RuntimeConfig, type Role } from "./config
 
 export type { Role } from "./config";
 export { assertTrustedLocal } from "./config";
-import { first, nowIso } from "./db";
+import { all, first, nowIso } from "./db";
 import { hmacHex, sha256Hex } from "./ids";
 import { newId } from "./ids";
 import {
@@ -25,6 +25,11 @@ export interface Tenant {
   name: string;
 }
 
+export interface GlobalCollectionScope {
+  all: boolean;
+  collectionIds: string[];
+}
+
 export interface CurrentUser {
   id: string;
   email: string;
@@ -33,6 +38,10 @@ export interface CurrentUser {
   platformAdmin: boolean;
   emailVerified?: boolean;
   capabilities?: string[];
+  /** Explicit platform-role assignments. Never inferred from Access or guild ownership. */
+  platformRoles?: string[];
+  /** Present only for an active global_collection_admin assignment. */
+  globalCollectionScope?: GlobalCollectionScope | null;
 }
 
 export interface Actor {
@@ -198,6 +207,29 @@ export async function buildContext(request: Request, options?: { requireTenant?:
     } else if (config.environment !== "local") {
       throw new ApiError(403, "access_required", "Administrative access requires Cloudflare Access.");
     }
+  }
+
+  if (user) {
+    const roles = await all<{ role: string; scopes_json: string }>(
+      db,
+      "SELECT role, scopes_json FROM fb_platform_role_assignments WHERE user_id = ? AND status = 'active'",
+      user.id,
+    ).catch(() => []);
+    const platformRoles = roles.map((row) => row.role);
+    let globalCollectionScope: GlobalCollectionScope | null = null;
+    const globalRole = roles.find((row) => row.role === "global_collection_admin");
+    if (globalRole) {
+      try {
+        const parsed = JSON.parse(globalRole.scopes_json) as { all?: unknown; collectionIds?: unknown };
+        const collectionIds = Array.isArray(parsed.collectionIds)
+          ? parsed.collectionIds.filter((id): id is string => typeof id === "string")
+          : [];
+        globalCollectionScope = { all: parsed.all !== false || collectionIds.length === 0, collectionIds };
+      } catch {
+        globalCollectionScope = { all: true, collectionIds: [] };
+      }
+    }
+    user = { ...user, platformRoles, globalCollectionScope };
   }
 
   return {
@@ -450,6 +482,51 @@ export function hasCapability(user: CurrentUser | null, capability: string): boo
   return Array.isArray(user.capabilities) && user.capabilities.includes(capability);
 }
 
+export function hasPlatformRole(user: CurrentUser | null, role: string): boolean {
+  return Boolean(user?.platformRoles?.includes(role));
+}
+
+export function isGlobalCollectionAdmin(user: CurrentUser | null): boolean {
+  return Boolean(user?.globalCollectionScope);
+}
+
+export function canReadGlobalCollections(ctx: Ctx): boolean {
+  return Boolean(ctx.user && (ctx.user.platformAdmin || isGlobalCollectionAdmin(ctx.user)));
+}
+
+export function canManageGlobalCollections(ctx: Ctx): boolean {
+  if (!canReadGlobalCollections(ctx)) return false;
+  if (ctx.actor.type === "agent") {
+    const scopes = ctx.scopes ?? [];
+    return scopes.includes("content:write") || scopes.includes("import:write") || scopes.includes("catalogue:publish");
+  }
+  return true;
+}
+
+/** Collection-scoped authority: an all-collections grant or an explicit ID. */
+export function canManageGlobalCollection(ctx: Ctx, collectionId: string): boolean {
+  const user = ctx.user;
+  if (!user) return false;
+  if (user.platformAdmin) return canManageGlobalCollections(ctx);
+  const scope = user.globalCollectionScope;
+  if (!scope || !canManageGlobalCollections(ctx)) return false;
+  return scope.all || scope.collectionIds.includes(collectionId);
+}
+
+export function requireGlobalCollectionManager(ctx: Ctx, collectionId?: string): CurrentUser {
+  const user = requireUser(ctx);
+  if (!canManageGlobalCollections(ctx)) {
+    if (ctx.actor.type === "agent") {
+      throw new ApiError(403, "insufficient_scope", "This agent grant cannot change shared collections.");
+    }
+    throw new ApiError(403, "global_collection_admin_required", "Only a scoped Global Collection Admin can change shared collections.");
+  }
+  if (collectionId && !canManageGlobalCollection(ctx, collectionId)) {
+    throw new ApiError(403, "collection_not_in_scope", "That collection is outside your delegated collection scope.");
+  }
+  return user;
+}
+
 export function requireSuperAdmin(ctx: Ctx): CurrentUser {
   const user = requireUser(ctx);
   if (ctx.actor.type !== "user" || !user.platformAdmin) {
@@ -479,9 +556,10 @@ export function requireSuperAdminContent(ctx: Ctx): CurrentUser {
   return user;
 }
 
-export function roleLabel(user: (Pick<CurrentUser, "role"> & { platformAdmin?: boolean }) | null): string {
+export function roleLabel(user: (Pick<CurrentUser, "role"> & { platformAdmin?: boolean; globalCollectionScope?: GlobalCollectionScope | null }) | null): string {
   if (!user) return "Guest";
   if (user.platformAdmin) return "Super Admin";
+  if (user.globalCollectionScope) return "Global Collection Admin";
   if (user.role === "owner") return "Bot Owner";
   if (user.role === "editor" || user.role === "economy_admin") return "Bot Admin";
   return "User";
@@ -508,19 +586,26 @@ export function requireRecentStrongAuth(ctx: Ctx, maxAgeMinutes = 20): void {
 
 export async function requireProtectedAccount(ctx: Ctx): Promise<CurrentUser> {
   const user = requireUser(ctx);
-  if (!user.emailVerified) {
-    throw new ApiError(403, "email_verification_required", "Verify your email address before creating or administering a Bot.");
-  }
-  const row = await first<{ passkeys: number; totp: number; access: number }>(
+  const row = await first<{ passkeys: number; totp: number; access: number; discord: number }>(
     ctx.db,
     `SELECT
        (SELECT COUNT(*) FROM fb_webauthn_credentials WHERE user_id = ?) AS passkeys,
        (SELECT COUNT(*) FROM fb_totp_secrets WHERE user_id = ? AND confirmed_at IS NOT NULL) AS totp,
-       (SELECT COUNT(*) FROM fb_access_identities WHERE user_id = ? AND revoked_at IS NULL) AS access`,
+       (SELECT COUNT(*) FROM fb_access_identities WHERE user_id = ? AND revoked_at IS NULL) AS access,
+       (SELECT COUNT(*) FROM fb_discord_identities WHERE user_id = ? AND revoked_at IS NULL) AS discord`,
+    user.id,
     user.id,
     user.id,
     user.id,
   );
+  // A verified Discord OAuth link is a real identity even when the account has
+  // no mailbox (Discord-only players use a non-routable placeholder address).
+  // This never merges accounts on an unverified email string and never replaces
+  // the separate strong-auth proof required for sensitive mutations.
+  const verifiedIdentity = Boolean(user.emailVerified) || (row?.discord ?? 0) > 0 || (row?.access ?? 0) > 0;
+  if (!verifiedIdentity) {
+    throw new ApiError(403, "identity_verification_required", "Link a verified email, Discord identity or Cloudflare Access identity before creating or administering a Bot.");
+  }
   if (!row || (row.passkeys === 0 && row.totp === 0 && row.access === 0)) {
     throw new ApiError(403, "protected_account_required", "Set up a passkey or authenticator before creating or administering a Bot.");
   }

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 400">
+    <rect x="24" y="110" width="180" height="180" fill="#00c8b8"/>
+    <path d="M68 150h108v26H98v22h54v26H98v50H68z" fill="#07110f"/>
+    <text x="250" y="262" font-family="Manrope, sans-serif" font-weight="800" font-size="178" letter-spacing="-8" fill="#07110f">FOILBURY</text>
+    <text x="256" y="316" font-family="ui-monospace, monospace" font-size="20" letter-spacing="9" fill="#07110f" opacity=".7">A COLLECTOR'S CABINET</text>
+  </svg>

@@ -3,5 +3,5 @@ import AdminLayout from "../../layouts/AdminLayout.astro";
 import AdminApp from "../../components/admin/AdminApp";
 ---
 <AdminLayout>
-  <AdminApp client:load section="collections" platformAdmin={Boolean(Astro.locals.foilbury?.user?.platformAdmin)} />
+  <AdminApp client:load section="collections" platformAdmin={Boolean(Astro.locals.foilbury?.user?.platformAdmin)} globalCollectionAdmin={Boolean(Astro.locals.foilbury?.user?.globalCollectionScope)} botAdmin={["owner", "editor", "economy_admin"].includes(Astro.locals.foilbury?.user?.role ?? "")} />
 </AdminLayout>

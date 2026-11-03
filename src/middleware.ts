@@ -16,6 +16,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   const path = context.url.pathname;
   const isAdminPage = path === "/admin" || path.startsWith("/admin/");
+  const isStudioPage = path === "/studio" || path.startsWith("/studio/");
   const isPlatformPage = path === "/platform-admin" || path.startsWith("/platform-admin/");
   const isAdminApi = path === "/api/v1/admin" || path.startsWith("/api/v1/admin/");
   const isPlatformApi = path === "/api/v1/platform" || path.startsWith("/api/v1/platform/");
@@ -93,6 +94,20 @@ export const onRequest = defineMiddleware(async (context, next) => {
     }
   }
 
+  if (isStudioPage) {
+    if (!ctx.user) {
+      const next = encodeURIComponent(path + context.url.search);
+      return context.redirect(`/login?next=${next}`);
+    }
+    const hasScope = ctx.user.platformAdmin || Boolean(ctx.user.globalCollectionScope) || ["owner", "editor", "economy_admin"].includes(ctx.user.role);
+    if (!hasScope) {
+      return new Response(studioDeniedHtml(), {
+        status: 403,
+        headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+      });
+    }
+  }
+
   if ((isAdminApi || isPlatformApi) && ctx.actor.type !== "agent" && ctx.config.access.enabled && (!ctx.accessIdentity || ctx.accessStatus !== "linked" || !ctx.user)) {
     return new Response(
       JSON.stringify({
@@ -129,7 +144,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   response.headers.set("referrer-policy", "strict-origin-when-cross-origin");
   response.headers.set("x-frame-options", "DENY");
   response.headers.set("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=()");
-  if (isProtectedPage || path === "/play" || path.startsWith("/play/")) response.headers.set("cache-control", "no-store");
+  if (isProtectedPage || isStudioPage || path === "/play" || path.startsWith("/play/")) response.headers.set("cache-control", "no-store");
   return response;
 });
 
@@ -178,6 +193,17 @@ function accessGateHtml(input: { status: string; email?: string; path: string })
 
 function escapeHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+}
+
+function studioDeniedHtml(): string {
+  return `<!doctype html><html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Studio access · Foilbury</title><style>
+  body{margin:0;background:#07110f;color:#eaf5f1;font-family:ui-sans-serif,system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;padding:24px}
+  main{max-width:620px;border:1px solid #2b4a44;background:#0d1a17;padding:40px}
+  p.k{font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#5cf5e4;margin:0 0 12px}
+  h1{font-size:40px;line-height:1.02;margin:0 0 16px;font-weight:800;text-transform:uppercase}
+  p{line-height:1.65;color:#a8c4bd}.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}
+  a{display:inline-block;padding:12px 18px;text-decoration:none;font-weight:700;border:1px solid #5cf5e4;background:#5cf5e4;color:#07110f}
+  a.secondary{background:transparent;color:#eaf5f1}</style></head><body><main><p class="k">Studio · access check</p><h1>No administration scope.</h1><p>This account is a player. The Studio needs a Bot Owner/Admin membership or an explicit global collection assignment; it is never granted by signing in.</p><div class="actions"><a href="/play">Return to my album</a><a class="secondary" href="/account/security">Account security</a></div></main></body></html>`;
 }
 
 function setupHtml(): string {

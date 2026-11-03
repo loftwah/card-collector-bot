@@ -69,6 +69,15 @@ while (true) {
     const backgroundPath = path.join(tmpDir, `${payload.variant_id}-background.png`);
     fs.writeFileSync(subjectPath, Buffer.from(await subject.arrayBuffer()));
     if (background) fs.writeFileSync(backgroundPath, Buffer.from(await background.arrayBuffer()));
+    let markPath = "";
+    const logoUrl = entry.card.collections?.[0]?.logo_url;
+    if (logoUrl) {
+      const logo = await fetch(`${BASE_URL}${logoUrl}`, { headers: { authorization: `Bearer ${agentToken()}` } });
+      if (logo.ok) {
+        markPath = path.join(tmpDir, `${payload.variant_id}-mark.${logoUrl.endsWith(".svg") ? "svg" : "png"}`);
+        fs.writeFileSync(markPath, Buffer.from(await logo.arrayBuffer()));
+      }
+    }
     const outputPath = path.join(tmpDir, `${payload.variant_id}.webp`);
     await composeCard({
       subjectPath,
@@ -77,10 +86,11 @@ while (true) {
       effect: payload.effect_key ?? "none",
       name: entry.card.name,
       subtitle: entry.card.subtitle ?? "",
-      setName: entry.card.sets[0]?.name ?? entry.card.category?.name ?? "Cabinet",
-      serial: "CABINET PROOF",
+      setName: entry.card.collections?.[0]?.name ?? entry.card.sets[0]?.name ?? "Cabinet",
+      serial: entry.card.collections?.[0]?.view_audience === "public" ? "PUBLIC SHOWCASE" : "MEMBER EDITION",
       className: entry.card.class?.name ?? "",
       rarity: entry.card.rarity?.name ?? "",
+      markPath,
       outputPath,
     });
     const renderBytes = fs.readFileSync(outputPath);
@@ -91,6 +101,7 @@ while (true) {
     log(`  rendered ${entry.card.name} — ${entry.variant.name}`);
     fs.rmSync(subjectPath, { force: true });
     fs.rmSync(backgroundPath, { force: true });
+    if (markPath) fs.rmSync(markPath, { force: true });
     fs.rmSync(outputPath, { force: true });
   } catch (error) {
     failed++;

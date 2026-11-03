@@ -73,6 +73,31 @@ server.tool("foilbury_pool_preview", "Inspect the actual eligible pool and proba
 server.tool("foilbury_pool_update", "Create a new draft pool revision. Existing draws remain valid for their recorded revision.", { id: z.string(), expectedRevision: z.number().int().positive(), price: z.number().int().nonnegative().optional() }, guarded((args) => apiJson(`/api/v1/admin/pools/${args.id}`, { method: "PATCH", token: token(), body: { expectedRevision: args.expectedRevision, price: args.price } })));
 server.tool("foilbury_pool_publish", "Activate a draft pool revision.", { id: z.string() }, guarded(({ id }) => apiJson(`/api/v1/admin/pools/${id}/publish`, { method: "POST", token: token(), body: {} })));
 
+server.tool("foilbury_global_collections_list", "List the shared collections the represented member may manage. A scoped Global Collection Admin sees only their assignment; a Bot Owner sees their own Bot too.", { includeArchived: z.boolean().optional() }, guarded(({ includeArchived }) => apiJson(`/api/v1/admin/collections${includeArchived ? "?includeArchived=true" : ""}`, { token: token() })));
+
+server.tool("foilbury_global_collection_update", "Update a shared collection's metadata, branding or release state inside the represented member's scope. Public approval remains Super Admin only.", {
+  id: z.string(),
+  name: z.string().min(2).max(120).optional(),
+  description: z.string().max(1000).optional(),
+  logoUrl: z.string().max(500).nullable().optional(),
+  bannerUrl: z.string().max(500).nullable().optional(),
+  accent: z.string().max(30).optional(),
+  status: z.enum(["draft", "published", "archived"]).optional(),
+  viewAudience: z.enum(["members", "private"]).optional(),
+  sourceWork: z.string().max(500).nullable().optional(),
+  reason: z.string().min(3).max(300).optional(),
+}, guarded(({ id, reason, ...fields }) => apiJson(`/api/v1/admin/collections/${id}`, { method: "PATCH", token: token(), body: fields })));
+
+server.tool("foilbury_global_collection_add_cards", "Add existing catalogue cards to a shared collection inside the represented member's scope.", { id: z.string(), cardIds: z.array(z.string()).min(1).max(100) }, guarded(({ id, cardIds }) => apiJson(`/api/v1/admin/collections/${id}/cards`, { method: "POST", token: token(), body: { cardIds } })));
+
+server.tool("foilbury_shares_list", "List the represented member's active and historical share links. No token or private payload is exposed.", {}, guarded(() => apiJson("/api/v1/shares", { token: token() })));
+
+server.tool("foilbury_share_create", "Create a preview-first, expiring share for a card, collection, badge, wishlist, latest pull or profile. The represented member's existing entitlement is rechecked.", {
+  kind: z.enum(["cabinet", "card", "collection", "achievement", "wishlist", "latest", "profile"]),
+  targetId: z.string().optional(),
+  expiresInDays: z.number().int().min(1).max(30).optional(),
+}, guarded((args) => apiJson("/api/v1/shares", { method: "POST", token: token(), body: args })));
+
 server.tool("foilbury_inventory_list", "List the represented member's inventory.", { search: z.string().optional(), favourite: z.boolean().optional() }, guarded(({ search, favourite }) => {
   const params = new URLSearchParams();
   if (search) params.set("search", search);

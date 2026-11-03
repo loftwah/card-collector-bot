@@ -51,6 +51,8 @@ declare namespace App {
         role: "owner" | "editor" | "economy_admin" | "player";
         platformAdmin?: boolean;
         capabilities?: string[];
+        platformRoles?: string[];
+        globalCollectionScope?: { all: boolean; collectionIds: string[] } | null;
       } | null;
       sessionId: string | null;
       csrfToken: string;

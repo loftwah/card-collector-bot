@@ -1,0 +1,16 @@
+---
+import StudioLayout from "../../layouts/StudioLayout.astro";
+import AdminApp from "../../components/admin/AdminApp";
+const session = Astro.locals.foilbury;
+const user = session?.user ?? null;
+const isBotAdmin = ["owner", "editor", "economy_admin"].includes(user?.role ?? "");
+---
+<StudioLayout>
+  <AdminApp
+    client:load
+    section="collections"
+    platformAdmin={Boolean(user?.platformAdmin)}
+    globalCollectionAdmin={Boolean(user?.globalCollectionScope)}
+    botAdmin={isBotAdmin}
+  />
+</StudioLayout>

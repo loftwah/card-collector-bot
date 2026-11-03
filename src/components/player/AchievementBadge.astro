@@ -5,9 +5,10 @@ interface Props {
   category?: string | null;
   earned?: boolean;
   size?: number;
+  emblemUrl?: string | null;
 }
 
-const { artKey = "medal-generic", name, category = "milestone", earned = false, size = 72 } = Astro.props;
+const { artKey = "medal-generic", name, category = "milestone", earned = false, size = 72, emblemUrl = null } = Astro.props;
 const palettes: Record<string, { a: string; b: string; c: string }> = {
   "medal-first": { a: "#7d5a26", b: "#e8c98f", c: "#141512" },
   "medal-shelf": { a: "#245c4b", b: "#a7e0c4", c: "#0e231c" },
@@ -41,6 +42,7 @@ const shape =
     {shape}
     <circle cx="36" cy="36" r="8" fill={palette.b} opacity={earned ? 0.95 : 0.35} />
     <path d="M27 36 H45 M36 27 V45" stroke={palette.c} stroke-width="2" opacity={earned ? 0.8 : 0.3} />
+    {emblemUrl ? <image href={emblemUrl} x="43" y="43" width="25" height="25" preserveAspectRatio="xMidYMid meet" opacity={earned ? 1 : 0.45} /> : null}
   </svg>
   <span class="sr-only">{name}</span>
 </span>

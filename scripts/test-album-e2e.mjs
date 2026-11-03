@@ -217,7 +217,7 @@ try {
     throw new Error(`The selected capsule must award ${cardName}; received ${drawResponse.status()} ${JSON.stringify(drawReceipt)}.`);
   }
   await member.getByText(/New subject|Another copy/).waitFor({ timeout: 20000 });
-  const inspect = member.getByRole("link", { name: /Inspect this instance/ });
+  const inspect = member.getByRole("link", { name: /Inspect this copy/ });
   await inspect.waitFor();
   const instanceHref = await inspect.getAttribute("href");
   await member.goto(instanceHref, { waitUntil: "networkidle" });
@@ -290,7 +290,7 @@ try {
     throw new Error(`The selected card must earn and pay its achievement: ${JSON.stringify(earned ?? memberAchievements)}.`);
   }
   await member.goto("/play/achievements", { waitUntil: "networkidle" });
-  await member.locator("article.is-earned").getByRole("heading", { level: 4, name: "Album proof complete", exact: true }).waitFor({ timeout: 20000 });
+  await member.locator("article.is-earned").getByRole("heading", { level: 4, name: "Album proof complete", exact: true }).first().waitFor({ timeout: 20000 });
   pass("achievement appears as earned for the member");
 
   await member.goto("/play/gifts", { waitUntil: "networkidle" });

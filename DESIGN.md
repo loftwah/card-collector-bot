@@ -2,41 +2,95 @@
 
 ## World
 
-A collector's cabinet, not a generic dashboard. Paper, ink, brass, oxblood and bottle green; tactile card edges; archival labels; a quiet editorial voice. The landing page persuades, the player cabinet lets the cards lead, and management surfaces operate with restraint.
+A collector's field guide crossed with a signal room. The collection is tactile
+and editorial; the interface is crisp, geometric and confident. The reference
+is a modern infrastructure product's clarity, not its colours: strong rules,
+visible state, honest data, no decorative dashboard fog. Foilbury is not a
+Cloudflare clone and never uses Cloudflare orange.
 
 ## Type
 
-- Display: **Geist Serif** — prominent display headings, card names and collection moments. Self-hosted variable WOFF2 with Georgia/Times fallback; no synthetic bold.
-- UI: **Geist Sans** — body, controls and labels.
-- Data: **Geist Mono** — serials, IDs, odds and ledger rows.
+- Display: **Manrope** — heavy, tight, uppercase where it carries a decision.
+  Self-hosted `public/fonts/manrope-latin.woff2`.
+- UI: **Geist Sans** — body, controls, labels.
+- Data and small labels: **Geist Mono** — serials, IDs, odds, ledger rows.
+- Card renders keep their own authored type (Fraunces / Manrope / IBM Plex Mono)
+  because the card is a separate printed object.
 
-## Colour and surfaces
+## Foilbury Signal palette
 
-Use the CSS tokens in `src/styles/global.css`; do not add a competing palette. The light brass text token is deliberately darker than the decorative foil so small labels meet WCAG AA on paper.
+The signature is **deep current + electric aqua + ice + signal lime**, on warm
+bone paper in light mode and near-black green in dark mode.
 
-- Paper `#f4f0e6`, ink `#141512`, brass `#7d5a26` (text) / `#c69a58` (bright), green `#245c4b`, oxblood `#6d2b2b`.
-- Public showcase energy: coral `#c53a24` / `#e0492f`, saffron `#b8791f` / `#f2b544`, teal `#0e5b53`, plum `#4a1e4d`. These extend the cabinet rather than replacing it; admin surfaces stay quieter.
-- Dark mode swaps to ink paper, warm type and brighter brass/green.
-- Rarity is conveyed by text **and** colour. Do not rely on colour alone.
-- Cards are the visual anchor: layered artwork, generous image area, restrained chrome.
+| Token | Light | Dark | Use |
+|---|---|---|---|
+| Deep current | `#044e4a` | `#8af2e5` | anchors, collection grounds |
+| Electric aqua | `#00a99c` / `#2ce3d3` | `#4fe0d1` / `#7cf6e8` | primary signal, progress, active |
+| Ice | `#c8f4ee` | `#0d3b35` | quiet surfaces, secondary text on dark |
+| Signal lime | `#c9f25f` | `#d6ff79` | one high-energy accent, stamps, mastery |
+| Carbon | `#07110f` | `#07110f` | admin band, card back, type |
+| Bone | `#eff5f1` | `#e9f5f0` | paper / light type |
+
+Use colour as a second channel. Rarity, progress and state always carry text,
+shape or a label as well. Do not use aqua as a generic "success" green; keep
+`--green` for positive ledger states.
+
+## Geometry
+
+- Sharp, mostly square surfaces. Radii stop at 3px for controls and 6px for a
+  genuinely card-like object.
+- Two hard rules the product can rely on: the 4px `signal-rule` strip and the
+  3–4px section rule. They are composition, not decoration on every card.
+- The brand kit uses the `Signal Fold` mark as the canonical working identity.
+  Four reviewed marks exist; do not mix them on one surface.
 
 ## Collections and cards
 
-- A collection has a mark/logo, name, description, status and explicit card membership. Global and Bot-owned collections share the same visual language.
-- Card details show a spoiler-safe intro, opt-in full profile, typed attributes, source context, collection mark, provenance and a real card-back view. The web can flip and inspect; Discord receives the published single-image render and can show front/back/details without another draw.
-- Layered artwork is authored from background → subject → material → frame → effect → text. A published render is the Discord-safe single image; the private source layers stay on the web.
+- A collection has a mark, palette, description, source boundary and frozen
+  release roster. The card front and designed back carry the collection emblem.
+- Fronts are art-led; backs are designed information objects with a concise bio,
+  typed context and credits. No wall of wiki text on the printed face.
+- Finish is material and effect: Plain, Silver, Gold, Holographic. Holographic
+  Gold is Holographic, not a second Gold. Never present a CSS tint as a finish.
+- 3D inspection is on-demand, CSS-based, pointer/keyboard operable and stops
+  offscreen. Reduced motion gets a static front/back. It never changes ownership.
+- Album views show unique subjects, owned copies, duplicates and each core
+  finish separately. Roster completion is not finish mastery.
 
-## Components and motion
+## Surfaces
 
-- shadcn/ui primitives are configured through `components.json` and `src/components/ui/`; Tailwind tokens map to the Foilbury palette.
-- Existing project classes `btn`, `badge`, `surface-flat`, `table`, `field`, `input` and `eyebrow` remain compatible.
-- Do not place a kicker or eyebrow label above a heading. The heading carries its own weight; use a quiet summary line only when the number is decision-useful.
-- Capsule reveal is satisfying but short; skip is always available. Respect `prefers-reduced-motion`.
-- 3D inspection is on-demand on card detail only: CSS 3D, no canvas per tile, pointer/keyboard tilt, front/back, reduced-motion static fallback, and a flat first paint. It never changes ownership, finish or serial.
-- Focus is visible (`--focus`); icon-only controls need an accessible name.
-- Empty, loading, error and disabled states are designed, not left blank.
-- Admin screens distinguish **Bot administration** from **Platform Administration** in copy and navigation.
+- Player: the cards lead. Progress is legible without turning the album into a
+  dashboard. Binder slots make missing subjects obvious; finish bars name the
+  next target.
+- Studio: operational, explicit scope, auditable actions. The dark band plus
+  aqua signal separates it from the member album without hiding the product.
+- Platform Administration: quiet, dense, high-contrast tables. It remains a
+  separate Access-protected surface.
+- EmDash: editorial only. Foilbury links to it; it does not imitate it.
+
+## Motion and sound
+
+One authored reveal per opening: committed receipt, anticipation, material
+reveal, result. Skip and reduced-motion are always available. Replaying is free
+and cannot redraw. Sound is opt-in and off by default. No continuous album
+renderer, autoplay audio or compulsory cinematic.
+
+## Components and state
+
+- shadcn/ui primitives live in `src/components/ui`, configured through
+  `components.json`; do not add a second primitive library.
+- Keep `btn`, `badge`, `surface`, `field`, `input`, `table` and `eyebrow`
+  compatible with existing screens.
+- Empty, loading, error, disabled, expired and preview-only states are designed.
+- Focus is visible; icon-only controls have accessible names; target sizes are
+  at least 44px where the primary action lives.
+- Public and member/private share previews are visually distinct and never use
+  the same metadata.
 
 ## Verification
 
-Rendered checks use Playwright at desktop, tablet and mobile widths, keyboard focus, light/dark presentation, 200% zoom-equivalent and reduced motion. axe WCAG 2 AA checks must have no serious/critical findings. Impeccable's mechanical detector is run over changed UI files; a zero detector result is not design acceptance.
+Render at desktop, tablet, mobile and Discord thumbnail size. Check light/dark,
+200% zoom, reduced motion, keyboard focus and contrast. Run the mechanical
+detector, but a clean detector is not acceptance. Record the actual screenshots
+and videos under `.foilbury/` or the approved evidence folder; do not commit
+private member media.

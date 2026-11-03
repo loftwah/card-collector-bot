@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Foilbury Index mark">
+    <rect width="256" height="256" fill="#eff5f1"/>
+    <path d="M28 28h200v200H28z" fill="none" stroke="#07110f" stroke-width="12"/>
+    <path d="M68 64h124v32H68z" fill="#07110f"/>
+    <path d="M68 112h76v32H68z" fill="#07110f"/>
+    <path d="M68 160h124v32H68z" fill="#00c8b8"/>
+    <path d="M148 112h44v32h-44z" fill="#c9f25f"/>
+    <path d="M28 28h72v72H28z" fill="#2ce3d3"/>
+  </svg>

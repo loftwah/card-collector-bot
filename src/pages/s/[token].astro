@@ -1,63 +1,171 @@
 ---
 import BaseLayout from "../../layouts/BaseLayout.astro";
+import AchievementBadge from "../../components/player/AchievementBadge.astro";
 import { pageContext } from "../../server/page";
-import { all, first } from "../../server/db";
+import { first } from "../../server/db";
 import { sha256Hex } from "../../server/ids";
-import { formatDate } from "../../lib/utils";
+import { canViewCollection, viewerAccess } from "../../server/modules/visibility";
+import { formatDate, formatDual } from "../../lib/utils";
 
 const ctx = await pageContext(Astro.request);
 const raw = Astro.params.token ?? "";
 const tokenHash = await sha256Hex(raw);
-const link = await first<{ id: string; user_id: string; status: string; expires_at: string }>(
+const link = await first<{
+  id: string;
+  user_id: string;
+  status: string;
+  expires_at: string;
+  kind: string;
+  target_id: string | null;
+  payload_json: string;
+  created_at: string;
+}>(
   ctx.db,
-  "SELECT id, user_id, status, expires_at FROM fb_share_links WHERE tenant_id = ? AND token_hash = ?",
+  "SELECT id, user_id, status, expires_at, kind, target_id, payload_json, created_at FROM fb_share_links WHERE tenant_id = ? AND token_hash = ?",
   ctx.tenant.id,
   tokenHash,
 );
-const valid = link && link.status === "active" && new Date(link.expires_at) > new Date();
-if (!valid) Astro.response.status = 404;
-const user = valid
-  ? await first<{ display_name: string }>(ctx.db, "SELECT display_name FROM fb_users WHERE id = ?", link!.user_id)
-  : null;
-const cards = valid
-  ? await all<{ card_name: string; slug: string; variant_name: string; render_url: string; serial: string }>(
+const active = link && link.status === "active" && new Date(link.expires_at) > new Date();
+const owner = active ? await first<{ display_name: string }>(ctx.db, "SELECT display_name FROM fb_users WHERE id = ?", link!.user_id) : null;
+let payload: Record<string, any> = {};
+try { payload = active ? JSON.parse(link!.payload_json || "{}") : {}; } catch { payload = {}; }
+const kind = link?.kind ?? "cabinet";
+const collectionId = typeof payload.collection_id === "string" ? payload.collection_id : null;
+
+// Check the current collection audience, not only the audience captured at
+// share creation time. A later public→members change must close this view.
+const collection = collectionId
+  ? await first<{ id: string; slug: string; name: string; view_audience: string; public_approved_at: string | null; logo_url: string | null; description: string }>(
       ctx.db,
-      `SELECT DISTINCT cd.name AS card_name, cd.slug, v.name AS variant_name, ('/media/render/' || vr.asset_id) AS render_url, ci.serial
-         FROM fb_card_instances ci
-         JOIN fb_card_definitions cd ON cd.id = ci.card_id AND cd.tenant_id = ci.tenant_id
-         JOIN fb_variants v ON v.id = ci.variant_id AND v.tenant_id = ci.tenant_id
-         JOIN fb_variant_renders vr ON vr.variant_id = v.id AND vr.tenant_id = ci.tenant_id AND vr.status = 'published'
-        WHERE ci.tenant_id = ? AND ci.user_id = ? AND ci.status IN ('owned','reserved')
-        ORDER BY cd.name`,
-      ctx.tenant.id,
-      link!.user_id,
+      "SELECT id, slug, name, view_audience, public_approved_at, logo_url, description FROM fb_collections WHERE id = ? AND archived_at IS NULL",
+      collectionId,
     )
-  : [];
+  : null;
+const currentPublic = Boolean(collection && collection.view_audience === "public" && collection.public_approved_at);
+const capturedPublic = payload.audience === "public";
+const publicView = capturedPublic && (kind === "cabinet" ? false : kind === "wishlist" || kind === "achievement" ? false : currentPublic);
+const signedIn = Boolean(ctx.user);
+let authorised = publicView;
+if (active && !authorised && signedIn) {
+  if (ctx.user!.id === link!.user_id) authorised = true;
+  else if (kind === "card" || kind === "latest") {
+    authorised = collectionId ? Boolean(await canViewCollection(ctx, collectionId)) : Boolean((await viewerAccess(ctx)).memberTenantIds.size);
+  } else if (kind === "collection") {
+    authorised = Boolean(collectionId && await canViewCollection(ctx, collectionId));
+  } else {
+    authorised = (await viewerAccess(ctx)).memberTenantIds.size > 0;
+  }
+}
+const visible = Boolean(active && authorised);
+if (!active) Astro.response.status = 404;
+const shareTitle = kind === "card" || kind === "latest" ? String(payload.card_name ?? "A shared card") : kind === "achievement" ? String(payload.achievement_name ?? "A shared badge") : kind === "collection" ? String(payload.collection_name ?? "A shared collection") : kind === "profile" ? String(payload.display_name ?? "A collector") : "A shared Foilbury cabinet";
+const pageTitle = active ? `${publicView ? shareTitle : "Member share"} · Foilbury` : "Share not found · Foilbury";
+const showSerial = visible && ctx.user?.id === link?.user_id;
+const finishLabel = String(payload.finish ?? "").replaceAll("diamond", "holographic");
+const publicHref = currentPublic && collection ? `/cabinet?collection=${collection.slug}` : collection ? `/play/collection?collection=${collection.slug}` : "/cabinet";
 ---
-<BaseLayout title={valid ? `Shared cabinet · ${user?.display_name ?? "Collector"} · Foilbury` : "Share not found · Foilbury"} description="An explicitly shared Foilbury cabinet view. Only composed public renders are shown." noIndex>
+<BaseLayout title={pageTitle} description={publicView ? `${shareTitle} — an explicitly shared Foilbury snapshot.` : "A members-only Foilbury share. Sign in with an entitled account to view it."} noIndex>
   <section class="container py-12 md:py-16">
-    {valid ? (
+    {active && visible ? (
       <>
-        <p class="eyebrow">Explicitly shared cabinet · {formatDate(link!.expires_at)}</p>
-        <h1 class="display mt-4 text-[clamp(3rem,7vw,6rem)]">{user?.display_name ?? "A collector"} shared a cabinet.</h1>
-        <p class="mt-4 max-w-2xl text-[var(--muted)]">This view shows only composed public card renders. The owner's private source library, raw imports and account details are not exposed.</p>
-        <div class="card-grid mt-8">
-          {cards.map((card) => (
-            <article>
-              <div class="card-face"><img src={card.render_url} alt={`${card.card_name} — ${card.variant_name}`} loading="lazy" /></div>
-              <p class="display-sm mt-2 text-base">{card.card_name}</p>
-              <p class="text-xs text-[var(--muted)]">{card.variant_name} · {card.serial}</p>
-            </article>
-          ))}
+        <div class="share-proof">
+          <span class="badge badge-signal">{kind === "card" || kind === "latest" ? "Card share" : kind === "achievement" ? "Achievement share" : kind === "collection" ? "Collection share" : kind === "wishlist" ? "Wishlist share" : kind === "profile" ? "Collector showcase" : "Cabinet share"}</span>
+          <span class="badge">{publicView ? "Public-safe" : "Members-only"}</span>
+          <span class="badge">Snapshot · {formatDual(String(payload.captured_at ?? link!.created_at))}</span>
+          <span class="badge">Expires {formatDate(link!.expires_at)}</span>
         </div>
-        {cards.length === 0 ? <div class="empty mt-8"><p>This share has no public card renders yet.</p></div> : null}
-        <div class="mt-10 flex flex-wrap gap-3"><a class="btn btn-primary" href="/login">Enter your own cabinet</a><a class="btn btn-secondary" href="/cabinet">Browse the public catalogue</a></div>
+        <h1 class="display mt-5 text-[clamp(2.8rem,7vw,6rem)] uppercase">{kind === "card" || kind === "latest" ? payload.card_name : kind === "achievement" ? payload.achievement_name : kind === "collection" ? payload.collection_name : kind === "wishlist" ? "Wanted cards" : kind === "profile" ? `${payload.display_name ?? owner?.display_name ?? "A collector"}'s showcase` : `${owner?.display_name ?? "A collector"} shared a cabinet`}</h1>
+        <p class="mt-3 max-w-2xl text-[var(--muted)]">{kind === "card" || kind === "latest" ? `${finishLabel || "Card"}${payload.subtitle ? ` · ${payload.subtitle}` : ""}` : kind === "achievement" ? payload.achievement_description : kind === "collection" ? (collection?.description ?? payload.description ?? "A curated Foilbury world.") : "An explicitly shared snapshot. It is not a live inventory and cannot be used to act on the owner's account."}</p>
+
+        {kind === "card" || kind === "latest" ? (
+          <div class="mt-8 grid max-w-5xl gap-6 lg:grid-cols-2 lg:items-start">
+            <figure>
+              {payload.render_url ? <img class="share-card" src={String(payload.render_url)} alt={`${payload.card_name} front`} width="750" height="1050" /> : <div class="card-face-fallback">Front unavailable</div>}
+              <figcaption class="mt-2 font-mono text-[0.58rem] uppercase tracking-[0.1em] text-[var(--muted)]">Front · {finishLabel || "published finish"}</figcaption>
+            </figure>
+            <figure>
+              {payload.back_url ? <img class="share-card" src={String(payload.back_url)} alt={`${payload.card_name} back`} width="750" height="1050" /> : <div class="card-face-fallback">Back unavailable</div>}
+              <figcaption class="mt-2 font-mono text-[0.58rem] uppercase tracking-[0.1em] text-[var(--muted)]">Back · collection identity, bio and credits</figcaption>
+            </figure>
+          </div>
+        ) : null}
+
+        {kind === "collection" ? (
+          <div class="mt-8 max-w-3xl border border-[var(--line)] p-5">
+            <div class="flex items-center gap-4">
+              {collection?.logo_url ? <img src={collection.logo_url} alt="" class="h-16 w-16 object-contain" width="64" height="64" /> : null}
+              <div><p class="font-semibold">{collection?.name ?? payload.collection_name}</p><p class="font-mono text-[0.6rem] uppercase tracking-[0.1em] text-[var(--muted)]">{collection?.view_audience ?? "member"} · snapshot</p></div>
+            </div>
+            <p class="mt-4 text-sm text-[var(--muted)]">{collection?.description ?? payload.description}</p>
+            <a class="btn btn-secondary btn-sm mt-4" href={publicHref}>{currentPublic ? "Open the public collection" : "Open the member album"}</a>
+          </div>
+        ) : null}
+
+        {kind === "achievement" ? (
+          <div class="mt-8 flex max-w-2xl items-start gap-5 border border-[var(--line)] p-5">
+            <AchievementBadge artKey={String(payload.art_key ?? "medal-collection")} name={String(payload.achievement_name ?? "Achievement")} category={String(payload.category ?? "milestone")} earned size={96} emblemUrl={typeof payload.collection_logo_url === "string" ? payload.collection_logo_url : null} />
+            <div><p class="text-sm font-semibold">Earned {payload.earned_at ? formatDual(String(payload.earned_at)) : ""}</p><p class="mt-1 text-sm text-[var(--muted)]">{payload.achievement_description}</p><p class="mt-3 text-xs text-[var(--muted)]">A badge is a historical fact. It is not removed when a collection grows or a card is traded.</p></div>
+          </div>
+        ) : null}
+
+        {kind === "wishlist" ? (
+          <ul class="mt-8 grid max-w-3xl gap-2 sm:grid-cols-2">
+            {(Array.isArray(payload.items) ? payload.items : []).map((item: { card_name?: string }) => <li class="border border-[var(--line)] px-3 py-2 text-sm">{item.card_name ?? "Wanted card"}</li>)}
+          </ul>
+        ) : null}
+
+        {kind === "cabinet" ? (
+          <div class="mt-8 grid max-w-2xl gap-3 sm:grid-cols-2">
+            <div class="border border-[var(--line)] p-5"><p class="studio-stat__label">Owned cards</p><p class="display-sm mt-1 text-4xl">{String(payload.cards ?? 0)}</p></div>
+            <div class="border border-[var(--line)] p-5"><p class="studio-stat__label">Favourites</p><p class="display-sm mt-1 text-4xl">{String(payload.favourites ?? 0)}</p></div>
+          </div>
+        ) : null}
+
+        {kind === "profile" ? (
+          <div class="mt-8 grid max-w-4xl gap-6 lg:grid-cols-[1fr_1fr]">
+            <div class="grid gap-3 sm:grid-cols-2">
+              {Array.isArray(payload.favourite_cards) && payload.favourite_cards.length ? payload.favourite_cards.map((card: { name?: string; variant_name?: string; render_url?: string | null }) => (
+                <div class="border border-[var(--line)] bg-[var(--paper)] p-2">
+                  {card.render_url ? <img src={card.render_url} alt="" class="w-full border border-[var(--line)]" loading="lazy" /> : null}
+                  <p class="mt-1 text-sm font-semibold">{card.name}</p><p class="font-mono text-[0.54rem] uppercase tracking-[0.08em] text-[var(--muted)]">{card.variant_name}</p>
+                </div>
+              )) : <p class="text-sm text-[var(--muted)]">No pinned favourites in this snapshot.</p>}
+            </div>
+            <div>
+              <div class="grid grid-cols-2 gap-3">
+                <div class="border border-[var(--line)] p-4"><p class="studio-stat__label">Owned cards</p><p class="display-sm mt-1 text-3xl">{String(payload.cards ?? 0)}</p></div>
+                <div class="border border-[var(--line)] p-4"><p class="studio-stat__label">Favourites</p><p class="display-sm mt-1 text-3xl">{String(payload.favourites ?? 0)}</p></div>
+              </div>
+              <p class="mt-4 studio-stat__label">Recent badges</p>
+              <ul class="mt-2 grid gap-2">
+                {Array.isArray(payload.badges) ? payload.badges.map((badge: { name?: string }) => <li class="border border-[var(--line)] px-3 py-2 text-sm">{badge.name}</li>) : null}
+              </ul>
+              <p class="mt-4 text-xs leading-relaxed text-[var(--muted)]">Only pinned favourites, counts and opted-in badges appear. Wallet, email, account ID and private ledger never do.</p>
+            </div>
+          </div>
+        ) : null}
+
+        <div class="mt-10 border-t border-[var(--line)] pt-5 text-xs leading-relaxed text-[var(--muted)]">
+          <p>{showSerial ? `Your copy serial: ${payload.serial}. ` : ""}This is a snapshot captured at share time, not a live wallet or inventory. The owner can revoke the link; already-downloaded bytes cannot be recalled.</p>
+          <p class="mt-2">No email, account ID, wallet balance, private ledger or admin data is exposed.</p>
+        </div>
+        <div class="mt-6 flex flex-wrap gap-3">
+          <a class="btn btn-primary" href={publicView ? "/cabinet" : "/login"}>Browse Foilbury</a>
+          <a class="btn btn-secondary" href="/play">Open my album</a>
+        </div>
       </>
+    ) : active ? (
+      <div class="mx-auto max-w-2xl border border-[var(--line)] p-8">
+        <p class="studio-kicker text-[var(--teal)]">A members-only share</p>
+        <h1 class="display mt-3 text-4xl uppercase">This cabinet is behind membership.</h1>
+        <p class="mt-4 text-[var(--muted)]">The link is active, but viewing restricted cards, collections and badges needs a signed-in Foilbury account with current access. A secret URL is not membership.</p>
+        <div class="mt-6 flex flex-wrap gap-3"><a class="btn btn-primary" href={`/login?next=${encodeURIComponent(Astro.url.pathname)}`}>Sign in to view</a><a class="btn btn-secondary" href="/cabinet">See the public showcase</a></div>
+      </div>
     ) : (
-      <div class="container-narrow">
-        <p class="eyebrow">Share link</p>
-        <h1 class="display mt-4 text-5xl">This share is not available.</h1>
-        <p class="mt-4 text-[var(--muted)]">The link may have expired, been revoked, or never existed. No private cabinet data is shown.</p>
+      <div class="mx-auto max-w-2xl">
+        <p class="studio-kicker text-[var(--teal)]">Share link</p>
+        <h1 class="display mt-3 text-5xl uppercase">This share is not available.</h1>
+        <p class="mt-4 text-[var(--muted)]">The link may have expired, been revoked, or never existed. No private data is shown.</p>
         <a class="btn btn-secondary mt-6" href="/">Return home</a>
       </div>
     )}

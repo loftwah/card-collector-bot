@@ -19,17 +19,30 @@ export function csrfToken(): string {
   return document.querySelector<HTMLMetaElement>('meta[name="foilbury-csrf"]')?.content ?? "";
 }
 
+/**
+ * The Studio is the non-Cloudflare scoped administration surface. It uses the
+ * same domain routes as /admin but under /api/v1/studio, where the Worker still
+ * enforces the live role/capability on every request. /admin remains the
+ * Access-protected operator surface.
+ */
+export function apiPath(path: string): string {
+  if (typeof window === "undefined") return path;
+  if (!(window as unknown as { __FOILBURY_STUDIO__?: boolean }).__FOILBURY_STUDIO__) return path;
+  return path.startsWith("/api/v1/admin/") ? path.replace("/api/v1/admin/", "/api/v1/studio/") : path;
+}
+
 export async function api<T>(
   path: string,
   options: { method?: string; body?: unknown; idempotencyKey?: string } = {},
 ): Promise<T> {
-  await ensureAccessApiSession(path);
+  const target = apiPath(path);
+  if (!target.startsWith("/api/v1/studio/")) await ensureAccessApiSession(target);
   const headers = new Headers({ accept: "application/json" });
   const token = csrfToken();
   if (token) headers.set("x-foilbury-csrf", token);
   if (options.body !== undefined) headers.set("content-type", "application/json");
   if (options.idempotencyKey) headers.set("idempotency-key", options.idempotencyKey);
-  const response = await fetch(path, {
+  const response = await fetch(target, {
     method: options.method ?? (options.body === undefined ? "GET" : "POST"),
     headers,
     credentials: "same-origin",
@@ -50,11 +63,12 @@ export async function api<T>(
 }
 
 export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
-  await ensureAccessApiSession(path);
+  const target = apiPath(path);
+  if (!target.startsWith("/api/v1/studio/")) await ensureAccessApiSession(target);
   const headers = new Headers({ accept: "application/json" });
   const token = csrfToken();
   if (token) headers.set("x-foilbury-csrf", token);
-  const response = await fetch(path, { method: "POST", headers, credentials: "same-origin", body: form });
+  const response = await fetch(target, { method: "POST", headers, credentials: "same-origin", body: form });
   const text = await response.text();
   let payload: unknown = null;
   try {

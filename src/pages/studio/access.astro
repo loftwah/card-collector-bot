@@ -1,0 +1,59 @@
+---
+import StudioLayout from "../../layouts/StudioLayout.astro";
+import { pageContext } from "../../server/page";
+import { listCollections } from "../../server/modules/collections";
+
+const ctx = await pageContext(Astro.request);
+const user = ctx.user!;
+const scope = user.globalCollectionScope;
+const collections = scope ? await listCollections(ctx, { includeAll: true }) : [];
+const inScope = scope
+  ? scope.all
+    ? collections.filter((collection) => collection.scope === "global")
+    : collections.filter((collection) => collection.scope === "global" && scope.collectionIds.includes(collection.id))
+  : [];
+---
+<StudioLayout>
+  <div class="studio-rule">
+    <div>
+      <h2 class="display-sm text-4xl uppercase">Your access, in plain language.</h2>
+      <p class="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--muted)]">Roles are separate from identities and server membership. This page reads the live assignment, not a cached label.</p>
+    </div>
+    <span class="studio-stamp">{user.platformAdmin ? "Super Admin" : scope ? "Global Collection Admin" : "Bot-scoped"}</span>
+  </div>
+
+  <div class="mt-6 grid gap-3 md:grid-cols-2">
+    <div class="border border-[var(--line)] p-5">
+      <p class="studio-stat__label">Scope</p>
+      <p class="mt-2 text-xl font-semibold">{scope ? (scope.all ? "All shared collections" : `${scope.collectionIds.length} assigned shared collections`) : "This Bot only"}</p>
+      <p class="mt-2 text-sm text-[var(--muted)]">Granted through an audited Super Admin action. It cannot be inferred from Discord, Cloudflare Access or guild ownership.</p>
+    </div>
+    <div class="border border-[var(--line)] p-5">
+      <p class="studio-stat__label">Deliberately excluded</p>
+      <ul class="mt-2 grid gap-1 text-sm text-[var(--muted)]">
+        <li>Platform root and Super Admin provisioning</li>
+        <li>Cloudflare Access, secrets and deployment credentials</li>
+        <li>Wallets, Foil grants and another member's inventory</li>
+        <li>Bots outside your own ownership or invitation</li>
+      </ul>
+    </div>
+  </div>
+
+  <section class="mt-8">
+    <h3 class="display-sm text-2xl uppercase">Collections in your scope</h3>
+    <div class="mt-3 grid gap-2">
+      {inScope.map((collection) => (
+        <div class="flex items-center gap-3 border border-[var(--line)] px-3 py-2">
+          {collection.logo_url ? <img src={collection.logo_url} alt="" class="h-9 w-9 object-contain" width="36" height="36" loading="lazy" /> : null}
+          <div><p class="text-sm font-semibold">{collection.name}</p><p class="font-mono text-[0.56rem] uppercase tracking-[0.08em] text-[var(--muted)]">{collection.status} · {collection.view_audience} · {collection.card_count} cards</p></div>
+        </div>
+      ))}
+      {inScope.length === 0 ? <p class="empty">No shared collection is assigned yet.</p> : null}
+    </div>
+  </section>
+
+  <div class="mt-8 flex flex-wrap gap-2">
+    <a class="btn btn-primary btn-sm" href="/studio/collections">Manage shared collections</a>
+    <a class="btn btn-secondary btn-sm" href="/play/collections">See the member view</a>
+  </div>
+</StudioLayout>

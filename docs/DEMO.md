@@ -60,17 +60,20 @@ players' cards are preserved.
 
 1. Public first impression and the four-world showcase.
 2. Public cabinet and a public card detail.
-3. Passwordless sign-in options.
-4. Member cabinet, worlds browser and a launch collection.
-5. Draw-room odds and a real zero-price draw with a recorded serial.
-6. Card front, designed back, 3D inspection and reduced-motion inspection.
-7. Achievements, gift receipts, preferences and account security.
-8. Bot Admin: overview, catalogue, collections, render studio, achievements and gifts.
-9. Platform Administration with the provisioned local Super Admin.
-10. The native EmDash editorial console on the same local D1/R2 bindings.
-11. Privacy boundary: signed-out launch data and renders are denied; member
+3. The guided website tour, brand kit and showcase/video page.
+4. Passwordless sign-in options.
+5. Member cabinet, worlds browser and a launch collection.
+6. Draw-room odds and a real zero-price draw with a recorded serial.
+7. The committed-receipt reveal, card front, designed back, 3D inspection and reduced-motion inspection.
+8. Achievements, gift receipts, preferences and account security.
+9. Bot Admin: overview, catalogue, collections, render studio, achievements and gifts.
+10. Platform Administration, People & roles and the scoped Studio.
+11. The native EmDash editorial console on the same local D1/R2 bindings.
+12. Privacy boundary: signed-out launch data and renders are denied; member
     renders are `private, no-store`.
-12. Mobile worlds and mobile card inspection.
+13. Mobile worlds and mobile card inspection.
+
+The current storyboard is 33 stages. A clean run reports zero console errors.
 
 The EmDash stage uses EmDash's own development-only setup bypass
 (`/_emdash/api/setup/dev-bypass`). In production that route is unavailable; the

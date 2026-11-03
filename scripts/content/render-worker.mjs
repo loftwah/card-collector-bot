@@ -63,6 +63,17 @@ while (true) {
     if (payload.background_asset_id) fs.writeFileSync(backgroundPath, await fetchBytes(`/api/v1/admin/assets/${payload.background_asset_id}/bytes`));
     const outputPath = path.join(tmpDir, `${payload.variant_id}-${worker}.webp`);
     const meta = cardMeta.get(payload.card_id);
+    let markPath = "";
+    const logoUrl = meta?.collections?.[0]?.logo_url;
+    if (logoUrl) {
+      try {
+        const ext = logoUrl.endsWith(".svg") ? "svg" : "png";
+        markPath = path.join(tmpDir, `${payload.variant_id}-mark-${worker}.${ext}`);
+        fs.writeFileSync(markPath, await fetchBytes(logoUrl));
+      } catch {
+        markPath = "";
+      }
+    }
     await composeCard({
       subjectPath,
       backgroundPath: payload.background_asset_id ? backgroundPath : null,
@@ -71,9 +82,10 @@ while (true) {
       name: payload.card_name,
       subtitle: meta?.subtitle ?? "",
       setName: meta?.collections?.[0]?.name ?? "Cabinet",
-      serial: "CABINET PROOF",
+      serial: meta?.collections?.[0]?.view_audience === "public" ? "PUBLIC SHOWCASE" : "MEMBER EDITION",
       className: meta?.class?.name ?? "",
       rarity: meta?.rarity?.name ?? "",
+      markPath,
       outputPath,
     });
     const backSource = backBySlug.get(payload.card_slug) ?? backByName.get(payload.card_name);
