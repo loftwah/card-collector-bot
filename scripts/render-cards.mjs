@@ -46,11 +46,12 @@ while (true) {
   const claimed = await apiJson(`/api/v1/admin/jobs/${job.id}/claim`, { method: "POST", body: {} });
   if (!claimed.job) break;
   const payload = claimed.job.payload;
+  const attempt = claimed.job.attempts;
   const entry = index.get(payload.variant_id);
   if (!entry) {
     await apiJson(`/api/v1/admin/jobs/${job.id}/fail`, {
       method: "POST",
-      body: { message: "Variant is no longer in the catalogue." },
+      body: { message: "Variant is no longer in the catalogue.", attempt },
     });
     failed++;
     continue;
@@ -120,6 +121,7 @@ while (true) {
       new Blob([renderBytes], { type: "image/webp" }),
       `${payload.variant_id}.webp`,
     );
+    form.append("attempt", String(attempt));
     const completed = await apiForm(`/api/v1/admin/jobs/${job.id}/complete`, form);
     /* Album grids should not download full 750x1050 renders. Derivatives are
        generated from the published bytes, never from the private source art. */
@@ -134,7 +136,10 @@ while (true) {
   } catch (error) {
     failed++;
     const message = error instanceof Error ? error.message : String(error);
-    await apiJson(`/api/v1/admin/jobs/${job.id}/fail`, { method: "POST", body: { message } }).catch(
+    await apiJson(`/api/v1/admin/jobs/${job.id}/fail`, {
+      method: "POST",
+      body: { message, attempt },
+    }).catch(
       () => undefined,
     );
     log(`  failed ${entry.card.name} — ${entry.variant.name}: ${message}`);
