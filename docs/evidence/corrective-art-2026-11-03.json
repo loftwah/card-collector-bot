@@ -1,0 +1,87 @@
+{
+  "generated_at": "2026-11-03T00:30:00Z",
+  "source_commit": "31f9148",
+  "worker_version": "17e140dc-9652-43cb-9d13-abbdcff9c396",
+  "content_import_worker": "f7d76d03-55ad-417a-9618-8f2ca0d45041",
+  "migrations": [
+    "0010_render_source_hash.sql",
+    "0011_achievement_roster_snapshots.sql",
+    "0012_achievement_roster_snapshots_unique.sql"
+  ],
+  "catalogue_release": 4,
+  "backup": {
+    "path": ".foilbury/backups/prod-pre-art-2026-11-03.json",
+    "tables": 85,
+    "rows": 22456,
+    "sha256": "08ea0ebe8927a02547a5ac9a1705066bc4c762e1df1ed30773506281c537cb31"
+  },
+  "baseline": {
+    "users": 2,
+    "active_memberships": 2,
+    "instances": 10,
+    "owned_instances": 10,
+    "ledger_rows": 19,
+    "wallets": 2,
+    "total_balance": 1880,
+    "collections": 21,
+    "cards": 156,
+    "editions": 159,
+    "variants": 640,
+    "published_renders": 640,
+    "achievements": 45,
+    "active_pools": 21,
+    "catalogue_release": 3
+  },
+  "production_after": {
+    "instances": 10,
+    "owned_instances": 10,
+    "ledger_rows": 19,
+    "total_balance": 1880,
+    "collections": 21,
+    "cards": 156,
+    "editions": 159,
+    "variants": 640,
+    "published_renders": 640,
+    "achievements": 45,
+    "active_pools": 21,
+    "catalogue_release": 4,
+    "launch_variants": 560,
+    "launch_renders_current_source": 560,
+    "placeholder_subjects": 0,
+    "duplicate_launch_editions": 0
+  },
+  "art_sourcing": {
+    "launch_cards": 140,
+    "sourced_subjects": 140,
+    "providers": ["Fandom reference wikis", "Wikipedia / Wikimedia Commons"],
+    "curated_overrides": [
+      "Total Drama Island season-one 2007 stills",
+      "clean Simpsons character renders",
+      "individual Kagamine Rin and Len voicebank renders",
+      "Alien Stage and DDLC context images"
+    ],
+    "provenance_location": ".foilbury/sourced/provenance.json (private)"
+  },
+  "checks": {
+    "pnpm_check": { "unit": 24, "workers": 59, "total": 83, "status": "PASS" },
+    "album_e2e": { "passed": 13, "total": 13, "status": "PASS" },
+    "privacy": { "passed": 9, "total": 9, "status": "PASS" },
+    "seo": { "passed": 6, "total": 6, "status": "PASS" },
+    "ui_a11y": { "passed": 30, "total": 30, "status": "PASS" },
+    "deployed_smoke": { "status": "PASS", "public_collections": 4 },
+    "anonymous_launch_render": 404,
+    "member_launch_render": {
+      "status": 200,
+      "cache_control": "private, no-store"
+    }
+  },
+  "temporary_access_cleanup": {
+    "agent_grant_revoked": true,
+    "access_service_token_removed": true
+  },
+  "notes": [
+    "The sourced images are third-party works, not licensed or official Foilbury artwork.",
+    "Human creative acceptance and live Discord front/back/details interaction remain open.",
+    "Fourteen profiles remain draft and are not claimed as fully reviewed."
+  ]
+}

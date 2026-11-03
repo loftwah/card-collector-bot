@@ -14,8 +14,14 @@ sanitised coverage and review tracker. Every row is members-only at launch.
 - Card text, serials, labels, statistics and the collection frame remain
   programmatic Foilbury design. The sourced image is the subject layer; it is
   not presented as an official Foilbury illustration.
+- Production catalogue release **4**; Worker `17e140dc-9652-43cb-9d13-abbdcff9c396`.
+  Production holds 21 collections, 156 cards, 640 variants, 640 published
+  renders, 45 active achievements and 21 active pools. All **560/560 launch
+  variants** have a render whose source hash matches the current edition; there
+  are **0 placeholder subjects** and **0 duplicate launch editions**.
 - Existing Loftwah public showcase content and Dean's inventory/ledger remain
-  separate.
+  separate. The corrective import did not change the 10 owned instances, 19
+  ledger rows or 1,880 Foil total recorded before the pass.
 
 ## Roster and review status
 
@@ -53,7 +59,7 @@ These are separate claims. A record existing is not the same as visual acceptanc
 | Imported | 140 | All 17 manifests validate and import through the supported pipeline. |
 | Fact-checked profiles | 126 | 14 cards remain `draft`: Alien Stage (8), DDLC (3), Madoka (1), The Summer Hikaru Died (2). |
 | Artwork-ready | 140 | Subject image + background layer + designed back exist for every card. |
-| Published / playable | 140 | Published in the local catalogue; production rollout is recorded in the deployment handoff. |
+| Published / playable | 140 | Production catalogue release 4; all 140 launch cards and 560 variants are published. |
 | Agent visual sample reviewed | 17 / 17 collections | One representative card per collection plus all-card contact sheets; flaws found and corrected (wrong adaptation, cropped faces, bad context images, low-contrast backs). |
 | Human visual acceptance | 0 / 17 | Dean's final creative approval remains open. |
 | Draft or blocked | 14 | The same 14 profiles above; Alien Stage is the largest block. |

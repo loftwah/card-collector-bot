@@ -246,11 +246,25 @@ SHA-256 `08ea0ebe8927a02547a5ac9a1705066bc4c762e1df1ed30773506281c537cb31`).
 
 ### Production delivery
 
-- D1 migration `0010_render_source_hash.sql` applied after the backup.
-- Worker: `f7d76d03-55ad-417a-9618-8f2ca0d45041`.
-- Content import: pending at the time this section was written; the exact
-  catalogue release and counts are recorded in the issue comment and in
-  `docs/CONTENT_COVERAGE.md` after the import completes.
+- D1 migrations `0010_render_source_hash.sql`, `0011_achievement_roster_snapshots.sql`
+  and `0012_achievement_roster_snapshots_unique.sql` applied after the backup.
+- Worker: `17e140dc-9652-43cb-9d13-abbdcff9c396` (final; the content import ran on
+  the preceding `f7d76d03-55ad-417a-9618-8f2ca0d45041` and the final deploy added
+  the roster-aware achievement evaluation).
+- Content import: 640 render jobs, **640 rendered / 0 failed**; catalogue release
+  **4**.
+- Production counts: 21 collections, 156 cards, 159 editions (the 3 pre-existing
+  public-showcase duplicates remain), 640 variants, 640 published renders, 45
+  active achievements, 21 active pools.
+- Launch coverage: **560/560** variants have a render bound to the current
+  edition source hash; **0** placeholder subjects; **0** duplicate launch
+  editions; **140/140** sourced credits.
+- Ledger/inventory baseline preserved: 10 instances (10 owned), 19 ledger rows,
+  1,880 Foil total, unchanged by the corrective import.
+- Temporary production agent grant and Access service token were revoked/removed
+  after the import. Administration is back to the human Access path.
+- Guild command `/foilbury` re-registered with the `achievements` option; the
+  existing command ID and unrelated commands were preserved.
 
 ## Honest remaining gaps
 
