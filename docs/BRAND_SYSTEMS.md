@@ -8,6 +8,7 @@ application under delegated authority**. The selection record is
 | --- | --- |
 | Foilbury application icon | Applied via Discord `PATCH /applications/@me`; hash `e8234929cc269ab7843ee384aaaa3991`. Previous value recorded for rollback. |
 | Foilbury application description | Applied. Replaced the generic platform copy with the real free-play description. |
+| Foilbury application cover image | Applied through the supported `cover_image` field: hash `9b20e60b4947e3fac36a62b728a67b4e`. This is the application cover image, not the bot profile banner. |
 | Foilbury bot profile banner | Manual Developer Portal step. The old banner was not replaced and no claim is made that it was. |
 | Loftwah guild icon | Not changed. The wider server identity is not Foilbury branding. |
 | Loftwah server banner | Blocked: the guild has no `BANNER` entitlement (Boost tier 2). The 960×540 and 1920×1080 assets are retained. |

@@ -26,6 +26,12 @@
       "status": "blocked",
       "reason": "The guild has no BANNER entitlement (Boost tier 2 is required). The 960x540 and 1920x1080 assets are retained for later use."
     },
+    "application_cover_image": {
+      "status": "applied",
+      "cover_image_hash": "9b20e60b4947e3fac36a62b728a67b4e",
+      "at": "2026-11-04T02:50:00.000Z",
+      "note": "Applied the 1920x1080 Signal Fold banner through the supported cover_image field. This is the application cover image, not the bot profile banner."
+    },
     "application_banner": {
       "status": "manual",
       "reason": "The bot profile banner is a Developer Portal surface. The bot API can update the application icon and cover image but not the profile banner; no claim is made that the old banner was replaced."
