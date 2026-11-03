@@ -5,7 +5,7 @@ import { ArrowRight, Eye, EyeOff, RotateCcw, Sparkles } from "lucide-react";
 import { api, describeError, idempotencyKey } from "@/lib/client";
 import { Button } from "../ui/button";
 import ShareLinkButton from "./ShareLinkButton";
-import { cn, pct } from "@/lib/utils";
+import { cn, pct, printTitle as editionPrintTitle } from "@/lib/utils";
 
 interface PoolSummary {
   id: string;
@@ -21,6 +21,7 @@ interface Entry {
   variant_id: string;
   card_id: string;
   card_name: string;
+  edition_name: string | null;
   variant_name: string;
   material_key: string;
   effect_key: string | null;
@@ -57,6 +58,7 @@ interface DrawResult {
   draw_id: string;
   instance_id: string;
   card_name: string;
+  edition_name: string | null;
   variant_name: string;
   render_url: string | null;
   serial: string;
@@ -401,7 +403,7 @@ export default function DrawStudio({
                     {result.render_url ? (
                       <img
                         src={result.render_url}
-                        alt={`${result.card_name} — ${result.variant_name}`}
+                        alt={`${result.card_name} — ${editionPrintTitle(result.edition_name) ?? result.variant_name}`}
                         decoding="sync"
                       />
                     ) : (
@@ -434,6 +436,9 @@ export default function DrawStudio({
                       </p>
                       <h3 className="display-sm mt-1 text-3xl uppercase">{result.card_name}</h3>
                       <p className="text-sm text-[var(--brass)]">
+                        {editionPrintTitle(result.edition_name)
+                          ? `${editionPrintTitle(result.edition_name)} · `
+                          : ""}
                         {result.variant_name} · {result.serial}
                       </p>
                     </div>
@@ -559,6 +564,11 @@ export default function DrawStudio({
                       <tr key={entry.variant_id}>
                         <td className="font-medium">
                           {entry.card_name}
+                          {editionPrintTitle(entry.edition_name) ? (
+                            <span className="block text-[0.62rem] font-normal text-[var(--brass)]">
+                              {editionPrintTitle(entry.edition_name)}
+                            </span>
+                          ) : null}
                           {entry.collections.length ? (
                             <span className="block text-[0.62rem] font-normal text-[var(--muted)]">
                               {entry.collections.map((collection) => collection.name).join(" · ")}

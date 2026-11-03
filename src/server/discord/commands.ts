@@ -3,7 +3,7 @@ import { first, nowIso } from "../db";
 import { auditStatement } from "../http";
 import { newId, sha256Hex } from "../ids";
 import { getInventory } from "../modules/collection";
-import { displayFinish } from "../../lib/utils";
+import { displayFinish, printTitle as editionPrintTitle } from "../../lib/utils";
 import { adjustWallet, claimDailyReward, getEconomy } from "../modules/economy";
 import { getWalletSummary } from "../modules/wallet";
 import { getCard, listCards } from "../modules/catalogue";
@@ -36,6 +36,7 @@ interface DrawReceipt {
   card_id: string;
   variant_id: string;
   card_name: string;
+  edition_name: string | null;
   variant_name: string;
   material_key: string;
   effect_key: string | null;
@@ -274,7 +275,11 @@ async function openCard(
   const channelAudience = channelAudienceFor(installation, interaction.channel_id);
   const shareInChannel =
     cardAudience !== "private" && audienceRank(channelAudience) >= audienceRank(cardAudience);
+  const resultPrintTitle = editionPrintTitle(result.edition_name);
   const fields = [
+    ...(resultPrintTitle
+      ? [{ name: "Print", value: resultPrintTitle, inline: true }]
+      : []),
     { name: "Rarity", value: rarityName ?? "Unclassified", inline: true },
     {
       name: "Variant",
@@ -309,8 +314,12 @@ async function openCard(
     });
   }
   const embed: DiscordEmbed = {
-    title: `${result.card_name} — ${result.variant_name}`,
-    description: `Pulled from **${result.pool_name}**. This copy is in your collection immediately.`,
+    title: resultPrintTitle
+      ? `${result.card_name} — ${resultPrintTitle}`
+      : `${result.card_name} — ${result.variant_name}`,
+    description: resultPrintTitle
+      ? `Pulled from **${result.pool_name}**. Print ${resultPrintTitle}, ${displayFinish(result.variant_name, result.material_key, result.effect_key)} finish. This copy is in your collection immediately.`
+      : `Pulled from **${result.pool_name}**. This copy is in your collection immediately.`,
     color: colorFor(rarityKey),
     fields,
     footer: { text: `Foilbury · ${ctx.tenant.name} · inventory is Bot-scoped` },
@@ -454,8 +463,10 @@ async function collection(ctx: Ctx): Promise<DiscordCallback> {
   const lines = inventory
     .slice(0, 8)
     .map(
-      (item) =>
-        `• **${item.card_name}** — ${item.variant_name} · ${item.rarity_name ?? "Unclassified"} · \`${item.serial}\``,
+      (item) => {
+        const print = editionPrintTitle(item.edition_name);
+        return `• **${item.card_name}** — ${print ? `${print} · ` : ""}${item.variant_name} · ${item.rarity_name ?? "Unclassified"} · \`${item.serial}\``;
+      },
     );
   return callback(
     {

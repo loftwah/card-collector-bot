@@ -23,6 +23,7 @@ export interface EligibleEntry {
   variant_id: string;
   card_id: string;
   card_name: string;
+  edition_name: string | null;
   variant_name: string;
   material_key: string;
   effect_key: string | null;
@@ -125,6 +126,7 @@ export async function getPoolPreview(
     variant_id: string;
     card_id: string;
     card_name: string;
+    edition_name: string | null;
     variant_name: string;
     material_key: string;
     effect_key: string | null;
@@ -134,7 +136,7 @@ export async function getPoolPreview(
     collections_json: string;
   }>(
     ctx.db,
-    `SELECT v.id AS variant_id, v.card_id, cd.name AS card_name, v.name AS variant_name,
+    `SELECT v.id AS variant_id, v.card_id, cd.name AS card_name, e.name AS edition_name, v.name AS variant_name,
             m.key AS material_key, fx.key AS effect_key, ('/media/render/' || r.asset_id) AS render_url, pe.weight,
             COALESCE((SELECT json_group_array(t.slug) FROM fb_card_tags ct JOIN fb_tags t ON t.id = ct.tag_id WHERE ct.card_id = cd.id), '[]') AS tags_json,
             COALESCE((
@@ -153,6 +155,7 @@ export async function getPoolPreview(
             ), '[]') AS collections_json
        FROM fb_pool_entries pe
        JOIN fb_variants v ON v.id = pe.variant_id
+       JOIN fb_artwork_editions e ON e.id = v.edition_id
        JOIN fb_card_definitions cd ON cd.id = v.card_id
        JOIN fb_materials m ON m.id = v.material_id
        LEFT JOIN fb_effects fx ON fx.id = v.effect_id
@@ -201,6 +204,7 @@ export async function getPoolPreview(
       variant_id: entry.variant_id,
       card_id: entry.card_id,
       card_name: entry.card_name,
+      edition_name: entry.edition_name,
       variant_name: entry.variant_name,
       material_key: entry.material_key,
       effect_key: entry.effect_key,
@@ -338,6 +342,7 @@ export async function executeDraw(
     variant_id: selected.variant_id,
     card_id: selected.card_id,
     card_name: selected.card_name,
+    edition_name: selected.edition_name,
     variant_name: selected.variant_name,
     material_key: selected.material_key,
     effect_key: selected.effect_key,
@@ -353,6 +358,7 @@ export async function executeDraw(
     odds: preview.entries.map((entry) => ({
       variant_id: entry.variant_id,
       card_name: entry.card_name,
+      edition_name: entry.edition_name,
       variant_name: entry.variant_name,
       probability_bps: entry.probability_bps,
       weight: entry.weight,
