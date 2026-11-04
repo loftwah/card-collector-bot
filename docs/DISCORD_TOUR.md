@@ -1,6 +1,6 @@
 # Foilbury Discord guided tour
 
-Date: 2026-11-04. Current deployed source: `5983dd72b30abc45256e5efd9ae6265939aad104`; Worker `91e5c2bf-3451-42e2-887e-d0e5a72d1437`; schema `0025_scoped_admin_grants.sql`. The historical tour release was source `f161b68` and Worker `b5a8d35d-7911-4d1e-a7e8-d4d08fd9bb21`.
+Date: 2026-11-04. Current deployed source: `3ffa24197e82c1488933418de8e1a7935fea66a8`; Worker `608c92ab-034d-4b5b-8b91-bef11a890f8f`; schema `0026_gift_instance_uniqueness.sql`. The historical tour release was source `f161b68` and Worker `b5a8d35d-7911-4d1e-a7e8-d4d08fd9bb21`.
 
 This is the host script for the real Discord tour in the existing Loftwah test installation. It is not a storyboard of the website. The tour is built from the same D1 cards, owned instances, serials, Foil ledger and achievement unlocks as the website and REST API.
 

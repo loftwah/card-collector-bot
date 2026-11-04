@@ -89,11 +89,14 @@ A second real invocation at **03:40 UTC (14:40 AEDT)** on the corrective Worker
 {"level":"info","message":"scheduled maintenance","ok":true,"steps":[{"name":"rate_limits","ok":true},{"name":"magic_links","ok":true},{"name":"stale_interactions","ok":true,"detail":"0"},{"name":"npc_progression","ok":true}]}
 ```
 
+A third run at **04:05 UTC (15:05 AEDT)** on the final Worker
+`608c92ab-034d-4b5b-8b91-bef11a890f8f` recorded the same four successful steps.
 The retained private copies are
-`.foilbury/evidence/deployed-scheduled-run-2026-11-04.json` and
-`deployed-scheduled-run-2026-11-04b.json`. This proves the deployed scheduled
-entry and all four bounded steps returned success on that run. It is one
-sampled run, not a retention or alert-delivery proof.
+`.foilbury/evidence/deployed-scheduled-run-2026-11-04.json`,
+`deployed-scheduled-run-2026-11-04b.json` and
+`deployed-scheduled-run-2026-11-04-final.json`. This proves the deployed
+scheduled entry and all four bounded steps returned success on those runs. It is
+sampled evidence, not a retention or alert-delivery proof.
 
 ## Required checks
 
