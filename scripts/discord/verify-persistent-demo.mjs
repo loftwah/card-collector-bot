@@ -25,10 +25,20 @@ if (!token) throw new Error("DISCORD_BOT_TOKEN is missing.");
 const outDir = path.join(ROOT, ".foilbury", "demo-readback", "verified");
 fs.mkdirSync(outDir, { recursive: true });
 
-async function discord(endpoint) {
+async function discord(endpoint, attempt = 0) {
   const response = await fetch(`https://discord.com/api/v10${endpoint}`, {
     headers: { authorization: `Bot ${token}` },
   });
+  if (response.status === 429 && attempt < 4) {
+    let retryAfter = 1;
+    try {
+      retryAfter = Number((await response.json()).retry_after ?? 1);
+    } catch {
+      // Keep the conservative default.
+    }
+    await new Promise((resolve) => setTimeout(resolve, Math.ceil(retryAfter * 1000) + 250));
+    return discord(endpoint, attempt + 1);
+  }
   if (!response.ok) throw new Error(`${endpoint}: ${response.status} ${await response.text()}`);
   return response.json();
 }
