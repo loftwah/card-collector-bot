@@ -1,5 +1,5 @@
 import { ApiError, type Ctx } from "../context";
-import { first, nowIso } from "../db";
+import { all, first, nowIso } from "../db";
 import { auditStatement } from "../http";
 import { newId, sha256Hex } from "../ids";
 import { getInventory } from "../modules/collection";
@@ -217,6 +217,13 @@ function validatePoolSlug(value: string): string {
   return value;
 }
 
+/** Discord must never offer a capsule that can drop unassigned legacy cards. */
+async function discordEligiblePools(ctx: Ctx, installation: DiscordInstallation) {
+  return (await listEligiblePools(ctx, installation.channel_key ?? undefined)).filter(
+    (preview) => preview.filters.unfiled_count === 0,
+  );
+}
+
 export type DiscordOpenPreparation =
   | { kind: "respond"; callback: DiscordCallback }
   | {
@@ -237,12 +244,18 @@ export async function prepareDiscordDraw(
 ): Promise<DiscordOpenPreparation> {
   const poolSlug = validatePoolSlug(requestedPool ?? "cabinet-draw");
   const preview = await getPoolPreview(ctx, poolSlug, installation.channel_key ?? undefined);
+  if (preview.filters.unfiled_count > 0)
+    throw new ApiError(
+      409,
+      "discord_pool_unconfigured",
+      "This capsule contains cards outside this Bot's enabled collections. Ask a Bot Admin to fix the pool; nothing was charged.",
+    );
   if (preview.eligible_count === 0) {
     if (!requestedPool) {
       // The default capsule can be empty because a collection was disabled or
       // the member hid every world. Present real alternatives and their price
       // instead of a dead end; opening still requires an explicit press.
-      const choices = (await listEligiblePools(ctx, installation.channel_key ?? undefined)).slice(0, 8);
+      const choices = (await discordEligiblePools(ctx, installation)).slice(0, 8);
       if (choices.length) {
         choices.sort(
           (left, right) =>
@@ -507,7 +520,8 @@ async function daily(ctx: Ctx, interaction: DiscordInteraction): Promise<Discord
 }
 
 async function collection(ctx: Ctx): Promise<DiscordCallback> {
-  const inventory = await getInventory(ctx, { limit: 200 });
+  const enabled = await enabledBotCardIds(ctx);
+  const inventory = (await getInventory(ctx, { limit: 200 })).filter((item) => enabled.has(item.card_id));
   const wallet = await getWalletSummary(ctx.db, ctx.tenant.id, ctx.user!.id, 1);
   if (inventory.length === 0) {
     return cabinetSummaryMessage({
@@ -556,6 +570,8 @@ async function card(ctx: Ctx, query: string): Promise<DiscordCallback> {
     found = matches[0] ?? null;
     if (!found) throw error;
   }
+  if (!(await cardInEnabledBotCollection(ctx, found.id)))
+    throw new ApiError(404, "card_not_enabled", "That card is not enabled in this Bot. Nothing was changed.");
   if (found.status !== "published" || found.archived_at) {
     if (!isBotAdmin(ctx.user!))
       throw new ApiError(
@@ -614,6 +630,8 @@ async function cardFace(
   side: "front" | "back",
 ): Promise<DiscordCallback> {
   const found = await getCard(ctx, cardId);
+  if (!(await cardInEnabledBotCollection(ctx, cardId)))
+    throw new ApiError(404, "card_not_enabled", "That card is no longer enabled in this Bot. Nothing was changed.");
   if (found.status !== "published")
     throw new ApiError(404, "card_not_found", "That card is not published.");
   const variants = found.editions.flatMap((edition) =>
@@ -664,6 +682,8 @@ async function cardFace(
 
 async function cardDetails(ctx: Ctx, cardId: string): Promise<DiscordCallback> {
   const found = await getCard(ctx, cardId);
+  if (!(await cardInEnabledBotCollection(ctx, cardId)))
+    throw new ApiError(404, "card_not_enabled", "That card is no longer enabled in this Bot. Nothing was changed.");
   const owned = await first<{ copies: number; finishes: number; serials: string | null }>(
     ctx.db,
     `SELECT COUNT(*) AS copies, COUNT(DISTINCT material.key) AS finishes,
@@ -755,7 +775,7 @@ async function achievements(ctx: Ctx): Promise<DiscordCallback> {
 }
 
 async function packs(ctx: Ctx, installation: DiscordInstallation): Promise<DiscordCallback> {
-  const pools = await listEligiblePools(ctx, installation.channel_key ?? undefined);
+  const pools = await discordEligiblePools(ctx, installation);
   if (pools.length === 0) {
     return callback(
       {
@@ -1283,6 +1303,21 @@ export function selectTourAlbum<
  * button. Inventory ownership or public approval does not re-enable a card.
  * A card with no enabled published collection is not part of this Discord demo.
  */
+/** Reusable snapshot for read-only Discord cabinet and profile presentation. */
+async function enabledBotCardIds(ctx: Ctx): Promise<Set<string>> {
+  const rows = await all<{ card_id: string }>(
+    ctx.db,
+    `SELECT DISTINCT cc.card_id
+       FROM fb_collection_cards cc
+       JOIN fb_collections c ON c.id = cc.collection_id
+         AND c.status = 'published' AND c.archived_at IS NULL
+       JOIN fb_bot_collections bc ON bc.collection_id = c.id AND bc.enabled = 1
+       JOIN fb_bots b ON b.id = bc.bot_id AND b.tenant_id = ? AND b.status = 'active'`,
+    ctx.tenant.id,
+  );
+  return new Set(rows.map((row) => row.card_id));
+}
+
 async function cardInEnabledBotCollection(ctx: Ctx, cardId: string): Promise<boolean> {
   const row = await first<{ card_id: string }>(
     ctx.db,
@@ -1476,7 +1511,7 @@ async function tour(
   }
 
   if (stage === "fresh") {
-    const pools = await listEligiblePools(ctx, installation.channel_key ?? undefined);
+    const pools = await discordEligiblePools(ctx, installation);
     const lines: string[] = [];
     for (const preview of pools.slice(0, 4)) {
       const odds = new Map<string, number>();
@@ -1536,7 +1571,7 @@ async function tour(
   if (stage === "open") {
     let poolLine = "No eligible pool right now. Nothing can be charged.";
     let poolButton: DiscordComponent[] = [];
-    const pools = await listEligiblePools(ctx, installation.channel_key ?? undefined);
+    const pools = await discordEligiblePools(ctx, installation);
     const preview = pools[0];
     if (preview) {
       if (wallet.balance >= preview.price) {
