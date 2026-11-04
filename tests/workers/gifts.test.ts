@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { bootstrap, ctxFor, fixturePool, runtime, walletBalance } from "./helpers";
 import { addMembership, createUser, ensureWallet } from "../../src/server/modules/identity";
-import { previewAdminGift, sendAdminGift } from "../../src/server/modules/admin-gifts";
+import { previewAdminGift, processGiftCampaign, sendAdminGift } from "../../src/server/modules/admin-gifts";
 import { listMyGiftReceipts } from "../../src/server/modules/admin-gifts";
 import { nowIso } from "../../src/server/db";
 import { sha256Hex } from "../../src/server/ids";
@@ -89,6 +89,42 @@ describe("scoped administrator gifts", () => {
     const campaign = await runtime.DB.prepare("SELECT status, sent_count FROM fb_gift_campaigns WHERE id = ?").bind(sent.campaign_id).first<{ status: string; sent_count: number }>();
     expect(campaign?.status).toBe("completed");
     expect(campaign?.sent_count).toBe(1);
+  });
+
+  it("resumes a failed campaign without double-crediting the same award", async () => {
+    await bootstrap();
+    const owner = await strong(await ctxFor("cabinet", "owner@foilbury.local"));
+    const recipient = await member(owner.tenant.id, "gift.resume@example.com");
+    const before = await walletBalance(owner, recipient.id);
+    const sent = await sendAdminGift(owner, {
+      kind: "foil",
+      scope: "single",
+      userIds: [recipient.id],
+      amount: 120,
+      reason: "Resume proof",
+      idempotency: { key: "gift-resume", digest: await sha256Hex("gift-resume") },
+    });
+    expect(sent.status).toBe("completed");
+    expect(await walletBalance(owner, recipient.id)).toBe(before + 120);
+
+    // Simulate a crash that left the durable campaign record failed after the
+    // award was already delivered. The resume must transition through sending
+    // before effects and must not credit the same award twice.
+    await runtime.DB.prepare(
+      "UPDATE fb_gift_campaigns SET status = 'failed', completed_at = NULL WHERE id = ? AND tenant_id = ?",
+    )
+      .bind(sent.campaign_id, owner.tenant.id)
+      .run();
+    const resumed = await processGiftCampaign(owner, sent.campaign_id);
+    expect(resumed.status).toBe("completed");
+    expect(resumed.sent_count).toBe(1);
+    expect(await walletBalance(owner, recipient.id)).toBe(before + 120);
+    const ledger = await runtime.DB.prepare(
+      "SELECT COUNT(*) AS count FROM fb_ledger_entries WHERE tenant_id = ? AND user_id = ? AND reference_type = 'admin_gift'",
+    )
+      .bind(owner.tenant.id, recipient.id)
+      .first<{ count: number }>();
+    expect(ledger?.count).toBe(1);
   });
 
   it("delivers a card gift as one owned copy with a serial and a receipt", async () => {

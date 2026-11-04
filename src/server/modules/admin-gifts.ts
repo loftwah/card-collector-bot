@@ -261,6 +261,23 @@ export async function processGiftCampaign(ctx: Ctx, campaignId: string) {
     status: string;
   }>(ctx.db, "SELECT * FROM fb_gift_campaigns WHERE id = ? AND tenant_id = ?", campaignId, ctx.tenant.id);
   if (!campaign) throw new ApiError(404, "campaign_not_found", "Gift campaign not found.");
+  // Validate and persist the campaign transition before any recipient effect.
+  // A failed/partial campaign must explicitly re-enter `sending`; otherwise a
+  // late transition assertion after awards were delivered would return an
+  // error even though Foil or cards had already moved.
+  if (campaign.status !== "sending") {
+    assertTransition("gift_campaign", campaign.status, "sending");
+    const moved = await ctx.db
+      .prepare(
+        "UPDATE fb_gift_campaigns SET status = 'sending', updated_at = ? WHERE id = ? AND tenant_id = ? AND status = ?",
+      )
+      .bind(nowIso(), campaignId, ctx.tenant.id, campaign.status)
+      .run();
+    if ((moved.meta?.changes ?? 0) !== 1) {
+      throw new ApiError(409, "campaign_not_sending", "Another worker changed this gift campaign. Reload it before resuming.");
+    }
+    campaign.status = "sending";
+  }
   const awards = await all<{
     id: string;
     tenant_id: string;
@@ -305,11 +322,18 @@ export async function processGiftCampaign(ctx: Ctx, campaignId: string) {
     }
   }
   const status = failed === 0 ? "completed" : sent > 0 ? "partial" : "failed";
-  if (campaign.status !== "completed") assertTransition("gift_campaign", campaign.status, status);
-  await ctx.db
-    .prepare("UPDATE fb_gift_campaigns SET status = ?, sent_count = ?, failed_count = ?, updated_at = ?, completed_at = ? WHERE id = ?")
-    .bind(status, sent, failed, nowIso(), nowIso(), campaignId)
+  assertTransition("gift_campaign", "sending", status);
+  // Conditional terminal update. A concurrent worker that already completed or
+  // cancelled the campaign must not be overwritten by this late result.
+  const finished = await ctx.db
+    .prepare(
+      "UPDATE fb_gift_campaigns SET status = ?, sent_count = ?, failed_count = ?, updated_at = ?, completed_at = ? WHERE id = ? AND tenant_id = ? AND status = 'sending'",
+    )
+    .bind(status, sent, failed, nowIso(), nowIso(), campaignId, ctx.tenant.id)
     .run();
+  if ((finished.meta?.changes ?? 0) !== 1) {
+    throw new ApiError(409, "campaign_not_sending", "The gift campaign was changed by another worker. Inspect the recorded awards before retrying.");
+  }
   await auditStatement(ctx, "gift.campaign.processed", "gift_campaign", campaignId, { sent, failed, status }).run();
   return { sent_count: sent, failed_count: failed, status };
 }
@@ -385,21 +409,36 @@ async function deliverGiftAward(
   const instanceId = newId("ins");
   const serial = `FB-G-${newId("s").slice(-6).toUpperCase()}`;
   const now = nowIso();
-  await ctx.db.batch([
-    ctx.db
-      .prepare(
-        `INSERT INTO fb_card_instances
-          (id, tenant_id, user_id, card_id, variant_id, serial, acquired_via, acquired_at, status, favourite, locked, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'owned', 0, 0, ?)`,
-      )
-      .bind(instanceId, award.tenant_id, award.user_id, card.id, variant.id, serial, `gift:${campaign.id}`, now, now),
-    ctx.db
-      .prepare(
-        `INSERT INTO fb_instance_history (id, tenant_id, instance_id, event, from_user_id, to_user_id, reference_type, reference_id, metadata_json, created_at)
-         VALUES (?, ?, ?, 'gifted', ?, ?, 'admin_gift', ?, ?, ?)`,
-      )
-      .bind(newId("ih"), award.tenant_id, instanceId, campaign.created_by, award.user_id, campaign.id, JSON.stringify({ message: campaign.message }), now),
-  ]);
+  try {
+    await ctx.db.batch([
+      ctx.db
+        .prepare(
+          `INSERT INTO fb_card_instances
+            (id, tenant_id, user_id, card_id, variant_id, serial, acquired_via, acquired_at, status, favourite, locked, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'owned', 0, 0, ?)`,
+        )
+        .bind(instanceId, award.tenant_id, award.user_id, card.id, variant.id, serial, `gift:${campaign.id}`, now, now),
+      ctx.db
+        .prepare(
+          `INSERT INTO fb_instance_history (id, tenant_id, instance_id, event, from_user_id, to_user_id, reference_type, reference_id, metadata_json, created_at)
+           VALUES (?, ?, ?, 'gifted', ?, ?, 'admin_gift', ?, ?, ?)`,
+        )
+        .bind(newId("ih"), award.tenant_id, instanceId, campaign.created_by, award.user_id, campaign.id, JSON.stringify({ message: campaign.message }), now),
+    ]);
+  } catch (error) {
+    // A concurrent worker may have inserted the one permitted gift instance.
+    // Re-read it rather than failing an already-delivered award or inserting a
+    // duplicate; the partial unique index is the storage-level guard.
+    const raced = await first<{ id: string; serial: string }>(
+      ctx.db,
+      "SELECT id, serial FROM fb_card_instances WHERE tenant_id = ? AND user_id = ? AND acquired_via = ? LIMIT 1",
+      award.tenant_id,
+      award.user_id,
+      `gift:${campaign.id}`,
+    );
+    if (raced) return { instanceId: raced.id, serial: raced.serial, description: `Gift: ${card.name} — ${variant.name}` };
+    throw error;
+  }
   return { instanceId, serial, description: `Gift: ${card.name} — ${variant.name}` };
 }
 
