@@ -1205,16 +1205,57 @@ describe("Discord HTTP interactions", () => {
     expect(duplicate.payload.data?.embeds?.[0]?.description).toMatch(/already shared/i);
   });
 
-  it("selects the curated album after its versioned roster expands past eight", () => {
+  it("selects only an enabled published Bot album, never the hard-coded franchise favourite", () => {
     const selected = selectTourAlbum([
-      { slug: "another-album", card_count: 8 },
-      { slug: "danganronpa-three-games", card_count: 9 },
-      { slug: "largest", card_count: 12 },
+      { slug: "danganronpa-three-games", card_count: 9, enabled: false, status: "published" },
+      { slug: "archived-large", card_count: 50, enabled: true, status: "archived" },
+      { slug: "largest-enabled", card_count: 12, enabled: true, status: "published" },
+      { slug: "smaller-enabled", card_count: 8, enabled: true, status: "published" },
     ]);
-    expect(selected?.slug).toBe("danganronpa-three-games");
-    expect(selectTourAlbum([{ slug: "largest", card_count: 12 }, { slug: "small", card_count: 4 }])?.slug).toBe(
-      "largest",
-    );
+    expect(selected?.slug).toBe("largest-enabled");
+    expect(selectTourAlbum([{ slug: "danganronpa-three-games", card_count: 99, enabled: false, status: "published" }])).toBeNull();
+    expect(selectTourAlbum([{ slug: "empty", card_count: 0, enabled: true, status: "published" }])).toBeNull();
+  });
+
+  it("does not advertise or demonstrate a disabled collection and rejects an old share button", async () => {
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const fixture = await fixturePool(owner);
+    // A prior tour/owned card does not override a newer Bot collection toggle.
+    await send(interaction(command("daily"), { id: "disabled-demo-first-run" }));
+    const identity = await runtime.DB.prepare(
+      "SELECT user_id FROM fb_discord_identities WHERE discord_user_id = ?",
+    ).bind(DISCORD_USER_ID).first<{ user_id: string }>();
+    expect(identity?.user_id).toBeTruthy();
+    const ownedInstanceId = await makeInstance(owner, identity!.user_id, fixture, "DISABLED-DEMO-001");
+
+    await runtime.DB.prepare(
+      "UPDATE fb_bot_collections SET enabled = 0 WHERE collection_id = 'col_test_public' AND bot_id IN (SELECT id FROM fb_bots WHERE tenant_id = ?)",
+    ).bind(owner.tenant.id).run();
+
+    const welcome = await send(interaction(command("tour"), { id: "disabled-demo-welcome" }));
+    const welcomeContent = JSON.stringify(welcome.payload.data);
+    expect(welcomeContent).not.toContain("Test Public");
+    expect(welcomeContent).toContain("None. Ask the Bot Owner to enable a collection.");
+
+    const albums = await send(interaction(
+      { custom_id: "foilbury:tour:albums", component_type: 2 },
+      { id: "disabled-demo-albums", type: 3 },
+    ));
+    const albumContent = JSON.stringify(albums.payload.data);
+    expect(albumContent).toContain("No member album is available");
+    expect(albumContent).not.toContain("Test One");
+
+    const share = await send(interaction(
+      { custom_id: `foilbury:tourshare:card:${ownedInstanceId}`, component_type: 2 },
+      { id: "disabled-demo-stale-share", type: 3 },
+    ));
+    expect(JSON.stringify(share.payload.data)).toContain("no longer enabled");
+    const shares = await runtime.DB.prepare(
+      "SELECT COUNT(*) AS count FROM fb_discord_shares WHERE tenant_id = ?",
+    ).bind(owner.tenant.id).first<{ count: number }>();
+    expect(shares?.count).toBe(0);
+    const draws = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_draws").first<{ count: number }>();
+    expect(draws?.count).toBe(0);
   });
 
   it("starts the guided tour without drawing, spending or granting", async () => {
