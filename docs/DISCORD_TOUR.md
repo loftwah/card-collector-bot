@@ -228,7 +228,9 @@ The current `#card-collector-test` channel has no `@everyone` View Channel deny.
 
 | Item                                                                                                        | Status                             | Evidence                                                       |
 | ----------------------------------------------------------------------------------------------------------- | ---------------------------------- | -------------------------------------------------------------- |
-| Production preflight (installation, registration, tour entry, album, renders, achievement, public showcase, identities) | PASS | `pnpm demo:discord:check` — 17 PASS, 0 FAIL, 4 BLOCKED |
+| Production preflight (installation, registration, tour entry, album, renders, achievement, public showcase, identities, actor evidence) | PASS | `pnpm demo:discord:check` with `FOILBURY_ACTOR_EVIDENCE` — 19 PASS, 0 FAIL, 3 BLOCKED |
+| Persistent retained demonstration (12 messages, images, completion, reward, mission replay, share) | PASS | `docs/PERSISTENT_DEMO_2026-11-04.md`; `demo:discord:verify` 12/12 |
+| Configured-server scope and AI-artwork preference | PASS | `tests/workers/discord-scope.test.ts` 6/6; production scope digest and receipts |
 | `tour` command registered without removing existing commands                                                | PASS                               | Discord API command read-back, command ID unchanged            |
 | Member-only restricted reveal stays ephemeral in an unverified channel                                      | PASS                               | `tests/workers/discord.test.ts` private-delivery test          |
 | Channel-visible member reveal in a genuinely restricted channel                                             | BLOCKED                            | Test channel has no `@everyone` deny; no channel policy is set |

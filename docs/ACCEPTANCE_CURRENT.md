@@ -27,7 +27,9 @@ and spectator observation remain explicitly `blocked` until performed.
 
 ## Current residuals
 
-- A real Discord desktop/mobile invocation by the authorisation holder.
+- A real mobile Discord client invocation by the authorisation holder. The
+  signed-in desktop client was driven through the retained sequence on
+  2026/11/04; mobile is still open.
 - An independent authorised spectator observation. A second tab of the same
   account is not a spectator.
 - The scoped live grant to the designated Admin requires the owner's recent
@@ -38,6 +40,35 @@ and spectator observation remain explicitly `blocked` until performed.
   current marks are reviewed Foilbury interpretations.
 - Production import of the two new roster subjects remains separate from the
   local manifest/render proof.
+- The channel audience is verified as `members` from the current three-person
+  private test guild. A future non-member invitee could see retained member
+  artwork; re-verify if guild membership changes.
+
+## 2026-11-04 evening — server scope, AI provenance and persistent demonstration
+
+- Latest deployed build: source `2ab20a515224606af8ed8cee773a30f88f04afd8`,
+  Worker `85d3fb74-d448-4312-958f-5504d31e7d8e`, schema
+  `0027_ai_art_provenance_and_scope.sql`. The persistent demo was produced by
+  source `a33e4dc` / Worker `dfe306d3`; the later release adds the Studio AI
+  preference and the read-back verifier.
+- **Persistent demonstration delivered:** twelve ordinary retained messages,
+  start `1567443524209872926`, conclusion `1567443613346959481`. Full stage
+  table, receipts and residuals: `docs/PERSISTENT_DEMO_2026-11-04.md`.
+- **Real interaction pass:** 15 real draws, 15 instances, 15 spend rows
+  (−1,200 Foil), one `Three schools` unlock, one 640 Foil reward ledger row, one
+  mission claim/replay, one share receipt. Reconciled from production D1.
+- **Persistent delivery pass:** Discord API read-back 12/12 PASS; every required
+  image HTTP 200; signed-in desktop client reloaded and scrolled.
+- **Configured-server scope pass:** one enabled Danganronpa album, verified
+  members channel, scope digest `5ee761338552f0e1fbadb3957dc75ca42a3d5519a7b60fc25d6681af23f76e87`;
+  six focused scope tests; no out-of-scope content or spend.
+- **Independent audience/client pass:** **BLOCKED** — no second-account
+  spectator and no real mobile client. The preflight with the recorded desktop
+  actor evidence is **19 PASS · 0 FAIL · 3 BLOCKED** (pin, channel visibility,
+  spectator).
+- **AI provenance/toggle:** typed `origin`, queryable generation records,
+  per-Bot `ai_art_enabled` default off, Studio/Admin toggle exercised in
+  production `false → true → false`, visible origin label. `pnpm art:audit`.
 
 ## 2026-11-04 visible tour and release evidence update
 

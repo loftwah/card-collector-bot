@@ -420,17 +420,45 @@ try {
     );
     const policy = JSON.parse(installation.channel_audience_json || "{}");
     const configured = policy[channelId];
+    const audienceVerification = rows(
+      `SELECT metadata_json, created_at FROM fb_audit_events
+        WHERE action = 'discord.channel_audience.verified'
+          AND object_type = 'discord_installation'
+          AND object_id = '${String(installation.id).replaceAll("'", "''")}'
+        ORDER BY created_at DESC LIMIT 1`,
+    )[0];
+    let verifiedMembers = false;
+    let verificationDetail = "";
+    if (audienceVerification) {
+      try {
+        const metadata = JSON.parse(audienceVerification.metadata_json);
+        verifiedMembers =
+          metadata.guild_id === guildId &&
+          metadata.channel_id === channelId &&
+          metadata.audience === "members" &&
+          Number(metadata.human_member_count) > 0 &&
+          Array.isArray(metadata.human_discord_user_ids) &&
+          metadata.human_discord_user_ids.length === Number(metadata.human_member_count);
+        if (verifiedMembers) {
+          verificationDetail = ` · verified members from ${metadata.human_member_count} human guild members at ${metadata.verified_at ?? audienceVerification.created_at}`;
+        }
+      } catch {
+        verifiedMembers = false;
+      }
+    }
+    const revealStatus =
+      configured === "members" || configured === "private"
+        ? channelDenied || verifiedMembers
+          ? "PASS"
+          : "FAIL"
+        : channelDenied
+          ? "BLOCKED"
+          : "PASS";
     add(
       "reveal policy",
-      channelDenied
-        ? configured === "members" || configured === "private"
-          ? "PASS"
-          : "BLOCKED"
-        : configured === "members" || configured === "private"
-          ? "FAIL"
-          : "PASS",
+      revealStatus,
       configured
-        ? `Channel audience is configured as ${configured}.`
+        ? `Channel audience is configured as ${configured}${verificationDetail}.`
         : channelDenied
           ? "Restricted reveals will stay ephemeral until the operator records the verified channel audience."
           : "No channel audience is configured; restricted reveals stay ephemeral and public reveals may be shared.",

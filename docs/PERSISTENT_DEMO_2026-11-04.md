@@ -32,7 +32,9 @@ All times are Melbourne local (AEDT, UTC+11) with UTC in parentheses.
 - Actor: **Foilbury Demo Collector** `usr_demo_discord` — a labelled, non-human demonstration account. Not Dean and not a Discord identity. It is funded by one audited `demo_provisioning` ledger row of 8,000 Foil; no real player wallet was used.
 - Scope digest: `5ee761338552f0e1fbadb3957dc75ca42a3d5519a7b60fc25d6681af23f76e87`.
 - Source: `a33e4dcb00f46762b4cf8dd2a4445e8dce8cbcaf`; Worker: `dfe306d3-1b15-4ef7-95fa-d9d382326686`; schema `0027_ai_art_provenance_and_scope.sql`.
-- Channel audience: `members`. Verified from the live Discord member list: the guild has exactly three members — Dean (Foilbury owner), Kaye (active Foilbury player) and the Foilbury bot. Both humans are active Foilbury members. No Discord permission was changed. A future invitee who is not a Foilbury member could see retained member artwork; re-verify the channel if the guild membership changes.
+- A later release (`2ab20a5` / Worker `85d3fb74`) adds the Studio-visible AI preference panel and the read-back verifier; the retained messages were left unchanged.
+- Channel audience: `members`. Verified from the live Discord member list: the guild has exactly three members — Dean (Foilbury owner), Kaye (active Foilbury player) and the Foilbury bot. Both humans are active Foilbury members. No Discord permission was changed. The verification is recorded as audit event `aud_discord_audience_2026_11_04`; a future invitee who is not a Foilbury member could see retained member artwork, so re-verify the channel if the guild membership changes.
+- Preflight (with actor evidence): **19 PASS · 0 FAIL · 3 BLOCKED**. The remaining blocks are pin capability, the absence of an `@everyone` View Channel deny, and an independent spectator. The reveal policy passes on the recorded members verification; channel visibility remains a separate Discord-permission fact.
 - AI-artwork preference: **excluded** for this Bot. The Danganronpa art is a sourced reference with a reviewed provenance record; card design and finishes are Foilbury originals. No AI-assisted print is used in the sequence.
 
 ## Real events and receipts
