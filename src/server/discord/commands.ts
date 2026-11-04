@@ -1267,27 +1267,49 @@ function tourNav(
   return components(row.length ? [...extra, row] : extra);
 }
 
-export function selectTourAlbum<T extends { slug: string; card_count: number }>(
-  collections: T[],
-): T | null {
+/** The tour is a view of the Bot's *configured* catalogue, never a global favourite. */
+export function selectTourAlbum<
+  T extends { slug: string; card_count: number; enabled: boolean; status: string },
+>(collections: T[]): T | null {
   return (
-    collections.find((collection) => collection.slug === "danganronpa-three-games") ??
-    [...collections].sort((left, right) => right.card_count - left.card_count)[0] ??
-    null
+    collections
+      .filter((collection) => collection.enabled && collection.status === "published" && collection.card_count > 0)
+      .sort((left, right) => right.card_count - left.card_count || left.slug.localeCompare(right.slug))[0] ?? null
   );
 }
 
-async function tourAlbum(ctx: Ctx) {
-  const collections = (await listCollections(ctx)).filter(
-    (collection) => collection.enabled && collection.status === "published",
+/**
+ * Check the live Bot collection switch again when a user presses an old share
+ * button. Inventory ownership or public approval does not re-enable a card.
+ * A card with no enabled published collection is not part of this Discord demo.
+ */
+async function cardInEnabledBotCollection(ctx: Ctx, cardId: string): Promise<boolean> {
+  const row = await first<{ card_id: string }>(
+    ctx.db,
+    `SELECT cc.card_id
+       FROM fb_collection_cards cc
+       JOIN fb_collections c ON c.id = cc.collection_id AND c.status = 'published'
+         AND c.archived_at IS NULL
+       JOIN fb_bot_collections bc ON bc.collection_id = c.id AND bc.enabled = 1
+       JOIN fb_bots b ON b.id = bc.bot_id AND b.tenant_id = ? AND b.status = 'active'
+      WHERE cc.card_id = ?
+      LIMIT 1`,
+    ctx.tenant.id,
+    cardId,
   );
-  // The guided tour uses the curated Danganronpa album whatever its current
-  // release size. Do not treat eight as a universal ceiling: a later roster
-  // expansion still belongs to the same versioned release and frozen
-  // achievement target.
-  const preferred = selectTourAlbum(collections);
+  return Boolean(row);
+}
+
+async function tourAlbum(
+  ctx: Ctx,
+  enabledCollections: Awaited<ReturnType<typeof listCollections>>,
+) {
+  const preferred = selectTourAlbum(enabledCollections);
   if (!preferred) return null;
   const detail = await getCollection(ctx, preferred.id);
+  // Do not allow an old tour control to access an album disabled between
+  // catalogue enumeration and the detail lookup.
+  if (!detail.enabled || detail.status !== "published") return null;
   const [cards, progress] = await Promise.all([
     listCollectionCards(ctx, detail.id),
     collectionProgress(ctx, detail.id),
@@ -1303,13 +1325,19 @@ async function tour(
 ): Promise<DiscordCallback> {
   const wallet = await getWalletSummary(ctx.db, ctx.tenant.id, ctx.user!.id, 1);
   const economy = await getEconomy(ctx);
-  const album = await tourAlbum(ctx);
+  const enabledCollections = (await listCollections(ctx)).filter(
+    (collection) => collection.enabled && collection.status === "published",
+  );
+  const album = await tourAlbum(ctx, enabledCollections);
 
   if (stage === "welcome") {
-    const showcase = await listPublicCollections(ctx);
-    const memberCount = (await listCollections(ctx)).filter(
-      (collection) => collection.enabled,
-    ).length;
+    const enabledIds = new Set(enabledCollections.map((collection) => collection.id));
+    // Public visibility is not the same as installation/Bot enablement.
+    // The full product showcase may include cards unavailable in this Bot.
+    const showcase = (await listPublicCollections(ctx)).filter((collection) =>
+      enabledIds.has(collection.id),
+    );
+    const memberCount = enabledCollections.length;
     return callback(
       {
         embeds: [
@@ -1333,9 +1361,11 @@ async function tour(
                 inline: false,
               },
               {
-                name: "Member albums",
-                value: `${memberCount} available to this Bot`,
-                inline: true,
+                name: "Enabled collections in this Bot",
+                value: memberCount
+                  ? truncate(enabledCollections.map((collection) => collection.name).join(" · "), 950)
+                  : "None. Ask the Bot Owner to enable a collection.",
+                inline: false,
               },
               {
                 name: "Free play",
@@ -1768,7 +1798,10 @@ async function tour(
     const channelAudience = channelAudienceFor(installation, channelId);
     let publicCard: (typeof inventory)[number] | null = null;
     for (const item of inventory.slice(0, 20)) {
-      if ((await effectiveCardAudience(ctx, item.card_id)) === "public") {
+      if (
+        (await cardInEnabledBotCollection(ctx, item.card_id)) &&
+        (await effectiveCardAudience(ctx, item.card_id)) === "public"
+      ) {
         publicCard = item;
         break;
       }
@@ -2009,8 +2042,8 @@ async function tourShare(
     );
     if (!row)
       throw new ApiError(404, "share_card_missing", "That owned card is not in your cabinet.");
-    if (!(await canViewCard(ctx, row.card_id)))
-      throw new ApiError(404, "share_card_missing", "That card is not available to this album.");
+    if (!(await canViewCard(ctx, row.card_id)) || !(await cardInEnabledBotCollection(ctx, row.card_id)))
+      throw new ApiError(404, "share_card_missing", "That card is no longer enabled for this Bot. Nothing was shared.");
     audience = await effectiveCardAudience(ctx, row.card_id);
     if (audience === "private") {
       throw new ApiError(403, "share_private_not_available", "Private collection artwork cannot be shared to a channel.");
@@ -2044,6 +2077,8 @@ async function tourShare(
     objectId = row.card_id;
   } else if (kind === "completion") {
     const album = await getCollection(ctx, objectId);
+    if (!album.enabled || album.status !== "published")
+      throw new ApiError(404, "share_album_disabled", "That collection is no longer enabled for this Bot. Nothing was shared.");
     const progress = await collectionProgress(ctx, album.id);
     if (!progress.complete)
       throw new ApiError(
@@ -2082,7 +2117,10 @@ async function tourShare(
     const achievements = await listAchievements(ctx, ctx.user!.id);
     const publicCards: string[] = [];
     for (const item of inventory.slice(0, 20)) {
-      if ((await effectiveCardAudience(ctx, item.card_id)) === "public") publicCards.push(item.card_id);
+      if (
+        (await cardInEnabledBotCollection(ctx, item.card_id)) &&
+        (await effectiveCardAudience(ctx, item.card_id)) === "public"
+      ) publicCards.push(item.card_id);
     }
     const publicBadges = achievements.filter(
       (item) => item.state === "earned" && item.visibility === "public",
