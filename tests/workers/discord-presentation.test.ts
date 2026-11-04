@@ -253,6 +253,28 @@ describe("Discord limits", () => {
     expect(fields[5]?.inline).toBe(false);
   });
 
+  it("rejects a duplicate custom id across action rows", () => {
+    expectPresentationError(
+      () =>
+        assertDiscordMessage({
+          content: "Duplicate controls",
+          components: [
+            {
+              type: 1,
+              components: [
+                { type: 2, style: 1, label: "Start with an album", custom_id: "foilbury:tour:albums" },
+              ],
+            },
+            {
+              type: 1,
+              components: [{ type: 2, style: 1, label: "Next", custom_id: "foilbury:tour:albums" }],
+            },
+          ],
+        }),
+      "duplicate_custom_id",
+    );
+  });
+
   it("rejects structural overflows and unsafe custom ids", () => {
     expectPresentationError(
       () =>

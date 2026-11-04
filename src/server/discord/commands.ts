@@ -1234,12 +1234,23 @@ function tourNav(
   extra: DiscordComponent[][] = [],
 ): Array<{ type: number; components: DiscordComponent[] }> {
   const index = TOUR_STAGES.indexOf(stage);
+  const existing = new Set(
+    extra.flatMap((row) => row.map((component) => component.custom_id).filter(Boolean)),
+  );
   const row: DiscordComponent[] = [];
-  if (index > 0) row.push(button("Back", `foilbury:tour:${TOUR_STAGES[index - 1]}`, 2));
-  if (index < TOUR_STAGES.length - 1)
-    row.push(button("Next", `foilbury:tour:${TOUR_STAGES[index + 1]}`, 1));
-  row.push(button("Tour home", "foilbury:tour:welcome", 2));
-  return components([...extra, row]);
+  const backId = index > 0 ? `foilbury:tour:${TOUR_STAGES[index - 1]}` : null;
+  const nextId =
+    index < TOUR_STAGES.length - 1 ? `foilbury:tour:${TOUR_STAGES[index + 1]}` : null;
+  // Discord rejects the whole message when any custom_id is repeated, even
+  // across different action rows. The welcome stage previously used the same
+  // `foilbury:tour:albums` id for "Start with an album" and "Next"; keep the
+  // explicit stage button and omit the duplicate navigation control.
+  if (backId && !existing.has(backId)) row.push(button("Back", backId, 2));
+  if (nextId && !existing.has(nextId)) row.push(button("Next", nextId, 1));
+  if (!existing.has("foilbury:tour:welcome")) {
+    row.push(button("Tour home", "foilbury:tour:welcome", 2));
+  }
+  return components(row.length ? [...extra, row] : extra);
 }
 
 export function selectTourAlbum<T extends { slug: string; card_count: number }>(

@@ -62,6 +62,7 @@ export type PresentationErrorCode =
   | "invalid_input"
   | "invalid_url"
   | "invalid_button"
+  | "duplicate_custom_id"
   | "private_identifier"
   | "channel_audience_unverified"
   | "unsafe_attachment";
@@ -719,7 +720,21 @@ export function assertDiscordMessage(message: DiscordMessage): void {
   if ((message.components?.length ?? 0) > DISCORD_LIMITS.componentRows) {
     fail("discord_limit", "components", "A message may contain at most 5 action rows.");
   }
-  (message.components ?? []).forEach(assertComponentRow);
+  const customIds = new Set<string>();
+  (message.components ?? []).forEach((row, rowIndex) => {
+    assertComponentRow(row, rowIndex);
+    for (const [componentIndex, component] of row.components.entries()) {
+      if (!component.custom_id) continue;
+      if (customIds.has(component.custom_id)) {
+        fail(
+          "duplicate_custom_id",
+          `components[${rowIndex}].components[${componentIndex}].custom_id`,
+          `Discord rejects a message when the custom id ${component.custom_id} appears more than once, including across rows.`,
+        );
+      }
+      customIds.add(component.custom_id);
+    }
+  });
   if (message.allowed_mentions) {
     if (
       message.allowed_mentions.parse.length > 0 ||

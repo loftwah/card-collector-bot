@@ -1216,6 +1216,11 @@ describe("Discord HTTP interactions", () => {
     expect(welcome.payload.data?.flags).toBe(64);
     expect(welcome.payload.data?.embeds?.[0]?.title).toContain("guided tour");
     expect(JSON.stringify(welcome.payload.data)).toContain("Nothing in the tour spends");
+    const welcomeIds = (welcome.payload.data?.components ?? [])
+      .flatMap((row) => row.components ?? [])
+      .map((component) => component.custom_id)
+      .filter(Boolean);
+    expect(new Set(welcomeIds).size).toBe(welcomeIds.length);
     // The persistent channel entry uses a bare component, not the slash
     // command. This is the exact custom id published in #card-collector-test.
     const entryButton = await send(
