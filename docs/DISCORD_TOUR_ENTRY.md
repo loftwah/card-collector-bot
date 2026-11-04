@@ -110,3 +110,38 @@ entry other members may already use.
 
 The publisher never posts to another channel, never DMs, never mentions
 `@everyone` and never edits a message authored by anyone else.
+
+## Ready acceptance session (2026-11-04)
+
+A bounded session has already been prepared for the deployed build:
+
+```text
+.foilbury/evidence/discord-assisted/session-2026-11-04T03-41-38-642Z.json
+```
+
+It binds guild `997734945206313041`, channel `1566700752385081355`, initiating
+account `707281352818425929`, the deployed `x-foilbury-build` header and a
+two-hour window from 03:41 UTC (14:41 AEDT). If the build changes, prepare a new
+session with:
+
+```sh
+node scripts/discord/assisted-acceptance.mjs --prepare \
+  --guild 997734945206313041 \
+  --channel 1566700752385081355 \
+  --actor 707281352818425929 \
+  --minutes 120
+```
+
+After each real command, use the interaction id printed by the acceptance
+report (or read it from D1) with the matching `--case`:
+
+```sh
+node scripts/discord/assisted-acceptance.mjs --verify <interaction-id> \
+  --session .foilbury/evidence/discord-assisted/session-2026-11-04T03-41-38-642Z.json \
+  --case open
+```
+
+A failed or stale interaction must return `fail`; the runner does not convert
+`processing`, `failed` or `{}` receipts into success. An independent spectator
+declaration is a separate attestation and cannot be inferred from the owner's
+own client.

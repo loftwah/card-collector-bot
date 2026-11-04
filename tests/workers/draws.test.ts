@@ -56,19 +56,100 @@ describe("draw transaction", () => {
 
     const replay = await executeDraw(player, { pool: "test-pool", expectedRevision: preview.revision, expectedDistribution: preview.distribution_fingerprint, idempotency: input });
     expect(replay.replayed).toBe(true);
+    expect(replay.draw_id).toBe(result.draw_id);
     expect(replay.instance_id).toBe(result.instance_id);
+    expect(replay.serial).toBe(result.serial);
     expect(replay.balance_after_debit).toBe(270);
     expect(replay.credits_total).toBe(160);
     expect(replay.balance_after).toBe(430);
     expect(replay.current_balance).toBe(430);
     expect(await walletBalance(player, player.user!.id)).toBe(430);
     expect(await getInventory(player)).toHaveLength(1);
+    const draws = await runtime.DB.prepare("SELECT id, instance_id, price FROM fb_draws WHERE tenant_id = ? AND user_id = ?")
+      .bind(player.tenant.id, player.user!.id)
+      .all<{ id: string; instance_id: string; price: number }>();
+    expect(draws.results).toEqual([expect.objectContaining({ id: result.draw_id, instance_id: result.instance_id, price: 80 })]);
+    const spend = await runtime.DB.prepare("SELECT COUNT(*) AS count, SUM(amount) AS amount FROM fb_ledger_entries WHERE tenant_id = ? AND user_id = ? AND kind = 'spend'")
+      .bind(player.tenant.id, player.user!.id)
+      .first<{ count: number; amount: number }>();
+    expect(spend).toMatchObject({ count: 1, amount: -80 });
 
     await runtime.DB.prepare("UPDATE fb_pools SET revision = 2 WHERE id = ?").bind(fixture.poolId).run();
     await expect(
       executeDraw(player, { pool: "test-pool", expectedRevision: 1, expectedDistribution: preview.distribution_fingerprint, idempotency: { key: "draw-test-002", digest: "draw-digest-b" } }),
     ).rejects.toMatchObject({ code: "stale_pool_revision" });
     expect(await walletBalance(player, player.user!.id)).toBe(430);
+  });
+
+  it("rejects a changed payload under the same operation key without charging", async () => {
+    await bootstrap();
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    await fixturePool(player);
+    const preview = await getPoolPreview(player, "test-pool");
+    const input = { key: "draw-changed-payload-001", digest: "draw-changed-a" };
+    const result = await executeDraw(player, { pool: "test-pool", expectedRevision: preview.revision, expectedDistribution: preview.distribution_fingerprint, idempotency: input });
+    expect(await walletBalance(player, player.user!.id)).toBe(430);
+
+    await expect(
+      executeDraw(player, { pool: "test-pool", expectedRevision: preview.revision + 1, expectedDistribution: "different-distribution-000000000001", idempotency: { key: input.key, digest: "draw-changed-b" } }),
+    ).rejects.toMatchObject({ code: "idempotency_conflict" });
+
+    expect(await walletBalance(player, player.user!.id)).toBe(430);
+    expect(await getInventory(player)).toHaveLength(1);
+    const draws = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_draws WHERE tenant_id = ? AND user_id = ?")
+      .bind(player.tenant.id, player.user!.id)
+      .first<{ count: number }>();
+    expect(draws?.count).toBe(1);
+    const replay = await executeDraw(player, { pool: "test-pool", expectedRevision: preview.revision, expectedDistribution: preview.distribution_fingerprint, idempotency: input });
+    expect(replay.replayed).toBe(true);
+    expect(replay.instance_id).toBe(result.instance_id);
+  });
+
+  it("does not charge when reconciliation finds no receipt and the pool changed", async () => {
+    await bootstrap();
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const fixture = await fixturePool(player);
+    const preview = await getPoolPreview(player, "test-pool");
+    const input = { key: "draw-lost-before-commit-001", digest: "draw-lost-a" };
+
+    // Simulate a request that never reached the server: the same key now
+    // reconciles against a pool whose revision has moved. No receipt exists,
+    // so the server rejects before charging and the client may release the key.
+    await runtime.DB.prepare("UPDATE fb_pools SET revision = 2 WHERE id = ?").bind(fixture.poolId).run();
+    await expect(
+      executeDraw(player, { pool: "test-pool", expectedRevision: preview.revision, expectedDistribution: preview.distribution_fingerprint, idempotency: input }),
+    ).rejects.toMatchObject({ code: "stale_pool_revision" });
+
+    expect(await walletBalance(player, player.user!.id)).toBe(350);
+    expect(await getInventory(player)).toHaveLength(0);
+    const draws = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_draws WHERE tenant_id = ? AND user_id = ?")
+      .bind(player.tenant.id, player.user!.id)
+      .first<{ count: number }>();
+    expect(draws?.count).toBe(0);
+    const keys = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_idempotency_keys WHERE tenant_id = ? AND idempotency_key = ?")
+      .bind(player.tenant.id, input.key)
+      .first<{ count: number }>();
+    expect(keys?.count).toBe(0);
+  });
+
+  it("keeps the historical receipt while reporting the current balance on replay", async () => {
+    await bootstrap();
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    await fixturePool(player);
+    const preview = await getPoolPreview(player, "test-pool");
+    const input = { key: "draw-current-balance-001", digest: "draw-current-a" };
+    const result = await executeDraw(player, { pool: "test-pool", expectedRevision: preview.revision, expectedDistribution: preview.distribution_fingerprint, idempotency: input });
+    expect(result.balance_after).toBe(430);
+
+    // Another tab or mission may move the wallet after the receipt was written.
+    await setBalance(player, player.user!.id, 900);
+    const replay = await executeDraw(player, { pool: "test-pool", expectedRevision: preview.revision, expectedDistribution: preview.distribution_fingerprint, idempotency: input });
+    expect(replay.replayed).toBe(true);
+    expect(replay.instance_id).toBe(result.instance_id);
+    expect(replay.balance_after).toBe(430);
+    expect(replay.current_balance).toBe(900);
+    expect(await walletBalance(player, player.user!.id)).toBe(900);
+    expect(await getInventory(player)).toHaveLength(1);
   });
 
   it("shows 500 − 80 + a settled 100 reward as 520 with separate debit and credit", async () => {

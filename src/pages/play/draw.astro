@@ -44,6 +44,9 @@ const [eligiblePools, wallet, economy, prefs] = await Promise.all([
       }))}
       initialBalance={wallet.balance}
       initialPool={requestedPool}
+      environment={ctx.config.environment}
+      accountId={user.id}
+      botId={ctx.tenant.id}
     />
   </div>
   <div class="mt-8 notice">

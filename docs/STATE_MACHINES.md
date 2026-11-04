@@ -15,17 +15,42 @@ framework or one giant application machine.
 
 ## Opening flow
 
-1. **Ready** — preview shows the live pool, price, eligible entries and effective
+1. **Loading** — the selected capsule and community filter are being compared
+   with the live pool. Drawing is disabled.
+2. **Ready** — preview shows the live pool, price, eligible entries and effective
    odds after filters.
-2. **Submitting** — the client sends one idempotency key and the expected revision.
-3. **Committed** — D1 commits debit, draw receipt, instance, serial, history and
+3. **Submitting** — the client persists one operation key and the exact request
+   payload (pool, expected revision, distribution fingerprint, price, channel)
+   before sending it. The server checks the same expected revision and
+   distribution.
+4. **Committed** — D1 commits debit, draw receipt, instance, serial, history and
    idempotency record in one batch.
-4. **Revealed** — the UI shows the subject, finish and duplicate/new-subject
+5. **Revealed** — the UI shows the subject, finish and duplicate/new-subject
    status. Revealing is optional and never changes the award.
 
-A timeout with an unknown commit state must query/retry with the same key. It
-must not start a second draw. The receipt distinguishes new subject, new finish
-and another copy.
+A timeout or lost response moves the client to **unknown**, not ready. The
+client reconciles by replaying the same operation key and the same canonical
+body. If the receipt exists, D1 returns it unchanged; if the request never
+arrived, that same approved opening completes once. It cannot reroll the card,
+change the price or debit twice. A definitive 409 (`stale_pool_revision`,
+`stale_distribution`, `empty_pool`, `insufficient_funds`) proves no receipt was
+committed, so the client releases the key after showing the reason.
+
+`src/components/player/draw-studio-state.ts` owns this client contract. It is a
+pure reducer plus a small sessionStorage helper, covered by
+`tests/unit/draw-studio-state.test.ts`. Persisted records are scoped to
+environment, account, Bot and pool, and contain only the operation key, exact
+payload, status and timestamps — never the receipt, card or balance. A record
+from another environment/account/Bot is removed on mount. A deliberate
+"Open another" is the only reset that discards a known receipt.
+
+Refreshing the preview while an operation is unconfirmed never rebinds the
+key. If the revision, distribution or price changed, the client keeps the
+original payload, shows the old and new values, and requires a new operation
+after the receipt is settled. Selecting a different capsule is locked while
+`submitting`, `unknown`, `reconciling` or `committed`.
+
+The receipt distinguishes new subject, new finish and another copy.
 
 ## Render flow
 
