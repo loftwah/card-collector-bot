@@ -215,6 +215,77 @@ function Status({ value }: { value: string }) {
   );
 }
 
+function AiArtPreferenceCard() {
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  async function load() {
+    try {
+      const result = await api<{ aiArtEnabled: boolean }>("/api/v1/admin/bot");
+      setEnabled(Boolean(result.aiArtEnabled));
+    } catch (cause) {
+      setError(describeError(cause));
+    }
+  }
+  useEffect(() => {
+    void load();
+  }, []);
+
+  async function update(next: boolean) {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await api<{ aiArtEnabled: boolean }>("/api/v1/admin/bot", {
+        method: "PATCH",
+        body: { aiArtEnabled: next },
+      });
+      setEnabled(Boolean(result.aiArtEnabled));
+      setMessage(
+        next
+          ? "AI-assisted artwork is now included in this Bot's albums, draws and Discord surfaces. The origin label remains visible."
+          : "AI-assisted artwork is now excluded from this Bot's albums, draws and Discord surfaces. Existing copies and earned achievements are kept.",
+      );
+    } catch (cause) {
+      setError(describeError(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="surface-flat mt-6 p-5">
+      <p className="eyebrow">Artwork provenance</p>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+        <div className="max-w-2xl">
+          <p className="font-semibold">Include AI-assisted artwork in this Bot</p>
+          <p className="mt-1 text-sm text-[var(--muted)]">
+            Every asset records whether it is a sourced reference, a Foilbury original, a
+            deterministic render, or AI-assisted. Off is the default. Turning this off removes
+            AI-assisted editions from future draws, album rosters, inspection and Discord shares;
+            it never deletes owned copies, serials, ledger rows or earned achievements. Sourced and
+            original artwork are unaffected.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="font-mono text-[0.6rem] uppercase tracking-[0.1em] text-[var(--muted)]">
+            {enabled === null ? "Loading…" : enabled ? "Included" : "Excluded"}
+          </span>
+          <Switch
+            checked={Boolean(enabled)}
+            disabled={busy || enabled === null}
+            onCheckedChange={(next) => void update(next)}
+            aria-label="Include AI-assisted artwork in this Bot"
+          />
+        </div>
+      </div>
+      <Notice error={error} message={message} />
+    </div>
+  );
+}
+
 function AdminOverview() {
   const [status, setStatus] = useState<Record<string, unknown> | null>(null);
   const [jobs, setJobs] = useState<Array<Record<string, unknown>>>([]);
@@ -328,6 +399,7 @@ function AdminOverview() {
               </div>
             ))}
           </div>
+          <AiArtPreferenceCard />
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
             <div className="surface-flat p-5">
               <p className="eyebrow">Active catalogue release</p>

@@ -10,7 +10,7 @@ import {
 } from "../context";
 import { all, first, nowIso } from "../db";
 import { newId } from "../ids";
-import { botForTenant } from "./bots";
+import { botForTenant, botAllowsAiArt } from "./bots";
 import {
   audienceLabel,
   canViewAudience,
@@ -228,10 +228,11 @@ export async function getCollection(
 export async function listCollectionCards(
   ctx: Ctx,
   id: string,
-  options?: { includeDrafts?: boolean },
+  options?: { includeDrafts?: boolean; includeAi?: boolean },
 ) {
   const collection = await getCollection(ctx, id, { includeAll: options?.includeDrafts });
   const statusClause = options?.includeDrafts ? "" : "AND cd.status = 'published'";
+  const includeAi = options?.includeAi ?? (await botAllowsAiArt(ctx.db, ctx.tenant.id));
   return all<{
     id: string;
     slug: string;
@@ -255,7 +256,10 @@ export async function listCollectionCards(
             cd.status, cd.visibility, cd.spoiler_level, cd.attributes_json,
             (SELECT ('/media/render/' || vr.asset_id) FROM fb_variants v
               JOIN fb_variant_renders vr ON vr.variant_id = v.id AND vr.status = 'published'
-             WHERE v.card_id = cd.id ORDER BY vr.created_at DESC LIMIT 1) AS render_url,
+              JOIN fb_artwork_editions e ON e.id = v.edition_id
+              JOIN fb_assets sa ON sa.id = e.subject_asset_id AND sa.tenant_id = e.tenant_id
+             WHERE v.card_id = cd.id AND (? = 1 OR sa.origin NOT IN ('ai_assisted','ai_generated'))
+             ORDER BY vr.created_at DESC LIMIT 1) AS render_url,
             COALESCE((SELECT a.r2_key FROM fb_assets a WHERE a.id = cd.card_back_asset_id), '/brand/card-back.webp') AS card_back_url,
             cat.name AS category_name,
             (SELECT json_group_array(t.slug) FROM fb_card_tags ct JOIN fb_tags t ON t.id = ct.tag_id WHERE ct.card_id = cd.id) AS tags_json
@@ -263,8 +267,16 @@ export async function listCollectionCards(
        JOIN fb_card_definitions cd ON cd.id = cc.card_id
        LEFT JOIN fb_categories cat ON cat.id = cd.category_id
       WHERE cc.collection_id = ? AND cd.archived_at IS NULL ${statusClause}
+        AND EXISTS (
+          SELECT 1 FROM fb_artwork_editions ae
+          JOIN fb_assets asa ON asa.id = ae.subject_asset_id AND asa.tenant_id = ae.tenant_id
+          WHERE ae.card_id = cd.id AND ae.status = 'published' AND ae.archived_at IS NULL
+            AND (? = 1 OR asa.origin NOT IN ('ai_assisted','ai_generated'))
+        )
       ORDER BY cc.sort, cd.name`,
+    includeAi ? 1 : 0,
     collection.id,
+    includeAi ? 1 : 0,
   );
 }
 

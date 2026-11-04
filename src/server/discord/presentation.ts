@@ -1330,6 +1330,8 @@ export interface CabinetSummaryInput {
   albumUrl: string;
   openCustomId: string;
   packsCustomId: string;
+  /** Optional truthful note when historical copies are outside this server's current scope. */
+  scopeNotice?: string | null;
 }
 
 export function cabinetSummaryMessage(input: CabinetSummaryInput): DiscordCallback {
@@ -1351,12 +1353,12 @@ export function cabinetSummaryMessage(input: CabinetSummaryInput): DiscordCallba
       description:
         input.owned === 0
           ? "Claim the daily allowance, then open a capsule. Your cards are tied to this Bot and appear on every server where it is installed."
-          : items
+          : `${items
               .map(
                 (item) =>
                   `• **${item.name}**${item.print ? ` — ${item.print}` : ""} · ${item.variant}${item.rarity ? ` · ${item.rarity}` : ""} · \`${item.serial}\``,
               )
-              .join("\n"),
+              .join("\n")}${input.scopeNotice ? `\n\n${visibleText(input.scopeNotice, "cabinet.scopeNotice")}` : ""}`,
       accent: FOILBURY_PALETTE.deepAqua,
       fields: [
         { name: "Owned", value: String(owned), inline: true },
@@ -2332,6 +2334,8 @@ export const SAFE_ERROR_COPY: Record<string, SafeErrorCopy> = {
 
 export interface ErrorPresentationInput {
   code?: string;
+  /** Reviewed, server-authored detail for configuration/scope failures. Never raw SQL or a stack message. */
+  message?: string;
   nextStep?: string;
   retryCustomId?: string;
   retryLabel?: string;
@@ -2353,7 +2357,7 @@ export function stateFromError(input: ErrorPresentationInput = {}): DiscordCallb
   return stateMessage({
     kind: copy.kind,
     title: copy.title,
-    message: copy.message,
+    message: input.message ?? copy.message,
     nextStep: input.nextStep ?? copy.nextStep,
     ...(input.retryCustomId ? { retryCustomId: input.retryCustomId } : {}),
     ...(input.retryLabel ? { retryLabel: input.retryLabel } : {}),

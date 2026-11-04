@@ -53,6 +53,14 @@ const eventLabel: Record<string, string> = {
 // Multi-print editions are named "Subject — Print title". Keep the subject as
 // the card identity and surface the print title as the human-readable edition.
 const cardPrintTitle = editionPrintTitle(instance.edition_name);
+const artOriginLabel = (origin: string): string => {
+  if (origin === "ai_assisted") return "AI-assisted print, reviewed; not official artwork";
+  if (origin === "ai_generated") return "AI-generated print, reviewed; not official artwork";
+  if (origin === "sourced") return "Sourced character reference; card design Foilbury original";
+  if (origin === "foilbury_original") return "Foilbury original";
+  if (origin === "derived") return "Deterministic render of the source layers";
+  return "Provenance review outstanding";
+};
 ---
 
 <PlayerLayout title={`${instance.card_name} · Collection`}>
@@ -264,6 +272,10 @@ const cardPrintTitle = editionPrintTitle(instance.edition_name);
         <div>
           <dt class="eyebrow">Source work</dt>
           <dd class="mt-1">{instance.source_work ?? "Foilbury original"}</dd>
+        </div>
+        <div>
+          <dt class="eyebrow">Artwork origin</dt>
+          <dd class="mt-1">{artOriginLabel(instance.subject_origin)}</dd>
         </div>
         <div>
           <dt class="eyebrow">Review</dt>

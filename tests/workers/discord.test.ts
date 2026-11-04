@@ -7,7 +7,6 @@ import { signDiscordRequest } from "../../src/server/discord/signature";
 import type { DiscordEnv } from "../../src/server/discord/types";
 import { bootstrap, ctxFor, fixturePool, makeInstance, runtime, setBalance } from "./helpers";
 import { addCollectionCards, createCollection } from "../../src/server/modules/collections";
-import { selectTourAlbum } from "../../src/server/discord/commands";
 import { assertDiscordMessage } from "../../src/server/discord/presentation";
 import { createNpc } from "../../src/server/modules/npcs";
 import { DiscordTransport } from "./discord-transport";
@@ -561,6 +560,11 @@ describe("Discord HTTP interactions", () => {
       .bind(collection.id, new Date().toISOString(), owner.tenant.id)
       .run();
     await setBalance(owner, owner.user!.id, 1000);
+    await runtime.DB.prepare(
+      "UPDATE fb_discord_installations SET channel_audience_json = ? WHERE id = 'dci_test'",
+    )
+      .bind(JSON.stringify({ [CHANNEL_ID]: "members" }))
+      .run();
     const body = interaction(command("open", [{ name: "pool", type: 3, value: "test-pool" }]), {
       id: "deferred-private",
     });
@@ -597,7 +601,7 @@ describe("Discord HTTP interactions", () => {
     expect(transport.original("test-interaction-token")!.visibility).toBe("ephemeral");
     expect(transport.publicMessages()).toHaveLength(0);
     expect(JSON.stringify(transport.original("test-interaction-token")!.payload)).toContain(
-      "Private reveal",
+      "Test One",
     );
   });
 
@@ -1154,7 +1158,13 @@ describe("Discord HTTP interactions", () => {
       }),
     );
     expect(publicReveal.payload.data?.flags).toBe(64);
-    expect(JSON.stringify(publicReveal.payload.data)).toMatch(/Private reveal/i);
+    expect(JSON.stringify(publicReveal.payload.data)).toMatch(
+      /not enabled for this channel|no eligible cards|has no eligible collection/i,
+    );
+    const drawsBefore = await runtime.DB.prepare(
+      "SELECT COUNT(*) AS count FROM fb_draws",
+    ).first<{ count: number }>();
+    expect(drawsBefore?.count).toBe(0);
 
     const share = await send(
       interaction(
@@ -1205,19 +1215,22 @@ describe("Discord HTTP interactions", () => {
     expect(duplicate.payload.data?.embeds?.[0]?.description).toMatch(/already shared/i);
   });
 
-  it("selects the curated album after its versioned roster expands past eight", () => {
-    const selected = selectTourAlbum([
-      { slug: "another-album", card_count: 8 },
-      { slug: "danganronpa-three-games", card_count: 9 },
-      { slug: "largest", card_count: 12 },
-    ]);
-    expect(selected?.slug).toBe("danganronpa-three-games");
-    expect(selectTourAlbum([{ slug: "largest", card_count: 12 }, { slug: "small", card_count: 4 }])?.slug).toBe(
-      "largest",
+  it("selects the server's enabled album without a hard-coded slug", async () => {
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    await fixturePool(player);
+    const albums = await send(
+      interaction(
+        { custom_id: "foilbury:tour:albums", component_type: 2 },
+        { id: "tour-scope-albums", type: 3 },
+      ),
     );
+    expect(albums.payload.data?.embeds?.[0]?.title).toBe("Test Public");
+    expect(JSON.stringify(albums.payload.data)).not.toContain("Danganronpa");
   });
 
   it("starts the guided tour without drawing, spending or granting", async () => {
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    await fixturePool(player);
     await send(interaction(command("daily"), { id: "tour-player-create" }));
     const before = await runtime.DB.prepare(
       "SELECT COUNT(*) AS count FROM fb_ledger_entries",

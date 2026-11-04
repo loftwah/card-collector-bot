@@ -99,12 +99,19 @@ export interface DiscordCallback {
 export interface DiscordInstallation {
   id: string;
   tenant_id: string;
+  bot_id?: string | null;
   application_id: string;
   guild_id: string;
   guild_name: string | null;
   channel_allowlist_json: string;
   channel_key: string | null;
   channel_audience_json?: string | null;
+  /**
+   * NULL inherits the Bot's enabled collection set. An explicit array is the
+   * verified server-scoped allowlist; an empty array is deliberately empty.
+   */
+  collection_allowlist_json?: string | null;
+  configuration_revision?: number;
   game_enabled: number;
   website_enabled: number;
   api_enabled: number;

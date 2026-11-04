@@ -37,6 +37,7 @@ import {
 import { findIdempotent } from "../http";
 import { executeDraw } from "../modules/pools";
 import { errorCallback, prepareDiscordDraw, presentDiscordDraw } from "./commands";
+import { poolScopeFromDiscord, resolveDiscordScope } from "./scope";
 import {
   buildDiscordContext,
   ensureDiscordPlayer,
@@ -66,6 +67,7 @@ const KNOWN_COMMIT_FAILURES = new Set([
   "discord_user_missing",
   "stale_pool_revision",
   "stale_distribution",
+  "stale_scope",
   "empty_pool",
   "insufficient_funds",
   "idempotency_conflict",
@@ -226,11 +228,30 @@ function provideServices(
     commit: ({ principal, plan }) =>
       Effect.tryPromise({
         try: async () => {
+          // Revalidate the server configuration immediately before the
+          // mutation. A stale embed/test button must not spend against a
+          // collection that was disabled or removed after the preview.
+          const freshScope = await resolveDiscordScope(
+            principal.ctx,
+            principal.installation,
+            plan.scope.channelId,
+          );
+          if (freshScope.emptyReason) {
+            throw new ApiError(409, "stale_scope", freshScope.emptyReason);
+          }
+          if (freshScope.digest !== plan.scopeDigest) {
+            throw new ApiError(
+              409,
+              "stale_scope",
+              "This server's collection configuration changed after you reviewed the capsule. Review the new odds before drawing. Nothing was charged.",
+            );
+          }
           const result = (await executeDraw(principal.ctx, {
             pool: plan.poolSlug,
             expectedRevision: plan.expectedRevision,
             expectedDistribution: plan.expectedDistribution,
             channelKey: plan.channelKey,
+            scope: poolScopeFromDiscord(freshScope),
             idempotency: plan.idempotency,
           })) as unknown as DrawReceipt;
           return committedFromResult(result);
@@ -274,6 +295,7 @@ function provideServices(
             principal.installation,
             committed.result,
             plan.poolSlug,
+            plan.scope,
           ),
         catch: (error) => readFailure(error, "presentation"),
       }),

@@ -17,6 +17,7 @@ export interface BotRow {
   name: string;
   description: string | null;
   status: string;
+  ai_art_enabled: number;
   created_at: string;
   updated_at: string;
 }
@@ -83,6 +84,25 @@ export async function listBotsForUser(db: D1Database, userId: string): Promise<B
 
 export async function botForTenant(db: D1Database, tenantId: string): Promise<BotRow | null> {
   return first<BotRow>(db, "SELECT * FROM fb_bots WHERE tenant_id = ? AND status <> 'archived'", tenantId);
+}
+
+/**
+ * AI-assisted artwork is opt-in per Bot. The default is exclusion so a new
+ * installation never publishes generated art merely because a catalogue
+ * contains it. Historical inventory and earned achievements are never removed
+ * by changing this preference.
+ */
+export async function botAllowsAiArt(db: D1Database, tenantId: string): Promise<boolean> {
+  const row = await first<{ ai_art_enabled: number }>(
+    db,
+    "SELECT ai_art_enabled FROM fb_bots WHERE tenant_id = ? AND status <> 'archived'",
+    tenantId,
+  );
+  return Number(row?.ai_art_enabled ?? 0) === 1;
+}
+
+export function isAiArtOrigin(origin: string | null | undefined): boolean {
+  return origin === "ai_assisted" || origin === "ai_generated";
 }
 
 export async function createBot(
@@ -190,7 +210,7 @@ export async function createBot(
     )
     .bind(user.email.toLowerCase(), user.id, user.id, now)
     .run();
-  return { bot: { id: botId, tenant_id: tenantId, owner_user_id: user.id, slug, name, description: input.description?.slice(0, 500) ?? null, status: "active", created_at: now, updated_at: now }, tenant: { id: tenantId, slug: tenantSlug, name }, created: true };
+  return { bot: { id: botId, tenant_id: tenantId, owner_user_id: user.id, slug, name, description: input.description?.slice(0, 500) ?? null, status: "active", ai_art_enabled: 0, created_at: now, updated_at: now }, tenant: { id: tenantId, slug: tenantSlug, name }, created: true };
 }
 
 export async function createBotInvitation(

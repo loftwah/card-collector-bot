@@ -22,6 +22,7 @@ import { Cause, Context, Data, Duration, Effect, Exit, Option } from "effect";
 import type { Ctx, CurrentUser, Tenant } from "../context";
 import type { DrawReceipt } from "../discord/draw-types";
 import type { DiscordDrawReceipt } from "../discord/receipts";
+import type { DiscordScope } from "../discord/scope";
 import type { DiscordCallback, DiscordInstallation, DiscordInteraction } from "../discord/types";
 
 export type DiscordDeliveryVisibility = "private" | "public" | "private_fallback";
@@ -46,6 +47,8 @@ export interface DiscordDrawPlan {
   readonly expectedRevision: number;
   readonly expectedDistribution: string;
   readonly channelKey?: string;
+  readonly scope: DiscordScope;
+  readonly scopeDigest: string;
   readonly idempotency: { readonly key: string; readonly digest: string };
 }
 

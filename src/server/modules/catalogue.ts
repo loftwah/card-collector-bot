@@ -4,6 +4,7 @@ import { all, first, nowIso, statement } from "../db";
 import { newId, sha256Hex } from "../ids";
 import { auditStatement } from "../http";
 import { cardVisibilitySql, publicCollectionSql, viewerAccess } from "./visibility";
+import { botAllowsAiArt, isAiArtOrigin } from "./bots";
 
 export interface CardRow {
   id: string;
@@ -132,6 +133,8 @@ export async function listCards(
     publicOnly?: boolean;
     /** Disable the viewer predicate only for an authorised administrative read. */
     viewerScope?: boolean;
+    /** Include AI-assisted editions. Defaults to the Bot preference for member reads. */
+    includeAi?: boolean;
   } = {},
 ): Promise<CardView[]> {
   const limit = Math.min(200, Math.max(1, options.limit ?? 100));
@@ -204,9 +207,17 @@ export async function listCards(
     ...params,
     limit,
   );
-  const hydrated = await hydrateCards(ctx, rows);
-  if (!options.publicOnly) return hydrated;
+  const includeAi =
+    options.includeAi ??
+    (options.includeDrafts || options.publicOnly
+      ? true
+      : await botAllowsAiArt(ctx.db, ctx.tenant.id));
+  const hydrated = await hydrateCards(ctx, rows, includeAi);
+  if (!options.publicOnly) {
+    return includeAi ? hydrated : hydrated.filter((card) => card.editions.length > 0);
+  }
   return hydrated
+    .filter((card) => includeAi || card.editions.length > 0)
     .map((card) => ({
       ...card,
       editions: card.editions
@@ -225,7 +236,7 @@ export async function listCards(
 export async function getCard(
   ctx: Ctx,
   idOrSlug: string,
-  options?: { includeDrafts?: boolean },
+  options?: { includeDrafts?: boolean; includeAi?: boolean },
 ): Promise<CardView> {
   const access = await viewerAccess(ctx);
   const visibility = cardVisibilitySql(access);
@@ -250,25 +261,31 @@ export async function getCard(
     if (alias) return getCard(ctx, alias.target_card_id, options);
     throw new ApiError(404, "card_not_found", "That card does not exist in this cabinet.");
   }
-  return (await hydrateCards(ctx, [row]))[0]!;
+  return (await hydrateCards(
+    ctx,
+    [row],
+    options?.includeAi ?? (administrative || (await botAllowsAiArt(ctx.db, ctx.tenant.id))),
+  ))[0]!;
 }
 
-async function hydrateCards(ctx: Ctx, rows: CardRow[]): Promise<CardView[]> {
+async function hydrateCards(ctx: Ctx, rows: CardRow[], includeAi = true): Promise<CardView[]> {
   if (rows.length === 0) return [];
   // D1 has a finite bound-parameter budget per statement. Keep each hydration
   // batch small so a 200-card admin page cannot exceed it.
   if (rows.length > 20) {
     const hydrated: CardView[] = [];
     for (let index = 0; index < rows.length; index += 20) {
-      hydrated.push(...(await hydrateCards(ctx, rows.slice(index, index + 20))));
+      hydrated.push(...(await hydrateCards(ctx, rows.slice(index, index + 20), includeAi)));
     }
     return hydrated;
   }
   const ids = rows.map((row) => row.id);
   const placeholders = ids.map(() => "?").join(",");
-  const editions = await all<EditionRow & { subject_url: string; background_url: string | null }>(
+  const editions = await all<
+    EditionRow & { subject_url: string; background_url: string | null; subject_origin: string }
+  >(
     ctx.db,
-    `SELECT e.*, sa.id AS subject_url, ba.id AS background_url
+    `SELECT e.*, sa.id AS subject_url, sa.origin AS subject_origin, ba.id AS background_url
        FROM fb_artwork_editions e
        JOIN fb_assets sa ON sa.id = e.subject_asset_id AND sa.tenant_id = e.tenant_id
        LEFT JOIN fb_assets ba ON ba.id = e.background_asset_id AND ba.tenant_id = e.tenant_id
@@ -400,7 +417,10 @@ async function hydrateCards(ctx: Ctx, rows: CardRow[]): Promise<CardView[]> {
 
   return rows.map((row) => {
     const cardEditions = editions
-      .filter((edition) => edition.card_id === row.id)
+      .filter(
+        (edition) =>
+          edition.card_id === row.id && (includeAi || !isAiArtOrigin(edition.subject_origin)),
+      )
       .map((edition) => ({
         ...edition,
         subject_url: `/media/asset/${edition.subject_asset_id}`,

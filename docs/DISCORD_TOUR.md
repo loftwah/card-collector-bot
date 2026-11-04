@@ -4,6 +4,32 @@ Date: 2026-11-04. Current deployed source: `3ffa24197e82c1488933418de8e1a7935fea
 
 This is the host script for the real Discord tour in the existing Loftwah test installation. It is not a storyboard of the website. The tour is built from the same D1 cards, owned instances, serials, Foil ledger and achievement unlocks as the website and REST API.
 
+## Configured-server scope (2026/11/04)
+
+Every Discord surface now resolves one explicit scope from the installation,
+Bot and tenant, then applies the intersection of:
+
+1. the installation's `collection_allowlist_json` (NULL inherits the Bot;
+   an explicit array, including an empty array, is authoritative);
+2. the Bot's enabled and published collections;
+3. the invoking account's collection visibility;
+4. the channel's verified audience.
+
+The resulting collection/card set governs the welcome, album, roster, packs,
+odds, draw preview and commit, inspection, progress, completion, missions,
+shares and retained demonstration media. A card with **any** live collection
+outside the scope is excluded; an unfiled legacy card is never a fallback for a
+missing configuration. The scope digest is recorded with every draw and share.
+A configuration change between preview and commit returns `409 stale_scope`
+without a debit.
+
+`#card-collector-test` is a private three-person test guild: its only human
+members are Dean (Foilbury owner) and Kaye (active player), plus the Foilbury
+bot. The installation therefore records the channel audience as `members`.
+No Discord permission was changed. A future invitee who is not a Foilbury
+member could see retained member artwork; the owner controls invites and should
+re-verify the channel if the guild membership changes.
+
 ## What is live now
 
 - Application: **Foilbury** `1566702936615026769`; guild **Loftwah** `997734945206313041`; channel `#card-collector-test` `1566700752385081355`.
@@ -41,6 +67,26 @@ the bottom appears only for an authorised account.
 ## Host script
 
 Start at the persistent entry: **https://discord.com/channels/997734945206313041/1566700752385081355/1567185366014763079** (message `1567185366014763079`). Press **Start the tour** or run `/foilbury tour`. The tour is private by default: each response is visible only to the person who runs the command. Buttons that move between stages never draw, spend or grant anything. See `docs/DISCORD_TOUR_ENTRY.md` for the current route.
+
+### Persistent narrated demonstration (separate from the private tour)
+
+The retained demonstration is a finite sequence of ordinary bot messages in
+`#card-collector-test`, published by:
+
+```sh
+node scripts/discord/provision-demo-actor.mjs --apply   # once: labelled non-human actor + bounded demo wallet
+node scripts/discord/persistent-demo.mjs --dry-run      # compose and validate; no draw, claim or post
+node scripts/discord/persistent-demo.mjs --publish      # real draws, claims and retained messages
+```
+
+It uses the **configured** Danganronpa capsule, a labelled `Foilbury Demo
+Collector` (not Dean, not a Discord identity), real API draws with deterministic
+idempotency keys, one real mission claim plus a replay, the real completion
+achievement/reward, and a deliberate completion share. State is under
+`.foilbury/demo/<run>.json`; message IDs and the run are also stored in
+`fb_discord_demo_runs`. A retry reads the channel and the D1 receipts before
+posting or drawing again. The sequence does not claim a second-account
+spectator or a real mobile client when those were not performed.
 
 ### 1. Welcome and discovery
 

@@ -12,7 +12,6 @@ import {
   getCollection,
   listCollectionCards,
   listCollections,
-  listPublicCollections,
 } from "../modules/collections";
 import {
   executeDraw,
@@ -45,6 +44,15 @@ import {
 import { audienceRank, canViewCard, effectiveCardAudience } from "../modules/visibility";
 import { HELP_TEXT } from "./command-definitions";
 import { channelAudienceFor, isBotAdmin, requireBotAdmin } from "./context";
+import {
+  assertCardInDiscordScope,
+  discordScopeCardIds,
+  isAiEditionOrigin,
+  poolScopeFromDiscord,
+  rankDiscordAlbums,
+  resolveDiscordScope,
+  type DiscordScope,
+} from "./scope";
 import type {
   DiscordCallback,
   DiscordComponent,
@@ -174,6 +182,10 @@ function errorCallback(error: unknown, _ephemeral = true): DiscordCallback {
           : undefined;
   return stateFromError({
     code: apiError?.code,
+    ...(apiError &&
+    ["empty_pool", "stale_scope", "scope_empty", "card_outside_scope"].includes(apiError.code)
+      ? { message: apiError.message }
+      : {}),
     ...(nextStep ? { nextStep } : {}),
   });
 }
@@ -225,6 +237,9 @@ export type DiscordOpenPreparation =
       expectedRevision: number;
       expectedDistribution: string;
       channelKey?: string;
+      /** The exact server scope and digest the player approved. */
+      scope: DiscordScope;
+      scopeDigest: string;
       idempotency: { key: string; digest: string };
     };
 
@@ -234,15 +249,27 @@ export async function prepareDiscordDraw(
   installation: DiscordInstallation,
   requestedPool: string | undefined,
   idempotencyKey: string,
+  providedScope?: DiscordScope,
 ): Promise<DiscordOpenPreparation> {
+  const scope =
+    providedScope ??
+    (await resolveDiscordScope(ctx, installation, interaction.channel_id ?? null));
+  if (scope.emptyReason) {
+    return { kind: "respond", callback: scopeFailureMessage(scope) };
+  }
   const poolSlug = validatePoolSlug(requestedPool ?? "cabinet-draw");
-  const preview = await getPoolPreview(ctx, poolSlug, installation.channel_key ?? undefined);
+  const poolScope = poolScopeFromDiscord(scope);
+  const preview = await getPoolPreview(ctx, poolSlug, installation.channel_key ?? undefined, {
+    scope: poolScope,
+  });
   if (preview.eligible_count === 0) {
     if (!requestedPool) {
       // The default capsule can be empty because a collection was disabled or
       // the member hid every world. Present real alternatives and their price
       // instead of a dead end; opening still requires an explicit press.
-      const choices = (await listEligiblePools(ctx, installation.channel_key ?? undefined)).slice(0, 8);
+      const choices = (
+        await listEligiblePools(ctx, installation.channel_key ?? undefined, poolScope)
+      ).slice(0, 8);
       if (choices.length) {
         choices.sort(
           (left, right) =>
@@ -282,6 +309,8 @@ export async function prepareDiscordDraw(
     expectedRevision: preview.revision,
     expectedDistribution: preview.distribution_fingerprint,
     channelKey: installation.channel_key ?? undefined,
+    scope,
+    scopeDigest: scope.digest,
     idempotency: { key: idempotencyKey, digest },
   };
 }
@@ -297,6 +326,7 @@ export async function presentDiscordDraw(
   installation: DiscordInstallation,
   result: DrawReceipt,
   poolSlug: string,
+  scope?: DiscordScope,
 ): Promise<DiscordCallback> {
   const render = await first<{ width: number; height: number; r2_key: string; mime: string }>(
     ctx.db,
@@ -312,8 +342,15 @@ export async function presentDiscordDraw(
   // reveal. The draw itself is already committed and safe in the cabinet.
   const cardAudience = await effectiveCardAudience(ctx, result.card_id).catch(() => "private" as const);
   const channelAudience = channelAudienceFor(installation, interaction.channel_id);
+  const inScope = scope
+    ? await assertCardInDiscordScope(ctx, scope, result.card_id)
+        .then(() => true)
+        .catch(() => false)
+    : true;
   const shareInChannel =
-    cardAudience !== "private" && audienceRank(channelAudience) >= audienceRank(cardAudience);
+    inScope &&
+    cardAudience !== "private" &&
+    audienceRank(channelAudience) >= audienceRank(cardAudience);
   return revealReceiptMessage({
     ...result,
     rarity_name: rarityName,
@@ -350,13 +387,19 @@ async function openCard(
   installation: DiscordInstallation,
   requestedPool: string | undefined,
   idempotencyKey: string,
+  providedScope?: DiscordScope,
 ): Promise<DiscordCallback> {
+  const scope =
+    providedScope ??
+    (await resolveDiscordScope(ctx, installation, interaction.channel_id ?? null));
+  if (scope.emptyReason) return scopeFailureMessage(scope);
   const prepared = await prepareDiscordDraw(
     ctx,
     interaction,
     installation,
     requestedPool,
     idempotencyKey,
+    scope,
   );
   if (prepared.kind === "respond") return prepared.callback;
   const result = (await executeDraw(ctx, {
@@ -364,6 +407,7 @@ async function openCard(
     expectedRevision: prepared.expectedRevision,
     expectedDistribution: prepared.expectedDistribution,
     channelKey: prepared.channelKey,
+    scope: poolScopeFromDiscord(scope),
     idempotency: prepared.idempotency,
   })) as unknown as DrawReceipt;
 
@@ -372,7 +416,7 @@ async function openCard(
   // receipt and tell the player the draw completed. It must never trigger a
   // second draw or claim that nothing changed.
   await recordInteractionReceipt(ctx.db, interaction.id, drawReceiptFromResult(result));
-  return presentDiscordDraw(ctx, interaction, installation, result, prepared.poolSlug);
+  return presentDiscordDraw(ctx, interaction, installation, result, prepared.poolSlug, scope);
 }
 
 /**
@@ -506,9 +550,27 @@ async function daily(ctx: Ctx, interaction: DiscordInteraction): Promise<Discord
   });
 }
 
-async function collection(ctx: Ctx): Promise<DiscordCallback> {
-  const inventory = await getInventory(ctx, { limit: 200 });
+async function collection(
+  ctx: Ctx,
+  installation: DiscordInstallation,
+  providedScope?: DiscordScope,
+): Promise<DiscordCallback> {
+  const scope =
+    providedScope ??
+    (await resolveDiscordScope(ctx, installation, installation.channel_key ?? null));
+  const scopedCardIds = await discordScopeCardIds(ctx, scope);
+  const allInventory = await getInventory(ctx, { limit: 500 });
+  const inventory = allInventory.filter(
+    (item) =>
+      scopedCardIds.has(item.card_id) &&
+      (scope.aiArtEnabled || !isAiEditionOrigin(item.subject_origin)),
+  );
+  const hidden = allInventory.length - inventory.length;
   const wallet = await getWalletSummary(ctx.db, ctx.tenant.id, ctx.user!.id, 1);
+  const scopeNotice =
+    hidden > 0
+      ? `${hidden} historical ${hidden === 1 ? "copy is" : "copies are"} outside this server's current collection or AI-artwork scope. They remain owned and are visible in the signed-in website cabinet; they are not available to draw or share here.`
+      : null;
   if (inventory.length === 0) {
     return cabinetSummaryMessage({
       scopeName: ctx.tenant.name,
@@ -521,6 +583,7 @@ async function collection(ctx: Ctx): Promise<DiscordCallback> {
       albumUrl: absoluteUrl(ctx.config.publicOrigin, "/play/collection")!,
       openCustomId: "foilbury:open:cabinet-draw",
       packsCustomId: "foilbury:packs",
+      ...(scopeNotice ? { scopeNotice } : {}),
     });
   }
   const counts = new Map<string, number>();
@@ -543,19 +606,34 @@ async function collection(ctx: Ctx): Promise<DiscordCallback> {
     albumUrl: absoluteUrl(ctx.config.publicOrigin, "/play/collection")!,
     openCustomId: "foilbury:open:cabinet-draw",
     packsCustomId: "foilbury:packs",
+    ...(scopeNotice ? { scopeNotice } : {}),
   });
 }
 
-async function card(ctx: Ctx, query: string): Promise<DiscordCallback> {
+async function card(
+  ctx: Ctx,
+  query: string,
+  installation: DiscordInstallation,
+  providedScope?: DiscordScope,
+): Promise<DiscordCallback> {
+  const scope =
+    providedScope ??
+    (await resolveDiscordScope(ctx, installation, installation.channel_key ?? null));
+  if (scope.emptyReason) return scopeFailureMessage(scope);
   let found: Awaited<ReturnType<typeof getCard>> | null = null;
   try {
-    found = await getCard(ctx, query);
+    found = await getCard(ctx, query, { includeAi: scope.aiArtEnabled });
   } catch (error) {
     if (!(error instanceof ApiError) || error.code !== "card_not_found") throw error;
-    const matches = await listCards(ctx, { search: query, limit: 5 });
+    const matches = await listCards(ctx, {
+      search: query,
+      limit: 5,
+      includeAi: scope.aiArtEnabled,
+    });
     found = matches[0] ?? null;
     if (!found) throw error;
   }
+  await assertCardInDiscordScope(ctx, scope, found.id);
   if (found.status !== "published" || found.archived_at) {
     if (!isBotAdmin(ctx.user!))
       throw new ApiError(
@@ -612,8 +690,14 @@ async function cardFace(
   cardId: string,
   variantId: string | null,
   side: "front" | "back",
+  installation: DiscordInstallation,
+  providedScope?: DiscordScope,
 ): Promise<DiscordCallback> {
-  const found = await getCard(ctx, cardId);
+  const scope =
+    providedScope ??
+    (await resolveDiscordScope(ctx, installation, installation.channel_key ?? null));
+  await assertCardInDiscordScope(ctx, scope, cardId);
+  const found = await getCard(ctx, cardId, { includeAi: scope.aiArtEnabled });
   if (found.status !== "published")
     throw new ApiError(404, "card_not_found", "That card is not published.");
   const variants = found.editions.flatMap((edition) =>
@@ -662,8 +746,17 @@ async function cardFace(
   });
 }
 
-async function cardDetails(ctx: Ctx, cardId: string): Promise<DiscordCallback> {
-  const found = await getCard(ctx, cardId);
+async function cardDetails(
+  ctx: Ctx,
+  cardId: string,
+  installation: DiscordInstallation,
+  providedScope?: DiscordScope,
+): Promise<DiscordCallback> {
+  const scope =
+    providedScope ??
+    (await resolveDiscordScope(ctx, installation, installation.channel_key ?? null));
+  await assertCardInDiscordScope(ctx, scope, cardId);
+  const found = await getCard(ctx, cardId, { includeAi: scope.aiArtEnabled });
   const owned = await first<{ copies: number; finishes: number; serials: string | null }>(
     ctx.db,
     `SELECT COUNT(*) AS copies, COUNT(DISTINCT material.key) AS finishes,
@@ -683,6 +776,22 @@ async function cardDetails(ctx: Ctx, cardId: string): Promise<DiscordCallback> {
       return [];
     }
   })();
+  const origins = [
+    ...new Set(
+      found.editions.map((edition) =>
+        String((edition as unknown as { subject_origin?: string }).subject_origin ?? "unknown"),
+      ),
+    ),
+  ];
+  const aiOrigins = origins.filter((origin) => origin === "ai_assisted" || origin === "ai_generated");
+  const artworkLabel =
+    aiOrigins.length === 0
+      ? origins.includes("sourced")
+        ? "Sourced character reference; card design and finishes are Foilbury originals. Not AI-generated."
+        : "Foilbury original artwork."
+      : aiOrigins.length === origins.length
+        ? "AI-assisted print, reviewed; not official artwork. This Bot includes AI-assisted artwork."
+        : "Mixed editions: sourced/original and AI-assisted prints. The label on each print identifies its origin.";
   return callback(
     {
       embeds: [
@@ -694,6 +803,7 @@ async function cardDetails(ctx: Ctx, cardId: string): Promise<DiscordCallback> {
             { name: "Collection", value: found.collections[0]?.name ?? "Cabinet", inline: true },
             { name: "Source", value: found.source_work ?? "Foilbury", inline: true },
             { name: "Rarity", value: found.rarity?.name ?? "Unclassified", inline: true },
+            { name: "Artwork", value: artworkLabel, inline: false },
             ...attributes
               .slice(0, 5)
               .map((attr) => ({
@@ -724,8 +834,20 @@ async function cardDetails(ctx: Ctx, cardId: string): Promise<DiscordCallback> {
   );
 }
 
-async function achievements(ctx: Ctx): Promise<DiscordCallback> {
-  const items = await listAchievements(ctx, ctx.user!.id);
+async function achievements(
+  ctx: Ctx,
+  installation: DiscordInstallation,
+  providedScope?: DiscordScope,
+): Promise<DiscordCallback> {
+  const scope =
+    providedScope ??
+    (await resolveDiscordScope(ctx, installation, installation.channel_key ?? null));
+  const items = (await listAchievements(ctx, ctx.user!.id)).filter(
+    (item) =>
+      !item.criteria?.collection_id ||
+      (typeof item.criteria.collection_id === "string" &&
+        scope.collectionIds.includes(item.criteria.collection_id)),
+  );
   const earned = items.filter((item) => item.state === "earned");
   const close = items
     .filter((item) => item.state !== "earned")
@@ -754,8 +876,20 @@ async function achievements(ctx: Ctx): Promise<DiscordCallback> {
   });
 }
 
-async function packs(ctx: Ctx, installation: DiscordInstallation): Promise<DiscordCallback> {
-  const pools = await listEligiblePools(ctx, installation.channel_key ?? undefined);
+async function packs(
+  ctx: Ctx,
+  installation: DiscordInstallation,
+  providedScope?: DiscordScope,
+): Promise<DiscordCallback> {
+  const scope =
+    providedScope ??
+    (await resolveDiscordScope(ctx, installation, installation.channel_key ?? null));
+  if (scope.emptyReason) return scopeFailureMessage(scope);
+  const pools = await listEligiblePools(
+    ctx,
+    installation.channel_key ?? undefined,
+    poolScopeFromDiscord(scope),
+  );
   if (pools.length === 0) {
     return callback(
       {
@@ -799,9 +933,21 @@ async function packs(ctx: Ctx, installation: DiscordInstallation): Promise<Disco
   });
 }
 
-async function profile(ctx: Ctx, installation: DiscordInstallation): Promise<DiscordCallback> {
+async function profile(
+  ctx: Ctx,
+  installation: DiscordInstallation,
+  providedScope?: DiscordScope,
+): Promise<DiscordCallback> {
+  const scope =
+    providedScope ??
+    (await resolveDiscordScope(ctx, installation, installation.channel_key ?? null));
   const wallet = await getWalletSummary(ctx.db, ctx.tenant.id, ctx.user!.id, 1);
-  const inventory = await getInventory(ctx, { limit: 500 });
+  const scopedCardIds = await discordScopeCardIds(ctx, scope);
+  const inventory = (await getInventory(ctx, { limit: 500 })).filter(
+    (item) =>
+      scopedCardIds.has(item.card_id) &&
+      (scope.aiArtEnabled || !isAiEditionOrigin(item.subject_origin)),
+  );
   const lastReward = await first<{ created_at: string }>(
     ctx.db,
     "SELECT created_at FROM fb_reward_claims WHERE tenant_id = ? AND user_id = ? AND rule_key = 'daily-allowance' ORDER BY created_at DESC LIMIT 1",
@@ -812,7 +958,12 @@ async function profile(ctx: Ctx, installation: DiscordInstallation): Promise<Dis
   const next = lastReward
     ? new Date(new Date(lastReward.created_at).getTime() + economy.daily_cooldown_seconds * 1000)
     : null;
-  const achievements = await listAchievements(ctx, ctx.user!.id);
+  const achievements = (await listAchievements(ctx, ctx.user!.id)).filter(
+    (achievement) =>
+      !achievement.criteria?.collection_id ||
+      (typeof achievement.criteria.collection_id === "string" &&
+        scope.collectionIds.includes(achievement.criteria.collection_id)),
+  );
   const earned = achievements.filter((achievement) => achievement.state === "earned").length;
   return profileMessage({
     displayName: ctx.user!.displayName,
@@ -1267,32 +1418,54 @@ function tourNav(
   return components(row.length ? [...extra, row] : extra);
 }
 
-export function selectTourAlbum<T extends { slug: string; card_count: number }>(
-  collections: T[],
-): T | null {
-  return (
-    collections.find((collection) => collection.slug === "danganronpa-three-games") ??
-    [...collections].sort((left, right) => right.card_count - left.card_count)[0] ??
-    null
-  );
+/**
+ * Rank the server's actual enabled albums. There is deliberately no preferred
+ * slug: the account's existing progress, a compact eight-subject roster and
+ * then the larger catalogue decide, and the caller still verifies that the
+ * release has published cards and renders.
+ */
+async function tourAlbum(ctx: Ctx, scope: DiscordScope) {
+  const ranked = await rankDiscordAlbums(ctx, scope);
+  for (const candidate of ranked) {
+    if (candidate.collection.card_count <= 0) continue;
+    let detail;
+    try {
+      detail = await getCollection(ctx, candidate.collection.id);
+    } catch {
+      continue;
+    }
+    const [cards, progress] = await Promise.all([
+      listCollectionCards(ctx, detail.id, { includeAi: scope.aiArtEnabled }),
+      collectionProgress(ctx, detail.id),
+    ]);
+    if (cards.length === 0) continue;
+    return { detail, cards, progress };
+  }
+  return null;
 }
 
-async function tourAlbum(ctx: Ctx) {
-  const collections = (await listCollections(ctx)).filter(
-    (collection) => collection.enabled && collection.status === "published",
+function scopeFailureMessage(scope: DiscordScope): DiscordCallback {
+  return callback(
+    {
+      embeds: [
+        {
+          title: "This server has no eligible collection",
+          description: [
+            scope.emptyReason ?? "No collection is available for this server and channel.",
+            "",
+            "The tour does not fall back to the global catalogue, a hard-coded album or another Bot's content. Nothing was charged or awarded.",
+            "",
+            "A Bot Owner or scoped admin can reconcile this in Studio → Collections and the Discord installation settings.",
+          ].join("\n"),
+          color: 0x8a8f98,
+          footer: {
+            text: `Server scope ${scope.digest.slice(0, 12)} · installation ${scope.installationId}`,
+          },
+        },
+      ],
+    },
+    true,
   );
-  // The guided tour uses the curated Danganronpa album whatever its current
-  // release size. Do not treat eight as a universal ceiling: a later roster
-  // expansion still belongs to the same versioned release and frozen
-  // achievement target.
-  const preferred = selectTourAlbum(collections);
-  if (!preferred) return null;
-  const detail = await getCollection(ctx, preferred.id);
-  const [cards, progress] = await Promise.all([
-    listCollectionCards(ctx, detail.id),
-    collectionProgress(ctx, detail.id),
-  ]);
-  return { detail, cards, progress };
 }
 
 async function tour(
@@ -1301,15 +1474,18 @@ async function tour(
   stage: TourStage,
   channelId?: string,
 ): Promise<DiscordCallback> {
+  const scope = await resolveDiscordScope(ctx, installation, channelId ?? null);
+  if (stage !== "admin" && scope.emptyReason) return scopeFailureMessage(scope);
   const wallet = await getWalletSummary(ctx.db, ctx.tenant.id, ctx.user!.id, 1);
   const economy = await getEconomy(ctx);
-  const album = await tourAlbum(ctx);
+  const album = stage === "admin" ? null : await tourAlbum(ctx, scope);
 
   if (stage === "welcome") {
-    const showcase = await listPublicCollections(ctx);
-    const memberCount = (await listCollections(ctx)).filter(
-      (collection) => collection.enabled,
-    ).length;
+    const selected = album?.detail.name ?? "No eligible album";
+    const collectionLines = scope.collections
+      .slice(0, 6)
+      .map((collection) => `• ${collection.name} · ${collection.audience_label}`)
+      .join("\n");
     return callback(
       {
         embeds: [
@@ -1318,23 +1494,23 @@ async function tour(
             description: [
               "Foilbury is a collectible-card cabinet. Claim a free allowance, open a capsule, and keep the copy in this Bot's cabinet.",
               "",
-              "**What you can see here:** this private response, your own inventory and the albums your account can enter. Nothing in the tour spends Foil, draws a card or grants a reward until you choose an action.",
+              "**What you can see here:** this private response, your own inventory and the albums this server actually enables. Nothing in the tour spends Foil, draws a card or grants a reward until you choose an action.",
             ].join("\n"),
             color: 0xc9a227,
             fields: [
               {
-                name: "Public showcase",
-                value: showcase.length
-                  ? showcase
-                      .slice(0, 4)
-                      .map((item) => `• ${item.name}`)
-                      .join("\n")
-                  : "No public showcase is published yet.",
+                name: "This server's enabled collections",
+                value: collectionLines || "No collection is eligible for this channel.",
                 inline: false,
               },
               {
+                name: "Tour album",
+                value: selected,
+                inline: true,
+              },
+              {
                 name: "Member albums",
-                value: `${memberCount} available to this Bot`,
+                value: `${scope.collections.length} available here`,
                 inline: true,
               },
               {
@@ -1347,8 +1523,13 @@ async function tour(
                 value: `${wallet.balance} ${wallet.currencySymbol}`,
                 inline: true,
               },
+              {
+                name: "Server scope",
+                value: `\`${scope.digest.slice(0, 16)}\` · ${scope.channelAudience} channel · AI artwork ${scope.aiArtEnabled ? "included" : "excluded"}`,
+                inline: false,
+              },
             ],
-            footer: { text: "Private tour · authorised members only · use Next to continue" },
+            footer: { text: "Private tour · configured server collections only · use Next to continue" },
           },
         ],
         components: tourNav("welcome", [
@@ -1370,7 +1551,7 @@ async function tour(
           {
             title: "No member album is available",
             description:
-              "This Bot has no enabled album your account can enter right now. Ask the Bot Owner to enable a collection. Nothing was charged or awarded.",
+              "This server has no enabled, published album your account can enter right now. Ask the Bot Owner to enable a collection. Nothing was charged or awarded.",
             color: 0x8a8f98,
           },
         ],
@@ -1446,7 +1627,11 @@ async function tour(
   }
 
   if (stage === "fresh") {
-    const pools = await listEligiblePools(ctx, installation.channel_key ?? undefined);
+    const pools = await listEligiblePools(
+      ctx,
+      installation.channel_key ?? undefined,
+      poolScopeFromDiscord(scope),
+    );
     const lines: string[] = [];
     for (const preview of pools.slice(0, 4)) {
       const odds = new Map<string, number>();
@@ -1506,7 +1691,11 @@ async function tour(
   if (stage === "open") {
     let poolLine = "No eligible pool right now. Nothing can be charged.";
     let poolButton: DiscordComponent[] = [];
-    const pools = await listEligiblePools(ctx, installation.channel_key ?? undefined);
+    const pools = await listEligiblePools(
+      ctx,
+      installation.channel_key ?? undefined,
+      poolScopeFromDiscord(scope),
+    );
     const preview = pools[0];
     if (preview) {
       if (wallet.balance >= preview.price) {
@@ -1560,13 +1749,16 @@ async function tour(
            FROM fb_collection_cards cc
            JOIN fb_card_definitions cd ON cd.id = cc.card_id AND cd.status = 'published' AND cd.archived_at IS NULL
            JOIN fb_variants v ON v.card_id = cd.id AND v.status = 'published' AND v.archived_at IS NULL
+           JOIN fb_artwork_editions e ON e.id = v.edition_id
+           JOIN fb_assets sa ON sa.id = e.subject_asset_id AND sa.tenant_id = e.tenant_id
            JOIN fb_materials m ON m.id = v.material_id
            LEFT JOIN fb_effects fx ON fx.id = v.effect_id
            JOIN fb_variant_renders vr ON vr.variant_id = v.id AND vr.status = 'published'
           WHERE cc.collection_id = ? AND cc.tenant_id = ?
+            AND (? = 1 OR sa.origin NOT IN ('ai_assisted','ai_generated'))
           ORDER BY cc.sort, v.name`,
       )
-      .bind(album.detail.id, ctx.tenant.id)
+      .bind(album.detail.id, ctx.tenant.id, scope.aiArtEnabled ? 1 : 0)
       .all<{
         card_id: string;
         card_name: string;
@@ -1610,6 +1802,25 @@ async function tour(
       value: `${item.card_name} · ${item.variant_name}`,
       inline: false,
     }));
+    const originRows = await ctx.db
+      .prepare(
+        `SELECT sa.origin AS origin, COUNT(DISTINCT cd.id) AS cards
+           FROM fb_collection_cards cc
+           JOIN fb_card_definitions cd ON cd.id = cc.card_id
+           JOIN fb_artwork_editions e ON e.card_id = cd.id
+           JOIN fb_assets sa ON sa.id = e.subject_asset_id
+          WHERE cc.collection_id = ? AND cc.tenant_id = ?
+          GROUP BY sa.origin`,
+      )
+      .bind(album.detail.id, ctx.tenant.id)
+      .all<{ origin: string; cards: number }>();
+    const origins = originRows.results.map((row) => row.origin);
+    const artworkSummary =
+      origins.some((origin) => origin === "ai_assisted" || origin === "ai_generated")
+        ? origins.every((origin) => origin === "ai_assisted" || origin === "ai_generated")
+          ? "AI-assisted artwork; reviewed, labelled and not official. This Bot includes AI-assisted editions."
+          : "Mixed: sourced/original and AI-assisted editions. Each print carries its own origin label."
+        : "Sourced character references with Foilbury-original card design and finishes. Not AI-generated.";
     return callback(
       {
         embeds: [
@@ -1624,15 +1835,18 @@ async function tour(
               "**3D:** open the signed-in web album. Discord does not present native 3D cards.",
             ].join("\n"),
             color: 0x3b82f6,
-            fields: fields.length
-              ? fields
-              : [
-                  {
-                    name: "Renders",
-                    value: "No published finish renders are available.",
-                    inline: false,
-                  },
-                ],
+            fields: [
+              ...(fields.length
+                ? fields
+                : [
+                    {
+                      name: "Renders",
+                      value: "No published finish renders are available.",
+                      inline: false,
+                    },
+                  ]),
+              { name: "Artwork provenance", value: artworkSummary, inline: false },
+            ],
             footer: {
               text: "Private member view · viewing does not spend Foil or award another copy",
             },
@@ -1666,7 +1880,9 @@ async function tour(
   }
 
   if (stage === "progress") {
-    const inventory = await getInventory(ctx, { collection: album.detail.slug, limit: 500 });
+    const inventory = (await getInventory(ctx, { collection: album.detail.slug, limit: 500 })).filter(
+      (item) => scope.aiArtEnabled || !isAiEditionOrigin(item.subject_origin),
+    );
     const unique = new Set(inventory.map((item) => item.card_id));
     const variants = new Set(inventory.map((item) => item.variant_id));
     const duplicates = inventory.length - unique.size;
@@ -1764,7 +1980,12 @@ async function tour(
   }
 
   if (stage === "share") {
-    const inventory = await getInventory(ctx, { limit: 500 });
+    const scopedCardIds = await discordScopeCardIds(ctx, scope);
+    const inventory = (await getInventory(ctx, { limit: 500 })).filter(
+      (item) =>
+        scopedCardIds.has(item.card_id) &&
+        (scope.aiArtEnabled || !isAiEditionOrigin(item.subject_origin)),
+    );
     const channelAudience = channelAudienceFor(installation, channelId);
     let publicCard: (typeof inventory)[number] | null = null;
     for (const item of inventory.slice(0, 20)) {
@@ -1776,8 +1997,19 @@ async function tour(
     const albumCard =
       inventory.find((item) => album.cards.some((card) => card.id === item.card_id)) ?? null;
     const albumCardAudience = albumCard ? await effectiveCardAudience(ctx, albumCard.card_id) : "private";
+    const albumCardAi = albumCard
+      ? await first<{ origin: string | null }>(
+          ctx.db,
+          `SELECT sa.origin FROM fb_variants v
+             JOIN fb_artwork_editions e ON e.id = v.edition_id
+             JOIN fb_assets sa ON sa.id = e.subject_asset_id
+            WHERE v.id = ?`,
+          albumCard.variant_id,
+        )
+      : null;
     const canShareAlbumCard =
       albumCard !== null &&
+      (scope.aiArtEnabled || !["ai_assisted", "ai_generated"].includes(albumCardAi?.origin ?? "")) &&
       albumCardAudience !== "private" &&
       audienceRank(channelAudience) >= audienceRank(albumCardAudience);
     const canShareCompletion =
@@ -1958,6 +2190,7 @@ async function tourShare(
   installation: DiscordInstallation,
   kind: string,
   objectId: string,
+  providedScope?: DiscordScope,
 ): Promise<DiscordCallback> {
   if (!["card", "completion", "profile"].includes(kind)) {
     throw new ApiError(422, "share_kind_invalid", "That share type is not available.");
@@ -1968,6 +2201,10 @@ async function tourShare(
       "share_channel_required",
       "Sharing needs an authorised server channel.",
     );
+  const scope =
+    providedScope ??
+    (await resolveDiscordScope(ctx, installation, interaction.channel_id));
+  if (scope.emptyReason) throw new ApiError(403, "share_scope_empty", scope.emptyReason);
   const channelAudience = channelAudienceFor(installation, interaction.channel_id);
   let embed: DiscordEmbed;
   let audience: "public" | "members" | "private" = "public";
@@ -2011,6 +2248,16 @@ async function tourShare(
       throw new ApiError(404, "share_card_missing", "That owned card is not in your cabinet.");
     if (!(await canViewCard(ctx, row.card_id)))
       throw new ApiError(404, "share_card_missing", "That card is not available to this album.");
+    await assertCardInDiscordScope(ctx, scope, row.card_id);
+    const scopedCollection = await first<{ name: string }>(
+      ctx.db,
+      `SELECT c.name FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id
+        WHERE cc.card_id = ? AND cc.collection_id IN (${scope.collectionIds.map(() => "?").join(",")})
+        ORDER BY c.sort, c.name LIMIT 1`,
+      row.card_id,
+      ...scope.collectionIds,
+    );
+    row.collection_name = scopedCollection?.name ?? row.collection_name;
     audience = await effectiveCardAudience(ctx, row.card_id);
     if (audience === "private") {
       throw new ApiError(403, "share_private_not_available", "Private collection artwork cannot be shared to a channel.");
@@ -2044,6 +2291,13 @@ async function tourShare(
     objectId = row.card_id;
   } else if (kind === "completion") {
     const album = await getCollection(ctx, objectId);
+    if (!scope.collectionIds.includes(album.id)) {
+      throw new ApiError(
+        403,
+        "share_outside_scope",
+        "That album is not enabled for this server. Nothing was shared.",
+      );
+    }
     const progress = await collectionProgress(ctx, album.id);
     if (!progress.complete)
       throw new ApiError(
@@ -2078,14 +2332,22 @@ async function tourShare(
       footer: { text: "Explicit completion share · no balance, email or admin controls" },
     };
   } else {
-    const inventory = await getInventory(ctx, { limit: 200 });
+    const scopedCardIds = await discordScopeCardIds(ctx, scope);
+    const inventory = (await getInventory(ctx, { limit: 200 })).filter((item) =>
+      scopedCardIds.has(item.card_id),
+    );
     const achievements = await listAchievements(ctx, ctx.user!.id);
     const publicCards: string[] = [];
     for (const item of inventory.slice(0, 20)) {
       if ((await effectiveCardAudience(ctx, item.card_id)) === "public") publicCards.push(item.card_id);
     }
     const publicBadges = achievements.filter(
-      (item) => item.state === "earned" && item.visibility === "public",
+      (item) =>
+        item.state === "earned" &&
+        item.visibility === "public" &&
+        (!item.criteria?.collection_id ||
+          (typeof item.criteria.collection_id === "string" &&
+            scope.collectionIds.includes(item.criteria.collection_id))),
     );
     objectId = ctx.user!.id;
     embed = {
@@ -2174,17 +2436,17 @@ export async function runCommand(
     case "missions":
       return missionsView(ctx);
     case "collection":
-      return collection(ctx);
+      return collection(ctx, installation);
     case "card": {
       const query = typeof values.query === "string" ? values.query.trim() : "";
       if (!query)
         throw new ApiError(422, "card_query_required", "Provide a card name, slug or ID.");
-      return card(ctx, query);
+      return card(ctx, query, installation);
     }
     case "packs":
       return packs(ctx, installation);
     case "achievements":
-      return achievements(ctx);
+      return achievements(ctx, installation);
     case "tour":
       return tour(ctx, installation, "welcome", interaction.channel_id);
     case "profile":
@@ -2367,7 +2629,7 @@ export async function runComponent(
     }
     return redeliverReceipt(ctx, interaction, originalInteractionId);
   }
-  if (customId === "foilbury:collection") return collection(ctx);
+  if (customId === "foilbury:collection") return collection(ctx, installation);
   if (customId === "foilbury:daily") return daily(ctx, interaction);
   if (customId.startsWith("foilbury:mission:claim:")) {
     const key = customId.slice("foilbury:mission:claim:".length);
@@ -2381,8 +2643,8 @@ export async function runComponent(
     if (!cardId)
       throw new ApiError(422, "card_component_invalid", "That card control is incomplete.");
     if (action === "front" || action === "back")
-      return cardFace(ctx, cardId, variantId ?? null, action);
-    if (action === "details") return cardDetails(ctx, cardId);
+      return cardFace(ctx, cardId, variantId ?? null, action, installation);
+    if (action === "details") return cardDetails(ctx, cardId, installation);
     throw new ApiError(404, "card_component_unknown", "That card control is not recognised.");
   }
   if (customId.startsWith("foilbury:confirm:")) {

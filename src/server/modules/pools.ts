@@ -3,7 +3,8 @@ import { all, first, nowIso } from "../db";
 import { newId, sha256Hex } from "../ids";
 import { auditStatement, findIdempotent, idempotencyStatement, type IdempotencyInput } from "../http";
 import { getWallet } from "./wallet";
-import { cardVisibilitySql, viewerAccess } from "./visibility";
+import { cardVisibilitySql, audienceRank, viewerAccess } from "./visibility";
+import { botAllowsAiArt, isAiArtOrigin } from "./bots";
 
 export interface PoolRow {
   id: string;
@@ -34,6 +35,15 @@ export interface EligibleEntry {
   collections: Array<{ id: string; name: string }>;
 }
 
+export interface PoolScope {
+  collectionIds: string[];
+  audience: "public" | "members" | "private";
+  digest: string;
+  /** Discord scope: a card with no collection is not eligible. */
+  requireFiled: boolean;
+  aiArtEnabled: boolean;
+}
+
 export interface PoolPreview {
   pool: PoolRow;
   revision: number;
@@ -48,6 +58,10 @@ export interface PoolPreview {
     player_excluded_tags: string[];
     player_hidden_collection_ids: string[];
     unfiled_count: number;
+    out_of_scope_count: number;
+    ai_excluded_count: number;
+    ai_art_enabled: boolean;
+    scope_digest: string | null;
     empty_reason: string | null;
   };
   pity: "disabled";
@@ -80,11 +94,12 @@ export async function listPools(ctx: Ctx, includeDrafts = false) {
 export async function listEligiblePools(
   ctx: Ctx,
   channelKey?: string,
+  scope?: PoolScope,
 ): Promise<PoolPreview[]> {
   const pools = await listPools(ctx);
   const previews = await Promise.all(
     pools.map((pool) =>
-      getPoolPreview(ctx, pool.slug, channelKey).catch(() => null),
+      getPoolPreview(ctx, pool.slug, channelKey, { scope }).catch(() => null),
     ),
   );
   return previews
@@ -100,7 +115,7 @@ export async function getPoolPreview(
   ctx: Ctx,
   slugOrId: string,
   channelKey?: string,
-  options?: { includeDraft?: boolean },
+  options?: { includeDraft?: boolean; scope?: PoolScope },
 ): Promise<PoolPreview> {
   const pool = await first<PoolRow>(
     ctx.db,
@@ -160,13 +175,15 @@ export async function getPoolPreview(
     weight: number;
     tags_json: string;
     collections_json: string;
+    subject_origin: string | null;
   }>(
     ctx.db,
     `SELECT v.id AS variant_id, v.card_id, cd.name AS card_name, e.name AS edition_name, v.name AS variant_name,
             m.key AS material_key, fx.key AS effect_key, ('/media/render/' || r.asset_id) AS render_url, pe.weight,
+            sa.origin AS subject_origin,
             COALESCE((SELECT json_group_array(t.slug) FROM fb_card_tags ct JOIN fb_tags t ON t.id = ct.tag_id WHERE ct.card_id = cd.id), '[]') AS tags_json,
             COALESCE((
-              SELECT json_group_array(json_object('id', c.id, 'name', c.name))
+              SELECT json_group_array(json_object('id', c.id, 'name', c.name, 'view_audience', c.view_audience))
                 FROM fb_collection_cards cc
                 JOIN fb_collections c ON c.id = cc.collection_id
                WHERE cc.card_id = cd.id AND c.status = 'published' AND c.archived_at IS NULL
@@ -182,6 +199,7 @@ export async function getPoolPreview(
        FROM fb_pool_entries pe
        JOIN fb_variants v ON v.id = pe.variant_id
        JOIN fb_artwork_editions e ON e.id = v.edition_id
+       JOIN fb_assets sa ON sa.id = e.subject_asset_id AND sa.tenant_id = e.tenant_id
        JOIN fb_card_definitions cd ON cd.id = v.card_id
        JOIN fb_materials m ON m.id = v.material_id
        LEFT JOIN fb_effects fx ON fx.id = v.effect_id
@@ -213,15 +231,47 @@ export async function getPoolPreview(
   );
   const eligible: EligibleEntry[] = [];
   let unfiledCount = 0;
+  let outOfScopeCount = 0;
+  let aiExcludedCount = 0;
+  const aiAllowed =
+    options?.scope?.aiArtEnabled ?? (await botAllowsAiArt(ctx.db, ctx.tenant.id));
+  const scope = options?.scope;
   for (const entry of entries) {
     const tags = JSON.parse(entry.tags_json) as string[];
     if (tags.some((tag) => excluded.has(tag))) continue;
-    const collections = JSON.parse(entry.collections_json) as Array<{ id: string; name: string }>;
+    const collections = JSON.parse(entry.collections_json) as Array<{
+      id: string;
+      name: string;
+      view_audience: "public" | "members" | "private";
+    }>;
     if (collections.length === 0) {
-      // Legacy/unfiled cards stay eligible and are counted explicitly rather
-      // than becoming an invisible residual pool.
+      if (scope?.requireFiled) {
+        outOfScopeCount += 1;
+        continue;
+      }
+      // Legacy/unfiled cards stay eligible on interfaces that do not resolve a
+      // configured server scope; Discord never uses this fallback.
       unfiledCount += 1;
-    } else if (hiddenCollections.size && collections.every((collection) => hiddenCollections.has(collection.id))) {
+    } else if (scope) {
+      const outside = collections.some(
+        (collection) =>
+          !scope.collectionIds.includes(collection.id) ||
+          audienceRank(collection.view_audience) > audienceRank(scope.audience),
+      );
+      if (outside) {
+        outOfScopeCount += 1;
+        continue;
+      }
+    }
+    if (!aiAllowed && isAiArtOrigin(entry.subject_origin)) {
+      aiExcludedCount += 1;
+      continue;
+    }
+    if (
+      collections.length > 0 &&
+      hiddenCollections.size &&
+      collections.every((collection) => hiddenCollections.has(collection.id))
+    ) {
       // Multi-collection cards remain eligible while any member collection is
       // included; hiding every owning collection removes the card.
       continue;
@@ -253,6 +303,8 @@ export async function getPoolPreview(
       channel_key: channelKey ?? null,
       excluded_tags: [...excluded].sort(),
       hidden_collection_ids: [...hiddenCollections].sort(),
+      scope_digest: scope?.digest ?? null,
+      ai_art_enabled: aiAllowed,
       entries: eligible
         .map((entry) => ({ variant_id: entry.variant_id, weight: entry.weight }))
         .sort((left, right) => left.variant_id.localeCompare(right.variant_id)),
@@ -266,11 +318,15 @@ export async function getPoolPreview(
   const emptyReason =
     eligible.length > 0
       ? null
-      : entries.length > 0
-        ? hiddenCollections.size
-          ? "Every card in this capsule belongs to a collection you turned off in your draw preferences. Nothing will be charged."
-          : "Every entry in this pool is hidden by the active topic policy or your preferences. Nothing will be charged."
-        : "This pool has no published variants with a finished render. Nothing will be charged.";
+      : aiExcludedCount > 0 && aiExcludedCount === entries.length
+        ? "Every eligible card in this capsule uses AI-assisted artwork, which this Bot has excluded. Nothing will be charged."
+        : scope && outOfScopeCount > 0 && outOfScopeCount === entries.length
+          ? "Every entry in this capsule belongs to a collection this server has not enabled for this channel. Nothing will be charged."
+          : hiddenCollections.size
+            ? "Every card in this capsule belongs to a collection you turned off in your draw preferences. Nothing will be charged."
+            : entries.length > 0
+              ? "Every entry in this pool is hidden by the active topic policy, the server's collection scope, the AI-artwork preference or your preferences. Nothing will be charged."
+              : "This pool has no published variants with a finished render. Nothing will be charged.";
   return {
     pool,
     revision: pool.revision,
@@ -285,6 +341,10 @@ export async function getPoolPreview(
       player_excluded_tags: playerExcluded,
       player_hidden_collection_ids: playerHiddenCollections,
       unfiled_count: unfiledCount,
+      out_of_scope_count: outOfScopeCount,
+      ai_excluded_count: aiExcludedCount,
+      ai_art_enabled: aiAllowed,
+      scope_digest: scope?.digest ?? null,
       empty_reason: emptyReason,
     },
     pity: "disabled",
@@ -302,6 +362,8 @@ export async function executeDraw(
     /** The exact distribution fingerprint returned by the preview the player approved. */
     expectedDistribution: string;
     channelKey?: string;
+    /** Server-scoped predicate shared by preview and commit. */
+    scope?: PoolScope;
     idempotency: IdempotencyInput;
   },
 ) {
@@ -323,7 +385,9 @@ export async function executeDraw(
       current_balance: current?.balance ?? storedBalance,
     };
   }
-  const preview = await getPoolPreview(ctx, input.pool, input.channelKey);
+  const preview = await getPoolPreview(ctx, input.pool, input.channelKey, {
+    scope: input.scope,
+  });
   if (preview.revision !== input.expectedRevision) {
     throw new ApiError(409, "stale_pool_revision", "The pool changed. Review the new odds before drawing.", {
       expected_revision: preview.revision,

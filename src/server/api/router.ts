@@ -57,6 +57,8 @@ import {
   retirePool,
   updatePool,
 } from "../modules/pools";
+import { poolScopeFromDiscord, resolveDiscordScope } from "../discord/scope";
+import type { DiscordInstallation } from "../discord/types";
 import {
   claimDailyReward,
   adjustWallet,
@@ -455,6 +457,38 @@ function playerWrite(ctx: Ctx) {
     throw new ApiError(403, "insufficient_scope", "The agent grant has no player scopes.");
 }
 
+/**
+ * Optional installation scope for headless callers. The installation id is not
+ * authority: it must belong to the authenticated tenant, be active and be
+ * resolvable by the represented user. A caller that omits it keeps the normal
+ * Bot-wide member behaviour.
+ */
+async function installationScopeFor(
+  ctx: Ctx,
+  installationId: string | null,
+  channelId: string | null,
+) {
+  if (!installationId) return null;
+  const installation = await first<DiscordInstallation>(
+    ctx.db,
+    `SELECT * FROM fb_discord_installations
+      WHERE id = ? AND tenant_id = ? AND active = 1 AND revoked_at IS NULL`,
+    installationId,
+    ctx.tenant.id,
+  );
+  if (!installation) {
+    throw new ApiError(
+      404,
+      "discord_installation_missing",
+      "That installation is not active for this Bot.",
+    );
+  }
+  if (!installation.game_enabled) {
+    throw new ApiError(403, "discord_game_disabled", "Discord gameplay is paused for that installation.");
+  }
+  return resolveDiscordScope(ctx, installation, channelId);
+}
+
 export async function routeApi(request: Request, ctx: Ctx, path: string): Promise<Response> {
   const segments = path.split("/").filter(Boolean);
   const isStudio = segments[0] === "studio";
@@ -517,9 +551,21 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     // must not enumerate a Bot's pool metadata.
     playerWrite(ctx);
     requireScope(ctx, "inventory:read");
+    const scope = await installationScopeFor(
+      ctx,
+      url.searchParams.get("installation"),
+      url.searchParams.get("channel"),
+    );
+    if (scope?.emptyReason) {
+      throw new ApiError(403, "discord_scope_empty", scope.emptyReason);
+    }
     // Only pools with real eligible entries for this actor are selectable.
     // Admin/inventory read routes use includeDrafts to inspect all definitions.
-    const previews = await listEligiblePools(ctx, url.searchParams.get("channel") ?? undefined);
+    const previews = await listEligiblePools(
+      ctx,
+      url.searchParams.get("channel") ?? undefined,
+      scope ? poolScopeFromDiscord(scope) : undefined,
+    );
     return json({
       items: previews.map(({ pool, eligible_count }) => ({
         id: pool.id,
@@ -534,10 +580,19 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     });
   }
   if (segments[0] === "pools" && segments[1] && segments.length === 2 && method === "GET") {
+    const scope = await installationScopeFor(
+      ctx,
+      url.searchParams.get("installation"),
+      url.searchParams.get("channel"),
+    );
+    if (scope?.emptyReason) {
+      throw new ApiError(403, "discord_scope_empty", scope.emptyReason);
+    }
     const preview = await getPoolPreview(
       ctx,
       segments[1],
       url.searchParams.get("channel") ?? undefined,
+      scope ? { scope: poolScopeFromDiscord(scope) } : undefined,
     );
     return json(publicPoolPreview(preview));
   }
@@ -675,15 +730,26 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
         expectedRevision: z.number().int().positive(),
         expectedDistribution: z.string().min(16).max(128),
         channelKey: z.string().max(80).optional(),
+        installationId: z.string().max(80).optional(),
+        channelId: z.string().max(40).optional(),
       }),
     );
     const idempotency = await idempotencyInput(request, body);
+    const scope = await installationScopeFor(
+      ctx,
+      body.installationId ?? null,
+      body.channelId ?? null,
+    );
+    if (scope?.emptyReason) {
+      throw new ApiError(403, "discord_scope_empty", scope.emptyReason);
+    }
     return json(
       await executeDraw(ctx, {
         pool: body.pool,
         expectedRevision: body.expectedRevision,
         expectedDistribution: body.expectedDistribution,
         channelKey: body.channelKey,
+        scope: scope ? poolScopeFromDiscord(scope) : undefined,
         idempotency,
       }),
     );
@@ -2028,6 +2094,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       throw new ApiError(404, "bot_not_found", "No Bot is attached to this administration area.");
     return json({
       bot,
+      aiArtEnabled: Number(bot.ai_art_enabled ?? 0) === 1,
       admins: await listBotAdmins(ctx, bot.id),
       invitations: await listBotInvitations(ctx, bot.id),
       current_role: ctx.user?.platformAdmin
@@ -2036,6 +2103,47 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
           ? "Bot Owner"
           : "Bot Admin",
     });
+  }
+  if (
+    segments[0] === "admin" &&
+    segments[1] === "bot" &&
+    segments.length === 2 &&
+    method === "PATCH"
+  ) {
+    ensureContentWrite(ctx);
+    const body = await readJson(
+      request,
+      z.object({
+        aiArtEnabled: z.boolean(),
+      }),
+    );
+    const { botForTenant } = await import("../modules/bots");
+    const bot = await botForTenant(ctx.db, ctx.tenant.id);
+    if (!bot)
+      throw new ApiError(404, "bot_not_found", "No Bot is attached to this administration area.");
+    await ctx.db.batch([
+      ctx.db
+        .prepare("UPDATE fb_bots SET ai_art_enabled = ?, updated_at = ? WHERE id = ? AND tenant_id = ?")
+        .bind(body.aiArtEnabled ? 1 : 0, nowIso(), bot.id, ctx.tenant.id),
+      ctx.db
+        .prepare(
+          `INSERT INTO fb_audit_events
+            (id, tenant_id, actor_type, actor_id, represented_user_id, action, object_type, object_id, metadata_json, request_id, created_at)
+           VALUES (?, ?, ?, ?, ?, 'bot.ai_art.updated', 'bot', ?, ?, ?, ?)`,
+        )
+        .bind(
+          newId("aud"),
+          ctx.tenant.id,
+          ctx.actor.type,
+          ctx.actor.id,
+          ctx.actor.representedUserId ?? null,
+          bot.id,
+          JSON.stringify({ ai_art_enabled: body.aiArtEnabled }),
+          ctx.requestId,
+          nowIso(),
+        ),
+    ]);
+    return json({ bot: { ...bot, ai_art_enabled: body.aiArtEnabled ? 1 : 0 }, aiArtEnabled: body.aiArtEnabled });
   }
   if (
     segments[0] === "admin" &&
