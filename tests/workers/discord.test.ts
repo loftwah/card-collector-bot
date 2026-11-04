@@ -16,6 +16,14 @@ const GUILD_ID = "997734945206313041";
 const CHANNEL_ID = "1566700752385081355";
 const DISCORD_USER_ID = "707281352818425929";
 
+function expectUniqueComponentIds(payload: { components?: Array<{ components?: Array<{ custom_id?: string }> }> }) {
+  const ids = (payload.components ?? [])
+    .flatMap((row) => row.components ?? [])
+    .map((component) => component.custom_id)
+    .filter(Boolean);
+  expect(new Set(ids).size).toBe(ids.length);
+}
+
 let privateKey: CryptoKey;
 let publicKeyHex: string;
 
@@ -1303,6 +1311,7 @@ describe("Discord HTTP interactions", () => {
     );
     expect(albums.payload.data?.flags).toBe(64);
     expect(JSON.stringify(albums.payload.data)).toContain("Release roster");
+    expectUniqueComponentIds(albums.payload.data ?? {});
 
     const fresh = await send(
       interaction(
@@ -1311,6 +1320,7 @@ describe("Discord HTTP interactions", () => {
       ),
     );
     expect(JSON.stringify(fresh.payload.data)).toContain("Free play, first run");
+    expectUniqueComponentIds(fresh.payload.data ?? {});
 
     const open = await send(
       interaction(
@@ -1318,6 +1328,7 @@ describe("Discord HTTP interactions", () => {
         { id: "tour-journey-open", type: 3 },
       ),
     );
+    expectUniqueComponentIds(open.payload.data ?? {});
     const openRow = open.payload.data?.components?.flatMap((row) => row.components ?? []) ?? [];
     const openButton = openRow.find(
       (component) => component.type === 2 && component.custom_id?.startsWith("foilbury:open:"),
@@ -1357,6 +1368,7 @@ describe("Discord HTTP interactions", () => {
     );
     const inspectText = JSON.stringify(inspect.payload.data);
     expect(inspectText).toContain("Inspect ·");
+    expectUniqueComponentIds(inspect.payload.data ?? {});
     expect(inspectText).toContain("Discord does not present native 3D");
     expect(inspectText).toMatch(/No published finish renders|Plain/);
 
@@ -1366,6 +1378,7 @@ describe("Discord HTTP interactions", () => {
         { id: "tour-journey-progress", type: 3 },
       ),
     );
+    expectUniqueComponentIds(progress.payload.data ?? {});
     expect(JSON.stringify(progress.payload.data)).toContain("Progress ·");
     expect(JSON.stringify(progress.payload.data)).toContain("Unique subjects");
   });
