@@ -8,6 +8,7 @@ import type { DiscordEnv } from "../../src/server/discord/types";
 import { bootstrap, ctxFor, fixturePool, makeInstance, runtime, setBalance } from "./helpers";
 import { addCollectionCards, createCollection } from "../../src/server/modules/collections";
 import { selectTourAlbum } from "../../src/server/discord/commands";
+import { assertDiscordMessage } from "../../src/server/discord/presentation";
 import { createNpc } from "../../src/server/modules/npcs";
 import { DiscordTransport } from "./discord-transport";
 
@@ -22,6 +23,7 @@ function expectUniqueComponentIds(payload: { components?: Array<{ components?: A
     .map((component) => component.custom_id)
     .filter(Boolean);
   expect(new Set(ids).size).toBe(ids.length);
+  assertDiscordMessage(payload as never);
 }
 
 let privateKey: CryptoKey;

@@ -1426,7 +1426,7 @@ async function tour(
               {
                 name: "Finish families",
                 value: `4 core finishes`,
-                inline: true,
+                inline: false,
               },
             ],
             footer: {
@@ -1580,17 +1580,19 @@ async function tour(
       const key = finishKey(row.material_key, row.effect_key);
       if (!example.has(key)) example.set(key, row);
     }
-    const finishButtons: DiscordComponent[][] = [];
+    // One action row for all four finishes. Four separate rows plus the owned
+    // controls and navigation would exceed Discord's five-row limit.
+    const finishButtons: DiscordComponent[] = [];
     for (const key of ["plain", "silver", "gold", "holographic"] as const) {
       const item = example.get(key);
       if (item)
-        finishButtons.push([
+        finishButtons.push(
           button(
             key === "holographic" ? "Holographic" : key[0]!.toUpperCase() + key.slice(1),
             `foilbury:card:${item.card_id}:${item.variant_id}:front`,
             2,
           ),
-        ]);
+        );
     }
     const owned = await first<{ instance_id: string; card_id: string; variant_id: string }>(
       ctx.db,
@@ -1606,7 +1608,7 @@ async function tour(
     const fields = Object.entries(Object.fromEntries(example)).map(([key, item]) => ({
       name: key[0]!.toUpperCase() + key.slice(1),
       value: `${item.card_name} · ${item.variant_name}`,
-      inline: true,
+      inline: false,
     }));
     return callback(
       {
@@ -1637,7 +1639,7 @@ async function tour(
           },
         ],
         components: tourNav("inspect", [
-          ...finishButtons,
+          ...(finishButtons.length ? [finishButtons] : []),
           ...(owned
             ? [
                 [
@@ -1726,7 +1728,7 @@ async function tour(
                 value: album.progress.complete
                   ? `${album.progress.total_cards}/${album.progress.total_cards} current roster${versionLabel ? ` · ${versionLabel}` : ""}`
                   : "Incomplete",
-                inline: true,
+                inline: false,
               },
               ...(next
                 ? [

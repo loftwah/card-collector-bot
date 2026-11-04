@@ -273,12 +273,22 @@ export interface EmbedInput {
   image?: EmbedImageInput;
 }
 
-function assertPublicUrl(value: string, path: string): string {
+function assertPublicUrl(
+  value: string,
+  path: string,
+  options: { allowResourceObjectIds?: boolean } = {},
+): string {
   const raw = value.trim();
   if (!raw || raw.length > DISCORD_LIMITS.buttonUrl) {
     fail("invalid_url", path, "Expected an http(s) URL within Discord's length limit.");
   }
-  assertNoPrivateIdentifiers(raw, path);
+  // A deep link to an owned card necessarily carries an opaque resource id.
+  // The web route re-authorises the viewer; account, tenant, draw and user ids
+  // remain rejected. Visible copy never gets this exception.
+  const checked = options.allowResourceObjectIds
+    ? raw.replace(/\b(?:ins|crd|col|var|edt|pool|rnd|poe|ast|ach|unl|obx|gft|job|set|cat|tag|lk)_[A-Za-z0-9_-]{4,}\b/g, "[resource]")
+    : raw;
+  assertNoPrivateIdentifiers(checked, path);
   let parsed: URL;
   try {
     parsed = new URL(raw);
@@ -688,7 +698,7 @@ function assertComponentRow(
       if (!component.url || component.custom_id) {
         fail("invalid_button", path, "Link buttons use a URL and no custom_id.");
       }
-      assertPublicUrl(component.url, `${path}.url`);
+      assertPublicUrl(component.url, `${path}.url`, { allowResourceObjectIds: true });
       return;
     }
     if (!component.custom_id || component.url) {
