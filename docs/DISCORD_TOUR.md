@@ -1,16 +1,24 @@
 # Foilbury Discord guided tour
 
-Date: 2026-11-04. Current deployed source: `3ffa24197e82c1488933418de8e1a7935fea66a8`; Worker `608c92ab-034d-4b5b-8b91-bef11a890f8f`; schema `0026_gift_instance_uniqueness.sql`. The historical tour release was source `f161b68` and Worker `b5a8d35d-7911-4d1e-a7e8-d4d08fd9bb21`.
+Date: 2026/11/04. Current deployed source: `3ffa24197e82c1488933418de8e1a7935fea66a8`; Worker `608c92ab-034d-4b5b-8b91-bef11a890f8f`; schema `0026_gift_instance_uniqueness.sql`. The historical tour release was source `f161b68` and Worker `b5a8d35d-7911-4d1e-a7e8-d4d08fd9bb21`.
 
 This is the host script for the real Discord tour in the existing Loftwah test installation. It is not a storyboard of the website. The tour is built from the same D1 cards, owned instances, serials, Foil ledger and achievement unlocks as the website and REST API.
+
+## Release blocker: server-scoped demo configuration
+
+**FAIL / not accepted (owner-reported 2026/11/04):** the real Discord demo has displayed cards that are not included in the target server's intended configuration. The prior production preflight and historical Discord tour receipts **did not verify the server's collection allowlist**. Their PASS labels must not be represented as a passing *full demo*. Track the release-blocking cross-surface fix and production evidence in [issue #37](https://github.com/loftwah/card-collector-bot/issues/37).
+
+The tour must use the **actual installation's verified collection configuration**; never silently fall back to Danganronpa, any global collection or the invoking Super Admin's wider catalogue. An enabled Bot collection is not necessarily enabled for every Discord guild using that Bot. The current schema lacks an independent guild-specific collection selection; a Bot-wide filtering patch alone is not complete acceptance. Until the server allowlist is represented, approved, enforced and read back on production, a complete live demo is **BLOCKED**, even if local route smoke tests pass. Do not deploy a workaround that exposes unconfigured cards or do chargeable draws to prove an unknown configuration.
+
+All read-only rehearsal output must list the effective guild/application/Bot/channel, allowed collection IDs, excluded IDs, the configured roster, and the exact build. Every card render, pool and share must be a member of that scope. If there is no configured complete eligible album, show that limitation rather than invent an eight-card set.
 
 ## What is live now
 
 - Application: **Foilbury** `1566702936615026769`; guild **Loftwah** `997734945206313041`; channel `#card-collector-test` `1566700752385081355`.
 - Guild command `/foilbury`, command ID `1566755562551779330`, with `tour` added alongside the existing `open`, `daily`, `collection`, `card`, `packs`, `achievements`, `profile`, `help` and `admin` options.
 - Signed HTTP interactions only. No Gateway connection and no privileged intents were added.
-- Member-only album used by the tour: **Danganronpa — Three Killing Games**, release roster 8, 32 published variants, 32 front renders, 32 back renders, completion achievement **Three schools** with a frozen 8-card roster.
-- Public showcase: four approved original-IP collections. Member franchise art is never posted in a channel that has not been verified for that audience.
+- **Historical, not authoritative for future demonstrations:** the earlier tour showed Danganronpa — Three Killing Games (8 subjects) and the global public showcase. Neither is an allowed demonstration choice unless the active guild configuration explicitly includes it.
+- Member franchise art must never be posted into a channel not verified for its audience. Public approval alone does **not** mean a collection is configured in this Discord server.
 
 Run the read-only preflight before every live demonstration:
 
@@ -19,7 +27,7 @@ pnpm demo:discord:check          # production
 pnpm demo:discord:check --local  # local sandbox
 ```
 
-The preflight does not draw, grant, spend, post or call a paid provider. Current production result: **17 PASS, 0 FAIL, 4 BLOCKED** (pinning, channel visibility, spectator setup and authenticated actor session; see the matrix). It now also reads back the persistent tour entry.
+The preflight does not draw, grant, spend, post or call a paid provider. The **historical** production result was **17 PASS, 0 FAIL, 4 BLOCKED** (pinning, channel visibility, spectator setup and authenticated actor session). **That preflight did not prove server collection scope.** Add a full guild-config check and replay the actual Discord tour before removing the release blocker.
 
 ## Prerequisites
 
@@ -50,19 +58,19 @@ Command:
 /foilbury tour
 ```
 
-Expected private response: **Foilbury · guided tour**. It shows the approved public showcase, the number of member albums enabled for this Bot, the welcome/daily amounts, your balance, and the privacy rule. Buttons: **Start with an album**, **How free play works**, **Claim daily**, **Packs**, **Next**.
+Expected private response: **Foilbury · guided tour**. It must show only the collection names and public-safe showcase items enabled for this specific server, plus the daily amounts, balance and privacy rule. The current Bot-wide code patch filters out disabled Bot collections, but **guild-level correctness remains blocked by #37**. Buttons: **Start with an album**, **How free play works**, **Claim daily**, **Packs**, **Next**.
 
 What spectators see: nothing. This response is ephemeral.
 
 Safe actions: read it, press **Start with an album** or **Next**. Pressing **Claim daily** is the first action that changes state.
 
-### 2. A complete eight-card member album
+### 2. An enabled, complete member album
 
 Press **Start with an album**.
 
-Expected private response: **Danganronpa — Three Killing Games**. It shows the members-only audience, the collection release version, the actual current release roster, the published variants, your unique-card progress, and the **Three schools** milestone with its frozen versioned target and one-time reward. The tour does not assume eight is the current roster size; an earned version stays complete at its frozen target after a later expansion.
+Expected private response: an album **actually enabled for this Discord guild and eligible for this member**, with its real published roster, versions, renders, achievement target and progress. Do not assume Danganronpa or eight cards. If no album qualifies, show **No member album is available**, with a Bot Admin action; do not substitute a global franchise or a fixture. Completion and reward must be genuine ledger-backed events, not screen state alone.
 
-This is an album, not a token sample. If the account is not entitled, the album is not shown at all.
+This stage remains **BLOCKED** until the effective guild configuration is implemented and inspected in production.
 
 ### 3. Free play, allowance, pools and odds
 
@@ -85,13 +93,13 @@ Viewing **View front**, **View back** or **Details** afterwards never spends or 
 
 ### 5. Front, back, details and the four finishes
 
-Press **Next** to **Inspect · Danganronpa — Three Killing Games**. It shows one real published render for Plain, Silver, Gold and Holographic, plus private **View front**, **View back**, **Details** and **Open in web album (3D)** controls for an owned copy.
+Press **Next** to **Inspect · [selected, guild-enabled album]**. It shows one real published render for Plain, Silver, Gold and Holographic, plus private **View front**, **View back**, **Details** and **Open in web album (3D)** controls for an owned copy.
 
 The buttons are private. Plain/Silver/Gold/Holographic are real catalogue finishes, not mocked swatches.
 
 ### 6. Progress, duplicates and the next milestone
 
-Press **Next** to **Progress · Danganronpa — Three Killing Games**. It reports unique subjects, owned copies, duplicates, variant progress, earned badges and the next milestone. If the album is complete, it shows the completion achievement and the one-time reward, or states honestly that the milestone will be evaluated by the next committed acquisition.
+Press **Next** to **Progress · [selected, guild-enabled album]**. It reports unique subjects, owned copies, duplicates, variant progress, earned badges and the next milestone. If the album is complete, it shows the completion achievement and the one-time reward, or states honestly that the milestone will be evaluated by the next committed acquisition.
 
 This stage does not evaluate achievements or grant rewards by itself.
 
@@ -114,7 +122,7 @@ This is not a public feature. A Discord moderator or a Bot Admin does not become
 
 ## The 7/8 → 8/8 transition
 
-The local demonstration uses the real administrator gift and achievement services:
+**Local fixture only, not an authorised production server demo:** the existing Danganronpa preparation script uses the real administrator gift and achievement services. Only use it where that collection is explicitly enabled for the demonstration, never to override server configuration:
 
 ```sh
 pnpm demo:album --mode seven --apply       # prepare 7 unique cards
@@ -172,10 +180,12 @@ The current `#card-collector-test` channel has no `@everyone` View Channel deny.
 
 ## Acceptance matrix
 
+**Release-blocking additional case:** Discord demonstration content matches **the real target guild's approved collection configuration** — **FAIL (owner observation), remediation and live evidence pending #37**. The older results below cannot override this.
+
 | Item                                                                                                        | Status                             | Evidence                                                       |
 | ----------------------------------------------------------------------------------------------------------- | ---------------------------------- | -------------------------------------------------------------- |
-| Production preflight (installation, registration, tour entry, album, renders, achievement, public showcase, identities) | PASS | `pnpm demo:discord:check` — 17 PASS, 0 FAIL, 4 BLOCKED |
-| `tour` command registered without removing existing commands                                                | PASS                               | Discord API command read-back, command ID unchanged            |
+| Production preflight (installation, registration, tour entry, album, renders, achievement, public showcase, identities) | HISTORICAL ONLY | `pnpm demo:discord:check` — 17 PASS, 0 FAIL, 4 BLOCKED; guild collection scope untested |
+| `tour` command registered without removing existing commands                                                | PASS (historical)                               | Discord API command read-back, command ID unchanged            |
 | Member-only restricted reveal stays ephemeral in an unverified channel                                      | PASS                               | `tests/workers/discord.test.ts` private-delivery test          |
 | Channel-visible member reveal in a genuinely restricted channel                                             | BLOCKED                            | Test channel has no `@everyone` deny; no channel policy is set |
 | Public original-IP share in an authorised channel                                                           | PASS locally / live BLOCKED        | Share receipt + audience tests; live click needs the host      |
