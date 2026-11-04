@@ -77,7 +77,15 @@ The retained demonstration is a finite sequence of ordinary bot messages in
 node scripts/discord/provision-demo-actor.mjs --apply   # once: labelled non-human actor + bounded demo wallet
 node scripts/discord/persistent-demo.mjs --dry-run      # compose and validate; no draw, claim or post
 node scripts/discord/persistent-demo.mjs --publish      # real draws, claims and retained messages
+node scripts/discord/verify-persistent-demo.mjs         # read back every stage and image
 ```
+
+The delivered 2026/11/04 sequence starts at
+https://discord.com/channels/997734945206313041/1566700752385081355/1567443524209872926
+and ends at
+https://discord.com/channels/997734945206313041/1566700752385081355/1567443613346959481.
+See `docs/PERSISTENT_DEMO_2026-11-04.md` for the stage table, real receipts,
+verification and residuals.
 
 It uses the **configured** Danganronpa capsule, a labelled `Foilbury Demo
 Collector` (not Dean, not a Discord identity), real API draws with deterministic

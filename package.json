@@ -73,6 +73,7 @@
     "demo:discord:accept": "node scripts/discord/assisted-acceptance.mjs",
     "demo:discord:provision": "node scripts/discord/provision-demo-actor.mjs",
     "demo:discord:publish": "node scripts/discord/persistent-demo.mjs",
+    "demo:discord:verify": "node scripts/discord/verify-persistent-demo.mjs",
     "art:audit": "node scripts/art-provenance-audit.mjs",
     "discord:tour:entry": "tsx scripts/discord/publish-tour-entry.mjs",
     "discord:command-health": "node scripts/discord/command-health.mjs",

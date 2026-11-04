@@ -38,6 +38,62 @@ const scopeText = user.platformAdmin
     <div class="studio-stat"><p class="studio-stat__label">Bot context</p><p class="studio-stat__value">{bot?.name ?? "Shared catalogue"}</p></div>
   </div>
 
+  <section class="mt-6 border border-[var(--line)] bg-[var(--paper-2)]/50 p-5">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+      <div class="max-w-2xl">
+        <p class="eyebrow">Artwork provenance</p>
+        <h3 class="display-sm mt-1 text-2xl uppercase">Include AI-assisted artwork in this Bot</h3>
+        <p class="mt-2 text-sm leading-relaxed text-[var(--muted)]">
+          Every asset records whether it is a sourced reference, a Foilbury original, a deterministic render or AI-assisted. Off is the default. Turning this off removes AI-assisted editions from future draws, album rosters, inspection and Discord shares; it never deletes owned copies, serials, ledger rows or earned achievements. Sourced and original artwork are unaffected.
+        </p>
+      </div>
+      <div class="flex flex-col items-end gap-2">
+        <button
+          id="ai-art-toggle"
+          type="button"
+          class="btn btn-secondary btn-sm"
+          data-enabled={bot?.ai_art_enabled ? "true" : "false"}
+        >
+          {bot?.ai_art_enabled ? "Exclude AI-assisted artwork" : "Include AI-assisted artwork"}
+        </button>
+        <p id="ai-art-status" role="status" class="font-mono text-[0.6rem] uppercase tracking-[0.1em] text-[var(--muted)]">
+          {bot?.ai_art_enabled ? "Currently included" : "Currently excluded"}
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    const toggle = document.getElementById("ai-art-toggle");
+    const status = document.getElementById("ai-art-status");
+    if (toggle && status) {
+      toggle.addEventListener("click", async () => {
+        const next = toggle.getAttribute("data-enabled") !== "true";
+        const csrf = document.querySelector('meta[name="foilbury-csrf"]')?.getAttribute("content") ?? "";
+        toggle.setAttribute("disabled", "true");
+        status.textContent = "Saving…";
+        try {
+          const response = await fetch("/api/v1/studio/bot", {
+            method: "PATCH",
+            credentials: "same-origin",
+            headers: { "content-type": "application/json", "x-foilbury-csrf": csrf },
+            body: JSON.stringify({ aiArtEnabled: next }),
+          });
+          if (!response.ok) throw new Error(`Save failed (${response.status})`);
+          const result = await response.json();
+          const included = Boolean(result.aiArtEnabled);
+          toggle.setAttribute("data-enabled", included ? "true" : "false");
+          toggle.textContent = included ? "Exclude AI-assisted artwork" : "Include AI-assisted artwork";
+          status.textContent = included ? "Currently included" : "Currently excluded";
+        } catch (error) {
+          status.textContent = error instanceof Error ? error.message : "Save failed";
+        } finally {
+          toggle.removeAttribute("disabled");
+        }
+      });
+    }
+  </script>
+
   <section class="mt-8 border border-[var(--line)] bg-[var(--paper-2)]/50 p-5">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>

@@ -24,6 +24,16 @@ import { ROOT } from "../lib/local.mjs";
 const args = new Set(process.argv.slice(2));
 const dryRun = args.has("--dry-run") || !args.has("--publish");
 const resume = !args.has("--fresh");
+const refreshArg = process.argv.find((arg) => arg.startsWith("--refresh="));
+const refreshStages = new Set(
+  refreshArg
+    ? refreshArg
+        .slice("--refresh=".length)
+        .split(",")
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0)
+    : [],
+);
 const RUN_ID = "foilbury-demo-2026-11-04";
 const GUILD_ID = "997734945206313041";
 const CHANNEL_ID = "1566700752385081355";
@@ -135,7 +145,7 @@ function workerVersion() {
   return last?.versions?.[0]?.version_id ?? null;
 }
 
-async function discord(method, endpoint, body, files = []) {
+async function discord(method, endpoint, body, files = [], attempt = 0) {
   const headers = { authorization: `Bot ${botToken}` };
   let payload = body;
   if (files.length) {
@@ -159,6 +169,16 @@ async function discord(method, endpoint, body, files = []) {
     body: payload,
   });
   const text = await response.text();
+  if (response.status === 429 && attempt < 4) {
+    let retryAfter = 1;
+    try {
+      retryAfter = Number(JSON.parse(text).retry_after ?? 1);
+    } catch {
+      // Keep the conservative default.
+    }
+    await new Promise((resolve) => setTimeout(resolve, Math.ceil(retryAfter * 1000) + 250));
+    return discord(method, endpoint, body, files, attempt + 1);
+  }
   if (!response.ok) {
     const error = new Error(`Discord ${method} ${endpoint} failed: ${response.status} ${text.slice(0, 500)}`);
     error.status = response.status;
@@ -439,9 +459,9 @@ async function composePair({ front, back, out, title, subtitle }) {
 }
 
 function finishLabel(variant) {
+  if ((variant.effect ?? "").includes("holo")) return "Holographic";
   if (variant.material === "gold") return "Gold";
   if (variant.material === "silver") return "Silver";
-  if (variant.material === "diamond" || variant.effect === "holo") return "Holographic";
   return "Plain";
 }
 
@@ -495,6 +515,7 @@ async function main() {
   state.ai_art_enabled = Number(bot?.ai_art_enabled ?? 0) === 1;
   state.channel_audience = JSON.parse(installation.channel_audience_json ?? "{}")[CHANNEL_ID] ?? "public";
   state.worker_version = workerVersion();
+  state.build = workerBuild();
   state.scope_digest = state.scope_digest ?? null;
   saveState(state);
 
@@ -640,18 +661,23 @@ async function main() {
   const completion = state.achievement ?? null;
   if (!dryRun && completing) {
     const achievement = d1(
-      `SELECT d.name, d.reward_amount, u.earned_at
+      `SELECT d.name, u.reward_amount, u.reward_state, u.reward_ledger_id, u.earned_at
          FROM fb_achievement_unlocks u JOIN fb_achievement_definitions d ON d.id = u.achievement_id
         WHERE u.tenant_id = ${quote(installation.tenant_id)} AND u.user_id = ${quote(actor.userId)}
-          AND d.criteria_json LIKE ${quote(`%${collection.id}%`)}
-          AND d.criteria_json LIKE '%collection_complete%'
+          AND json_extract(d.criteria_json, '$.collection_id') = ${quote(collection.id)}
+          AND json_extract(d.criteria_json, '$.type') = 'collection_unique'
         ORDER BY u.earned_at DESC LIMIT 1`,
     )[0];
-    const reward = d1(
-      `SELECT amount, balance_after, id, created_at FROM fb_ledger_entries
-        WHERE tenant_id = ${quote(installation.tenant_id)} AND user_id = ${quote(actor.userId)}
-          AND reference_type = 'achievement' ORDER BY created_at DESC LIMIT 1`,
-    )[0];
+    const reward = achievement?.reward_ledger_id
+      ? d1(
+          `SELECT amount, balance_after, id, created_at FROM fb_ledger_entries
+            WHERE tenant_id = ${quote(installation.tenant_id)} AND user_id = ${quote(actor.userId)} AND id = ${quote(achievement.reward_ledger_id)}`,
+        )[0]
+      : d1(
+          `SELECT amount, balance_after, id, created_at FROM fb_ledger_entries
+            WHERE tenant_id = ${quote(installation.tenant_id)} AND user_id = ${quote(actor.userId)}
+              AND reference_type = 'achievement' ORDER BY created_at DESC LIMIT 1`,
+        )[0];
     state.achievement = achievement ? { ...achievement, reward: reward ?? null } : null;
     saveState(state);
   }
@@ -709,7 +735,7 @@ function stageFromMessage(message) {
 }
 
 async function publishStages({ state, collection, cardFiles, banner, rosterPath, preview, installation }) {
-  if (!dryRun && state.stages[1]?.message_id && state.stages[12]?.message_id) {
+  if (!dryRun && state.stages[1]?.message_id && state.stages[12]?.message_id && refreshStages.size === 0) {
     console.log("The demonstration is already complete; leaving the retained messages unchanged.");
     return;
   }
@@ -735,23 +761,51 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
   const cardById = new Map(cardFiles.map((card) => [card.card_id, card]));
   const featuredCard = cardById.get(featured?.card_id);
   const completingCard = cardById.get(completing?.card_id);
-  const featuredFront = featuredCard?.file;
-  const featuredBack = featuredCard?.back;
+  const featuredVariant = featured?.variant_id
+    ? d1(
+        `SELECT fr.r2_key AS front_key, br.r2_key AS back_key
+           FROM fb_variants v
+           JOIN fb_variant_renders vr ON vr.variant_id = v.id AND vr.status = 'published'
+           JOIN fb_assets fr ON fr.id = vr.asset_id
+           LEFT JOIN fb_variant_back_renders vbr ON vbr.variant_id = v.id AND vbr.status = 'published'
+           LEFT JOIN fb_assets br ON br.id = vbr.asset_id
+          WHERE v.id = ${quote(featured.variant_id)} LIMIT 1`,
+      )[0]
+    : null;
+  const featuredFront = featuredVariant?.front_key
+    ? await downloadR2(featuredVariant.front_key, "featured-variant-front.webp")
+    : featuredCard?.file;
+  const featuredBack = featuredVariant?.back_key
+    ? await downloadR2(featuredVariant.back_key, "featured-variant-back.webp")
+    : featuredCard?.back;
+  const finishSpecs = [
+    { label: "Plain", material: "plain", effect: "none" },
+    { label: "Silver", material: "silver", effect: "none" },
+    { label: "Gold", material: "gold", effect: "none" },
+    { label: "Holographic", material: "gold", effect: "holographic" },
+  ];
   const finishVariants = featuredCard
     ? (await Promise.all(
-        ["plain", "silver", "gold", "diamond"].map(async (material) => {
+        finishSpecs.map(async (spec) => {
           const row = d1(
-            `SELECT fr.r2_key, v.name FROM fb_variants v
+            `SELECT fr.r2_key, v.name, v.id AS variant_id FROM fb_variants v
                JOIN fb_materials m ON m.id = v.material_id
+               LEFT JOIN fb_effects fx ON fx.id = v.effect_id
                JOIN fb_variant_renders vr ON vr.variant_id = v.id AND vr.status = 'published'
                JOIN fb_assets fr ON fr.id = vr.asset_id
-              WHERE v.card_id = ${quote(featured.card_id)} AND m.key = ${quote(material)} AND v.status = 'published' LIMIT 1`,
+              WHERE v.card_id = ${quote(featured.card_id)}
+                AND m.key = ${quote(spec.material)}
+                AND COALESCE(fx.key, 'none') = ${quote(spec.effect)}
+                AND v.status = 'published' LIMIT 1`,
           )[0];
           if (!row?.r2_key) return null;
           return {
-            label: material === "diamond" ? "Holographic" : material[0].toUpperCase() + material.slice(1),
-            file: await downloadR2(row.r2_key, `finish-${material}.webp`),
-            caption: material === (featured.material_key ?? "") ? "owned by the demo collector" : "catalogue example, not owned",
+            label: spec.label,
+            file: await downloadR2(row.r2_key, `finish-${spec.label.toLowerCase()}.webp`),
+            caption:
+              row.variant_id === featured.variant_id
+                ? "owned by the demo collector"
+                : "catalogue example, not owned",
           };
         }),
       )).filter(Boolean)
@@ -970,7 +1024,18 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
         footer: { text: `Foilbury · ${RUN_ID} · stage 7` },
         image: { url: "attachment://progress-after.png" },
       },
-      files: [{ name: "progress-after.png", path: afterPath }],
+      extraEmbeds: [
+        {
+          title: `Before the run · ${uniqueBefore}/${cardFiles.length} unique`,
+          color: 0x7c6b4f,
+          image: { url: "attachment://progress-before.png" },
+          footer: { text: "Captured from the committed inventory after the featured opening" },
+        },
+      ],
+      files: [
+        { name: "progress-after.png", path: afterPath },
+        { name: "progress-before.png", path: beforePath },
+      ],
       rows: [[web("See the full album", `/play/collections/${COLLECTION_SLUG}`), ...nextLink(8)]],
     },
     {
@@ -1022,7 +1087,7 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
         fields: [
           { name: "Owned copies", value: String(state.draws.length), inline: true },
           { name: "Unique subjects", value: `${uniqueAfter}/${cardFiles.length}`, inline: true },
-          { name: "Achievements earned", value: achievement ? "1 · " + achievement.name : "Recorded on the profile", inline: true },
+          { name: "Completion milestone", value: achievement ? achievement.name : "Not evaluated", inline: true },
           { name: "Scope", value: `${collection.name} · members audience · AI artwork ${state.ai_art_enabled ? "included" : "excluded"}`, inline: false },
         ],
         footer: { text: `Foilbury · ${RUN_ID} · stage 10` },
@@ -1057,11 +1122,20 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
         color: 0xc9a227,
         fields: [
           {
-            name: "Stage index",
-            value: Array.from({ length: 11 }, (_, index) => {
+            name: "Stage index · 1–6",
+            value: Array.from({ length: 6 }, (_, index) => {
               const stage = index + 1;
               const link = stageLinks(stage);
-              return link ? `[Stage ${stage}](${link})` : `Stage ${stage}`;
+              return link ? `[${stage}](${link})` : `${stage}`;
+            }).join(" · "),
+            inline: false,
+          },
+          {
+            name: "Stage index · 7–12",
+            value: Array.from({ length: 6 }, (_, index) => {
+              const stage = index + 7;
+              const link = stageLinks(stage);
+              return link ? `[${stage}](${link})` : `${stage}`;
             }).join(" · "),
             inline: false,
           },
@@ -1102,25 +1176,48 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
 
   for (const stage of stages) {
     const existingStage = state.stages[stage.stage]?.message_id;
-    if (existingStage) {
-      // Verify the message still exists and belongs to the run. If it was
-      // removed, repost; otherwise leave the retained message untouched.
-      try {
-        await discord("GET", `/channels/${CHANNEL_ID}/messages/${existingStage}`);
-        continue;
-      } catch {
-        delete state.stages[stage.stage];
-        saveState(state);
-      }
-    }
     const payload = {
-      embeds: [stage.embed],
-      components: stage.rows.filter((row) => row.length),
+      embeds: [stage.embed, ...(stage.extraEmbeds ?? [])],
+      components: stage.rows
+        .filter((row) => row.length)
+        .map((row) => ({ type: 1, components: row })),
       allowed_mentions: { parse: [] },
       nonce: sha(`${RUN_ID}:${stage.stage}`).slice(0, 25),
       enforce_nonce: true,
     };
     assertDiscordPayload(payload);
+    if (existingStage) {
+      // Verify the message still exists and belongs to the run. If it was
+      // removed, repost; otherwise leave the retained message untouched unless
+      // this stage was explicitly selected for repair.
+      try {
+        await discord("GET", `/channels/${CHANNEL_ID}/messages/${existingStage}`);
+        if (!refreshStages.has(stage.stage)) continue;
+        if (dryRun) {
+          console.log(`Stage ${stage.stage} would be refreshed (dry run).`);
+          continue;
+        }
+        const refreshed = await discord(
+          "PATCH",
+          `/channels/${CHANNEL_ID}/messages/${existingStage}`,
+          { ...payload, attachments: [] },
+          stage.files,
+        );
+        state.stages[stage.stage] = {
+          message_id: refreshed.id,
+          posted_at: refreshed.timestamp,
+          title: stage.embed.title,
+          refreshed_at: new Date().toISOString(),
+        };
+        saveState(state);
+        console.log(`Stage ${stage.stage} refreshed → ${messageLink(refreshed.id)}`);
+        continue;
+      } catch (error) {
+        if (error.status !== 404) throw error;
+        delete state.stages[stage.stage];
+        saveState(state);
+      }
+    }
     if (dryRun) {
       console.log(`Stage ${stage.stage} validated: ${payload.embeds[0].title}`);
       continue;
