@@ -1,50 +1,50 @@
 {
   "schema_version": 1,
   "environment": "production",
-  "generated_at": "2026-11-04T03:33:53.408Z",
-  "source_tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
-  "source_content_hash": "8b5dff65bba6c48df42c3fcb415798b1ac2bf7fc3194f65fc27df9532e90fa21",
-  "source_sha": "f8225f6764a82cdd8d13343c5b676cc55c494a25",
+  "generated_at": "2026-11-04T03:58:52.854Z",
+  "source_tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
+  "source_content_hash": "cc1de91746ec8ac0ae7f6b1539c2a07ceceb1a6bc488b88918d16c3031d95f73",
+  "source_sha": "a8ea600161335df0d69d9be97e63ec0fd6157668",
   "checks": [
     {
       "command": "pnpm check",
-      "started_at": "2026-11-04T03:33:53.409Z",
-      "completed_at": "2026-11-04T03:34:23.137Z",
+      "started_at": "2026-11-04T03:58:52.855Z",
+      "completed_at": "2026-11-04T03:59:22.601Z",
       "exit_code": 0,
-      "tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
-      "source_content_hash": "8b5dff65bba6c48df42c3fcb415798b1ac2bf7fc3194f65fc27df9532e90fa21"
+      "tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
+      "source_content_hash": "cc1de91746ec8ac0ae7f6b1539c2a07ceceb1a6bc488b88918d16c3031d95f73"
     },
     {
       "command": "pnpm test:production-path",
-      "started_at": "2026-11-04T03:34:23.137Z",
-      "completed_at": "2026-11-04T03:34:41.775Z",
+      "started_at": "2026-11-04T03:59:22.601Z",
+      "completed_at": "2026-11-04T03:59:42.287Z",
       "exit_code": 0,
-      "tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
-      "source_content_hash": "8b5dff65bba6c48df42c3fcb415798b1ac2bf7fc3194f65fc27df9532e90fa21"
+      "tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
+      "source_content_hash": "cc1de91746ec8ac0ae7f6b1539c2a07ceceb1a6bc488b88918d16c3031d95f73"
     },
     {
       "command": "pnpm test:access-config",
-      "started_at": "2026-11-04T03:34:41.775Z",
-      "completed_at": "2026-11-04T03:34:41.988Z",
+      "started_at": "2026-11-04T03:59:42.288Z",
+      "completed_at": "2026-11-04T03:59:42.507Z",
       "exit_code": 0,
-      "tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
-      "source_content_hash": "8b5dff65bba6c48df42c3fcb415798b1ac2bf7fc3194f65fc27df9532e90fa21"
+      "tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
+      "source_content_hash": "cc1de91746ec8ac0ae7f6b1539c2a07ceceb1a6bc488b88918d16c3031d95f73"
     },
     {
       "command": "pnpm test:ui",
-      "started_at": "2026-11-04T03:34:41.988Z",
-      "completed_at": "2026-11-04T03:35:14.740Z",
+      "started_at": "2026-11-04T03:59:42.507Z",
+      "completed_at": "2026-11-04T04:00:11.346Z",
       "exit_code": 0,
-      "tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
-      "source_content_hash": "8b5dff65bba6c48df42c3fcb415798b1ac2bf7fc3194f65fc27df9532e90fa21"
+      "tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
+      "source_content_hash": "cc1de91746ec8ac0ae7f6b1539c2a07ceceb1a6bc488b88918d16c3031d95f73"
     },
     {
       "command": "pnpm test:product",
-      "started_at": "2026-11-04T03:35:14.740Z",
-      "completed_at": "2026-11-04T03:35:31.063Z",
+      "started_at": "2026-11-04T04:00:11.346Z",
+      "completed_at": "2026-11-04T04:00:27.359Z",
       "exit_code": 0,
-      "tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
-      "source_content_hash": "8b5dff65bba6c48df42c3fcb415798b1ac2bf7fc3194f65fc27df9532e90fa21"
+      "tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
+      "source_content_hash": "cc1de91746ec8ac0ae7f6b1539c2a07ceceb1a6bc488b88918d16c3031d95f73"
     }
   ],
   "criteria": [
@@ -59,7 +59,7 @@
       "required": true,
       "result": "pass",
       "test_command": "pnpm test:workers --run tests/workers/discord.test.ts",
-      "tested_tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
+      "tested_tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
       "evidence": "Deferred acknowledgement is always ephemeral; restricted and member reveals never create a public follow-up. The stateful transport models Discord's original-response/first-follow-up contract.",
       "residual": "A real second-account spectator observation is a separate optional criterion."
     },
@@ -72,7 +72,7 @@
       "required": true,
       "result": "pass",
       "test_command": "pnpm test:workers --run tests/workers/discord.test.ts tests/workers/discord-redaction.test.ts",
-      "tested_tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
+      "tested_tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
       "evidence": "Allowlisted route templates, scrubbed details and no interaction token in timeout/provider-error output."
     },
     {
@@ -85,7 +85,7 @@
       "required": true,
       "result": "pass",
       "test_command": "pnpm test:workers --run tests/workers/discord.test.ts",
-      "tested_tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
+      "tested_tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
       "evidence": "A committed draw with failed delivery remains completed/delivery_failed with a persisted receipt; re-send reads the receipt and does not call executeDraw."
     },
     {
@@ -97,7 +97,7 @@
       "required": true,
       "result": "pass",
       "test_command": "pnpm test:production-path",
-      "tested_tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
+      "tested_tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
       "evidence": "Signed fixture -> emitted dist/server/entry.mjs Worker -> D1 migrations/R2 fixture -> private deferred acknowledgement -> durable receipt. Invalid signatures fail before domain work."
     },
     {
@@ -108,7 +108,7 @@
       "required": true,
       "result": "pass",
       "test_command": "pnpm test:workers --run tests/workers/discord.test.ts",
-      "tested_tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
+      "tested_tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
       "evidence": "Actual handlers for help, daily, packs, open/reveal, card, collection, achievements and profile assert shared-builder field/title contracts; denied errors use the shared safe-copy builder.",
       "residual": "Real desktop/mobile client screenshots remain an optional observation."
     },
@@ -121,7 +121,7 @@
       "required": true,
       "result": "pass",
       "test_command": "pnpm test:workers --run tests/workers/preferences.test.ts",
-      "tested_tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
+      "tested_tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
       "evidence": "listEligiblePools uses the same effective preview/commit policy; hidden, disabled and draft pools disappear from the web/API/Discord selector. Reimport preserves an existing disabled collection."
     },
     {
@@ -132,7 +132,7 @@
       "required": true,
       "result": "pass",
       "test_command": "pnpm test:workers --run tests/workers/draws.test.ts",
-      "tested_tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
+      "tested_tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
       "evidence": "500 − 80 opening + 100 settled achievement = 520; receipt exposes debit, credits and settled/current balances separately and writes both ledger rows."
     },
     {
@@ -144,7 +144,7 @@
       "required": true,
       "result": "pass",
       "test_command": "pnpm test:workers --run tests/workers/admin-grants.test.ts",
-      "tested_tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
+      "tested_tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
       "evidence": "Super Admin edits an existing account's capabilities/self-grant/limit; live policy is reread at the mutation boundary; revocation, stale session and self-grant disablement fail without mutation; Studio has a scoped Foil page.",
       "residual": "The live designated account grant still needs the owner's authorised strong-auth session."
     },
@@ -156,7 +156,7 @@
       "required": true,
       "result": "pass",
       "test_command": "pnpm test:workers --run tests/workers/state-machines.test.ts",
-      "tested_tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
+      "tested_tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
       "evidence": "Terminal render jobs cannot be failed/completed again; claims fence attempts; stale attempts are rejected."
     },
     {
@@ -167,7 +167,7 @@
       "required": true,
       "result": "pass",
       "test_command": "pnpm test:workers --run tests/workers/effect-transport.test.ts",
-      "tested_tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
+      "tested_tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
       "evidence": "Effect 4.1.2 runtime with injected HTTP/logger services, typed failures, finite timeout and bounded idempotent retry; POST is single-attempt. The production Discord fetch path uses it."
     },
     {
@@ -178,7 +178,7 @@
       "required": true,
       "result": "pass",
       "test_command": "pnpm test:workers --run tests/workers/share-privacy.test.ts tests/workers/shares.test.ts",
-      "tested_tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
+      "tested_tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
       "evidence": "Snapshot audience is rechecked on every read; anonymous/member/cross-Bot/revoked/expired cases have negative coverage; new whole-cabinet links are retired; Preferences has expiry and revoke controls."
     },
     {
@@ -191,7 +191,7 @@
       "required": true,
       "result": "pass",
       "test_command": "pnpm test:ui",
-      "tested_tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
+      "tested_tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
       "evidence": "Rendered public/member/Studio surfaces, light/dark, mobile, 200% zoom, axe and overflow checks."
     },
     {
@@ -204,7 +204,7 @@
       "required": true,
       "result": "pass",
       "test_command": "pnpm test:product",
-      "tested_tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
+      "tested_tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
       "evidence": "56/56 bounded browser checks including real totals, 5:7 geometry, failure/retry, admin boundaries, mobile flip and deliberate negative controls."
     },
     {
@@ -215,7 +215,7 @@
       "required": true,
       "result": "pass",
       "test_command": "node --test tests/scripts/release-gate.test.mjs",
-      "tested_tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
+      "tested_tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
       "evidence": "Stale manifest, wrong tree, missing/failed required checks, wrong artifact hash and stale build stamp are rejected; deploy refuses unreadable migrations and unverified smoke."
     },
     {
@@ -226,7 +226,7 @@
       "required": false,
       "result": "pass",
       "test_command": "pnpm content:validate",
-      "tested_tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
+      "tested_tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
       "evidence": "Local manifests resolve Gonta Gokuhara and Kamui Gakupo to one canonical identity each, with reviewed profiles, sourced artwork, 9-card versioned rosters and decoded 750×1050 front renders. Production import is a separate residual.",
       "residual": "Production catalogue import and a reviewed collection-logo rollout remain."
     },
@@ -241,7 +241,7 @@
       "required": false,
       "result": "blocked",
       "test_command": "pnpm demo:discord:check --acceptance",
-      "tested_tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
+      "tested_tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
       "evidence": "Readiness probe: full command schema and effective bot permissions verified; no independent authorised identity or client observation was recorded.",
       "residual": "A real authorisation holder must invoke the commands in Discord desktop/mobile; an independent spectator must observe the result. The probe exits INCOMPLETE in acceptance mode."
     },
@@ -253,7 +253,7 @@
       "required": false,
       "result": "blocked",
       "test_command": "pnpm discord:setup:plan",
-      "tested_tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
+      "tested_tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
       "evidence": "Read-only plan is current; bot lacks MANAGE_CHANNELS/MANAGE_ROLES, so the category/showcase subset cannot be applied without a minimum role grant.",
       "residual": "Owner grants the minimum role or applies the exact plan subset; unrelated channels remain untouched."
     },
@@ -265,7 +265,7 @@
       "required": false,
       "result": "partial",
       "test_command": "pnpm test:ui",
-      "tested_tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
+      "tested_tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
       "evidence": "Collection marks now remain visible when a cover is present; current marks are reviewed Foilbury interpretations, not sourced official publisher marks.",
       "residual": "Source and review official wordmarks/icons per collection, then regenerate affected derivatives."
     },
@@ -278,7 +278,7 @@
       "required": true,
       "result": "pass",
       "test_command": "npx tsx scripts/discord/preflight.mjs --json",
-      "tested_tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
+      "tested_tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
       "evidence": "Persistent message 1567185366014763079 in #card-collector-test carries the real foilbury:tour:welcome component, Claim daily, Packs and web links. API read-back and the read-only preflight pass. The owner's actual click remains an optional client observation."
     },
     {
@@ -291,7 +291,7 @@
       "required": true,
       "result": "pass",
       "test_command": "node --test tests/scripts/assisted-acceptance.test.mjs",
-      "tested_tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
+      "tested_tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
       "evidence": "Bounded session binding, exact draw/instance/debit correlation, failed-interaction rejection and spectator binding are covered by 28 logic and negative-control tests."
     },
     {
@@ -302,7 +302,7 @@
       "required": true,
       "result": "pass",
       "test_command": "pnpm test:workers --run tests/workers/scheduled.test.ts",
-      "tested_tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
+      "tested_tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
       "evidence": "Each maintenance step is isolated; stale interactions, NPC work, the editorial handler and the bounded alert stub are exercised. A real deployed cron invocation was captured with wrangler tail, but per-step production side effects are not claimed."
     },
     {
@@ -313,7 +313,7 @@
       "required": true,
       "result": "pass",
       "test_command": "node --test tests/scripts/release-gate.test.mjs",
-      "tested_tree_hash": "604bf76bfdec6bfbf6acdf4029d3e931de1b699320b33bf1b1c67eccc9ef87ac",
+      "tested_tree_hash": "1d693dc3d4a3640354e35485e397374b54627be76efbd6439e0bd6d55b47dc93",
       "evidence": "Negative tests reject changed working-tree content with an unchanged index, a changed chunk or client asset, a stale/mismatched remote ref and an unreadable or versionless rollback target. The build stamps a complete module/asset digest."
     }
   ]
