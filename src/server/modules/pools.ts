@@ -311,12 +311,16 @@ export async function executeDraw(
   if (replay) {
     // The stored receipt is the transaction-time record. The current balance
     // may have moved since then (another tab, mission or grant), so expose it
-    // separately rather than overwriting history.
-    const current = await getWallet(ctx.db, ctx.tenant.id, user.id);
+    // separately rather than overwriting history. A balance read failure must
+    // not turn a committed replay into a generic failure.
+    const stored = replay.response as Record<string, unknown>;
+    const storedBalance =
+      typeof stored.balance_after === "number" ? stored.balance_after : 0;
+    const current = await readWalletBalance(ctx, user.id);
     return {
       ...(replay.response as object),
       replayed: true,
-      current_balance: current.balance,
+      current_balance: current?.balance ?? storedBalance,
     };
   }
   const preview = await getPoolPreview(ctx, input.pool, input.channelKey);
@@ -474,7 +478,19 @@ export async function executeDraw(
     }
     throw error;
   }
-  const afterDebit = await getWallet(ctx.db, ctx.tenant.id, user.id);
+  // Everything below is presentation/settlement work after the atomic commit.
+  // It must never turn a committed draw into a generic failure. The draw row
+  // remains the authoritative transaction-time receipt; recovery can rebuild
+  // the same card, serial, debit and settled rewards from it.
+  const debitRead = await readWalletBalance(ctx, user.id);
+  const debitLedgerBalance =
+    debitRead === null ? await readDebitLedgerBalance(ctx, user.id, drawId) : null;
+  const balanceAfterDebit =
+    debitRead?.balance ??
+    debitLedgerBalance ??
+    Math.max(0, wallet.balance - preview.price);
+  let settlementPending = debitRead === null && debitLedgerBalance === null;
+
   let achievements: Array<{
     id: string;
     name: string;
@@ -499,48 +515,177 @@ export async function executeDraw(
       reward_state: item.reward_state,
     }));
   } catch (error) {
+    settlementPending = true;
     console.error(JSON.stringify({ level: "error", message: "achievement evaluation after draw failed", draw_id: drawId, error: String(error) }));
   }
   // Reward fulfilment may have credited Foil after the debit. Read the wallet
   // again and expose each part separately: the opening debit, settled credits,
   // and the authoritative settled balance. Never show pre-reward money as the
   // result of a reward-paying opening.
-  const afterSettlement = await getWallet(ctx.db, ctx.tenant.id, user.id);
-  const achievementCredits = achievements
+  const settlementRead = await readWalletBalance(ctx, user.id);
+  let achievementCredits = achievements
     .filter((item) => item.reward_state === "granted" && item.reward_amount > 0)
     .map((item) => ({
       id: item.id,
       name: item.name,
       amount: item.reward_amount,
     }));
-  const creditsTotal = achievementCredits.reduce((sum, item) => sum + item.amount, 0);
+  let creditsTotal = achievementCredits.reduce((sum, item) => sum + item.amount, 0);
+  if (settlementRead === null) settlementPending = true;
+  // An internal reward read-back failure can still leave the credit in the
+  // ledger. Reconcile against the ledger before presenting the result so the
+  // settled reward is shown once and a mismatch is never called settled.
+  if (settlementRead && settlementRead.balance !== balanceAfterDebit + creditsTotal) {
+    const settledCredits = await readSettledAchievementCredits(ctx, user.id, drawId);
+    if (settledCredits.length > 0) {
+      achievementCredits = settledCredits;
+      creditsTotal = settledCredits.reduce((sum, item) => sum + item.amount, 0);
+    }
+    if (settlementRead.balance !== balanceAfterDebit + creditsTotal) {
+      settlementPending = true;
+    }
+  }
+  const balanceAfter = settlementRead?.balance ?? balanceAfterDebit + creditsTotal;
   const settledReceipt = {
     ...receipt,
-    balance_after_debit: afterDebit.balance,
-    balance_after: afterSettlement.balance,
+    balance_after_debit: balanceAfterDebit,
+    balance_after: balanceAfter,
     credits_total: creditsTotal,
     achievement_credits: achievementCredits,
+    settlement_status: settlementPending ? "pending" : "settled",
+    settlement_pending: settlementPending,
   };
-  await ctx.db
-    .prepare(
-      `UPDATE fb_idempotency_keys SET response_json = ?
-        WHERE tenant_id = ? AND actor_type = ? AND actor_id = ? AND operation = 'draw.execute' AND idempotency_key = ?`,
-    )
-    .bind(
-      JSON.stringify(settledReceipt),
-      ctx.tenant.id,
-      ctx.actor.type,
-      ctx.actor.id,
-      input.idempotency.key,
-    )
-    .run()
-    .catch(() => undefined);
+  // Only persist the settled totals when settlement actually completed. If a
+  // read failed, leave the transaction-time receipt in place so the handler
+  // recovers from the draw row and its ledger instead of trusting a partial
+  // snapshot.
+  if (!settlementPending) {
+    try {
+      const updated = await ctx.db
+        .prepare(
+          `UPDATE fb_idempotency_keys SET response_json = ?
+            WHERE tenant_id = ? AND actor_type = ? AND actor_id = ? AND operation = 'draw.execute' AND idempotency_key = ?`,
+        )
+        .bind(
+          JSON.stringify(settledReceipt),
+          ctx.tenant.id,
+          ctx.actor.type,
+          ctx.actor.id,
+          input.idempotency.key,
+        )
+        .run();
+      if ((updated.meta?.changes ?? 0) === 0) {
+        console.error(JSON.stringify({ level: "error", message: "draw idempotency response was not updated", draw_id: drawId }));
+      }
+    } catch (error) {
+      console.error(JSON.stringify({ level: "error", message: "draw idempotency response update failed", draw_id: drawId, error: String(error) }));
+    }
+  }
   return {
     ...settledReceipt,
     achievements,
-    current_balance: afterSettlement.balance,
+    current_balance: balanceAfter,
     replayed: false,
   };
+}
+
+async function readSettledAchievementCredits(
+  ctx: Ctx,
+  userId: string,
+  drawId: string,
+): Promise<Array<{ id: string; name: string; amount: number }>> {
+  try {
+    const rows = await all<{
+      id: string;
+      name: string;
+      amount: number;
+      ledger_amount: number | null;
+    }>(
+      ctx.db,
+      `SELECT u.achievement_id AS id, d.name,
+              u.reward_amount AS amount, l.amount AS ledger_amount
+         FROM fb_achievement_unlocks u
+         JOIN fb_achievement_definitions d ON d.id = u.achievement_id
+         LEFT JOIN fb_ledger_entries l
+           ON l.tenant_id = u.tenant_id AND l.user_id = u.user_id
+          AND l.reference_type = 'achievement' AND l.reference_id = u.id
+        WHERE u.tenant_id = ? AND u.user_id = ?
+          AND u.event_id IN (
+            SELECT e.id FROM fb_domain_events e
+             WHERE e.tenant_id = ? AND e.user_id = ? AND e.dedupe_key = ?
+          )
+        ORDER BY u.earned_at, u.rowid`,
+      ctx.tenant.id,
+      userId,
+      ctx.tenant.id,
+      userId,
+      `draw:${drawId}`,
+    );
+    return rows
+      .map((row) => {
+        const amount = row.ledger_amount !== null ? Number(row.ledger_amount) : Number(row.amount);
+        if (!Number.isFinite(amount) || amount <= 0) return null;
+        return { id: row.id, name: row.name, amount };
+      })
+      .filter((item): item is { id: string; name: string; amount: number } => item !== null);
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        message: "draw achievement credits could not be read",
+        draw_id: drawId,
+        error: String(error),
+      }),
+    );
+    return [];
+  }
+}
+
+async function readWalletBalance(
+  ctx: Ctx,
+  userId: string,
+): Promise<{ balance: number } | null> {
+  try {
+    return await getWallet(ctx.db, ctx.tenant.id, userId);
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        message: "wallet read after draw failed",
+        error: String(error),
+      }),
+    );
+    return null;
+  }
+}
+
+async function readDebitLedgerBalance(
+  ctx: Ctx,
+  userId: string,
+  drawId: string,
+): Promise<number | null> {
+  try {
+    const row = await first<{ balance_after: number }>(
+      ctx.db,
+      `SELECT balance_after FROM fb_ledger_entries
+        WHERE tenant_id = ? AND user_id = ? AND reference_type = 'draw' AND reference_id = ?
+        ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+      ctx.tenant.id,
+      userId,
+      drawId,
+    );
+    return typeof row?.balance_after === "number" ? row.balance_after : null;
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        message: "draw debit ledger read failed",
+        draw_id: drawId,
+        error: String(error),
+      }),
+    );
+    return null;
+  }
 }
 
 function pickWeighted(entries: EligibleEntry[], random: number, totalWeight: number): EligibleEntry {

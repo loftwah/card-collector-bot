@@ -24,6 +24,7 @@ const root = process.cwd();
 const env = readEnv(path.join(root, ".env"));
 const checks = [];
 let channelDenied = false;
+let deployedBuild = null;
 
 function readEnv(file) {
   const values = {};
@@ -199,6 +200,7 @@ const origin = local
 try {
   const status = await fetch(`${origin}/api/v1/status`, { signal: AbortSignal.timeout(10_000) });
   const statusBody = await status.json().catch(() => null);
+  deployedBuild = status.headers.get("x-foilbury-build");
   add(
     "origin",
     status.ok && statusBody?.name === "Foilbury" ? "PASS" : "FAIL",
@@ -253,6 +255,79 @@ if (!applicationId || !guildId || !channelId) {
       command
         ? `foilbury ${command.id} · ${mismatches.length === 0 ? "complete schema matches the source definition" : `mismatch: ${mismatches.slice(0, 6).join("; ")}`}`
         : "The /foilbury guild command is not registered.",
+    );
+
+    // The persistent tour entry is part of the visible product, not a probe.
+    // Read it back by the recorded message id (or find the newest bot-authored
+    // entry) and assert that it still carries a real tour component.
+    let tourEntry = null;
+    const stateFile = path.join(root, ".foilbury", "discord-tour-entry.json");
+    let recordedId = null;
+    try {
+      recordedId = JSON.parse(fs.readFileSync(stateFile, "utf8")).message_id ?? null;
+    } catch {
+      recordedId = null;
+    }
+    if (recordedId) {
+      try {
+        tourEntry = await discord(
+          `/channels/${channelId}/messages/${encodeURIComponent(recordedId)}`,
+        );
+      } catch {
+        tourEntry = null;
+      }
+    }
+    if (!tourEntry) {
+      const recent = await discord(`/channels/${channelId}/messages?limit=100`);
+      tourEntry =
+        recent.find(
+          (item) =>
+            item.author?.bot === true &&
+            (item.components ?? [])
+              .flatMap((row) => row.components ?? [])
+              .some((component) => component.custom_id === "foilbury:tour:welcome"),
+        ) ?? null;
+    }
+    const tourComponents = (tourEntry?.components ?? []).flatMap((row) => row.components ?? []);
+    const hasTourButton = tourComponents.some(
+      (component) => component.custom_id === "foilbury:tour:welcome",
+    );
+    const hasTourLink = tourComponents.some(
+      (component) => typeof component.url === "string" && component.url.includes("/tour"),
+    );
+    add(
+      "tour entry",
+      tourEntry && hasTourButton ? "PASS" : "FAIL",
+      tourEntry
+        ? `https://discord.com/channels/${guildId}/${channelId}/${tourEntry.id} · ${hasTourButton ? "interactive Start the tour control" : "missing interactive tour control"}${hasTourLink ? " · web tour link" : ""}`
+        : "No persistent Start the Foilbury tour entry was found in the configured channel. Run pnpm discord:tour:entry.",
+    );
+
+    // A real production draw is a separate authorised human step. The safe
+    // default gate is the emitted Worker against an isolated D1/R2 fixture.
+    const healthFile = path.join(root, ".foilbury", "evidence", "discord-command-health.json");
+    let health = null;
+    try {
+      health = JSON.parse(fs.readFileSync(healthFile, "utf8"));
+    } catch {
+      health = null;
+    }
+    const healthAgeHours = health?.generated_at
+      ? (Date.now() - Date.parse(health.generated_at)) / 3_600_000
+      : null;
+    const healthFresh = healthAgeHours !== null && healthAgeHours >= 0 && healthAgeHours <= 24;
+    const healthBuildMatches =
+      !deployedBuild || !health?.source_sha || health.source_sha === deployedBuild;
+    add(
+      "command execution health",
+      health?.passed === true && healthFresh && healthBuildMatches ? "PASS" : "BLOCKED",
+      health?.passed === true && healthFresh && healthBuildMatches
+        ? `Emitted Worker fixture draw passed · ${health.tests_passed} test(s) · source ${String(health.source_sha).slice(0, 12)} · ${health.generated_at}. This does not prove a live production draw.`
+        : health?.passed === true && !healthFresh
+          ? "The emitted-Worker command receipt is stale. Run pnpm discord:command-health."
+          : health?.passed === true && !healthBuildMatches
+            ? `The command receipt is for source ${String(health.source_sha).slice(0, 12)}, not deployed ${String(deployedBuild).slice(0, 12)}. Run pnpm discord:command-health against the reviewed build.`
+            : "No recent emitted-Worker draw receipt. Run pnpm discord:command-health; a live production draw remains a separate authorised human step.",
     );
 
     const everyoneOverwrite = (channel.permission_overwrites ?? []).find(

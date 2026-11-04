@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { ROOT } from "./lib/local.mjs";
-import { sourceState } from "./lib/source-identity.mjs";
+import { sourceState, workingTreeHash } from "./lib/source-identity.mjs";
 
 const args = new Set(process.argv.slice(2));
 const skipChecks = args.has("--skip-checks");
@@ -33,6 +33,7 @@ if (state.dirty && !skipChecks) {
   }
 }
 const treeHash = state.tree_hash;
+const contentHash = workingTreeHash();
 const now = new Date().toISOString();
 
 const checks = [
@@ -55,6 +56,7 @@ for (const check of checks) {
       exit_code: 0,
       completed_at: now,
       tree_hash: treeHash,
+      source_content_hash: contentHash,
       reused: true,
     });
     continue;
@@ -69,6 +71,7 @@ for (const check of checks) {
     completed_at: new Date().toISOString(),
     exit_code: exitCode,
     tree_hash: treeHash,
+    source_content_hash: contentHash,
   });
   if (exitCode !== 0) {
     console.error(`Required check failed: ${check.command}`);
@@ -268,11 +271,19 @@ const criteria = [
   },
 ];
 
+const contentAfter = workingTreeHash();
+if (contentAfter !== contentHash) {
+  console.error(
+    "The tracked working-tree content changed while acceptance ran. The recorded evidence cannot attest the reviewed source.",
+  );
+  process.exit(2);
+}
 const manifest = {
   schema_version: 1,
   environment: "production",
   generated_at: now,
   source_tree_hash: treeHash,
+  source_content_hash: contentHash,
   source_sha: state.sha,
   checks: checkResults,
   criteria,

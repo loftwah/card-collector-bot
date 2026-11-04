@@ -1,6 +1,6 @@
 # Foilbury Discord guided tour
 
-Date: 2026-11-03. Deployed source: `f161b6879a3a9d209e1b565c500ebc420659f492` (main merge of PR #5; PR head `3acc5bd54e51608ee099b4e786a027bf217a9dcf`). Production Worker: `b5a8d35d-7911-4d1e-a7e8-d4d08fd9bb21`.
+Date: 2026-11-04. Current deployed source: `5983dd72b30abc45256e5efd9ae6265939aad104`; Worker `91e5c2bf-3451-42e2-887e-d0e5a72d1437`; schema `0025_scoped_admin_grants.sql`. The historical tour release was source `f161b68` and Worker `b5a8d35d-7911-4d1e-a7e8-d4d08fd9bb21`.
 
 This is the host script for the real Discord tour in the existing Loftwah test installation. It is not a storyboard of the website. The tour is built from the same D1 cards, owned instances, serials, Foil ledger and achievement unlocks as the website and REST API.
 
@@ -19,7 +19,7 @@ pnpm demo:discord:check          # production
 pnpm demo:discord:check --local  # local sandbox
 ```
 
-The preflight does not draw, grant, spend, post or call a paid provider. Current production result: **15 PASS, 0 FAIL, 2 BLOCKED** (channel visibility and spectator setup; see the matrix).
+The preflight does not draw, grant, spend, post or call a paid provider. Current production result: **17 PASS, 0 FAIL, 4 BLOCKED** (pinning, channel visibility, spectator setup and authenticated actor session; see the matrix). It now also reads back the persistent tour entry.
 
 ## Prerequisites
 
@@ -40,7 +40,7 @@ the bottom appears only for an authorised account.
 
 ## Host script
 
-Start in `#card-collector-test`. The tour is private by default: each response is visible only to the person who runs the command. Buttons that move between stages never draw, spend or grant anything.
+Start at the persistent entry: **https://discord.com/channels/997734945206313041/1566700752385081355/1567185366014763079** (message `1567185366014763079`). Press **Start the tour** or run `/foilbury tour`. The tour is private by default: each response is visible only to the person who runs the command. Buttons that move between stages never draw, spend or grant anything. See `docs/DISCORD_TOUR_ENTRY.md` for the current route.
 
 ### 1. Welcome and discovery
 
@@ -60,7 +60,7 @@ Safe actions: read it, press **Start with an album** or **Next**. Pressing **Cla
 
 Press **Start with an album**.
 
-Expected private response: **Danganronpa — Three Killing Games**. It shows the members-only audience, the actual eight-card release roster, the 32 published variants, your unique-card progress, and the **Three schools** milestone with its frozen 8-card target and one-time reward.
+Expected private response: **Danganronpa — Three Killing Games**. It shows the members-only audience, the collection release version, the actual current release roster, the published variants, your unique-card progress, and the **Three schools** milestone with its frozen versioned target and one-time reward. The tour does not assume eight is the current roster size; an earned version stays complete at its frozen target after a later expansion.
 
 This is an album, not a token sample. If the account is not entitled, the album is not shown at all.
 
@@ -174,12 +174,12 @@ The current `#card-collector-test` channel has no `@everyone` View Channel deny.
 
 | Item                                                                                                        | Status                             | Evidence                                                       |
 | ----------------------------------------------------------------------------------------------------------- | ---------------------------------- | -------------------------------------------------------------- |
-| Production preflight (installation, registration, album, renders, achievement, public showcase, identities) | PASS                               | `pnpm demo:discord:check` — 15 PASS, 0 FAIL, 2 BLOCKED         |
+| Production preflight (installation, registration, tour entry, album, renders, achievement, public showcase, identities) | PASS | `pnpm demo:discord:check` — 17 PASS, 0 FAIL, 4 BLOCKED |
 | `tour` command registered without removing existing commands                                                | PASS                               | Discord API command read-back, command ID unchanged            |
 | Member-only restricted reveal stays ephemeral in an unverified channel                                      | PASS                               | `tests/workers/discord.test.ts` private-delivery test          |
 | Channel-visible member reveal in a genuinely restricted channel                                             | BLOCKED                            | Test channel has no `@everyone` deny; no channel policy is set |
 | Public original-IP share in an authorised channel                                                           | PASS locally / live BLOCKED        | Share receipt + audience tests; live click needs the host      |
-| Complete eight-card album and real 7/8 → 8/8 transition                                                     | PASS locally                       | `pnpm demo:album` + `docs/evidence/demo-album-transition.json` |
+| Complete versioned album and real transition                                                                    | PASS locally                       | `pnpm demo:album` + `.foilbury/evidence/demo-album-transition.json`; production transition requires its own labelled actor |
 | Live Discord desktop welcome/open/front/back/progress/share                                                 | BLOCKED                            | Requires Dean's Discord client; do not impersonate             |
 | Live Discord mobile                                                                                         | BLOCKED                            | Requires a real mobile device/client                           |
 | Genuine second-account spectator view                                                                       | BLOCKED                            | Requires an authorised second person/account                   |

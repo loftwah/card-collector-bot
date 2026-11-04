@@ -55,10 +55,42 @@ A persisted draw receipt can be re-sent with `Re-send receipt`. That path reads
 cannot charge again or roll a new card. If no receipt exists, the action is
 recorded as pre-commit and no paid retry is offered.
 
+## Scheduled work and alerts
+
+The Worker scheduled entry now runs each maintenance step in isolation:
+`rate_limits`, `magic_links`, `stale_interactions` and `npc_progression`. A
+failure in one step is recorded and the remaining steps still run. The EmDash
+editorial/publication handler is invoked separately and runs even if maintenance
+cannot start. Success and failure are logged as one bounded JSON receipt with
+`ok` and per-step results.
+
+A failed maintenance run calls the admin alert integration. The payload is
+mention-free, bounded, carries a correlation id and is scrubbed of caller-supplied
+secrets. Delivery is one POST attempt (an ambiguous non-idempotent send is not
+retried automatically) with a five-second abort. If
+`ADMIN_DISCORD_WEBHOOK_URL` is absent, the integration reports
+`configured: false` and sends nothing.
+
+**Production dependency:** the deployed Worker has no
+`ADMIN_DISCORD_WEBHOOK_URL` secret. The integration is tested with a stub
+(`tests/workers/scheduled.test.ts`) and the destination remains an explicit
+owner-supplied secret. Do not claim working production alert delivery until it
+is configured and a real alert is read back.
+
+**Deployed scheduled-run receipt:** `wrangler tail` captured a real cron
+invocation on 2026-11-04 at 03:25 UTC (14:25 AEDT): Worker version
+`91e5c2bf-3451-42e2-887e-d0e5a72d1437`, entrypoint `default`, cron
+`*/5 * * * *`, outcome `ok`. The retained private copy is
+`.foilbury/evidence/deployed-scheduled-run-2026-11-04.json`. That receipt proves
+the deployed scheduled entry ran; it does not prove each maintenance step's
+side effect, because the deployed build did not yet emit the per-step log.
+
 ## Required checks
+
 
 - `pnpm test:workers --run tests/workers/discord.test.ts`
 - `pnpm test:workers --run tests/workers/discord-redaction.test.ts`
+- `pnpm test:workers --run tests/workers/scheduled.test.ts`
 - `pnpm test:production-path`
 - `pnpm test:ui`
 - `pnpm test:product`

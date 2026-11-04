@@ -136,3 +136,17 @@ artwork. When a source image is missing or unsuitable, the card uses a neutral
 - **Production import is not yet performed.** The production catalogue remains
   on the last deployed release until a reviewed content provisioning run with
   backup and rollback. Local proof is not deployed acceptance.
+
+## Current quality matrix — 2026-11-04
+
+See `docs/CONTENT_QUALITY_MATRIX.md` for the per-collection read-back:
+production publication, review counts, named omissions, deliberate release
+boundaries, draw eligibility, the Gonta/Gakupo production gap and the safe
+incremental import plan. The matrix separates published from reviewed: 126/140
+third-party profiles are reviewed and 14 are explicitly draft (Alien Stage 8,
+DDLC 3, Madoka 1, The Summer Hikaru Died 2).
+
+Production collection marks currently remain reviewed Foilbury
+interpretations, not official wordmarks. `docs/CONTENT_QUALITY_MATRIX.md`
+records the identity policy and the required wordmark/icon/cover separation;
+no official logo was uploaded in this pass.

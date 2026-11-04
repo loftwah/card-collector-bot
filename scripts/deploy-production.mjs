@@ -29,6 +29,14 @@ import {
   evidenceSummary,
   validateReleaseEvidence,
 } from "./lib/release-evidence.mjs";
+import {
+  changedPaths,
+  evidenceArtifacts,
+  requireScopeEvidence,
+  resolveRollback,
+  scopeForPaths,
+  verifyFreshRemote,
+} from "./lib/release-scope.mjs";
 
 const args = new Set(process.argv.slice(2));
 const checkOnly = args.has("--check");
@@ -124,7 +132,32 @@ function deploymentList(env) {
 }
 
 const env = cloudflareEnv();
+
+// Read a fresh remote ref. Local origin/main is a cache and may be stale; the
+// reviewed source must match the branch as it exists now, not as it existed
+// when this checkout last fetched.
+let fetchedAt = null;
+let remoteSha = null;
+try {
+  capture("git", ["fetch", "--no-tags", "--quiet", "origin", "main"]);
+  fetchedAt = new Date().toISOString();
+  remoteSha = capture("git", ["ls-remote", "origin", "refs/heads/main"]).split(/\s+/)[0] ?? null;
+} catch (error) {
+  console.error(`Refusing release: the remote main ref could not be fetched. ${String(error?.message ?? error)}`);
+  process.exit(2);
+}
+
 const source = sourceState();
+try {
+  verifyFreshRemote({
+    localOriginMain: source.origin_main,
+    remoteSha,
+    fetchedAt,
+  });
+} catch (error) {
+  console.error(`Refusing release: ${error.message}`);
+  process.exit(2);
+}
 if (source.dirty) {
   console.error("Refusing release from a dirty working tree. Commit or stash the listed changes after review.");
   console.error(source.dirty);
@@ -147,7 +180,7 @@ if (treeHash !== source.tree_hash) throw new Error("Source tree changed during t
 
 let evidence;
 try {
-  evidence = validateReleaseEvidence({ treeHash });
+  evidence = validateReleaseEvidence({ treeHash, contentHash: source.content_hash });
 } catch (error) {
   console.error(`Refusing release: ${error.message}`);
   process.exit(2);
@@ -157,9 +190,51 @@ if (!checkOnly) {
   const status = run("pnpm", ["build"]);
   if (status !== 0) process.exit(status);
 }
-const bundle = inspectBundle({ treeHash, sha: source.sha });
+const bundle = inspectBundle({ treeHash, contentHash: source.content_hash, sha: source.sha });
 const migrations = migrationState(env);
 const previous = deploymentList(env);
+let rollback;
+try {
+  rollback = resolveRollback(previous);
+} catch (error) {
+  console.error(`Refusing release: ${error.message}`);
+  process.exit(2);
+}
+
+function previousReleaseSha() {
+  const receipts = fs
+    .readdirSync(evidenceDir)
+    .filter((name) => /^release-receipt-.*\.json$/.test(name))
+    .map((name) => {
+      const file = path.join(evidenceDir, name);
+      try {
+        const value = readJson(file);
+        return { file, value };
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .sort((left, right) => Date.parse(right.value.generated_at ?? 0) - Date.parse(left.value.generated_at ?? 0));
+  return receipts[0]?.value?.source_sha ?? null;
+}
+
+const previousSha = previousReleaseSha();
+const scope = scopeForPaths(
+  previousSha
+    ? changedPaths({ from: previousSha, capture })
+    : capture("git", ["show", "--name-only", "--pretty=format:", "HEAD"])
+        .split(/\r?\n/)
+        .filter(Boolean),
+);
+let scopeEvidence;
+try {
+  scopeEvidence = requireScopeEvidence(scope, evidence.criteria);
+} catch (error) {
+  console.error(`Refusing release: ${error.message}`);
+  process.exit(2);
+}
+const artifacts = evidenceArtifacts(evidence.criteria);
 
 if (migrations.remote === null) {
   console.error("Refusing release: production migration state could not be read.");
@@ -179,24 +254,33 @@ const plan = {
   generated_at: new Date().toISOString(),
   mode: checkOnly ? "check" : "deploy",
   source,
+  remote: { fetched_at: fetchedAt, sha: remoteSha },
   tree_hash: treeHash,
+  scope,
+  scope_evidence: scopeEvidence,
   evidence: evidenceSummary(evidence),
+  evidence_artifacts: artifacts,
   bundle,
   migrations,
   previous_deployment: previous?.[0] ?? null,
+  rollback,
   environment: "production",
   origin: "https://foilbury.loftwah.com",
   config,
   gates: {
     clean_tree: true,
     pushed_source: true,
+    fresh_remote_ref: true,
     source_build_bound: true,
+    complete_artifact_digest: true,
     acceptance_evidence_current: true,
     required_checks_passed: true,
+    affected_scope_evidence: true,
     local_env_excluded: true,
     secret_markers_absent: true,
     migrations_readable: true,
     pending_migrations: [],
+    rollback_target_verified: true,
     deployment_requires_owner_approval: true,
   },
 };
@@ -225,7 +309,7 @@ if (deployStatus !== 0) {
 
 const after = deploymentList(env);
 const deployed = after?.[0] ?? null;
-const rollbackTarget = previous?.[0] ?? null;
+const deployedVersion = deployed?.versions?.[0]?.version_id ?? null;
 
 // A read-only smoke run is bound to the exact source SHA through the public
 // x-foilbury-build header. No draw, grant, message or content mutation.
@@ -237,7 +321,7 @@ if (fs.existsSync(smokeFile)) {
   smoke = { path: path.relative(ROOT, smokeFile), sha256: sha256File(smokeFile), results: readJson(smokeFile) };
 }
 
-const verified = Boolean(deployed) && smokeStatus === 0;
+const verified = Boolean(deployedVersion) && smokeStatus === 0;
 const receipt = {
   schema_version: 2,
   generated_at: new Date().toISOString(),
@@ -246,31 +330,29 @@ const receipt = {
   branch: source.branch,
   origin: plan.origin,
   environment: "production",
+  scope,
+  remote: plan.remote,
   build: {
     bundle_sha256: bundle.sha256,
+    artifact_sha256: bundle.artifact.sha256,
+    artifact_files: bundle.artifact.file_count,
     bytes: bundle.bytes,
     built_at: bundle.build.built_at,
     build_nonce: bundle.build.build_nonce,
   },
   migrations,
   acceptance: plan.evidence,
+  evidence_artifacts: artifacts,
   deployment: deployed ?? "unknown",
-  deployment_status: deployed ? "reported" : "unverified",
-  previous_deployment: rollbackTarget,
-  rollback: rollbackTarget
-    ? {
-        target_version: rollbackTarget.id ?? rollbackTarget.version ?? null,
-        command: `wrangler rollback ${rollbackTarget.id ?? rollbackTarget.version}`,
-        note: "Rollback restores the previous Worker. Additive schema migrations are not reversed automatically.",
-      }
-    : {
-        target_version: null,
-        command: null,
-        note: "No previous deployment was readable; rollback must be prepared manually before any further release.",
-      },
+  deployment_version: deployedVersion,
+  deployment_status: deployedVersion ? "reported" : "unverified",
+  previous_deployment: previous?.[0] ?? null,
+  rollback,
   smoke,
   verified,
-  unverified_reason: verified ? null : "Deployment metadata or the build-bound production smoke did not verify.",
+  unverified_reason: verified
+    ? null
+    : "Deployment metadata or the build-bound production smoke did not verify.",
 };
 const receiptFile = path.join(evidenceDir, `release-receipt-${source.sha.slice(0, 12)}.json`);
 fs.writeFileSync(receiptFile, JSON.stringify(receipt, null, 2));

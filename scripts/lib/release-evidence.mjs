@@ -26,6 +26,7 @@ function fail(message) {
  */
 export function validateReleaseEvidence({
   treeHash,
+  contentHash,
   requiredChecks = REQUIRED_CHECKS,
   now = new Date(),
   file = path.join(ROOT, ACCEPTANCE_FILE),
@@ -39,6 +40,11 @@ export function validateReleaseEvidence({
   if (evidence.source_tree_hash !== treeHash) {
     throw fail(
       `Acceptance evidence targets ${String(evidence.source_tree_hash).slice(0, 12)}… but the reviewed tree is ${treeHash.slice(0, 12)}…. Regenerate the evidence.`,
+    );
+  }
+  if (contentHash && evidence.source_content_hash !== contentHash) {
+    throw fail(
+      `Acceptance evidence was recorded from working-tree content ${String(evidence.source_content_hash ?? "unknown").slice(0, 12)}… but the current content is ${contentHash.slice(0, 12)}…. Regenerate the evidence.`,
     );
   }
   const generated = Date.parse(evidence.generated_at);

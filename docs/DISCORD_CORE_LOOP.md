@@ -44,6 +44,14 @@
   installation, concurrent opens, retry/replay and restricted-art ephemerality;
 - `/foilbury missions`, NPC inspection and the guided tour handler.
 
+`tests/workers/discord-recovery.test.ts` covers the post-commit failure
+windows: a lost interaction receipt, reward settlement read-back, a zero-row
+receipt UPDATE, a render lookup failure, Discord delivery failure and stale
+interaction expiry. Each case re-sends the same draw/instance/serial with one
+debit and at most one reward, and the idempotency key reports `replayed: true`
+without creating a second draw. Recovery is scoped to the tenant and user that
+own the draw row.
+
 `pnpm demo:discord:check` is a read-only production preflight (15 PASS / 2
 BLOCKED at the last read). It does not prove a live client invocation.
 

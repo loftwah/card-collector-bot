@@ -36,7 +36,11 @@ import {
   stateFromError,
   welcomeMessage,
 } from "./presentation";
-import { readInteractionReceipt, recordInteractionReceipt } from "./receipts";
+import {
+  drawIdempotencyKey,
+  recoverDrawReceipt,
+  recordInteractionReceipt,
+} from "./receipts";
 import { audienceRank, canViewCard, effectiveCardAudience } from "../modules/visibility";
 import { HELP_TEXT } from "./command-definitions";
 import { channelAudienceFor, isBotAdmin, requireBotAdmin } from "./context";
@@ -70,6 +74,8 @@ interface DrawReceipt {
   current_balance?: number;
   credits_total?: number;
   achievement_credits?: Array<{ id: string; name: string; amount: number }>;
+  settlement_status?: "settled" | "pending";
+  settlement_pending?: boolean;
   probability_bps: number;
   drawn_at: string;
   replayed: boolean;
@@ -270,6 +276,11 @@ async function openCard(
     price: result.price,
     currency_symbol: result.currency.symbol,
     balance_after: result.balance_after,
+    balance_after_debit: result.balance_after_debit,
+    credits_total: result.credits_total,
+    achievement_credits: result.achievement_credits,
+    settlement_status: result.settlement_status,
+    settlement_pending: result.settlement_pending,
     drawn_at: result.drawn_at,
     replayed: result.replayed,
   });
@@ -331,12 +342,16 @@ async function redeliverReceipt(
   interaction: DiscordInteraction,
   originalInteractionId: string,
 ): Promise<DiscordCallback> {
-  const receipt = await readInteractionReceipt(ctx.db, originalInteractionId);
+  const receipt = await recoverDrawReceipt(ctx.db, {
+    tenantId: ctx.tenant.id,
+    userId: ctx.user!.id,
+    interactionId: originalInteractionId,
+  });
   if (!receipt) {
     throw new ApiError(
       404,
       "receipt_not_found",
-      "No committed draw receipt was found for that button. Nothing was charged; open the cabinet to inspect your cards.",
+      "No committed draw receipt could be found for that button. Nothing new was charged; open the cabinet to inspect your cards.",
     );
   }
   const render = await first<{ width: number; height: number; r2_key: string; mime: string }>(
@@ -348,6 +363,8 @@ async function redeliverReceipt(
     receipt.variant_id,
   ).catch(() => null);
   const print = editionPrintTitle(receipt.edition_name);
+  const credits = receipt.credits_total ?? 0;
+  const creditNames = receipt.achievement_credits?.map((item) => item.name).filter(Boolean) ?? [];
   const result = callback(
     {
       embeds: [
@@ -358,6 +375,16 @@ async function redeliverReceipt(
           description: [
             "This is the recorded result of your original draw. No second pull was made and no second debit was recorded.",
             `**${receipt.price} ${receipt.currency_symbol}** was charged from **${receipt.pool_name}**. Current balance: **${receipt.balance_after} ${receipt.currency_symbol}**.`,
+            ...(credits > 0
+              ? [
+                  `Settled rewards: **+${credits} ${receipt.currency_symbol}**${creditNames.length ? ` · ${creditNames.join(", ")}` : ""}.`,
+                ]
+              : []),
+            ...(receipt.settlement_pending
+              ? [
+                  "Reward settlement is still being confirmed from the ledger. The draw, serial and debit are already recorded and will not be paid twice.",
+                ]
+              : []),
           ].join("\n\n"),
           color: 0x245c4b,
           fields: [
@@ -1182,17 +1209,25 @@ function tourNav(
   return components([...extra, row]);
 }
 
+export function selectTourAlbum<T extends { slug: string; card_count: number }>(
+  collections: T[],
+): T | null {
+  return (
+    collections.find((collection) => collection.slug === "danganronpa-three-games") ??
+    [...collections].sort((left, right) => right.card_count - left.card_count)[0] ??
+    null
+  );
+}
+
 async function tourAlbum(ctx: Ctx) {
   const collections = (await listCollections(ctx)).filter(
     (collection) => collection.enabled && collection.status === "published",
   );
-  const preferred =
-    collections.find(
-      (collection) => collection.slug === "danganronpa-three-games" && collection.card_count === 8,
-    ) ??
-    collections.find((collection) => collection.card_count === 8) ??
-    collections[0] ??
-    null;
+  // The guided tour uses the curated Danganronpa album whatever its current
+  // release size. Do not treat eight as a universal ceiling: a later roster
+  // expansion still belongs to the same versioned release and frozen
+  // achievement target.
+  const preferred = selectTourAlbum(collections);
   if (!preferred) return null;
   const detail = await getCollection(ctx, preferred.id);
   const [cards, progress] = await Promise.all([
@@ -1301,6 +1336,11 @@ async function tour(
             fields: [
               { name: "Audience", value: album.detail.audience_label, inline: true },
               { name: "Cards", value: `${album.cards.length} in the release roster`, inline: true },
+              {
+                name: "Collection release",
+                value: `Version ${album.detail.release_version}`,
+                inline: true,
+              },
               {
                 name: "Published variants",
                 value: String(album.progress.total_variants),
@@ -1579,11 +1619,23 @@ async function tour(
       .filter((item) => item.state !== "earned")
       .sort((a, b) => b.progress / Math.max(1, b.target) - a.progress / Math.max(1, a.target))[0];
     const completion = collectionAchievements
-      .filter((item) => item.target === album.progress.total_cards && item.state === "earned")
+      .filter(
+        (item) =>
+          item.criteria?.type === "collection_complete" && item.state === "earned",
+      )
       .sort((a, b) => b.reward_amount - a.reward_amount)[0];
+    const frozenRoster = Array.isArray(completion?.criteria?.roster_card_ids)
+      ? (completion.criteria.roster_card_ids as unknown[]).length
+      : (completion?.target ?? 0);
+    const versionLabel = completion
+      ? `version ${completion.version}${frozenRoster ? ` · frozen roster ${frozenRoster}` : ""}`
+      : null;
+    const expandedAfterUnlock = Boolean(
+      completion && frozenRoster > 0 && frozenRoster < album.progress.total_cards,
+    );
     const celebration = album.progress.complete
       ? completion
-        ? `Completion unlocked: **${completion.name}**${completion.reward_amount ? ` · +${completion.reward_amount} Foil credited once` : ""}${completion.earned_at ? ` · ${new Date(completion.earned_at).toISOString().slice(0, 10)}` : ""}`
+        ? `Completion unlocked: **${completion.name}**${completion.reward_amount ? ` · +${completion.reward_amount} Foil credited once` : ""}${completion.earned_at ? ` · ${new Date(completion.earned_at).toISOString().slice(0, 10)}` : ""}${versionLabel ? ` · ${versionLabel}` : ""}${expandedAfterUnlock ? ` · the live roster has since expanded to ${album.progress.total_cards}; this earned version stays complete at ${frozenRoster}` : ""}`
         : "The album is complete. The milestone will be evaluated by the next committed acquisition; the tour does not award it passively."
       : `Next target: ${next ? `${next.name} · ${Math.min(next.progress, next.target)}/${next.target}` : "keep collecting"}`;
     return callback(
@@ -1613,7 +1665,9 @@ async function tour(
               },
               {
                 name: "Completion",
-                value: album.progress.complete ? "8/8 complete" : "Incomplete",
+                value: album.progress.complete
+                  ? `${album.progress.total_cards}/${album.progress.total_cards} current roster${versionLabel ? ` · ${versionLabel}` : ""}`
+                  : "Incomplete",
                 inline: true,
               },
               ...(next
@@ -2053,7 +2107,7 @@ export async function runCommand(
         interaction,
         installation,
         poolName(values),
-        `discord:${interaction.id}:open`,
+        drawIdempotencyKey(interaction.id),
       );
     case "daily":
       return daily(ctx, interaction);
@@ -2241,7 +2295,7 @@ export async function runComponent(
   }
   if (customId.startsWith("foilbury:open:")) {
     const pool = validatePoolSlug(customId.slice("foilbury:open:".length));
-    return openCard(ctx, interaction, installation, pool, `discord:${interaction.id}:open`);
+    return openCard(ctx, interaction, installation, pool, drawIdempotencyKey(interaction.id));
   }
   if (customId.startsWith("foilbury:redeliver:")) {
     const originalInteractionId = customId

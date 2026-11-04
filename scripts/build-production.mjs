@@ -12,13 +12,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { ROOT } from "./lib/local.mjs";
-import { sourceState, sha256File } from "./lib/source-identity.mjs";
+import { sourceState, sha256File, workingTreeHash } from "./lib/source-identity.mjs";
+import { artifactManifest } from "./lib/release-artifact.mjs";
 
 function run(command, args) {
   const result = spawnSync(command, args, { cwd: ROOT, stdio: "inherit" });
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
+const contentBefore = workingTreeHash();
 run("pnpm", ["exec", "astro", "check"]);
 run("pnpm", ["exec", "astro", "build"]);
 
@@ -36,11 +38,20 @@ const migrations = fs
   .filter((name) => name.endsWith(".sql"))
   .sort();
 const source = sourceState();
+const contentAfter = workingTreeHash();
+if (contentAfter !== contentBefore || contentAfter !== source.content_hash) {
+  console.error(
+    "The tracked working-tree content changed during the production build. Refusing to stamp an artifact that does not match the reviewed source.",
+  );
+  process.exit(1);
+}
 const bundleHash = sha256File(server);
+const artifact = artifactManifest();
 const meta = {
-  schema_version: 1,
+  schema_version: 2,
   source_sha: source.sha,
   source_tree_hash: source.tree_hash,
+  source_content_hash: source.content_hash,
   branch: source.branch,
   package_version: pkg.version,
   built_at: new Date().toISOString(),
@@ -49,6 +60,7 @@ const meta = {
     sha256: bundleHash,
     bytes: fs.statSync(server).size,
   },
+  artifact,
   migrations,
   build_nonce: crypto.randomUUID(),
 };
@@ -61,7 +73,10 @@ console.log(
     event: "production_build",
     source_sha: meta.source_sha,
     source_tree_hash: meta.source_tree_hash,
+    source_content_hash: meta.source_content_hash,
     bundle_sha256: meta.bundle.sha256,
+    artifact_sha256: meta.artifact.sha256,
+    artifact_files: meta.artifact.file_count,
     bytes: meta.bundle.bytes,
   }),
 );

@@ -1,4 +1,4 @@
-import { ApiError } from "../context";
+import { ApiError, type Ctx } from "../context";
 import { nowIso } from "../db";
 import { errorCallback, runCommand, runComponent } from "./commands";
 import {
@@ -11,6 +11,7 @@ import {
   drawRecoveryMessage,
   markDeliveryVisibility,
   readInteractionReceipt,
+  recoverDrawReceipt,
 } from "./receipts";
 import { runDiscordRequest } from "../effect/discord-transport";
 import { discordFailureLog, redactDiscordText } from "./redaction";
@@ -368,6 +369,7 @@ async function processDeferred(
   applicationId: string,
 ): Promise<void> {
   let finished = false;
+  let context: Ctx | undefined;
   const finish = async (
     status: "completed" | "failed",
     errorCode?: string,
@@ -402,6 +404,7 @@ async function processDeferred(
     const discordUser = interactionUser(interaction);
     const player = await ensureDiscordPlayer(env, resolved.tenant, discordUser);
     const ctx = buildDiscordContext(env, resolved.tenant, player.user, interaction);
+    context = ctx;
     await recordStart(env, interaction);
     const callback =
       interaction.type === 2
@@ -410,8 +413,14 @@ async function processDeferred(
     const outcome = await deliverDeferred(env, interaction, callback);
     if (!outcome.delivered) {
       // The domain may already have committed. Keep the interaction completed
-      // with a delivery-specific error code; the receipt is retrievable.
-      const receipt = await readInteractionReceipt(env.DB, interaction.id);
+      // with a delivery-specific error code when the draw row proves a receipt.
+      const receipt = context
+        ? await recoverDrawReceipt(env.DB, {
+            tenantId: context.tenant.id,
+            userId: context.user!.id,
+            interactionId: interaction.id,
+          })
+        : null;
       await finish(receipt ? "completed" : "failed", "delivery_failed", outcome.visibility);
       return;
     }
@@ -436,17 +445,27 @@ async function processDeferred(
     }
 
     // A draw may have committed before the failure. Recover the persisted
-    // receipt and tell the truth; never offer a second paid draw as "retry".
-    const receipt = await readInteractionReceipt(env.DB, interaction.id);
+    // receipt, then fall back to the scoped draw row, and tell the truth; never
+    // offer a second paid draw as "retry".
+    const receipt = context
+      ? await recoverDrawReceipt(env.DB, {
+          tenantId: context.tenant.id,
+          userId: context.user!.id,
+          interactionId: interaction.id,
+        })
+      : await readInteractionReceipt(env.DB, interaction.id).catch(() => null);
     const recovery = receipt
       ? {
           type: 4 as const,
-          data: drawRecoveryMessage({
-            receipt,
-            origin: env.FOILBURY_PUBLIC_ORIGIN ?? "https://foilbury.loftwah.com",
-            interactionId: interaction.id,
-            reason: safeRecoveryReason(error),
-          }) as DiscordMessage,
+          data: {
+            ...drawRecoveryMessage({
+              receipt,
+              origin: env.FOILBURY_PUBLIC_ORIGIN ?? "https://foilbury.loftwah.com",
+              interactionId: interaction.id,
+              reason: safeRecoveryReason(error),
+            }),
+            flags: EPHEMERAL_FLAG,
+          } as DiscordMessage,
         }
       : errorCallback(api);
     const outcome = await deliverDeferred(env, interaction, recovery);
@@ -566,6 +585,7 @@ export async function handleDiscordInteraction(
     return jsonResponse({ type: 5, data: { flags: EPHEMERAL_FLAG } });
   }
 
+  let context: Ctx | undefined;
   try {
     const guildId = interaction.guild_id;
     if (!guildId) {
@@ -585,6 +605,7 @@ export async function handleDiscordInteraction(
     const discordUser = interactionUser(interaction);
     const player = await ensureDiscordPlayer(env, resolved.tenant, discordUser);
     const ctx = buildDiscordContext(env, resolved.tenant, player.user, interaction);
+    context = ctx;
     await recordStart(env, interaction);
     let callback: DiscordCallback;
     if (interaction.type === 2) {
@@ -601,9 +622,7 @@ export async function handleDiscordInteraction(
     return jsonResponse(callback);
   } catch (error) {
     const api = error instanceof ApiError ? error : null;
-    if (api) {
-      await recordFinish(env, interaction.id, "failed", api.code);
-    } else {
+    if (!api) {
       console.error(
         JSON.stringify({
           level: "error",
@@ -614,7 +633,37 @@ export async function handleDiscordInteraction(
           ),
         }),
       );
-      await recordFinish(env, interaction.id, "failed", "internal_error");
+    }
+    // A draw can commit before a later render, settlement or presentation step
+    // fails. Recover from the scoped draw row so the response never claims that
+    // nothing changed when the card, serial and debit already exist.
+    const receipt = context
+      ? await recoverDrawReceipt(env.DB, {
+          tenantId: context.tenant.id,
+          userId: context.user!.id,
+          interactionId: interaction.id,
+        })
+      : null;
+    await recordFinish(
+      env,
+      interaction.id,
+      receipt ? "completed" : "failed",
+      receipt ? "delivery_recovered" : (api?.code ?? "internal_error"),
+    );
+    if (receipt) {
+      return jsonResponse({
+        type: 4,
+        data: {
+          ...drawRecoveryMessage({
+            receipt,
+            origin: env.FOILBURY_PUBLIC_ORIGIN ?? "https://foilbury.loftwah.com",
+            interactionId: interaction.id,
+            reason: safeRecoveryReason(error),
+          }),
+          flags: EPHEMERAL_FLAG,
+          allowed_mentions: { parse: [] },
+        },
+      });
     }
     return jsonResponse(
       errorCallback(

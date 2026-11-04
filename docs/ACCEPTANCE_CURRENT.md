@@ -38,3 +38,28 @@ and spectator observation remain explicitly `blocked` until performed.
   current marks are reviewed Foilbury interpretations.
 - Production import of the two new roster subjects remains separate from the
   local manifest/render proof.
+
+## 2026-11-04 visible tour and release evidence update
+
+- The persistent **Start the Foilbury tour** entry is live at
+  https://discord.com/channels/997734945206313041/1566700752385081355/1567185366014763079
+  (message `1567185366014763079`). It has a real `foilbury:tour:welcome`
+  component, Claim daily, Packs and three web links. API read-back and the
+  Discord preflight pass; the owner's actual click is still unperformed.
+- Preflight is **17 PASS, 0 FAIL, 4 BLOCKED**. The new PASS is the tour entry;
+  the four blocked items remain pinning, channel visibility, an independent
+  spectator and an authenticated actor session.
+- The command-execution health gate is `pnpm discord:command-health`. It draws
+  only through the emitted Worker against an isolated D1/R2 fixture and writes
+  `.foilbury/evidence/discord-command-health.json`. It is not a live draw.
+- A real deployed scheduled invocation was captured with `wrangler tail`:
+  Worker `91e5c2bf-3451-42e2-887e-d0e5a72d1437`, cron `*/5 * * * *`, outcome
+  `ok`, 2026-11-04 03:25 UTC. It proves the scheduled entry ran, not each step's
+  side effect.
+- Production content read-back is **21 collections, 156 cards, 640 variants,
+  640 fronts, 640 backs**. Gonta Gokuhara and Kamui Gakupo are still local-only;
+  see `docs/CONTENT_QUALITY_MATRIX.md` for the named omissions and bounded
+  import plan.
+- Release-gate hardening adds working-tree content identity, a complete
+  module/asset digest, a freshly fetched remote ref, a verified previous Worker
+  version and an affected-scope evidence check. Negative tests cover each.

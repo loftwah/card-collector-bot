@@ -1,15 +1,12 @@
 import handler, { createScheduledHandler, PluginBridge } from "@emdash-cms/cloudflare/worker";
-import {
-  expireStaleDiscordInteractions,
-  handleDiscordInteraction,
-} from "./server/discord/handler";
+import { handleDiscordInteraction } from "./server/discord/handler";
 import type { DiscordEnv } from "./server/discord/types";
-import { runScheduledNpcProgression } from "./server/modules/npcs";
-import { pruneMagicLinks, pruneRateLimits } from "./server/modules/magic-links";
+import { createScheduledRunner } from "./server/scheduled";
 
 export { PluginBridge };
 
 const emdashScheduled = createScheduledHandler();
+const scheduled = createScheduledRunner({ editorial: emdashScheduled });
 
 /**
  * A safe, public build identity for deployed read-back. It is the source SHA,
@@ -43,21 +40,8 @@ export default {
     return withBuildIdentity(await handler.fetch!(request as never, env as never, ctx), env);
   },
   scheduled: async (controller: ScheduledController, env: unknown, ctx: ExecutionContext) => {
-    // Bounded synthetic progression shares the existing cron. Failures are
-    // logged and never block the editorial/scheduled-publication handler.
-    try {
-      const bindings = env as { DB: never; MEDIA: never };
-      await pruneRateLimits(bindings.DB);
-      await pruneMagicLinks(bindings.DB);
-      await expireStaleDiscordInteractions(bindings.DB as unknown as DiscordEnv["DB"]);
-      await runScheduledNpcProgression(
-        bindings.DB,
-        bindings.MEDIA,
-        (await import("./server/config")).readConfig(env as never),
-      );
-    } catch (error) {
-      console.error(JSON.stringify({ level: "error", message: "Scheduled maintenance failed", error: String(error) }));
-    }
-    return emdashScheduled(controller, env as never, ctx);
+    // Every maintenance step is isolated; the editorial handler still runs if
+    // one maintenance task fails. See src/server/scheduled.ts.
+    await scheduled(controller, env, ctx);
   },
 } satisfies ExportedHandler;

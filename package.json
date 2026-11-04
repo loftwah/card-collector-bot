@@ -71,6 +71,8 @@
     "demo:album": "node scripts/demo-album.mjs",
     "demo:discord:check": "tsx scripts/discord/preflight.mjs",
     "demo:discord:accept": "node scripts/discord/assisted-acceptance.mjs",
+    "discord:tour:entry": "tsx scripts/discord/publish-tour-entry.mjs",
+    "discord:command-health": "node scripts/discord/command-health.mjs",
     "test:privacy": "node scripts/test-privacy.mjs",
     "test:seo": "node scripts/test-seo.mjs",
     "test:achievements": "vitest run --config vitest.workers.config.ts tests/workers/achievements.test.ts tests/workers/gifts.test.ts tests/workers/visibility.test.ts",
