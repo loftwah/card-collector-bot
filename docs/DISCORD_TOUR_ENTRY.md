@@ -116,7 +116,7 @@ The publisher never posts to another channel, never DMs, never mentions
 A bounded session has already been prepared for the deployed build:
 
 ```text
-.foilbury/evidence/discord-assisted/session-2026-11-04T03-41-38-642Z.json
+.foilbury/evidence/discord-assisted/session-2026-11-04T04-03-04-447Z.json
 ```
 
 It binds guild `997734945206313041`, channel `1566700752385081355`, initiating
@@ -137,7 +137,7 @@ report (or read it from D1) with the matching `--case`:
 
 ```sh
 node scripts/discord/assisted-acceptance.mjs --verify <interaction-id> \
-  --session .foilbury/evidence/discord-assisted/session-2026-11-04T03-41-38-642Z.json \
+  --session .foilbury/evidence/discord-assisted/session-2026-11-04T04-03-04-447Z.json \
   --case open
 ```
 

@@ -2339,10 +2339,18 @@ function discoverWorkerVersion() {
       },
     );
     const parsed = JSON.parse(output.slice(output.indexOf("[")));
-    const first = Array.isArray(parsed) ? parsed[0] : null;
-    const value = first?.id ?? first?.version ?? first?.version_id ?? null;
+    const deployments = Array.isArray(parsed) ? [...parsed] : [];
+    deployments.sort(
+      (left, right) => Date.parse(right.created_on ?? 0) - Date.parse(left.created_on ?? 0),
+    );
+    const latest = deployments[0];
+    const value =
+      latest?.versions?.[0]?.version_id ??
+      latest?.version_id ??
+      latest?.version ??
+      null;
     return isNonEmptyString(value)
-      ? { value: String(value), source: "wrangler_deployments_list" }
+      ? { value: String(value), source: "wrangler_deployments_list_latest" }
       : { value: null, source: "not_discoverable" };
   } catch {
     return { value: null, source: "not_discoverable" };
