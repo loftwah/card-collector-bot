@@ -251,8 +251,10 @@ test("refuses an unreadable or versionless rollback target", () => {
     versions: [{ version_id: "22222222-2222-2222-2222-222222222222", percentage: 100 }],
   };
   const rollback = resolveRollback([previous, current]);
-  assert.equal(rollback.version_id, "22222222-2222-2222-2222-222222222222");
-  assert.match(rollback.command, /^wrangler rollback 22222222/);
+  // The deploy gate runs before upload, so the newest deployment is the
+  // version currently serving production and the correct immediate rollback.
+  assert.equal(rollback.version_id, "11111111-1111-1111-1111-111111111111");
+  assert.match(rollback.command, /^wrangler rollback 11111111/);
 });
 
 test("rejects stale or mismatched remote refs", () => {

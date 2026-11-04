@@ -13,6 +13,8 @@ export class DiscordTransportError extends Data.TaggedError("DiscordTransportErr
   readonly status: number | null;
   readonly retryable: boolean;
   readonly timedOut: boolean;
+  /** Parsed provider `Retry-After`, in milliseconds. Null when absent. */
+  readonly retryAfterMs: number | null;
 }> {}
 
 export class DiscordHttp extends Context.Service<
@@ -52,6 +54,7 @@ const attempt = (input: DiscordRequestInput) =>
           status: null,
           retryable: true,
           timedOut: false,
+          retryAfterMs: null,
         }),
     });
     if (input.idempotent && (response.status === 429 || response.status >= 500)) {
@@ -61,6 +64,7 @@ const attempt = (input: DiscordRequestInput) =>
           status: response.status,
           retryable: true,
           timedOut: false,
+          retryAfterMs: parseRetryAfter(response),
         }),
       );
     }
@@ -75,9 +79,25 @@ const attempt = (input: DiscordRequestInput) =>
             status: null,
             retryable: false,
             timedOut: true,
+            retryAfterMs: null,
           }),
     ),
   );
+
+/**
+ * Discord sends `Retry-After` for rate limits. It may be seconds or an HTTP
+ * date; the numeric form is the one used by the API. A missing or malformed
+ * header leaves the existing bounded retry with no extra delay.
+ */
+function parseRetryAfter(response: Response): number | null {
+  const value = response.headers.get("retry-after");
+  if (!value) return null;
+  const seconds = Number(value.trim());
+  if (!Number.isFinite(seconds) || seconds < 0) return null;
+  // Keep the deferred interaction lifetime bounded. A provider that asks for a
+  // longer pause is capped here rather than sleeping for the full duration.
+  return Math.min(5_000, Math.round(seconds * 1_000));
+}
 
 export async function runDiscordRequest(
   input: DiscordRequestInput,
@@ -85,7 +105,13 @@ export async function runDiscordRequest(
 ): Promise<DiscordRequestResult> {
   const maxAttempts = input.idempotent ? Math.max(1, Math.min(3, input.maxAttempts ?? 3)) : 1;
   let attempts = 0;
-  const program = attempt(input).pipe(Effect.retry(Schedule.recurs(maxAttempts - 1)));
+  const retrySchedule = Schedule.recurs(maxAttempts - 1).pipe(
+    Schedule.setInputType<DiscordTransportError>(),
+    Schedule.modifyDelay(({ input: failure }) =>
+      Effect.succeed(Duration.millis(failure.retryAfterMs ?? 0)),
+    ),
+  );
+  const program = attempt(input).pipe(Effect.retry(retrySchedule));
   const exit = await Effect.runPromiseExit(
     program.pipe(
       Effect.provideService(DiscordHttp, {
@@ -107,6 +133,7 @@ export async function runDiscordRequest(
           status: null,
           retryable: false,
           timedOut: false,
+          retryAfterMs: null,
         });
   return { response: null, error, attempts };
 }

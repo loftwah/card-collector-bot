@@ -88,7 +88,8 @@
     "test:npc:ui": "node scripts/test-npc-e2e.mjs",
     "demo:mastery": "node scripts/demo-mastery.mjs",
     "test:missions": "vitest run --config vitest.workers.config.ts tests/workers/missions.test.ts",
-    "test:acceptance-runner": "node --test tests/scripts/assisted-acceptance.test.mjs"
+    "test:acceptance-runner": "node --test tests/scripts/assisted-acceptance.test.mjs",
+    "content:incremental-plan": "node scripts/content/incremental-plan.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "14.4.3",

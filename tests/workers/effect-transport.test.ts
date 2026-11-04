@@ -72,6 +72,30 @@ describe("Effect-owned Discord transport", () => {
     expect(result.attempts).toBe(2);
   });
 
+  it("parses provider Retry-After for a bounded idempotent retry", async () => {
+    const injected = services(
+      async () =>
+        new Response("rate limited", {
+          status: 429,
+          headers: { "retry-after": "0.01" },
+        }),
+    );
+    const result = await runDiscordRequest(
+      {
+        url: "https://discord.com/api/v10/webhooks/1/token/messages/@original",
+        init: { method: "PATCH" },
+        timeoutMs: 500,
+        idempotent: true,
+        maxAttempts: 2,
+      },
+      injected,
+    );
+    expect(result.response).toBeNull();
+    expect(result.error?.status).toBe(429);
+    expect(result.error?.retryAfterMs).toBe(10);
+    expect(result.attempts).toBe(2);
+  });
+
   it("maps a thrown provider failure without leaking it as an unhandled rejection", async () => {
     const injected = services(async () => {
       throw new Error("provider exploded");

@@ -78,12 +78,22 @@ owner-supplied secret. Do not claim working production alert delivery until it
 is configured and a real alert is read back.
 
 **Deployed scheduled-run receipt:** `wrangler tail` captured a real cron
-invocation on 2026-11-04 at 03:25 UTC (14:25 AEDT): Worker version
-`91e5c2bf-3451-42e2-887e-d0e5a72d1437`, entrypoint `default`, cron
-`*/5 * * * *`, outcome `ok`. The retained private copy is
-`.foilbury/evidence/deployed-scheduled-run-2026-11-04.json`. That receipt proves
-the deployed scheduled entry ran; it does not prove each maintenance step's
-side effect, because the deployed build did not yet emit the per-step log.
+invocation on 2026-11-04 at 03:25 UTC (14:25 AEDT) against Worker
+`91e5c2bf-3451-42e2-887e-d0e5a72d1437`; it proved the scheduled entry ran but the
+deployed build did not emit the per-step log.
+
+A second real invocation at **03:40 UTC (14:40 AEDT)** on the corrective Worker
+`36b8705a-8413-4e79-a31f-1a14c6ee89f5` recorded:
+
+```json
+{"level":"info","message":"scheduled maintenance","ok":true,"steps":[{"name":"rate_limits","ok":true},{"name":"magic_links","ok":true},{"name":"stale_interactions","ok":true,"detail":"0"},{"name":"npc_progression","ok":true}]}
+```
+
+The retained private copies are
+`.foilbury/evidence/deployed-scheduled-run-2026-11-04.json` and
+`deployed-scheduled-run-2026-11-04b.json`. This proves the deployed scheduled
+entry and all four bounded steps returned success on that run. It is one
+sampled run, not a retention or alert-delivery proof.
 
 ## Required checks
 

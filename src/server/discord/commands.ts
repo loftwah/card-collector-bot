@@ -38,6 +38,7 @@ import {
 } from "./presentation";
 import {
   drawIdempotencyKey,
+  drawReceiptFromResult,
   recoverDrawReceipt,
   recordInteractionReceipt,
 } from "./receipts";
@@ -205,13 +206,24 @@ function validatePoolSlug(value: string): string {
   return value;
 }
 
-async function openCard(
+export type DiscordOpenPreparation =
+  | { kind: "respond"; callback: DiscordCallback }
+  | {
+      kind: "draw";
+      poolSlug: string;
+      expectedRevision: number;
+      expectedDistribution: string;
+      channelKey?: string;
+      idempotency: { key: string; digest: string };
+    };
+
+export async function prepareDiscordDraw(
   ctx: Ctx,
   interaction: DiscordInteraction,
   installation: DiscordInstallation,
   requestedPool: string | undefined,
   idempotencyKey: string,
-): Promise<DiscordCallback> {
+): Promise<DiscordOpenPreparation> {
   const poolSlug = validatePoolSlug(requestedPool ?? "cabinet-draw");
   const preview = await getPoolPreview(ctx, poolSlug, installation.channel_key ?? undefined);
   if (preview.eligible_count === 0) {
@@ -226,19 +238,22 @@ async function openCard(
             left.price - right.price || left.pool.name.localeCompare(right.pool.name),
         );
         const wallet = await getWalletSummary(ctx.db, ctx.tenant.id, ctx.user!.id, 1);
-        return capsulePickerMessage({
-          scopeName: ctx.tenant.name,
-          currencySymbol: wallet.currencySymbol,
-          balance: wallet.balance,
-          capsules: choices.map((preview) => ({
-            slug: preview.pool.slug,
-            name: preview.pool.name,
-            price: preview.price,
-            eligibleCount: preview.eligible_count,
-          })),
-          packsCustomId: "foilbury:packs",
-          browseUrl: absoluteUrl(ctx.config.publicOrigin, "/play/draw"),
-        });
+        return {
+          kind: "respond",
+          callback: capsulePickerMessage({
+            scopeName: ctx.tenant.name,
+            currencySymbol: wallet.currencySymbol,
+            balance: wallet.balance,
+            capsules: choices.map((preview) => ({
+              slug: preview.pool.slug,
+              name: preview.pool.name,
+              price: preview.price,
+              eligibleCount: preview.eligible_count,
+            })),
+            packsCustomId: "foilbury:packs",
+            browseUrl: absoluteUrl(ctx.config.publicOrigin, "/play/draw"),
+          }),
+        };
       }
     }
     throw new ApiError(
@@ -250,41 +265,28 @@ async function openCard(
   const digest = await sha256Hex(
     `discord-open:${ctx.tenant.id}:${ctx.user!.id}:${poolSlug}:${interaction.id}`,
   );
-  const result = (await executeDraw(ctx, {
-    pool: poolSlug,
+  return {
+    kind: "draw",
+    poolSlug,
     expectedRevision: preview.revision,
     expectedDistribution: preview.distribution_fingerprint,
     channelKey: installation.channel_key ?? undefined,
     idempotency: { key: idempotencyKey, digest },
-  })) as unknown as DrawReceipt;
+  };
+}
 
-  // Persist the domain result before any presentation lookup. If a render or
-  // Discord call fails from here on, the handler can retrieve this exact
-  // receipt and tell the player the draw completed. It must never trigger a
-  // second draw or claim that nothing changed.
-  await recordInteractionReceipt(ctx.db, interaction.id, {
-    kind: "draw",
-    draw_id: result.draw_id,
-    instance_id: result.instance_id,
-    card_id: result.card_id,
-    variant_id: result.variant_id,
-    card_name: result.card_name,
-    edition_name: result.edition_name,
-    variant_name: result.variant_name,
-    serial: result.serial,
-    pool_name: result.pool_name,
-    price: result.price,
-    currency_symbol: result.currency.symbol,
-    balance_after: result.balance_after,
-    balance_after_debit: result.balance_after_debit,
-    credits_total: result.credits_total,
-    achievement_credits: result.achievement_credits,
-    settlement_status: result.settlement_status,
-    settlement_pending: result.settlement_pending,
-    drawn_at: result.drawn_at,
-    replayed: result.replayed,
-  });
-
+/**
+ * Build the private reveal for a committed draw. This is deliberately separate
+ * from the commit so a presentation failure can recover from the persisted
+ * receipt without ever calling the draw service again.
+ */
+export async function presentDiscordDraw(
+  ctx: Ctx,
+  interaction: DiscordInteraction,
+  installation: DiscordInstallation,
+  result: DrawReceipt,
+  poolSlug: string,
+): Promise<DiscordCallback> {
   const render = await first<{ width: number; height: number; r2_key: string; mime: string }>(
     ctx.db,
     `SELECT vr.width, vr.height, a.r2_key, a.mime
@@ -329,6 +331,37 @@ async function openCard(
     credits_total: result.credits_total,
     achievement_credits: result.achievement_credits,
   });
+}
+
+async function openCard(
+  ctx: Ctx,
+  interaction: DiscordInteraction,
+  installation: DiscordInstallation,
+  requestedPool: string | undefined,
+  idempotencyKey: string,
+): Promise<DiscordCallback> {
+  const prepared = await prepareDiscordDraw(
+    ctx,
+    interaction,
+    installation,
+    requestedPool,
+    idempotencyKey,
+  );
+  if (prepared.kind === "respond") return prepared.callback;
+  const result = (await executeDraw(ctx, {
+    pool: prepared.poolSlug,
+    expectedRevision: prepared.expectedRevision,
+    expectedDistribution: prepared.expectedDistribution,
+    channelKey: prepared.channelKey,
+    idempotency: prepared.idempotency,
+  })) as unknown as DrawReceipt;
+
+  // Persist the domain result before any presentation lookup. If a render or
+  // Discord call fails from here on, the handler can retrieve this exact
+  // receipt and tell the player the draw completed. It must never trigger a
+  // second draw or claim that nothing changed.
+  await recordInteractionReceipt(ctx.db, interaction.id, drawReceiptFromResult(result));
+  return presentDiscordDraw(ctx, interaction, installation, result, prepared.poolSlug);
 }
 
 /**

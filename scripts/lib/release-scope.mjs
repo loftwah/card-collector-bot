@@ -71,8 +71,10 @@ export function requireScopeEvidence(scope, criteria) {
 }
 
 /**
- * Resolve the actual previous Worker version. An unreadable deployment list,
- * or one without a version id, must not silently become "no rollback".
+ * Resolve the actual previous Worker version. This is called before upload, so
+ * index 0 is the version currently serving production and is the correct
+ * rollback target. An unreadable deployment list, or one without a version id,
+ * must not silently become "no rollback".
  */
 export function resolveRollback(deployments) {
   if (!Array.isArray(deployments) || deployments.length === 0) {
@@ -83,7 +85,7 @@ export function resolveRollback(deployments) {
   const sorted = [...deployments].sort(
     (left, right) => Date.parse(right.created_on ?? 0) - Date.parse(left.created_on ?? 0),
   );
-  const previous = sorted[1] ?? sorted[0];
+  const previous = sorted[0];
   const versionId = previous?.versions?.[0]?.version_id ?? previous?.version_id ?? null;
   if (!versionId || !/^[0-9a-f-]{36}$/i.test(versionId)) {
     throw new Error(

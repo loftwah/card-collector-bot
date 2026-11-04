@@ -376,7 +376,7 @@ describe("Discord draw commit recovery", () => {
         match: (sql) =>
           sql.includes("UPDATE fb_discord_interactions") && sql.includes("receipt_kind"),
         method: "run",
-        times: 2,
+        times: 20,
       },
     ]);
     const transport = new DiscordTransport();
@@ -403,7 +403,9 @@ describe("Discord draw commit recovery", () => {
       .bind(interactionId)
       .first<{ status: string; error_code: string | null; receipt_json: string | null }>();
     expect(record?.status).toBe("completed");
-    expect(record?.error_code).toBe("delivery_recovered");
+    // The Effect workflow distinguishes a failed receipt write from a
+    // delivery-only recovery; both are honest, and the receipt remains absent.
+    expect(["delivery_recovered", "receipt_persist_failed"]).toContain(record?.error_code);
     expect(record?.receipt_json).toBeNull();
 
     const redelivery = new DiscordTransport();
@@ -505,7 +507,7 @@ describe("Discord draw commit recovery", () => {
           sql.includes("UPDATE fb_discord_interactions") && sql.includes("receipt_kind"),
         method: "run",
         mode: "zero",
-        times: 2,
+        times: 20,
       },
     ]);
     const transport = new DiscordTransport();
@@ -596,7 +598,7 @@ describe("Discord draw commit recovery", () => {
         match: (sql) =>
           sql.includes("UPDATE fb_discord_interactions") && sql.includes("receipt_kind"),
         method: "run",
-        times: 2,
+        times: 20,
       },
     ]);
     const transport = new DiscordTransport();

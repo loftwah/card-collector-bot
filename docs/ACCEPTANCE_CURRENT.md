@@ -41,6 +41,11 @@ and spectator observation remain explicitly `blocked` until performed.
 
 ## 2026-11-04 visible tour and release evidence update
 
+- Deployed corrective build: source `3ca12edf7797f980c2ef9061d7edd13c702a123c`, Worker
+  `36b8705a-8413-4e79-a31f-1a14c6ee89f5`, schema unchanged at
+  `0025_scoped_admin_grants.sql`. Rollback target: `91e5c2bf-3451-42e2-887e-d0e5a72d1437`.
+  The build-bound production smoke passed after deployment.
+
 - The persistent **Start the Foilbury tour** entry is live at
   https://discord.com/channels/997734945206313041/1566700752385081355/1567185366014763079
   (message `1567185366014763079`). It has a real `foilbury:tour:welcome`

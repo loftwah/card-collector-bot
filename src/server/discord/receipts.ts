@@ -1,6 +1,7 @@
 import { all, first, nowIso } from "../db";
+import type { DrawReceipt } from "./draw-types";
 import { redactDiscordText } from "./redaction";
-import type { DiscordEmbed } from "./types";
+import type { DiscordEmbed, DiscordMessage } from "./types";
 
 /**
  * A receipt is written after the domain commit and before presentation work.
@@ -50,6 +51,31 @@ export interface DiscordDrawReceipt {
 }
 
 export type DiscordReceipt = DiscordDrawReceipt;
+
+export function drawReceiptFromResult(result: DrawReceipt): DiscordDrawReceipt {
+  return {
+    kind: "draw",
+    draw_id: result.draw_id,
+    instance_id: result.instance_id,
+    card_id: result.card_id,
+    variant_id: result.variant_id,
+    card_name: result.card_name,
+    edition_name: result.edition_name,
+    variant_name: result.variant_name,
+    serial: result.serial,
+    pool_name: result.pool_name,
+    price: result.price,
+    currency_symbol: result.currency.symbol,
+    balance_after: result.balance_after,
+    balance_after_debit: result.balance_after_debit,
+    credits_total: result.credits_total,
+    achievement_credits: result.achievement_credits,
+    settlement_status: result.settlement_status,
+    settlement_pending: result.settlement_pending,
+    drawn_at: result.drawn_at,
+    replayed: result.replayed,
+  };
+}
 
 function logReceiptIssue(
   message: string,
@@ -108,6 +134,22 @@ export async function recordInteractionReceipt(
     }
   }
   return false;
+}
+
+/**
+ * Strict persistence for the Effect workflow. It must know whether the durable
+ * receipt exists before deciding to reconcile or retry, so a failed write is a
+ * typed transient rather than a silent success.
+ */
+export async function persistInteractionReceipt(
+  db: D1Database,
+  interactionId: string,
+  receipt: DiscordReceipt,
+): Promise<void> {
+  const ok = await recordInteractionReceipt(db, interactionId, receipt);
+  if (!ok) {
+    throw new Error(`Discord draw receipt could not be persisted for ${interactionId}`);
+  }
 }
 
 /**
@@ -485,7 +527,7 @@ export function drawRecoveryMessage(input: {
   origin: string;
   interactionId: string;
   reason: string;
-}): { content?: string; embeds: DiscordEmbed[]; components: unknown[] } {
+}): DiscordMessage {
   const { receipt } = input;
   const print = receipt.edition_name?.trim();
   const title = print
