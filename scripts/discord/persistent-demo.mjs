@@ -882,6 +882,11 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
             inline: false,
           },
           {
+            name: "Starting state",
+            value: "The labelled demo collector started with a bounded, audited 8,000 Foil provisioning grant and no cards. It is not Dean's wallet and not a real player's balance. Every opening below is a real draw from the configured capsule.",
+            inline: false,
+          },
+          {
             name: "Configuration",
             value: `Scope \`${(state.scope_digest ?? "").slice(0, 16)}\` · build \`${(state.build.source_sha ?? "").slice(0, 12)}\` · Worker \`${(state.worker_version ?? "").slice(0, 12)}\`\n${dualTime(state.started_at)}`,
             inline: false,
@@ -923,7 +928,7 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
       stage: 3,
       embed: {
         title: "Free play · the pack this run used",
-        description: "The demonstration collector used a bounded, labelled demo balance. Each opening below cost the ordinary price from the collection capsule; the odds are the real per-variant odds returned by the deployed preview.",
+        description: "The demonstration collector used a bounded, audited demo grant, not Dean's Foil or a real player's wallet. Each opening below cost the ordinary price from the collection capsule; the odds are the real per-variant odds returned by the deployed preview.",
         color: 0x7c6b4f,
         fields: [
           { name: "Capsule", value: `${preview?.pool?.name ?? "Danganronpa capsule"} · ${preview?.price ?? 80} Foil`, inline: true },
