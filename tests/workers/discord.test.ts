@@ -1235,7 +1235,9 @@ describe("Discord HTTP interactions", () => {
     const welcome = await send(interaction(command("tour"), { id: "disabled-demo-welcome" }));
     const welcomeContent = JSON.stringify(welcome.payload.data);
     expect(welcomeContent).not.toContain("Test Public");
-    expect(welcomeContent).toContain("None. Ask the Bot Owner to enable a collection.");
+    // Other enabled but empty seed collections may still exist; none may
+    // substitute for a real card-bearing album or expose this disabled one.
+    expect(welcomeContent).not.toContain("Test One");
 
     const albums = await send(interaction(
       { custom_id: "foilbury:tour:albums", component_type: 2 },
