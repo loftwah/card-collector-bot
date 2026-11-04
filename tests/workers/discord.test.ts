@@ -1254,8 +1254,38 @@ describe("Discord HTTP interactions", () => {
       "SELECT COUNT(*) AS count FROM fb_discord_shares WHERE tenant_id = ?",
     ).bind(owner.tenant.id).first<{ count: number }>();
     expect(shares?.count).toBe(0);
+
+    const card = await send(interaction(
+      { custom_id: `foilbury:card:${fixture.cardId}:${fixture.variantId}:front`, component_type: 2 },
+      { id: "disabled-demo-stale-card", type: 3 },
+    ));
+    expect(JSON.stringify(card.payload.data)).toContain("no longer enabled");
+    const owned = await send(interaction(command("collection"), { id: "disabled-demo-cabinet" }));
+    expect(JSON.stringify(owned.payload.data)).not.toContain("Test One");
+
     const draws = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_draws").first<{ count: number }>();
     expect(draws?.count).toBe(0);
+  });
+
+  it("blocks unfiled legacy cards from Discord pools and opening without a debit", async () => {
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    await fixturePool(owner);
+    // An unassigned card may remain legacy-eligible in the web catalogue; it
+    // must not leak through a Discord pack or a real Discord draw.
+    await runtime.DB.prepare("DELETE FROM fb_collection_cards WHERE card_id = 'crd_test_card'").run();
+    const available = await send(interaction(command("packs"), { id: "unfiled-demo-packs" }));
+    expect(JSON.stringify(available.payload.data)).not.toContain("Test pool");
+    const open = await send(interaction(
+      command("open", [{ name: "pool", type: 3, value: "test-pool" }]),
+      { id: "unfiled-demo-open" },
+    ));
+    expect(JSON.stringify(open.payload.data)).toContain("outside this Bot");
+    const draws = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_draws").first<{ count: number }>();
+    expect(draws?.count).toBe(0);
+    const spends = await runtime.DB.prepare(
+      "SELECT COUNT(*) AS count FROM fb_ledger_entries WHERE kind = 'spend'",
+    ).first<{ count: number }>();
+    expect(spends?.count).toBe(0);
   });
 
   it("starts the guided tour without drawing, spending or granting", async () => {
