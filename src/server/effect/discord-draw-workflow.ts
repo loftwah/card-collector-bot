@@ -83,6 +83,8 @@ export interface DiscordDrawPolicyShape {
   readonly maxAttempts: number;
   /** Total commit attempts after reconciliation. */
   readonly commitAttempts: number;
+  /** A draw commit plus achievement settlement can exceed the short provider deadline. */
+  readonly commitTimeoutMs: number;
   readonly baseBackoffMs: number;
   readonly maxBackoffMs: number;
   /** Fraction of jitter applied either side of the exponential delay. */
@@ -118,6 +120,7 @@ export class DiscordDrawDomain extends Context.Service<
     readonly reconcile: (input: {
       readonly principal: DiscordDrawPrincipal;
       readonly plan: DiscordDrawPlan;
+      readonly interaction: DiscordInteraction;
     }) => Effect.Effect<DiscordDrawCommitted | null, DiscordDrawFailure>;
     readonly present: (input: {
       readonly principal: DiscordDrawPrincipal;
@@ -526,15 +529,16 @@ function withDeadline<A>(
   effect: Effect.Effect<A, DiscordDrawFailure>,
   policy: DiscordDrawPolicyShape,
   retryable: boolean,
+  timeoutMs = policy.attemptTimeoutMs,
 ): Effect.Effect<A, DiscordDrawFailure> {
   return effect.pipe(
     Effect.timeoutOrElse({
-      duration: Duration.millis(Math.max(1, policy.attemptTimeoutMs)),
+      duration: Duration.millis(Math.max(1, timeoutMs)),
       orElse: () =>
         Effect.fail(
           new DiscordDrawTimeout({
             operation,
-            timeoutMs: policy.attemptTimeoutMs,
+            timeoutMs,
             retryable,
           }),
         ),
@@ -776,14 +780,14 @@ export function runDiscordDrawWorkflow(
     const commitAttempt = (
       attempt: number,
     ): Effect.Effect<DiscordDrawCommitted, DiscordDrawFailure> =>
-      withDeadline("commit", domain.commit({ principal, plan }), policy, false).pipe(
+      withDeadline("commit", domain.commit({ principal, plan }), policy, false, policy.commitTimeoutMs).pipe(
         Effect.catch((failure): Effect.Effect<DiscordDrawCommitted, DiscordDrawFailure> => {
           const ambiguous =
             failure._tag === "DiscordDrawUnknownCommitOutcome" ||
             failure._tag === "DiscordDrawProviderTransient" ||
             failure._tag === "DiscordDrawTimeout";
           if (!ambiguous) return Effect.fail(failure);
-          return domain.reconcile({ principal, plan }).pipe(
+          return domain.reconcile({ principal, plan, interaction: request.interaction }).pipe(
             Effect.catch((reconcileFailure): Effect.Effect<never, DiscordDrawFailure> => {
               if (
                 reconcileFailure._tag === "DiscordDrawIdempotencyConflict" ||
@@ -896,6 +900,7 @@ export const defaultDiscordDrawPolicy: DiscordDrawPolicyShape = {
   attemptTimeoutMs: 4_000,
   maxAttempts: 3,
   commitAttempts: 2,
+  commitTimeoutMs: 20_000,
   baseBackoffMs: 120,
   maxBackoffMs: 1_500,
   jitterRatio: 0.25,

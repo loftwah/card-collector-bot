@@ -56,6 +56,7 @@ import {
   markDeliveryVisibility,
   persistInteractionReceipt,
   readInteractionReceipt,
+  recoverDrawReceipt,
 } from "./receipts";
 import { redactDiscordText } from "./redaction";
 import type { DiscordCallback, DiscordEnv, DiscordInteraction } from "./types";
@@ -236,12 +237,31 @@ function provideServices(
         },
         catch: (error) => commitFailure(error),
       }),
-    reconcile: ({ principal, plan }) =>
+    reconcile: ({ principal, plan, interaction }) =>
       Effect.tryPromise({
         try: async () => {
           const replay = await findIdempotent(principal.ctx, "draw.execute", plan.idempotency);
           if (!replay) return null;
-          return committedFromResult(replay.response as DrawReceipt);
+          const response = replay.response as DrawReceipt;
+          // The idempotency row is the transaction-time receipt and may not
+          // include settled rewards or balance. Normalise from the durable draw,
+          // wallet and achievement ledger before presenting a recovered result.
+          const recovered = await recoverDrawReceipt(principal.ctx.db, {
+            tenantId: principal.ctx.tenant.id,
+            userId: principal.user.id,
+            interactionId: interaction.id,
+          }).catch(() => null);
+          if (!recovered) return committedFromResult(response);
+          return committedFromResult({
+            ...response,
+            balance_after: recovered.balance_after,
+            balance_after_debit: recovered.balance_after_debit ?? response.balance_after_debit,
+            credits_total: recovered.credits_total ?? response.credits_total,
+            achievement_credits:
+              recovered.achievement_credits ?? response.achievement_credits,
+            settlement_status: recovered.settlement_status,
+            settlement_pending: recovered.settlement_pending,
+          });
         },
         catch: (error) => readFailure(error, "reconcile"),
       }),
