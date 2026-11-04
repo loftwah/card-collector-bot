@@ -68,11 +68,21 @@ for (let stage = 1; stage <= 12; stage += 1) {
   const text = JSON.stringify({ embeds: message.embeds, components: message.components });
   const problems = [];
   if (message.author?.id !== state.application_id && message.author?.id !== "1566702936615026769") problems.push("unexpected author");
+  if (message.type !== 0) problems.push(`unexpected message type ${message.type}`);
+  if (message.flags & 64) problems.push("ephemeral message");
   if (!hasStage) problems.push("footer stage mismatch");
   if (expectedImages.has(stage) && !imageUrl) problems.push("required image missing");
   if (message.mentions?.length) problems.push("mentions present");
   if (/everyone|here/.test(message.content ?? "")) problems.push("mass mention text");
   if (/dean@|@players|usr_|ten_|dci_/.test(text)) problems.push("private identifier in public message");
+  const rows = message.components ?? [];
+  if (rows.length > 5) problems.push("more than five component rows");
+  for (const row of rows) {
+    if ((row.components ?? []).length > 5) problems.push("more than five buttons in a row");
+    for (const component of row.components ?? []) {
+      if ((component.label ?? "").length > 80) problems.push("button label over 80 characters");
+    }
+  }
   if (problems.length) {
     failures += 1;
     results.push({ stage, id, status: "FAIL", problems });

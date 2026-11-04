@@ -80,7 +80,7 @@ const scopeText = user.platformAdmin
             body: JSON.stringify({ aiArtEnabled: next }),
           });
           if (!response.ok) throw new Error(`Save failed (${response.status})`);
-          const result = await response.json();
+          const result = (await response.json()) as { aiArtEnabled?: boolean };
           const included = Boolean(result.aiArtEnabled);
           toggle.setAttribute("data-enabled", included ? "true" : "false");
           toggle.textContent = included ? "Exclude AI-assisted artwork" : "Include AI-assisted artwork";

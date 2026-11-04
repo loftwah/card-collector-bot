@@ -2,8 +2,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { handleDiscordInteraction } from "../../src/server/discord/handler";
 import { signDiscordRequest } from "../../src/server/discord/signature";
 import type { DiscordEnv } from "../../src/server/discord/types";
-import { bootstrap, ctxFor, fixturePool, runtime, setBalance } from "./helpers";
+import { bootstrap, ctxFor, fixturePool, runtime, setBalance, walletBalance } from "./helpers";
 import { addCollectionCards, createCollection } from "../../src/server/modules/collections";
+import { resolveDiscordScope } from "../../src/server/discord/scope";
+import type { DiscordInstallation } from "../../src/server/discord/types";
+import { routeApi } from "../../src/server/api/router";
 
 const APPLICATION_ID = "1566702936615026769";
 const GUILD_ID = "997734945206313041";
@@ -115,6 +118,14 @@ async function draws(): Promise<number> {
     count: number;
   }>();
   return row?.count ?? 0;
+}
+
+async function installation(): Promise<DiscordInstallation> {
+  const row = await runtime.DB.prepare(
+    "SELECT * FROM fb_discord_installations WHERE id = 'dci_scope'",
+  ).first<DiscordInstallation>();
+  if (!row) throw new Error("Installation fixture missing.");
+  return row;
 }
 
 async function setAudience(audience: "public" | "members") {
@@ -264,5 +275,47 @@ describe("Discord configured-server scope", () => {
     );
     expect(JSON.stringify(open.data)).not.toContain("Test One");
     expect(await draws()).toBe(0);
+  });
+
+  it("fails the API draw closed after the installation configuration changes", async () => {
+    const player = await install();
+    await fixturePool(player);
+    await setBalance(player, player.user!.id, 1000);
+    const before = await resolveDiscordScope(player, await installation(), CHANNEL_ID);
+    expect(before.collectionIds).toContain("col_test_public");
+    const spendBefore = await walletBalance(player, player.user!.id);
+    await runtime.DB.prepare(
+      "UPDATE fb_discord_installations SET collection_allowlist_json = '[]', configuration_revision = configuration_revision + 1 WHERE id = 'dci_scope'",
+    ).run();
+    const after = await resolveDiscordScope(player, await installation(), CHANNEL_ID);
+    expect(after.emptyReason).toContain("explicit empty collection allowlist");
+    const agentCtx = await ctxFor("cabinet", "player@foilbury.local");
+    agentCtx.actor = {
+      type: "agent",
+      id: "test-agent",
+      representedUserId: agentCtx.user!.id,
+      label: "test agent",
+    };
+    agentCtx.scopes = ["draw:execute"];
+    const request = new Request("https://foilbury.test/api/v1/draws", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": "scope-stale-config-1",
+      },
+      body: JSON.stringify({
+        pool: "test-pool",
+        expectedRevision: 1,
+        expectedDistribution: "a".repeat(64),
+        installationId: "dci_scope",
+        channelId: CHANNEL_ID,
+      }),
+    });
+    await expect(routeApi(request, agentCtx, "draws")).rejects.toMatchObject({
+      code: "discord_scope_empty",
+      status: 403,
+    });
+    expect(await draws()).toBe(0);
+    expect(await walletBalance(player, player.user!.id)).toBe(spendBefore);
   });
 });
