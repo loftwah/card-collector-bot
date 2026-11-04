@@ -63,3 +63,54 @@ and spectator observation remain explicitly `blocked` until performed.
 - Release-gate hardening adds working-tree content identity, a complete
   module/asset digest, a freshly fetched remote ref, a verified previous Worker
   version and an affected-scope evidence check. Negative tests cover each.
+
+## Assisted Discord acceptance runner (2026-11-04)
+
+`scripts/discord/assisted-acceptance.mjs` now writes a bounded acceptance
+session before any human step:
+
+```sh
+node scripts/discord/assisted-acceptance.mjs --prepare \
+  --guild <guild-id> --channel <channel-id> --actor <discord-user-id>
+node scripts/discord/assisted-acceptance.mjs --verify <interaction-id> \
+  --session .foilbury/evidence/discord-assisted/session-<timestamp>.json
+node scripts/discord/assisted-acceptance.mjs --watch --session <file> --minutes 10
+node scripts/discord/assisted-acceptance.mjs --spectator <observer.json> --session <file>
+```
+
+The session records the environment, origin, `x-foilbury-build` read from
+`/api/v1/status`, worker version when discoverable, guild, channel, initiating
+account, start/end window, session id and expected cases. Use
+`--cases open,daily,share` to bound a smaller run; the default covers all ten
+prepared cases. Verification rejects any interaction outside that binding.
+`processing` stays pending and `--watch` rechecks the same interaction until
+`completed` or `failed`, or reports `timeout_pending` after the bounded window.
+
+Per-command rules are separate. Read-only commands have no draw or ledger
+requirement; daily and mission claims require one matching reward claim and
+credit; open requires one exact draw debit (`reference_id = draw_id`), one owned
+instance with the receipt serial, correct currency and a reconcilable balance;
+shares require one durable share row and public delivery. A `failed` interaction
+is never a success, even when `receipt_json` parses to `{}`; it must carry a real
+ApiError code. Unrelated ledger rows are never counted.
+
+Reports name the layer that established each fact: **API** (status/build),
+**database** (D1 interaction, receipt, economics), **actual client** (never
+claimed without an observer) and **observer/attestation**. A spectator file is a
+hand-authored attestation, not proof: it must name the session, guild, channel,
+Discord message id, a different actor, an `observed_at` inside the window,
+`observed_intended_share: true` and `private_content_absent: true|false|"unverified"`.
+A screenshot or API read-back is not accepted as proof that private content was
+absent.
+
+Read-only slash interactions currently store only the top-level `foilbury`
+command in D1. The runner therefore requires `--case <case-id>` to bind a
+read-only subcommand as an operator attestation. `--watch` reuses a terminal
+`--verify` report for the same session, so `--verify --case help` also binds that
+interaction during the watch. Economic commands are bound by their durable draw,
+claim or share rows, not by a label.
+
+The focused tests are `node --test tests/scripts/assisted-acceptance.test.mjs`.
+They are logic and negative-control tests only. A green run does not replace a
+real Discord invocation or an independent observer; those remain blocked in this
+document.
