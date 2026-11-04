@@ -41,12 +41,11 @@ and spectator observation remain explicitly `blocked` until performed.
 
 ## 2026-11-04 visible tour and release evidence update
 
-- Final deployed build: source `3ffa24197e82c1488933418de8e1a7935fea66a8`, Worker
-  `608c92ab-034d-4b5b-8b91-bef11a890f8f`, schema
+- Final deployed build: source `4a6f04c7d0050679317ea8d83cb835f416e79028`, Worker
+  `86d916ce-3e81-4349-830e-9e36fca18682`, schema
   `0026_gift_instance_uniqueness.sql`. Rollback target:
-  `36b8705a-8413-4e79-a31f-1a14c6ee89f5`. The build-bound production smoke passed
-  after deployment. Two later commits (`57c57f9` and its docs companion) are
-  tooling/documentation only and are not part of the deployed runtime source.
+  `d343b9c5-5372-42c8-8228-16d82d9b482b`. The build-bound production smoke passed
+  after deployment.
 
 - The persistent **Start the Foilbury tour** entry is live at
   https://discord.com/channels/997734945206313041/1566700752385081355/1567185366014763079
