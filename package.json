@@ -13,7 +13,7 @@
     "build": "node scripts/build-production.mjs",
     "preview": "astro preview --host 127.0.0.1 --port 5173",
     "start": "node scripts/dev.mjs",
-    "check": "pnpm test:access-config && node --test tests/scripts/release-gate.test.mjs && pnpm check:types && pnpm test",
+    "check": "pnpm test:access-config && node --test tests/scripts/release-gate.test.mjs && pnpm test:acceptance-runner && pnpm check:types && pnpm test",
     "check:types": "astro check",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -87,7 +87,8 @@
     "test:npc": "vitest run --config vitest.workers.config.ts tests/workers/npc.test.ts",
     "test:npc:ui": "node scripts/test-npc-e2e.mjs",
     "demo:mastery": "node scripts/demo-mastery.mjs",
-    "test:missions": "vitest run --config vitest.workers.config.ts tests/workers/missions.test.ts"
+    "test:missions": "vitest run --config vitest.workers.config.ts tests/workers/missions.test.ts",
+    "test:acceptance-runner": "node --test tests/scripts/assisted-acceptance.test.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "14.4.3",

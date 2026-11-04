@@ -269,6 +269,46 @@ const criteria = [
       "Collection marks now remain visible when a cover is present; current marks are reviewed Foilbury interpretations, not sourced official publisher marks.",
     residual: "Source and review official wordmarks/icons per collection, then regenerate affected derivatives.",
   },
+  {
+    id: "discord.tour-entry-live",
+    issue: [7, 24],
+    required: true,
+    result: "pass",
+    test_command: "npx tsx scripts/discord/preflight.mjs --json",
+    tested_tree_hash: treeHash,
+    evidence:
+      "Persistent message 1567185366014763079 in #card-collector-test carries the real foilbury:tour:welcome component, Claim daily, Packs and web links. API read-back and the read-only preflight pass. The owner's actual click remains an optional client observation.",
+  },
+  {
+    id: "discord.acceptance-runner",
+    issue: [7, 19, 22],
+    required: true,
+    result: "pass",
+    test_command: "node --test tests/scripts/assisted-acceptance.test.mjs",
+    tested_tree_hash: treeHash,
+    evidence:
+      "Bounded session binding, exact draw/instance/debit correlation, failed-interaction rejection and spectator binding are covered by 28 logic and negative-control tests.",
+  },
+  {
+    id: "observability.scheduled-isolation",
+    issue: [33],
+    required: true,
+    result: "pass",
+    test_command: "pnpm test:workers --run tests/workers/scheduled.test.ts",
+    tested_tree_hash: treeHash,
+    evidence:
+      "Each maintenance step is isolated; stale interactions, NPC work, the editorial handler and the bounded alert stub are exercised. A real deployed cron invocation was captured with wrangler tail, but per-step production side effects are not claimed.",
+  },
+  {
+    id: "release.source-and-artifact",
+    issue: [19],
+    required: true,
+    result: "pass",
+    test_command: "node --test tests/scripts/release-gate.test.mjs",
+    tested_tree_hash: treeHash,
+    evidence:
+      "Negative tests reject changed working-tree content with an unchanged index, a changed chunk or client asset, a stale/mismatched remote ref and an unreadable or versionless rollback target. The build stamps a complete module/asset digest.",
+  },
 ];
 
 const contentAfter = workingTreeHash();
