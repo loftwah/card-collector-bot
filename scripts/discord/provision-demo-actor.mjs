@@ -105,8 +105,8 @@ if (!existingUser) {
   );
 }
 statements.push(
-  `INSERT OR IGNORE INTO fb_memberships (id, tenant_id, user_id, role, status, created_at)
-   VALUES ('mem_demo_discord', ${quote(tenantId)}, ${quote(USER_ID)}, 'player', 'active', ${quote(now)});`,
+  `INSERT OR IGNORE INTO fb_memberships (tenant_id, user_id, role, status, created_at)
+   VALUES (${quote(tenantId)}, ${quote(USER_ID)}, 'player', 'active', ${quote(now)});`,
   `INSERT OR IGNORE INTO fb_wallets (tenant_id, user_id, balance, updated_at)
    VALUES (${quote(tenantId)}, ${quote(USER_ID)}, 0, ${quote(now)});`,
 );

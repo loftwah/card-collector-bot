@@ -748,7 +748,10 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
         pool: body.pool,
         expectedRevision: body.expectedRevision,
         expectedDistribution: body.expectedDistribution,
-        channelKey: body.channelKey,
+        // A Discord installation may not have a separate channel_key. The
+        // interaction channel is the policy key in that case, and the preview
+        // must use the same value or the commit sees a different distribution.
+        channelKey: body.channelKey ?? body.channelId,
         scope: scope ? poolScopeFromDiscord(scope) : undefined,
         idempotency,
       }),
