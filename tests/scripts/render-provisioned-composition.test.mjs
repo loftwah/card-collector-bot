@@ -6,6 +6,7 @@ import path from 'node:path';
 import sharp from 'sharp';
 import { composeCard } from '../../art/compose.mjs';
 import { renderProvisionedFront } from '../../scripts/content/render-provisioned-front.mjs';
+import { requireQueuedBackground } from '../../scripts/content/render-queued-front.mjs';
 
 test('provisioned front applies queued placement and preserves the legacy default', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'foilbury-provision-placement-'));
@@ -17,7 +18,7 @@ test('provisioned front applies queued placement and preserves the legacy defaul
   fs.writeFileSync(subjectPath, await sharp(pixels, { raw: { width: 60, height: 100, channels: 3 } }).png().toBuffer());
   fs.writeFileSync(backgroundPath, await sharp({ create: { width: 64, height: 64, channels: 3, background: '#283b34' } }).png().toBuffer());
   const composition = { mode: 'fill', zoom: 1.2, offsetX: 20, offsetY: -15 };
-  const payload = { material_key: 'plain', effect_key: null, composition_json: JSON.stringify(composition) };
+  const payload = { background_asset_id: 'bg', material_key: 'plain', effect_key: null, composition_json: JSON.stringify(composition) };
   const card = { name: 'Fixture', subtitle: null, sets: [], collections: [], class: null, rarity: null };
   const actual = path.join(dir, 'actual.png'), expected = path.join(dir, 'expected.png');
   const legacy = path.join(dir, 'legacy.png'), old = path.join(dir, 'old.png');
@@ -29,6 +30,19 @@ test('provisioned front applies queued placement and preserves the legacy defaul
   await composeCard({ ...original, outputPath: old });
   assert.deepEqual(fs.readFileSync(legacy), fs.readFileSync(old));
   assert.notDeepEqual(fs.readFileSync(actual), fs.readFileSync(legacy), 'fixture must reveal a dropped transform');
+  // A leftover background file exists, but it must not be read for a job that
+  // has no background asset. The failed attempt leaves that evidence intact.
+  const stale = fs.readFileSync(backgroundPath), missingOutput = path.join(dir, 'missing.png');
+  const oldBugOutput = path.join(dir, 'old-bug.png');
+  await composeCard({ ...original, outputPath: oldBugOutput });
+  assert.ok(fs.existsSync(oldBugOutput), 'negative control: the old path-only call would use the stale file');
+  for (const value of [null, undefined, '', '   ']) {
+    const missing = { ...payload, background_asset_id: value };
+    assert.throws(() => requireQueuedBackground(missing), /no background asset/);
+    await assert.rejects(renderProvisionedFront({ payload: missing, card, subjectPath, backgroundPath, outputPath: missingOutput }), /no background asset/);
+  }
+  assert.equal(fs.existsSync(missingOutput), false);
+  assert.deepEqual(fs.readFileSync(backgroundPath), stale);
   for (const value of ['', false, 0, '{broken', JSON.stringify([]), JSON.stringify({ zoom: 2 })]) {
     await assert.rejects(renderProvisionedFront({ payload: { ...payload, composition_json: value }, card, subjectPath, backgroundPath, outputPath: path.join(dir, 'invalid.png') }));
   }

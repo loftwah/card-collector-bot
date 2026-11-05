@@ -21,6 +21,8 @@ import sharp from "sharp";
 import { generateCollectionArt } from "../../art/collection-art.mjs";
 import { composeCardBack } from "../../art/compose.mjs";
 import { renderProvisionedFront } from "./render-provisioned-front.mjs";
+import { requireQueuedBackground } from "./render-queued-front.mjs";
+import { readRenderSource, readLocalRenderSource } from "./render-bytes.mjs";
 import { apiForm, apiJson, ensureServer, BASE_URL, agentToken, accessHeaders } from "../lib/api.mjs";
 
 const args = new Set(process.argv.slice(2));
@@ -36,8 +38,6 @@ const root = process.cwd();
 const contentDir = path.join(root, ".foilbury/content");
 const artDir = path.join(root, ".foilbury/generated");
 const sourcedDir = path.join(root, ".foilbury/sourced");
-const tmpDir = path.join(root, ".foilbury/tmp");
-fs.mkdirSync(tmpDir, { recursive: true });
 
 function log(message) {
   if (!jsonOut) console.log(message);
@@ -276,6 +276,7 @@ async function renderQueue(cards, generated) {
       continue;
     }
     try {
+      requireQueuedBackground(payload);
       const subject = await fetch(`${BASE_URL}/api/v1/admin/assets/${payload.subject_asset_id}/bytes`, {
         headers: { authorization: `Bearer ${agentToken()}`, ...accessHeaders() },
       });
@@ -286,37 +287,31 @@ async function renderQueue(cards, generated) {
           })
         : null;
       if (background && !background.ok) throw new Error(`Background asset fetch failed (${background.status}).`);
-      const subjectPath = path.join(tmpDir, `${payload.variant_id}-subject.png`);
-      const backgroundPath = path.join(tmpDir, `${payload.variant_id}-background.png`);
-      fs.writeFileSync(subjectPath, Buffer.from(await subject.arrayBuffer()));
-      if (background) fs.writeFileSync(backgroundPath, Buffer.from(await background.arrayBuffer()));
-      const outputPath = path.join(tmpDir, `${payload.variant_id}.webp`);
-      await renderProvisionedFront({ payload, card: entry.card, subjectPath, backgroundPath, outputPath });
+      const subjectPath = await readRenderSource(subject);
+      const backgroundPath = await readRenderSource(background);
+      const { buffer: outputBytes } = await renderProvisionedFront({ payload, card: entry.card, subjectPath, backgroundPath, returnBytes: true });
       const backSource = generated.get(entry.card.slug)?.back;
       let backBytes;
       if (backSource && fs.existsSync(backSource)) {
-        const backPath = path.join(tmpDir, `${payload.variant_id}-back.webp`);
-        await composeCardBack({
-          backPath: backSource,
+        backBytes = await composeCardBack({
+          backPath: readLocalRenderSource(backSource),
           material: payload.material_key,
           effect: payload.effect_key ?? "none",
-          outputPath: backPath,
+          returnBytes: true,
         });
-        backBytes = fs.readFileSync(backPath);
-        fs.rmSync(backPath, { force: true });
       }
       const form = new FormData();
-      form.append("file", new Blob([fs.readFileSync(outputPath)], { type: "image/webp" }), `${payload.variant_id}.webp`);
+      form.append("file", new Blob([outputBytes], { type: "image/webp" }), `${payload.variant_id}.webp`);
       if (backBytes) form.append("back", new Blob([backBytes], { type: "image/webp" }), `${payload.variant_id}-back.webp`);
       form.append("attempt", String(attempt));
       const completed = await apiForm(`/api/v1/admin/jobs/${job.id}/complete`, form);
       if (makeDerivatives && completed?.assetId) {
-        const thumb = await sharp(outputPath).resize(300, 420, { fit: "cover", position: "attention" }).webp({ quality: 82, effort: 5 }).toBuffer();
+        const thumb = await sharp(outputBytes).resize(300, 420, { fit: "cover", position: "attention" }).webp({ quality: 82, effort: 5 }).toBuffer();
         const derivativeForm = new FormData();
         derivativeForm.append("file", new Blob([thumb], { type: "image/webp" }), `${payload.variant_id}-thumb.webp`);
         derivativeForm.append("sizeKey", "thumb");
         await apiForm(`/api/v1/admin/assets/${completed.assetId}/derivatives`, derivativeForm).catch(() => undefined);
-        const preview = await sharp(outputPath).resize(600, 840, { fit: "cover", position: "attention" }).webp({ quality: 84, effort: 5 }).toBuffer();
+        const preview = await sharp(outputBytes).resize(600, 840, { fit: "cover", position: "attention" }).webp({ quality: 84, effort: 5 }).toBuffer();
         const previewForm = new FormData();
         previewForm.append("file", new Blob([preview], { type: "image/webp" }), `${payload.variant_id}-preview.webp`);
         previewForm.append("sizeKey", "preview");
@@ -324,9 +319,6 @@ async function renderQueue(cards, generated) {
       }
       rendered += 1;
       if (rendered % 20 === 0) log(`  rendered ${rendered}…`);
-      fs.rmSync(subjectPath, { force: true });
-      fs.rmSync(backgroundPath, { force: true });
-      fs.rmSync(outputPath, { force: true });
     } catch (error) {
       failed += 1;
       const message = error instanceof Error ? error.message : String(error);

@@ -7,14 +7,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { composeCardBack } from "../../art/compose.mjs";
-import { renderQueuedFront } from "./render-queued-front.mjs";
+import { renderQueuedFront, requireQueuedBackground } from "./render-queued-front.mjs";
+import { readRenderSource, readLocalRenderSource } from "./render-bytes.mjs";
 import { apiForm, apiJson, BASE_URL, agentToken, accessHeaders } from "../lib/api.mjs";
 
 const root = process.cwd();
 const contentDir = path.join(root, ".foilbury/content");
 const generatedDir = path.join(root, ".foilbury/generated");
-const tmpDir = path.join(root, ".foilbury/tmp");
-fs.mkdirSync(tmpDir, { recursive: true });
 const worker = process.argv.find((arg) => arg.startsWith("--worker="))?.split("=")[1] ?? "1";
 const jsonOut = process.argv.includes("--json");
 
@@ -44,7 +43,7 @@ async function fetchBytes(url) {
     headers: { authorization: `Bearer ${agentToken()}`, ...accessHeaders() },
   });
   if (!response.ok) throw new Error(`${url} returned ${response.status}`);
-  return Buffer.from(await response.arrayBuffer());
+  return readRenderSource(response);
 }
 
 let rendered = 0;
@@ -59,39 +58,34 @@ while (true) {
   const payload = claimed.job.payload;
   const attempt = claimed.job.attempts;
   try {
-    const subjectPath = path.join(tmpDir, `${payload.variant_id}-subject-${worker}.png`);
-    const backgroundPath = path.join(tmpDir, `${payload.variant_id}-background-${worker}.png`);
-    fs.writeFileSync(subjectPath, await fetchBytes(`/api/v1/admin/assets/${payload.subject_asset_id}/bytes`));
-    if (payload.background_asset_id) fs.writeFileSync(backgroundPath, await fetchBytes(`/api/v1/admin/assets/${payload.background_asset_id}/bytes`));
-    const outputPath = path.join(tmpDir, `${payload.variant_id}-${worker}.webp`);
+    requireQueuedBackground(payload);
+    const subjectPath = await fetchBytes(`/api/v1/admin/assets/${payload.subject_asset_id}/bytes`);
+    const backgroundPath = await fetchBytes(`/api/v1/admin/assets/${payload.background_asset_id}/bytes`);
     const meta = cardMeta.get(payload.card_id);
-    let markPath = "";
+    let markBuffer;
+    let markMime;
     const logoUrl = meta?.collections?.[0]?.logo_url;
     if (logoUrl) {
       try {
         const ext = logoUrl.endsWith(".svg") ? "svg" : "png";
-        markPath = path.join(tmpDir, `${payload.variant_id}-mark-${worker}.${ext}`);
-        fs.writeFileSync(markPath, await fetchBytes(logoUrl));
+        markBuffer = await fetchBytes(logoUrl);
+        markMime = ext === "svg" ? "image/svg+xml" : "image/png";
       } catch {
-        markPath = "";
+        markBuffer = undefined;
       }
     }
-    await renderQueuedFront({ payload, meta, subjectPath, backgroundPath, markPath, outputPath });
+    const { buffer: outputBytes } = await renderQueuedFront({ payload, meta, subjectPath, backgroundPath, markBuffer, markMime, returnBytes: true });
     const backSource = backBySlug.get(payload.card_slug) ?? backByName.get(payload.card_name);
     let backBytes;
     if (backSource) {
-      const backPath = path.join(tmpDir, `${payload.variant_id}-back-${worker}.webp`);
-      await composeCardBack({ backPath: backSource, material: payload.material_key, effect: payload.effect_key ?? "none", outputPath: backPath });
-      backBytes = fs.readFileSync(backPath);
-      fs.rmSync(backPath, { force: true });
+      backBytes = await composeCardBack({ backPath: readLocalRenderSource(backSource), material: payload.material_key, effect: payload.effect_key ?? "none", returnBytes: true });
     }
     const form = new FormData();
-    form.append("file", new Blob([fs.readFileSync(outputPath)], { type: "image/webp" }), `${payload.variant_id}.webp`);
+    form.append("file", new Blob([outputBytes], { type: "image/webp" }), `${payload.variant_id}.webp`);
     if (backBytes) form.append("back", new Blob([backBytes], { type: "image/webp" }), `${payload.variant_id}-back.webp`);
     form.append("attempt", String(attempt));
     await apiForm(`/api/v1/admin/jobs/${job.id}/complete`, form);
     rendered += 1;
-    for (const temp of [subjectPath, backgroundPath, outputPath]) fs.rmSync(temp, { force: true });
     if (rendered % 10 === 0) log(`rendered ${rendered} (${((Date.now() - started) / 1000).toFixed(0)}s)`);
   } catch (error) {
     failed += 1;

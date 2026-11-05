@@ -263,7 +263,7 @@ export async function composeCard(input) {
     rarity,
     material,
     effect,
-    markData: await markDataUri(markPath),
+    markData: await markDataUri(markPath, input.markBuffer, input.markMime),
   });
   const textPng = new Resvg(textSvg, {
     fitTo: { mode: "width", value: W },
@@ -278,6 +278,10 @@ export async function composeCard(input) {
     .png()
     .toBuffer();
 
+  if (input.returnBytes) {
+    const buffer = await sharp(final).webp({ quality: 90, effort: 5 }).toBuffer();
+    return { width: W, height: H, bytes: buffer.length, buffer };
+  }
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   if (outputPath.endsWith(".webp")) {
     await sharp(final).webp({ quality: 90, effort: 5 }).toFile(outputPath);
@@ -310,17 +314,18 @@ function escapeXml(value) {
     .replaceAll("'", "&apos;");
 }
 
-async function markDataUri(markPath) {
+async function markDataUri(markPath, markBuffer, markMime) {
   try {
-    if (!markPath || !fs.existsSync(markPath)) return "";
-    const ext = path.extname(markPath).replace(".", "").toLowerCase();
+    if (!markBuffer && (!markPath || !fs.existsSync(markPath))) return "";
+    const ext = markBuffer ? (markMime === 'image/svg+xml' ? 'svg' : 'png') : path.extname(markPath).replace(".", "").toLowerCase();
+    const source = markBuffer ?? markPath;
     if (ext === "svg") {
-      return `data:image/svg+xml;base64,${fs.readFileSync(markPath).toString("base64")}`;
+      return `data:image/svg+xml;base64,${(markBuffer ?? fs.readFileSync(markPath)).toString("base64")}`;
     }
     // Collection marks are often supplied as black artwork on a white field.
     // Knock out near-white pixels so the supplied square does not become a
     // white sticker on every card. Preserve dark pixels and antialiasing.
-    const image = sharp(markPath)
+    const image = sharp(source)
       .resize(128, 128, { fit: "contain", background: { r: 255, g: 255, b: 255, alpha: 0 } })
       .ensureAlpha();
     const { data, info } = await image.raw().toBuffer({ resolveWithObject: true });
@@ -475,6 +480,7 @@ export async function composeCardBack(input) {
       });
     }
   }
+  if (input.returnBytes) return sharp(base).composite(layers).webp({ quality: 88, effort: 5 }).toBuffer();
   await sharp(base).composite(layers).webp({ quality: 88, effort: 5 }).toFile(outputPath);
   return outputPath;
 }
