@@ -45,7 +45,8 @@ test('rejects artifact symlinks and stale receipts',()=>fixture(f=>{
 
 test('corrective scope and prior production identity fail closed',async()=>{
   const {requireCorrectivePaths,priorVerifiedSource}=await import('../../scripts/lib/technical-release-receipt.mjs');
-  assert.deepEqual(requireCorrectivePaths(['src/pages/index.astro']),['src/pages/index.astro']);
+  assert.deepEqual(requireCorrectivePaths(['src/pages/index.astro']).corrective,['src/pages/index.astro']);
+  assert.deepEqual(requireCorrectivePaths(['scripts/discord/preflight.mjs']).operational_only,['scripts/discord/preflight.mjs']);
   for(const paths of [[],['src/server/api/router.ts'],['migrations/0999.sql'],['src/pages/index.astro','wrangler.production.jsonc']]) assert.throws(()=>requireCorrectivePaths(paths));
   const version='12345678-1234-1234-1234-123456789abc',sha='a'.repeat(40);
   assert.equal(priorVerifiedSource([{verified:true,deployment_version:version,source_sha:sha}],version),sha);
@@ -63,4 +64,29 @@ test('legacy acceptance recorder cannot self-attest or skip checks',()=>{
     const result=spawnSync(process.execPath,['scripts/record-release-acceptance.mjs',...args],{encoding:'utf8'});
     assert.equal(result.status,2);assert.match(result.stderr,/held/);
   }
+});
+
+test('requires exact migrations matching the verified deployed baseline',async()=>{
+  const {requireUnchangedMigrations}=await import('../../scripts/lib/technical-release-receipt.mjs');
+  const version='12345678-1234-1234-1234-123456789abc',list=['0001_init.sql','0002_next.sql'];
+  const prior=[{verified:true,deployment_version:version,migrations:{remote:list}}];
+  assert.deepEqual(requireUnchangedMigrations(list,list,prior,version),list);
+  for(const remote of [[],['0001_init.sql'],[...list,'0003_unknown.sql'],[...list].reverse(),[...list,list[0]]]) assert.throws(()=>requireUnchangedMigrations(list,remote,prior,version));
+  assert.throws(()=>requireUnchangedMigrations(list,list,[],version));
+  assert.throws(()=>requireUnchangedMigrations(list,list,[{...prior[0],migrations:{remote:['0001_init.sql']}}],version));
+});
+
+test('requires one fully serving version',async()=>{
+  const {singleServingVersion}=await import('../../scripts/lib/technical-release-receipt.mjs');
+  const id='12345678-1234-1234-1234-123456789abc';
+  assert.equal(singleServingVersion({versions:[{version_id:id,percentage:100}]}),id);
+  for(const versions of [[],[{version_id:id,percentage:99}],[{version_id:id,percentage:50},{version_id:id,percentage:50}]]) assert.throws(()=>singleServingVersion({versions}));
+});
+
+test('requires one reported upload version',async()=>{
+  const {reportedUploadVersion}=await import('../../scripts/lib/technical-release-receipt.mjs');
+  const id='12345678-1234-1234-1234-123456789abc';
+  assert.equal(reportedUploadVersion(`Uploaded\nCurrent Version ID: ${id}\n`),id);
+  assert.equal(reportedUploadVersion('no version'),null);
+  assert.equal(reportedUploadVersion(`Current Version ID: ${id}\nCurrent Version ID: ${id}`),null);
 });
