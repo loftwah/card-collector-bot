@@ -20,16 +20,21 @@ try {
     await p.goto(route,{waitUntil:'networkidle'}); await p.getByRole('heading',{name:heading}).waitFor();
     await p.evaluate(()=>{document.body.style.zoom='2'});await p.evaluate(()=>document.fonts.ready);
     const size=await p.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}));assert.ok(size.scroll<=size.width+1,`${route} ${js} ${scheme}: ${JSON.stringify(size)}`);
+    for(const width of [320,390,1440]) {await p.evaluate(()=>{document.body.style.zoom='1'});await p.setViewportSize({width,height:844});const normal=await p.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}));assert.ok(normal.scroll<=normal.width+1,`${route} normal ${width}: ${JSON.stringify(normal)}`)}
+    await p.setViewportSize({width:320,height:844});await p.evaluate(()=>{document.body.style.zoom='2'});
+    if(route==='/cabinet') {const card=p.locator('.card-face').first();if(await card.count()){const r=await card.boundingBox();assert.ok(r&&Math.abs(r.width/r.height-5/7)<0.02,'public card must remain 5:7')}}
     if(js){const axe=await new AxeBuilder({page:p}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze();assert.deepEqual(axe.violations.filter(x=>['serious','critical'].includes(x.impact)).map(x=>x.id),[],`${route} axe`)}
     for(const selector of route==='/login'?['input[type=email]','a[href="/admin"]']:route==='/cabinet'?['input[name=search]','button[type=submit]']:['a[href="/admin/editorial"]']) {
      const control=p.locator(selector).first();if(await control.isVisible()){await control.focus();const rect=await control.boundingBox();assert.ok(rect && rect.x>=-1 && rect.x+rect.width<=321,`${route} ${selector} escapes viewport`);assert.equal(await control.evaluate(el=>document.activeElement===el),true)}
     }
    }
+   if(!js) { await p.goto('/cabinet',{waitUntil:'networkidle'});const search=p.locator('input[name=search]');await search.fill('Tux');await search.press('Enter');await p.waitForURL(/search=Tux/); }
    const login=await c.request.post('/api/v1/dev/login',{data:{email:'owner@foilbury.local'},maxRedirects:0});assert.equal(login.status(),200);
    await p.goto('/play/collection',{waitUntil:'networkidle'});await p.getByRole('heading',{name:/your drawers/i}).waitFor();await p.evaluate(()=>{document.body.style.zoom='2'});await p.evaluate(()=>document.fonts.ready);
    const size=await p.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}));assert.ok(size.scroll<=size.width+1,`collection ${js} ${scheme}: ${JSON.stringify(size)}`);
    for(const control of [p.locator('input[name=search]'),p.locator('select[name=collection]'),p.locator('button[type=submit]').filter({hasText:'Apply'})]) {const rect=await control.first().boundingBox();assert.ok(rect && rect.x>=-1&&rect.x+rect.width<=321);await control.first().focus();assert.equal(await control.first().evaluate(el=>document.activeElement===el),true)}
    if(js){const axe=await new AxeBuilder({page:p}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze();assert.deepEqual(axe.violations.filter(x=>['serious','critical'].includes(x.impact)).map(x=>x.id),[])}
+   if(!js) {const search=p.locator('input[name=search]');await search.fill('fixture');await search.press('Enter');await p.waitForURL(/search=fixture/);}
    // Synthetic selected-collection fixture exercises binder and share-preview geometry.
    const fixture = process.env.FOILBURY_TEST_COLLECTION;
    if (fixture) {
