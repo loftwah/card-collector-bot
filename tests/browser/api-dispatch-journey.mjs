@@ -56,9 +56,9 @@ const evidence = fs.mkdtempSync(
 );
 const browser = await chromium.launch();
 try {
-  for (const [label, email, expectedSide] of [
-    ["proposer", "owner@foilbury.local", "You offer"],
-    ["recipient", "player@foilbury.local", "They offer"],
+  for (const [label, email] of [
+    ["proposer", "owner@foilbury.local"],
+    ["recipient", "player@foilbury.local"],
   ]) {
     const context = await browser.newContext({
       baseURL: base,
@@ -79,8 +79,15 @@ try {
       assert.equal(detailResponse.status(), 200);
       const detail = await detailResponse.json();
       assert.equal(detail.id, id);
-      const item = detail.items.find((row) => row.side === "proposer");
-      assert.ok(item && typeof item.serial === "string");
+      assert.equal(detail.items.length, 2, "fixture must contain one card on each side");
+      const proposerItem = detail.items.find((row) => row.side === "proposer");
+      const recipientItem = detail.items.find((row) => row.side === "recipient");
+      assert.ok(
+        proposerItem &&
+          recipientItem &&
+          typeof proposerItem.serial === "string" &&
+          typeof recipientItem.serial === "string",
+      );
       const page = await context.newPage();
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.message));
@@ -88,12 +95,21 @@ try {
       await page.getByRole("button", { name: "View", exact: true }).click();
       const dialog = page.getByRole("dialog");
       await dialog.waitFor();
-      const side = dialog.locator(".label").filter({ hasText: expectedSide }).first().locator("..");
-      assert.equal(
-        await side.getByText(item.serial, { exact: true }).count(),
-        1,
-        `${label}: item must appear under ${expectedSide}`,
-      );
+      for (const [item, expectedSide] of [
+        [proposerItem, label === "proposer" ? "You offer" : "They offer"],
+        [recipientItem, label === "recipient" ? "You offer" : "They offer"],
+      ]) {
+        const side = dialog
+          .locator(".label")
+          .filter({ hasText: expectedSide })
+          .first()
+          .locator("..");
+        assert.equal(
+          await side.getByText(item.serial, { exact: true }).count(),
+          1,
+          `${label}: ${item.side} card must appear under ${expectedSide}`,
+        );
+      }
       await page.screenshot({ path: path.join(evidence, `${label}-trade.png`) });
       assert.deepEqual(errors, []);
       if (label === "recipient") {
