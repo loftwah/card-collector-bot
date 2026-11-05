@@ -20,6 +20,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Set up pnpm
         uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
@@ -37,6 +38,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Select affected browser journeys
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git diff --name-only "$BASE_SHA...$HEAD_SHA" > "$RUNNER_TEMP/foilbury-changed-paths"
+          node scripts/ci-affected.mjs "$RUNNER_TEMP/foilbury-changed-paths" >> "$GITHUB_OUTPUT"
+
       - name: Check types and tests
         run: pnpm check
 
@@ -45,30 +55,47 @@ jobs:
           CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: "false"
           CLOUDFLARE_INCLUDE_PROCESS_ENV: "false"
         run: |
-          pnpm build
+          node scripts/build-production.mjs --skip-typecheck
           test ! -e dist/server/.dev.vars
 
       - name: Install Chromium
+        if: steps.scope.outputs.browser == 'true'
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Bootstrap local browser fixtures
+        if: steps.scope.outputs.browser == 'true'
         env:
           FOILBURY_URL: http://localhost:5173
         run: |
           pnpm setup:local --skip-sources
           node scripts/setup-ci-fixtures.mjs
 
-      - name: Check authentication, editorial, album and privacy journeys
+      - name: Check authentication journey
+        if: steps.scope.outputs.auth == 'true'
         env:
           FOILBURY_URL: http://localhost:5173
-        run: |
-          pnpm test:auth
-          pnpm test:editorial
-          pnpm test:album
-          pnpm test:privacy
+        run: pnpm test:auth
+
+      - name: Check editorial journey
+        if: steps.scope.outputs.editorial == 'true'
+        env:
+          FOILBURY_URL: http://localhost:5173
+        run: pnpm test:editorial
+
+      - name: Check album journey
+        if: steps.scope.outputs.album == 'true'
+        env:
+          FOILBURY_URL: http://localhost:5173
+        run: pnpm test:album
+
+      - name: Check privacy journey
+        if: steps.scope.outputs.privacy == 'true'
+        env:
+          FOILBURY_URL: http://localhost:5173
+        run: pnpm test:privacy
 
       - name: Stop local server
-        if: always()
+        if: always() && steps.scope.outputs.browser == 'true'
         run: |
           node --input-type=module <<'NODE'
           import { stopDevServer } from "./scripts/lib/local.mjs";
