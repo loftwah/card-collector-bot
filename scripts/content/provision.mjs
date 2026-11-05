@@ -19,7 +19,8 @@ import path from "node:path";
 import crypto from "node:crypto";
 import sharp from "sharp";
 import { generateCollectionArt } from "../../art/collection-art.mjs";
-import { composeCard, composeCardBack } from "../../art/compose.mjs";
+import { composeCardBack } from "../../art/compose.mjs";
+import { renderProvisionedFront } from "./render-provisioned-front.mjs";
 import { apiForm, apiJson, ensureServer, BASE_URL, agentToken, accessHeaders } from "../lib/api.mjs";
 
 const args = new Set(process.argv.slice(2));
@@ -290,19 +291,7 @@ async function renderQueue(cards, generated) {
       fs.writeFileSync(subjectPath, Buffer.from(await subject.arrayBuffer()));
       if (background) fs.writeFileSync(backgroundPath, Buffer.from(await background.arrayBuffer()));
       const outputPath = path.join(tmpDir, `${payload.variant_id}.webp`);
-      await composeCard({
-        subjectPath,
-        backgroundPath,
-        material: payload.material_key,
-        effect: payload.effect_key ?? "none",
-        name: entry.card.name,
-        subtitle: entry.card.subtitle ?? "",
-        setName: entry.card.sets[0]?.name ?? entry.card.collections[0]?.name ?? "Cabinet",
-        serial: "CABINET PROOF",
-        className: entry.card.class?.name ?? "",
-        rarity: entry.card.rarity?.name ?? "",
-        outputPath,
-      });
+      await renderProvisionedFront({ payload, card: entry.card, subjectPath, backgroundPath, outputPath });
       const backSource = generated.get(entry.card.slug)?.back;
       let backBytes;
       if (backSource && fs.existsSync(backSource)) {
