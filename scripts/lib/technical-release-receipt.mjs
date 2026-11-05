@@ -4,6 +4,7 @@ import path from 'node:path';
 import { inspectBundle } from './release-artifact.mjs';
 import { sha256File } from './source-identity.mjs';
 
+export const TECHNICAL_PRIOR_RECEIPT_SHA256='8b04c8fe07ce6c7f782be4915a0a27faecb6315a0c46345de110a7512d6c3a0e';
 export const TECHNICAL_IMAGE='sha256:045ab20ddbe8dfcc7f42f63ad18a2c4449a9fe5a10e023767321e2e0f261e579';
 export const TECHNICAL_CHECKS=['checkout','setup','synthetic-fixtures','technical-gate-tests','check','built-worker-test','stop-dev','start-built-worker','worker-ready','synthetic-auth','synthetic-owner-copy',...['landing-loading','inspector-component','ui','product','artwork','album','privacy','performance'].flatMap(name=>['worker-still-owned',name]),'worker-final-owned'];
 export function assertRegularArtifactTree(dir) {
@@ -56,7 +57,7 @@ const CORRECTIVE_PATHS=new Set([
   'src/components/LogoutButton.tsx','src/components/SiteHeader.astro','src/components/PublicVariantViewer.tsx','src/components/player/CardInspector.tsx','src/layouts/PlayerLayout.astro','src/pages/index.astro','src/styles/global.css',
   'package.json','pnpm-lock.yaml','docs/SKILLS.md','docs/pending/TECHNICAL_RELEASE_PROTOTYPE.md',
   'tests/workers/observability.test.ts','scripts/test-landing-loading.mjs','scripts/test-product-qa.mjs','scripts/test-auth-e2e.mjs','tests/browser/public-inspector.test.mjs','tests/scripts/technical-release-receipt.test.mjs','scripts/test-album-e2e.mjs',
-  'scripts/deploy-production.mjs','scripts/record-release-acceptance.mjs','scripts/lib/technical-release-receipt.mjs',
+  'scripts/deploy-production.mjs','scripts/test-deployed.mjs','scripts/record-release-acceptance.mjs','scripts/lib/technical-release-receipt.mjs',
   'scripts/technical-release-inspect.mjs','scripts/technical-release-process.mjs','scripts/technical-release-seed-copy.mjs',
   'scripts/technical-release-stop-dev.mjs','scripts/technical-release-supervisor.mjs','scripts/technical-release-worker-ready.mjs',
 ]);
@@ -94,4 +95,11 @@ export function singleServingVersion(deployment) {
 export function reportedUploadVersion(stdout) {
   const matches=[...String(stdout??'').matchAll(/^Current Version ID:\s*([0-9a-f-]{36})\s*$/gim)].map(match=>match[1].toLowerCase());
   return matches.length===1 ? matches[0] : null;
+}
+
+export function requireSameSource(initial,current) {
+  if(!initial||!current||current.dirty||initial.sha!==current.sha||initial.tree_hash!==current.tree_hash||initial.content_hash!==current.content_hash) throw new Error('Source changed during qualification.');
+}
+export function requireSameDeployment(initial,current) {
+  if(!initial?.id || current?.id!==initial.id || singleServingVersion(current)!==singleServingVersion(initial)) throw new Error('Production deployment changed during qualification.');
 }

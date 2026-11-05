@@ -90,3 +90,14 @@ test('requires one reported upload version',async()=>{
   assert.equal(reportedUploadVersion('no version'),null);
   assert.equal(reportedUploadVersion(`Current Version ID: ${id}\nCurrent Version ID: ${id}`),null);
 });
+
+test('rejects source or active deployment drift',async()=>{
+  const {requireSameSource,requireSameDeployment}=await import('../../scripts/lib/technical-release-receipt.mjs');
+  requireSameSource(source,{...source});
+  for(const current of [{...source,dirty:' M file'},{...source,sha:'f'.repeat(40)},{...source,tree_hash:'f'.repeat(64)},{...source,content_hash:'f'.repeat(64)}]) assert.throws(()=>requireSameSource(source,current));
+  const id='12345678-1234-1234-1234-123456789abc';
+  const deployment={id:'one',versions:[{version_id:id,percentage:100}]};
+  requireSameDeployment(deployment,structuredClone(deployment));
+  assert.throws(()=>requireSameDeployment(deployment,{...deployment,id:'two'}));
+  assert.throws(()=>requireSameDeployment(deployment,{...deployment,versions:[{version_id:id,percentage:50}]}));
+});

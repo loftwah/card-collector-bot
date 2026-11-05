@@ -7,6 +7,7 @@
  * artifact is used without rebuilding. This never asserts product acceptance.
  */
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { execFileSync, spawnSync, spawn } from "node:child_process";
 import { ROOT } from "./lib/local.mjs";
@@ -17,7 +18,7 @@ import {
   sourceTreeHash,
 } from "./lib/source-identity.mjs";
 import { inspectBundle } from "./lib/release-artifact.mjs";
-import { validateTechnicalReceipt, priorVerifiedSource, requireCorrectivePaths, assertRegularArtifactTree, TECHNICAL_IMAGE, requireUnchangedMigrations, singleServingVersion, reportedUploadVersion } from "./lib/technical-release-receipt.mjs";
+import { validateTechnicalReceipt, priorVerifiedSource, requireCorrectivePaths, assertRegularArtifactTree, TECHNICAL_IMAGE, requireUnchangedMigrations, singleServingVersion, reportedUploadVersion, requireSameSource, requireSameDeployment, TECHNICAL_PRIOR_RECEIPT_SHA256 } from "./lib/technical-release-receipt.mjs";
 import {
   changedPaths,
   resolveRollback,
@@ -185,7 +186,8 @@ try {
   const match=line.match(/^Technical candidate receipt: (.+) · sha256 ([a-f0-9]{64})$/);
   if(!match) throw new Error("Supervisor did not return an exact candidate receipt.");
   [,technicalFile,technicalDigest]=match;
-  technical=validateTechnicalReceipt({file:technicalFile,receiptSha256:technicalDigest,source:sourceState()});
+  requireSameSource(source,sourceState());
+  technical=validateTechnicalReceipt({file:technicalFile,receiptSha256:technicalDigest,source});
   bundle=technical.artifact;
 } catch(error) { console.error(`Refusing release: ${error.message}`); process.exit(2); }
 const migrations = migrationState(env);
@@ -206,6 +208,7 @@ function previousReleaseReceipts() {
     .map((name) => {
       const file = path.join(evidenceDir, name);
       try {
+        if(fs.lstatSync(file).isSymbolicLink() || sha256File(file)!==TECHNICAL_PRIOR_RECEIPT_SHA256) return null;
         const value = readJson(file);
         return { file, value };
       } catch {
@@ -241,6 +244,20 @@ const artifacts = [{path:path.resolve(technicalFile),sha256:technicalDigest}];
 
 try { requireUnchangedMigrations(migrations.local,migrations.remote,priorReceipts,rollback.version_id); }
 catch(error) { console.error(`Refusing release: ${error.message}`); process.exit(2); }
+
+function recheckProductionState() {
+  const refreshed=capture("git",["ls-remote","origin","refs/heads/main"]).split(/\s+/)[0];
+  verifyFreshRemote({localOriginMain:source.origin_main,remoteSha:refreshed,fetchedAt:new Date().toISOString()});
+  requireSameSource(source,sourceState());
+  const latest=deploymentList(env);
+  requireSameDeployment(previous?.[0],latest?.[0]);
+  const currentMigrations=migrationState(env);
+  requireUnchangedMigrations(currentMigrations.local,currentMigrations.remote,priorReceipts,rollback.version_id);
+  validateTechnicalReceipt({file:technicalFile,receiptSha256:technicalDigest,source});
+}
+try { recheckProductionState(); }
+catch(error) { console.error(`Refusing release: ${error.message}`); process.exit(2); }
+const runId=randomUUID();
 
 const plan = {
   schema_version: 2,
@@ -279,8 +296,8 @@ const plan = {
   },
 };
 
-const planFile = path.join(evidenceDir, `release-plan-${source.sha.slice(0, 12)}.json`);
-fs.writeFileSync(planFile, JSON.stringify(plan, null, 2));
+const planFile = path.join(evidenceDir, `release-plan-${source.sha.slice(0, 12)}-${runId}.json`);
+fs.writeFileSync(planFile, JSON.stringify(plan, null, 2),{flag:"wx",mode:0o600});
 console.log(JSON.stringify(plan, null, 2));
 console.log(`Release plan written to ${path.relative(ROOT, planFile)}`);
 
@@ -305,16 +322,8 @@ if(technical) {
 
 // The supervised run can take minutes. Recheck the remote source, current
 // Worker and unchanged schema immediately before the upload.
-try {
-  const refreshed=capture("git",["ls-remote","origin","refs/heads/main"]).split(/\s+/)[0];
-  verifyFreshRemote({localOriginMain:source.origin_main,remoteSha:refreshed,fetchedAt:new Date().toISOString()});
-  const current=sourceState();
-  if(current.dirty || current.sha!==source.sha || current.tree_hash!==source.tree_hash || current.content_hash!==source.content_hash) throw new Error("Source changed during qualification.");
-  const latest=deploymentList(env), nowRollback=resolveRollback(latest);
-  if(singleServingVersion(latest?.[0])!==rollback.version_id.toLowerCase() || nowRollback.version_id!==rollback.version_id || nowRollback.deployment_id!==rollback.deployment_id) throw new Error("Production deployment changed during qualification.");
-  const currentMigrations=migrationState(env);
-  requireUnchangedMigrations(currentMigrations.local,currentMigrations.remote,priorReceipts,rollback.version_id);
-} catch(error) { console.error(`Refusing release: ${error.message}`); process.exit(2); }
+try { recheckProductionState(); }
+catch(error) { console.error(`Refusing release: ${error.message}`); process.exit(2); }
 const upload=spawnSync(path.join(ROOT,"node_modules/.bin/wrangler"),[
   "deploy","--config",config,"--var",`FOILBURY_BUILD_SHA:${source.sha}`,
 ],{cwd:ROOT,env:{...env,FORCE_COLOR:"0"},encoding:"utf8",maxBuffer:32*1024*1024});
@@ -332,15 +341,19 @@ const uploadMatches=Boolean(uploadedVersion && deployedVersion===uploadedVersion
 
 // A read-only smoke run is bound to the exact source SHA through the public
 // x-foilbury-build header. No draw, grant, message or content mutation.
-const smokeEnv = { ...env, FOILBURY_URL: plan.origin, FOILBURY_EXPECTED_BUILD: source.sha };
+const smokeEnv = { ...env, FOILBURY_URL: plan.origin, FOILBURY_EXPECTED_BUILD: source.sha, FOILBURY_SMOKE_RUN_ID: runId };
 const smokeStatus = run("node", ["scripts/test-deployed.mjs"], { env: smokeEnv });
 let smoke = null;
-const smokeFile = path.join(evidenceDir, "deployed-smoke.json");
+const smokeFile = path.join(evidenceDir, `deployed-smoke-${runId}.json`);
 if (fs.existsSync(smokeFile)) {
   smoke = { path: path.relative(ROOT, smokeFile), sha256: sha256File(smokeFile), results: readJson(smokeFile) };
 }
 
-const verified = uploadMatches && smokeStatus === 0;
+const postSmoke=deploymentList(env);
+let activeAfterSmoke=null;
+try {activeAfterSmoke=singleServingVersion(postSmoke?.[0]);} catch { /* reported as unverified */ }
+const stableAfterSmoke=Boolean(uploadedVersion && activeAfterSmoke===uploadedVersion && postSmoke?.[0]?.id===deployed?.id);
+const verified = uploadMatches && stableAfterSmoke && smokeStatus === 0;
 const receipt = {
   schema_version: 2,
   generated_at: new Date().toISOString(),
@@ -365,6 +378,8 @@ const receipt = {
   deployment: deployed ?? "unknown",
   deployment_version: deployedVersion,
   upload_version: uploadedVersion,
+  active_version_after_smoke: activeAfterSmoke,
+  readback_limit: "The source header and deployment metadata do not independently prove the bytes served to every client; external deployments can race these reads.",
   deployment_status: uploadMatches ? "matched_upload" : "unverified",
   previous_deployment: previous?.[0] ?? null,
   rollback,
@@ -374,8 +389,8 @@ const receipt = {
     ? null
     : "Upload version, active deployment, or source-header smoke did not verify. Header readback alone does not establish served artifact bytes.",
 };
-const receiptFile = path.join(evidenceDir, `release-receipt-${source.sha.slice(0, 12)}.json`);
-fs.writeFileSync(receiptFile, JSON.stringify(receipt, null, 2));
+const receiptFile = path.join(evidenceDir, `release-receipt-${source.sha.slice(0, 12)}-${runId}.json`);
+fs.writeFileSync(receiptFile, JSON.stringify(receipt, null, 2),{flag:"wx",mode:0o600});
 console.log(`Release receipt written to ${path.relative(ROOT, receiptFile)}`);
 
 if (!verified) {
@@ -384,4 +399,4 @@ if (!verified) {
   );
   process.exit(3);
 }
-console.log("Release verified: source, artifact, deployment and build-bound smoke agree.");
+console.log("Technical release verified: tested upload, active version and source-header smoke agree; served bytes are not independently verified.");

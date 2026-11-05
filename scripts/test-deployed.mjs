@@ -3,12 +3,16 @@
  * Read-only production smoke test. No credentials required.
  */
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 const base = process.env.FOILBURY_URL ?? "https://foilbury.loftwah.com";
 const expectedBuild = process.env.FOILBURY_EXPECTED_BUILD?.trim() || null;
 const evidence = path.join(".foilbury", "evidence");
 fs.mkdirSync(evidence, { recursive: true });
+const runId=process.env.FOILBURY_SMOKE_RUN_ID ?? randomUUID();
+if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(runId)) throw new Error("Invalid smoke run identifier.");
+const smokeFile=path.join(evidence,`deployed-smoke-${runId}.json`);
 const results = [];
 const pass = (name, detail = "") => { results.push({ name, status: "PASS", detail }); console.log(`PASS ${name}${detail ? ` · ${detail}` : ""}`); };
 const fail = (name, error) => { results.push({ name, status: "FAIL", detail: String(error?.message ?? error) }); console.error(`FAIL ${name} · ${error?.message ?? error}`); };
@@ -87,10 +91,10 @@ try {
   if (!sitemap.body.includes("cabinet/tux")) throw new Error("Production sitemap is missing a public card.");
   pass("production sitemap is public-only");
 
-  fs.writeFileSync(path.join(evidence, "deployed-smoke.json"), JSON.stringify({ generated_at: new Date().toISOString(), base, expected_build: expectedBuild, results }, null, 2));
+  fs.writeFileSync(smokeFile, JSON.stringify({ generated_at: new Date().toISOString(), base, expected_build: expectedBuild, results }, null, 2),{flag:"wx",mode:0o600});
 } catch (error) {
   console.error(error?.stack ?? error);
   fail("deployed smoke", error);
-  fs.writeFileSync(path.join(evidence, "deployed-smoke.json"), JSON.stringify({ generated_at: new Date().toISOString(), base, expected_build: expectedBuild, results }, null, 2));
+  fs.writeFileSync(smokeFile, JSON.stringify({ generated_at: new Date().toISOString(), base, expected_build: expectedBuild, results }, null, 2),{flag:"wx",mode:0o600});
   process.exitCode = 1;
 }

@@ -37,3 +37,13 @@ The baseline-to-candidate diff also contains four historical documentation
 files and three existing Discord operator scripts. These exact paths are
 classified separately in the plan: they are neither bundled nor executed by
 this release path, and their presence proves no Discord acceptance.
+
+This one-off path pins the previously inspected private production receipt by
+SHA-256 and requires its Worker version to be the sole currently serving
+version. Migration names must match the candidate and that receipt in order.
+The source, remote, deployment and migrations are rechecked after the
+supervised run and immediately before upload; the active version is read again
+after the smoke. These observations cannot make the operation atomic against
+an external deployer, and a source-identifying response header does not prove
+the bytes served to every client. Plans, smoke results and release receipts use
+unique exclusive paths so prior evidence is preserved.
