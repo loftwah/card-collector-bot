@@ -52,6 +52,7 @@
     "test:creator": "node scripts/test-creator-e2e.mjs",
     "test:editorial": "node scripts/test-editorial-e2e.mjs",
     "test:ui": "node scripts/test-ui-a11y.mjs",
+    "test:landing-loading": "node scripts/test-landing-loading.mjs",
     "backup:prod": "node scripts/backup-d1-json.mjs",
     "provision:owner": "node scripts/provision-owner.mjs",
     "roles:provision": "node scripts/provision-scoped-admin.mjs",
@@ -140,6 +141,7 @@
   },
   "devDependencies": {
     "@astrojs/check": "0.9.12",
+    "@axe-core/playwright": "4.14.0",
     "@cloudflare/vitest-plugin": "1.4.12",
     "@cloudflare/workers-types": "5.20261102.1",
     "@playwright/test": "1.64.1",

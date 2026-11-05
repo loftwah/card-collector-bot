@@ -204,6 +204,16 @@ try {
         "public card detail opens from the catalogue",
         /\/cabinet\/[^/]+$/.test(new URL(page.url()).pathname),
       );
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.evaluate(() => { document.body.style.zoom = "2"; });
+      const beforeInspect = await page.locator(".card-rail").first().boundingBox();
+      const overflowBefore = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+      await page.getByRole("button", { name: "Inspect in 3D" }).click();
+      const afterInspect = await page.locator(".card-rail").first().boundingBox();
+      const overflowAfter = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+      check("public card keeps its size and fits at 200% zoom", Boolean(beforeInspect && afterInspect && !overflowBefore && !overflowAfter && Math.abs(beforeInspect.width - afterInspect.width) < 1 && Math.abs(beforeInspect.height - afterInspect.height) < 1));
+      await page.evaluate(() => { document.body.style.zoom = ""; });
+      await page.setViewportSize({ width: 1440, height: 900 });
       await page.goBack();
       await page.waitForLoadState("networkidle");
       check("browser back returns to the catalogue", page.url().includes("/cabinet"));

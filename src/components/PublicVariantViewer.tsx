@@ -61,7 +61,7 @@ export default function PublicVariantViewer({
   const multiplePrints = new Set(variants.map((item) => item.edition_name).filter(Boolean)).size > 1;
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-start">
-      <div>
+      <div className="min-w-0">
         {inspect ? (
           <CardInspector
             frontUrl={variant?.render_url ?? null}
@@ -71,6 +71,9 @@ export default function PublicVariantViewer({
             subtitle={subtitle}
             finish={displayFinish(variant?.name, variant?.material_key, variant?.effect_key)}
             collection={collection?.name ?? null}
+            initialEnabled
+            initialFlipped={showBack}
+            framed
           />
         ) : (
         <div className="card-rail p-3">
@@ -91,10 +94,10 @@ export default function PublicVariantViewer({
         </div>
         )}
         {inspect ? null : (
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><p className="font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[var(--muted)]">{showBack ? `Card back${printTitle ? ` · ${printTitle}` : ""}` : `Published render · ${printTitle ? `${printTitle} · ` : ""}${variant?.name ?? "Awaiting render"}`}</p><div className="flex gap-1"><button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowBack((value) => !value)}><RotateCcw size={13} /> {showBack ? "Show front" : "Show back"}</button><button type="button" className="btn btn-secondary btn-sm" onClick={() => setInspect(true)}><Box size={13} /> Inspect in 3D</button></div></div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><p className="font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[var(--muted)]">{showBack ? `Card back${printTitle ? ` · ${printTitle}` : ""}` : `Published render · ${printTitle ? `${printTitle} · ` : ""}${variant?.name ?? "Awaiting render"}`}</p><div className="flex flex-wrap gap-1"><button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowBack((value) => !value)}><RotateCcw size={13} /> {showBack ? "Show front" : "Show back"}</button><button type="button" className="btn btn-secondary btn-sm" onClick={() => setInspect(true)}><Box size={13} /> Inspect in 3D</button></div></div>
         )}
       </div>
-      <div>
+      <div className="min-w-0 [overflow-wrap:anywhere]">
         <div className="flex flex-wrap items-center gap-2">
           {rarity ? <span className="badge badge-rare">{rarity}</span> : null}
           {setName ? <span className="badge">{setName}</span> : null}

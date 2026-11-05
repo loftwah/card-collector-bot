@@ -1,22 +1,15 @@
 #!/usr/bin/env node
 /**
- * Production release entrypoint with an enforceable source/build/evidence gate.
- *
- *   pnpm build
- *   node scripts/deploy-production.mjs --check   # validate, do not upload
- *   node scripts/deploy-production.mjs           # build + deploy (approval-gated)
- *
- * The gate refuses:
- * - a dirty, unpushed or behind source tree;
- * - a dist artifact whose build stamp does not match the reviewed tree;
- * - missing, stale or cross-tree acceptance evidence;
- * - failed or missing required checks;
- * - an unreadable production migration state;
- * - a deployment whose identity cannot be verified after upload.
+ * Production corrective release entrypoint.
+ * `node scripts/deploy-production.mjs --technical --check` runs a fresh,
+ * isolated qualification and read-only production checks without uploading.
+ * Omitting --check is deployment and remains approval-gated. The exact tested
+ * artifact is used without rebuilding. This never asserts product acceptance.
  */
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawnSync, spawn } from "node:child_process";
 import { ROOT } from "./lib/local.mjs";
 import {
   readJson,
@@ -25,14 +18,9 @@ import {
   sourceTreeHash,
 } from "./lib/source-identity.mjs";
 import { inspectBundle } from "./lib/release-artifact.mjs";
-import {
-  evidenceSummary,
-  validateReleaseEvidence,
-} from "./lib/release-evidence.mjs";
+import { validateTechnicalReceipt, priorVerifiedSource, requireCorrectivePaths, assertRegularArtifactTree, TECHNICAL_IMAGE, requireUnchangedMigrations, singleServingVersion, reportedUploadVersion, requireSameSource, requireSameDeployment, TECHNICAL_PRIOR_RECEIPT_SHA256 } from "./lib/technical-release-receipt.mjs";
 import {
   changedPaths,
-  evidenceArtifacts,
-  requireScopeEvidence,
   resolveRollback,
   scopeForPaths,
   verifyFreshRemote,
@@ -40,6 +28,10 @@ import {
 
 const args = new Set(process.argv.slice(2));
 const checkOnly = args.has("--check");
+if([...args].some(arg=>!["--check","--technical"].includes(arg)) || !args.has("--technical")) {
+  console.error("Legacy acceptance recording is held. Use --technical for a fresh supervised run in this process.");
+  process.exit(2);
+}
 const config = "wrangler.production.jsonc";
 const evidenceDir = path.join(ROOT, ".foilbury", "evidence");
 fs.mkdirSync(evidenceDir, { recursive: true });
@@ -103,7 +95,8 @@ function migrationState(env) {
       { env },
     );
     const parsed = JSON.parse(output.slice(output.indexOf("[")));
-    remote = (parsed?.[0]?.results ?? []).map((row) => row.name);
+    if(!Array.isArray(parsed) || parsed.length!==1 || parsed[0]?.success!==true || !Array.isArray(parsed[0]?.results) || parsed[0].results.some(row=>typeof row?.name!=="string")) throw new Error("Unexpected D1 migration response.");
+    remote = parsed[0].results.map((row) => row.name);
   } catch (cause) {
     error = String(cause?.message ?? cause);
     remote = null;
@@ -178,36 +171,44 @@ if (source.behind !== 0) {
 const treeHash = sourceTreeHash();
 if (treeHash !== source.tree_hash) throw new Error("Source tree changed during the release check.");
 
-let evidence;
+// Run the fixed offline supervisor synchronously in this release process.
+// A pre-existing receipt, even a signed one, cannot substitute for execution.
+let technicalFile,technicalDigest,technical,bundle;
 try {
-  evidence = validateReleaseEvidence({ treeHash, contentHash: source.content_hash });
-} catch (error) {
-  console.error(`Refusing release: ${error.message}`);
-  process.exit(2);
-}
-
-if (!checkOnly) {
-  const status = run("pnpm", ["build"]);
-  if (status !== 0) process.exit(status);
-}
-const bundle = inspectBundle({ treeHash, contentHash: source.content_hash, sha: source.sha });
+  const output=await new Promise((resolve,reject)=>{
+    const child=spawn(process.execPath,["scripts/technical-release-supervisor.mjs",TECHNICAL_IMAGE],{cwd:ROOT,stdio:["ignore","pipe","inherit"]});
+    let collected="";
+    child.stdout.on("data",chunk=>{ const text=String(chunk); process.stdout.write(text); collected+=text; if(collected.length>1_000_000) child.kill("SIGTERM"); });
+    child.on("error",reject);
+    child.on("exit",(code,signal)=>code===0&&!signal?resolve(collected):reject(new Error("Fresh supervised qualification failed.")));
+  });
+  const line=output.trim().split("\n").at(-1)??"";
+  const match=line.match(/^Technical candidate receipt: (.+) · sha256 ([a-f0-9]{64})$/);
+  if(!match) throw new Error("Supervisor did not return an exact candidate receipt.");
+  [,technicalFile,technicalDigest]=match;
+  requireSameSource(source,sourceState());
+  technical=validateTechnicalReceipt({file:technicalFile,receiptSha256:technicalDigest,source});
+  bundle=technical.artifact;
+} catch(error) { console.error(`Refusing release: ${error.message}`); process.exit(2); }
 const migrations = migrationState(env);
 const previous = deploymentList(env);
 let rollback;
 try {
   rollback = resolveRollback(previous);
+  if(singleServingVersion(previous?.[0])!==rollback.version_id.toLowerCase()) throw new Error("Rollback target is not the sole serving version.");
 } catch (error) {
   console.error(`Refusing release: ${error.message}`);
   process.exit(2);
 }
 
-function previousReleaseSha() {
+function previousReleaseReceipts() {
   const receipts = fs
     .readdirSync(evidenceDir)
     .filter((name) => /^release-receipt-.*\.json$/.test(name))
     .map((name) => {
       const file = path.join(evidenceDir, name);
       try {
+        if(fs.lstatSync(file).isSymbolicLink() || sha256File(file)!==TECHNICAL_PRIOR_RECEIPT_SHA256) return null;
         const value = readJson(file);
         return { file, value };
       } catch {
@@ -216,10 +217,15 @@ function previousReleaseSha() {
     })
     .filter(Boolean)
     .sort((left, right) => Date.parse(right.value.generated_at ?? 0) - Date.parse(left.value.generated_at ?? 0));
-  return receipts[0]?.value?.source_sha ?? null;
+  return receipts.map(entry=>entry.value);
 }
 
-const previousSha = previousReleaseSha();
+const priorReceipts=previousReleaseReceipts();
+let previousSha;
+try {
+  previousSha=priorVerifiedSource(priorReceipts,rollback.version_id);
+  capture("git",["merge-base","--is-ancestor",previousSha,source.sha]);
+} catch(error) { console.error(`Refusing release: ${error.message}`); process.exit(2); }
 const scope = scopeForPaths(
   previousSha
     ? changedPaths({ from: previousSha, capture })
@@ -229,25 +235,29 @@ const scope = scopeForPaths(
 );
 let scopeEvidence;
 try {
-  scopeEvidence = requireScopeEvidence(scope, evidence.criteria);
+  scopeEvidence = {criteria:["technical-candidate"],files:requireCorrectivePaths(scope.files),product_acceptance:"not_claimed"};
 } catch (error) {
   console.error(`Refusing release: ${error.message}`);
   process.exit(2);
 }
-const artifacts = evidenceArtifacts(evidence.criteria);
+const artifacts = [{path:path.resolve(technicalFile),sha256:technicalDigest}];
 
-if (migrations.remote === null) {
-  console.error("Refusing release: production migration state could not be read.");
-  if (migrations.error) console.error(migrations.error);
-  process.exit(2);
+try { requireUnchangedMigrations(migrations.local,migrations.remote,priorReceipts,rollback.version_id); }
+catch(error) { console.error(`Refusing release: ${error.message}`); process.exit(2); }
+
+function recheckProductionState() {
+  const refreshed=capture("git",["ls-remote","origin","refs/heads/main"]).split(/\s+/)[0];
+  verifyFreshRemote({localOriginMain:source.origin_main,remoteSha:refreshed,fetchedAt:new Date().toISOString()});
+  requireSameSource(source,sourceState());
+  const latest=deploymentList(env);
+  requireSameDeployment(previous?.[0],latest?.[0]);
+  const currentMigrations=migrationState(env);
+  requireUnchangedMigrations(currentMigrations.local,currentMigrations.remote,priorReceipts,rollback.version_id);
+  validateTechnicalReceipt({file:technicalFile,receiptSha256:technicalDigest,source});
 }
-if (migrations.pending?.length) {
-  console.error(
-    `Refusing release: ${migrations.pending.length} local migration(s) are not applied in production: ${migrations.pending.join(", ")}.`,
-  );
-  console.error("Take the JSON D1 backup, apply the reviewed migration, and re-run the release check.");
-  process.exit(2);
-}
+try { recheckProductionState(); }
+catch(error) { console.error(`Refusing release: ${error.message}`); process.exit(2); }
+const runId=randomUUID();
 
 const plan = {
   schema_version: 2,
@@ -258,7 +268,7 @@ const plan = {
   tree_hash: treeHash,
   scope,
   scope_evidence: scopeEvidence,
-  evidence: evidenceSummary(evidence),
+  evidence: {kind:"technical-candidate",sha256:technicalDigest,product_acceptance:"not_claimed",live_discord:"not_tested"},
   evidence_artifacts: artifacts,
   bundle,
   migrations,
@@ -273,7 +283,8 @@ const plan = {
     fresh_remote_ref: true,
     source_build_bound: true,
     complete_artifact_digest: true,
-    acceptance_evidence_current: true,
+    acceptance_evidence_current: false,
+    technical_evidence_current: true,
     required_checks_passed: true,
     affected_scope_evidence: true,
     local_env_excluded: true,
@@ -285,8 +296,8 @@ const plan = {
   },
 };
 
-const planFile = path.join(evidenceDir, `release-plan-${source.sha.slice(0, 12)}.json`);
-fs.writeFileSync(planFile, JSON.stringify(plan, null, 2));
+const planFile = path.join(evidenceDir, `release-plan-${source.sha.slice(0, 12)}-${runId}.json`);
+fs.writeFileSync(planFile, JSON.stringify(plan, null, 2),{flag:"wx",mode:0o600});
 console.log(JSON.stringify(plan, null, 2));
 console.log(`Release plan written to ${path.relative(ROOT, planFile)}`);
 
@@ -295,33 +306,54 @@ if (checkOnly) {
   process.exit(0);
 }
 
-const deployStatus = run(path.join(ROOT, "node_modules/.bin/wrangler"), [
-  "deploy",
-  "--config",
-  config,
-  "--var",
-  `FOILBURY_BUILD_SHA:${source.sha}`,
-]);
-if (deployStatus !== 0) {
-  console.error(`wrangler deploy failed with exit ${deployStatus}; no release receipt claims success.`);
-  process.exit(deployStatus);
+if(technical) {
+  try {
+    // Never overwrite a pre-existing build. A fresh checkout may adopt the
+    // qualified artifact; an existing build must already be byte-identical.
+    const dest=path.join(ROOT,"dist");
+    try { if(fs.lstatSync(dest).isSymbolicLink()) throw new Error("Deployment artifact destination is a symlink."); }
+    catch(error) { if(error.code!=="ENOENT") throw error; fs.cpSync(technical.dist,dest,{recursive:true,errorOnExist:true,force:false}); }
+    assertRegularArtifactTree(dest);
+    const copy=inspectBundle({treeHash,contentHash:source.content_hash,sha:source.sha});
+    if(copy.artifact.sha256!==bundle.artifact.sha256 || copy.sha256!==bundle.sha256) throw new Error("Deployment artifact differs from the qualified bytes.");
+    validateTechnicalReceipt({file:technicalFile,receiptSha256:technicalDigest,source:sourceState()});
+  } catch(error) { console.error(`Refusing release: ${error.message}`); process.exit(2); }
 }
 
+// The supervised run can take minutes. Recheck the remote source, current
+// Worker and unchanged schema immediately before the upload.
+try { recheckProductionState(); }
+catch(error) { console.error(`Refusing release: ${error.message}`); process.exit(2); }
+const upload=spawnSync(path.join(ROOT,"node_modules/.bin/wrangler"),[
+  "deploy","--config",config,"--var",`FOILBURY_BUILD_SHA:${source.sha}`,
+],{cwd:ROOT,env:{...env,FORCE_COLOR:"0"},encoding:"utf8",maxBuffer:32*1024*1024});
+if (upload.error || upload.status !== 0) {
+  console.error(`wrangler deploy failed or was interrupted (${upload.status ?? "unknown"}); inspect production before retrying.`);
+  process.exit(3);
+}
+const uploadedVersion=reportedUploadVersion(upload.stdout);
 const after = deploymentList(env);
 const deployed = after?.[0] ?? null;
-const deployedVersion = deployed?.versions?.[0]?.version_id ?? null;
+let deployedVersion=null;
+try {deployedVersion=singleServingVersion(deployed);} catch { /* reported as unverified */ }
+const uploadMatches=Boolean(uploadedVersion && deployedVersion===uploadedVersion);
+
 
 // A read-only smoke run is bound to the exact source SHA through the public
 // x-foilbury-build header. No draw, grant, message or content mutation.
-const smokeEnv = { ...env, FOILBURY_URL: plan.origin, FOILBURY_EXPECTED_BUILD: source.sha };
+const smokeEnv = { ...env, FOILBURY_URL: plan.origin, FOILBURY_EXPECTED_BUILD: source.sha, FOILBURY_SMOKE_RUN_ID: runId };
 const smokeStatus = run("node", ["scripts/test-deployed.mjs"], { env: smokeEnv });
 let smoke = null;
-const smokeFile = path.join(evidenceDir, "deployed-smoke.json");
+const smokeFile = path.join(evidenceDir, `deployed-smoke-${runId}.json`);
 if (fs.existsSync(smokeFile)) {
   smoke = { path: path.relative(ROOT, smokeFile), sha256: sha256File(smokeFile), results: readJson(smokeFile) };
 }
 
-const verified = Boolean(deployedVersion) && smokeStatus === 0;
+const postSmoke=deploymentList(env);
+let activeAfterSmoke=null;
+try {activeAfterSmoke=singleServingVersion(postSmoke?.[0]);} catch { /* reported as unverified */ }
+const stableAfterSmoke=Boolean(uploadedVersion && activeAfterSmoke===uploadedVersion && postSmoke?.[0]?.id===deployed?.id);
+const verified = uploadMatches && stableAfterSmoke && smokeStatus === 0;
 const receipt = {
   schema_version: 2,
   generated_at: new Date().toISOString(),
@@ -345,17 +377,20 @@ const receipt = {
   evidence_artifacts: artifacts,
   deployment: deployed ?? "unknown",
   deployment_version: deployedVersion,
-  deployment_status: deployedVersion ? "reported" : "unverified",
+  upload_version: uploadedVersion,
+  active_version_after_smoke: activeAfterSmoke,
+  readback_limit: "The source header and deployment metadata do not independently prove the bytes served to every client; external deployments can race these reads.",
+  deployment_status: uploadMatches ? "matched_upload" : "unverified",
   previous_deployment: previous?.[0] ?? null,
   rollback,
   smoke,
   verified,
   unverified_reason: verified
     ? null
-    : "Deployment metadata or the build-bound production smoke did not verify.",
+    : "Upload version, active deployment, or source-header smoke did not verify. Header readback alone does not establish served artifact bytes.",
 };
-const receiptFile = path.join(evidenceDir, `release-receipt-${source.sha.slice(0, 12)}.json`);
-fs.writeFileSync(receiptFile, JSON.stringify(receipt, null, 2));
+const receiptFile = path.join(evidenceDir, `release-receipt-${source.sha.slice(0, 12)}-${runId}.json`);
+fs.writeFileSync(receiptFile, JSON.stringify(receipt, null, 2),{flag:"wx",mode:0o600});
 console.log(`Release receipt written to ${path.relative(ROOT, receiptFile)}`);
 
 if (!verified) {
@@ -364,4 +399,4 @@ if (!verified) {
   );
   process.exit(3);
 }
-console.log("Release verified: source, artifact, deployment and build-bound smoke agree.");
+console.log("Technical release verified: tested upload, active version and source-header smoke agree; served bytes are not independently verified.");

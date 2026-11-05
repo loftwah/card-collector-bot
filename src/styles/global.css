@@ -732,6 +732,45 @@ select.select option {
   backdrop-filter: blur(14px);
 }
 
+.site-header .btn-sm,
+.site-header button,
+.site-header a[aria-label="Foilbury home"] {
+  min-height: 44px;
+}
+
+.site-header button {
+  min-width: 44px;
+}
+
+.site-header .btn-sm {
+  padding-inline: 0.5rem;
+  white-space: nowrap;
+}
+
+.landing .grid > * {
+  min-width: 0;
+}
+
+.landing .display,
+.landing .display-sm {
+  overflow-wrap: anywhere;
+}
+
+.landing .btn {
+  max-width: 100%;
+  white-space: normal;
+}
+
+.landing-hero {
+  container-type: inline-size;
+}
+
+@container (max-width: 240px) {
+  .landing-hero h1 {
+    font-size: 2rem;
+  }
+}
+
 .site-footer {
   border-top: 1px solid var(--line);
   margin-top: 6rem;
@@ -779,6 +818,44 @@ a:hover > .card-face,
   /* The authored render is 5:7. If a derivative ever differs, contain it rather
      than cropping the subject to make the frame fit. */
   object-fit: contain;
+}
+
+/* Reserve the exact card silhouette while its real artwork is in flight. */
+.hero-card-frame {
+  background:
+    linear-gradient(var(--panel-3), var(--panel-3)) center 12% / 76% 58% no-repeat,
+    linear-gradient(var(--line), var(--line)) 12% 80% / 52% 3% no-repeat,
+    linear-gradient(var(--line), var(--line)) 12% 89% / 35% 2% no-repeat,
+    var(--panel-2);
+}
+
+.hero-card-frame[data-art-state="loaded"] {
+  background: var(--card-object);
+}
+
+.hero-card-error {
+  display: none;
+  position: absolute;
+  inset: 0;
+  place-items: center;
+  padding: 0.4rem;
+  background: var(--panel-2);
+  color: var(--ink);
+  text-align: center;
+  font-size: clamp(0.75rem, 2.5vw, 0.875rem);
+  line-height: 1.25;
+}
+
+.hero-card-frame[data-art-state="error"] .hero-card-error {
+  display: grid;
+}
+
+/* Touch devices can retain :hover after a tap; keep the card still. */
+@media (hover: none) {
+  .hero-card:hover > .hero-card-frame,
+  .hero-card .hero-card-frame:hover {
+    transform: none;
+  }
 }
 
 .card-face-fallback {
@@ -1561,6 +1638,10 @@ html[data-motion="reduced"] .layered-card__effect {
   }
 }
 
+.card-inspector__stage--framed {
+  max-width: none;
+}
+
 .card-inspector__stage:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 4px;
@@ -1605,6 +1686,7 @@ html[data-motion="reduced"] .layered-card__effect {
   inset: 0;
   border-radius: 6px;
   transform: translateZ(-6px);
+  backface-visibility: hidden;
   background: linear-gradient(90deg, #2c2a22, #b7a884 48%, #2c2a22);
   opacity: 0;
   transition: opacity 200ms ease;

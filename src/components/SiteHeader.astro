@@ -22,10 +22,16 @@ if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform"
 ---
 
 <header class="site-header">
-  <div class="container flex min-h-[68px] items-center justify-between gap-4 py-3">
-    <a href="/" class="flex items-center gap-2.5 no-underline" aria-label="Foilbury home">
+  <div class="container flex min-h-[68px] flex-wrap items-center justify-between gap-2 py-3 sm:gap-4">
+    <a
+      href="/"
+      class="flex shrink-0 items-center gap-1.5 no-underline min-[360px]:gap-2.5"
+      aria-label="Foilbury home"
+    >
       <img src="/brand/mark.png" alt="" width="30" height="30" class="h-[30px] w-[30px]" />
-      <span class="font-display text-[1.35rem] tracking-[-0.03em]">Foilbury</span>
+      <span class="font-display text-[1.15rem] tracking-[-0.03em] min-[360px]:text-[1.35rem]">
+        Foilbury
+      </span>
     </a>
 
     <nav class="hidden items-center gap-1 md:flex" aria-label="Primary">
@@ -50,7 +56,7 @@ if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform"
       ))}
     </nav>
 
-    <div class="flex items-center gap-1.5">
+    <div class="ml-auto flex items-center gap-0 min-[360px]:gap-1.5">
       {user ? (
         <>
           <a
@@ -75,13 +81,19 @@ if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform"
           <LogoutButton client:load />
         </>
       ) : (
-        <a class="btn btn-primary btn-sm" href="/login">
+        <a
+          class="btn btn-primary btn-sm min-h-[44px] shrink-0 whitespace-nowrap px-2"
+          href="/login"
+        >
           Sign in
         </a>
       )}
       <ThemeToggle client:load />
       <details class="relative md:hidden">
-        <summary class="btn btn-ghost btn-sm cursor-pointer list-none" aria-label="Open menu">
+        <summary
+          class="btn btn-ghost btn-sm min-h-[44px] cursor-pointer list-none px-2"
+          aria-label="Menu"
+        >
           Menu
         </summary>
         <div class="absolute right-0 top-11 z-30 min-w-52 border border-[var(--line-strong)] bg-[var(--paper)] p-2 shadow-xl">
@@ -114,16 +126,19 @@ if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform"
     </div>
   </div>
 </header>
-<script is:inline>
+<script>
   document.addEventListener("click", (event) => {
-    document.querySelectorAll(".site-header details[open]").forEach((details) => {
-      if (!details.contains(event.target)) details.open = false;
+    if (!(event.target instanceof Node)) return;
+    document.querySelectorAll<HTMLDetailsElement>(".site-header details[open]").forEach((details) => {
+      if (!details.contains(event.target as Node)) details.open = false;
     });
   });
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
-    document.querySelectorAll(".site-header details[open]").forEach((details) => {
+    document.querySelectorAll<HTMLDetailsElement>(".site-header details[open]").forEach((details) => {
+      const returnFocus = details.contains(document.activeElement);
       details.open = false;
+      if (returnFocus) details.querySelector<HTMLElement>("summary")?.focus();
     });
   });
 </script>

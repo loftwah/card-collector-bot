@@ -114,8 +114,7 @@ try {
   await page.getByText(/Passkey added/i).waitFor({ timeout: 20000 });
   pass("passkey registration and session upgrade");
 
-  const passkeyCount = await page.locator("section", { hasText: "Passkeys" }).locator("text=Remove").count();
-  if (passkeyCount < 1) throw new Error("The registered passkey is not listed");
+  await page.locator("section", { hasText: "Passkeys" }).getByRole("button", {name: /remove/i}).first().waitFor({state:"visible",timeout:20000});
   pass("passkey appears in account security");
 
   const authenticator = page.locator("section", { hasText: "Authenticator" });

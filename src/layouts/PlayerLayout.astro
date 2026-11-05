@@ -96,18 +96,20 @@ const moreActive = more.some((link) => isActive(link.href));
     <slot />
   </section>
 </BaseLayout>
-<script is:inline>
+<script>
   // Menus are native <details>. Close them on outside click or Escape so the
   // dropdown cannot remain over content after the next action.
   document.addEventListener("click", (event) => {
-    document.querySelectorAll("details.cabinet-more[open]").forEach((details) => {
-      if (!details.contains(event.target)) details.open = false;
+    document.querySelectorAll<HTMLDetailsElement>("details.cabinet-more[open]").forEach((details) => {
+      if (event.target instanceof Node && !details.contains(event.target)) details.open = false;
     });
   });
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
-    document.querySelectorAll("details.cabinet-more[open]").forEach((details) => {
+    document.querySelectorAll<HTMLDetailsElement>("details.cabinet-more[open]").forEach((details) => {
+      const returnFocus = details.contains(document.activeElement);
       details.open = false;
+      if (returnFocus) details.querySelector<HTMLElement>("summary")?.focus();
     });
   });
 </script>
