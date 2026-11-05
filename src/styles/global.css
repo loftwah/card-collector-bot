@@ -1600,6 +1600,10 @@ html[data-motion="reduced"] .layered-card__effect {
   }
 }
 
+.card-inspector__stage--framed {
+  max-width: none;
+}
+
 .card-inspector__stage:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 4px;
@@ -1644,6 +1648,7 @@ html[data-motion="reduced"] .layered-card__effect {
   inset: 0;
   border-radius: 6px;
   transform: translateZ(-6px);
+  backface-visibility: hidden;
   background: linear-gradient(90deg, #2c2a22, #b7a884 48%, #2c2a22);
   opacity: 0;
   transition: opacity 200ms ease;
