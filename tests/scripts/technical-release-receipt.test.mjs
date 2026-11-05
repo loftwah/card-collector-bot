@@ -46,6 +46,9 @@ test('rejects artifact symlinks and stale receipts',()=>fixture(f=>{
 test('corrective scope and prior production identity fail closed',async()=>{
   const {requireCorrectivePaths,priorVerifiedSource}=await import('../../scripts/lib/technical-release-receipt.mjs');
   assert.deepEqual(requireCorrectivePaths(['src/pages/index.astro']).corrective,['src/pages/index.astro']);
+  const odds=['src/components/player/DrawStudio.tsx','src/pages/play/draw.astro','tests/browser/draw-odds-loading.test.mjs'];
+  assert.deepEqual(requireCorrectivePaths(odds).corrective,odds);
+  for(const other of ['src/components/player/DrawStudioOther.tsx','src/pages/play/collection.astro','tests/browser/draw-other.test.mjs']) assert.throws(()=>requireCorrectivePaths([...odds,other]));
   assert.deepEqual(requireCorrectivePaths(['scripts/discord/preflight.mjs']).operational_only,['scripts/discord/preflight.mjs']);
   assert.deepEqual(requireCorrectivePaths(['AGENTS.md']).operational_only,['AGENTS.md']);
   for(const paths of [[],['src/server/api/router.ts'],['migrations/0999.sql'],['src/pages/index.astro','wrangler.production.jsonc']]) assert.throws(()=>requireCorrectivePaths(paths));
@@ -56,7 +59,7 @@ test('corrective scope and prior production identity fail closed',async()=>{
 });
 
 test('rejects altered command output',()=>fixture(f=>{
-  fs.writeFileSync(path.join(f.dir,'logs','ui-16.log'),'different output');
+  fs.writeFileSync(path.join(f.dir,'logs',`ui-${TECHNICAL_CHECKS.indexOf('ui')}.log`),'different output');
   assert.throws(()=>f.validate(),/log/);
 }));
 

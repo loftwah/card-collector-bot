@@ -413,6 +413,23 @@ export default function DrawStudio({
   const statusRef = useRef<HTMLDivElement | null>(null);
   const drawButtonRef = useRef<HTMLButtonElement | null>(null);
   const focusDrawOnReadyRef = useRef(false);
+  const oddsPanelRef = useRef<HTMLDivElement | null>(null);
+  const lastOddsHeightRef = useRef(0);
+
+  // Remember only geometry, never the previous capsule's data. The placeholder
+  // can then hold the existing space while a different preview is fetched.
+  useEffect(() => {
+    const panel = oddsPanelRef.current;
+    if (!panel || state.phase.status === "loading") return;
+    const measure = () => {
+      lastOddsHeightRef.current = panel.offsetHeight;
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, [state.phase.status, scopeKey]);
 
   useEffect(() => {
     scopeKeyRef.current = scopeKey;
@@ -981,7 +998,18 @@ export default function DrawStudio({
   }, [clearRevealTimer]);
 
   const preview =
-    state.preview && previewMatchesSelection(state.preview, state.selection) ? state.preview : null;
+    drawScopeKey(state.scope) === scopeKey &&
+    state.phase.status !== "loading" &&
+    !(
+      state.phase.status === "blocked" &&
+      (state.phase.reason === "preview_error" ||
+        state.phase.reason === "no_preview" ||
+        state.phase.reason === "signed_out")
+    ) &&
+    state.preview &&
+    previewMatchesSelection(state.preview, state.selection)
+      ? state.preview
+      : null;
   const sortedEntries = useMemo(
     () =>
       preview ? [...preview.entries].sort((a, b) => b.probability_bps - a.probability_bps) : [],
@@ -1041,8 +1069,8 @@ export default function DrawStudio({
   }
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[0.72fr_1.28fr] lg:items-start">
-      <aside className="grid gap-4">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-[minmax(0,0.72fr)_minmax(0,1.28fr)] lg:items-start">
+      <aside className="grid min-w-0 gap-4">
         <div className="surface-flat p-5">
           <label className="field">
             <span className="label">Choose a capsule</span>
@@ -1096,16 +1124,16 @@ export default function DrawStudio({
               <div className="mt-4 border-t border-[var(--line)] pt-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-semibold">{selectedPool.name}</p>
-                  {selectedPool.eligibleCount !== undefined ? (
-                    <p className="text-xs text-[var(--muted)]">
-                      {selectedPool.eligibleCount} eligible card
-                      {selectedPool.eligibleCount === 1 ? "" : "s"} for you
-                    </p>
-                  ) : null}
-                  <span className="font-mono text-sm text-[var(--brass)]">
+                  <span className="shrink-0 font-mono text-sm text-[var(--brass)]">
                     ✦ {selectedPool.price}
                   </span>
                 </div>
+                {selectedPool.eligibleCount !== undefined ? (
+                  <p className="mt-1 text-xs text-[var(--muted)]">
+                    {selectedPool.eligibleCount} eligible card
+                    {selectedPool.eligibleCount === 1 ? "" : "s"} for you
+                  </p>
+                ) : null}
                 <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">
                   {selectedPool.description}
                 </p>
@@ -1145,7 +1173,7 @@ export default function DrawStudio({
               ref={drawButtonRef}
               className="w-full"
               onClick={() => void draw(state, scopeKey)}
-              disabled={!canDraw(state)}
+              disabled={!canDraw(state) || drawScopeKey(state.scope) !== scopeKey}
               aria-busy={
                 state.phase.status === "submitting" || state.phase.status === "reconciling"
               }
@@ -1153,13 +1181,21 @@ export default function DrawStudio({
               {drawLabel(state)}
             </Button>
           </div>
-          <p className="mt-2 text-center font-mono text-[0.55rem] tracking-[0.1em] text-[var(--muted)] uppercase">
+          <p className="mt-2 min-h-[3lh] text-center font-mono text-[0.55rem] tracking-[0.1em] text-[var(--muted)] uppercase">
             Odds shown before you open · no purchase
           </p>
         </div>
       </aside>
 
-      <div>
+      <div
+        ref={oddsPanelRef}
+        className="min-w-0"
+        style={
+          state.phase.status === "loading"
+            ? { minHeight: lastOddsHeightRef.current || 224 }
+            : undefined
+        }
+      >
         {storageWarning ? (
           <div className="notice mb-5 text-sm" role="status">
             {storageWarning}
@@ -1262,7 +1298,21 @@ export default function DrawStudio({
         ) : null}
 
         {state.phase.status === "loading" && !preview ? (
-          <div className="skeleton h-56 w-full" aria-label="Loading pool"></div>
+          <div role="status" aria-live="polite" className="w-full">
+            <p className="text-sm text-[var(--muted)]">Loading the selected capsule’s odds…</p>
+            <div
+              className="draw-odds-placeholder mt-4 overflow-hidden border border-[var(--line)] p-3"
+              style={{ height: Math.max(80, (lastOddsHeightRef.current || 224) - 100) }}
+              aria-hidden="true"
+            >
+              {[0, 1, 2].map((row) => (
+                <div key={row} className="flex items-center gap-3 border-b border-[var(--line)] py-3">
+                  <span className="skeleton h-3 flex-1"></span>
+                  <span className="skeleton h-3 w-1/5"></span>
+                </div>
+              ))}
+            </div>
+          </div>
         ) : null}
 
         {!preview ? receiptPanel : null}

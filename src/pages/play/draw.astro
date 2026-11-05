@@ -29,7 +29,8 @@ const [eligiblePools, wallet, economy, prefs] = await Promise.all([
       <p class="mt-1 font-mono text-[0.56rem] uppercase tracking-[0.1em] text-[var(--muted)]">Daily allowance ✦ {economy.daily_reward}</p>
     </div>
   </div>
-  <div class="mt-7">
+  <noscript><style is:inline>.draw-js-only { display: none; }</style><p class="notice mt-7">Turn on JavaScript to load capsule odds and open a card.</p></noscript>
+  <div class="mt-7 draw-js-only">
     <DrawStudio
       client:load
       pools={eligiblePools.map((preview) => ({

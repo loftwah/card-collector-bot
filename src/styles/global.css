@@ -1432,6 +1432,11 @@ a:hover > .card-face,
   animation: skeleton 1.6s linear infinite;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .draw-odds-placeholder .skeleton { animation: none; }
+}
+html[data-motion="reduced"] .draw-odds-placeholder .skeleton { animation: none; }
+
 @keyframes skeleton {
   to {
     background-position: -200% 0;
