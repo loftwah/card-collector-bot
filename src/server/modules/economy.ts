@@ -2,6 +2,7 @@ import {
   ApiError,
   canIssueScopedGrant,
   checkRateLimit,
+  requireRecentStrongAuth,
   type Ctx,
   type CurrentUser,
 } from "../context";
@@ -48,6 +49,8 @@ export async function updateEconomy(
     recycleRates?: { rarity: Record<string, number>; material: Record<string, number> };
   },
 ): Promise<EconomySettings> {
+  // Scoped agent credentials do not establish recent human authentication.
+  requireRecentStrongAuth(ctx, 30);
   const current = await getEconomy(ctx);
   if (current.version !== input.expectedVersion) {
     throw new ApiError(409, "stale_write", "Economy settings changed since you opened them.", {
