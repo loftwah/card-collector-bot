@@ -27,3 +27,7 @@ The actual Foilbury Discord application avatar and profile, application/profile 
 ## Bot profile banner study
 
 On 2026-11-06, the signed-in Foilbury Developer Portal's Bot page listed the profile banner as 680 × 240 (17:6), PNG/GIF/JPG/WEBP and at most 10 MB. This differs from the earlier 960 × 540 application-banner study; do not assume those destinations are interchangeable. The earlier art-free banner study was rejected as too generic and is preserved in the preceding commit rather than shipped as a candidate asset. Two later local studies use previously recorded public-safe card fronts, but those compositions have explicit REWORK findings; they remain under `.foilbury/evidence/identity/` and are not final or accepted artwork. No banner has been uploaded; actual Discord profile crop, entitlements and client rendering remain unverified.
+
+## Generation paths still using the prior identity
+
+`scripts/export-showcase.mjs` still references the Signal Fold mark and `scripts/discord/publish-tour-entry.mjs` still embeds the prior banner/footer. Their existing outputs and history are retained. Do not run those paths as a candidate identity rollout until they are reconciled under issue #26 and their source, public audience and actual Discord delivery are verified. No issued card render is changed by the interface-only artwork-unavailable placeholder.

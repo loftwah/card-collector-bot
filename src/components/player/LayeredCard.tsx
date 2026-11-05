@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ArrowUpRight, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { uiCardFallback } from "@/lib/card-fallback";
 
 export interface LayeredCardProps {
   subjectUrl: string;
@@ -154,7 +155,7 @@ export default function LayeredCard({
       >
         <img
           className="layered-card__back-image"
-          src={cardBackUrl || "/brand/card-back.webp"}
+          src={uiCardFallback(cardBackUrl)}
           alt=""
         />
         <div className="layered-card__back-copy">

@@ -452,7 +452,7 @@ describe("reveal receipt parity", () => {
     expect(embed.timestamp).toBe(revealBase.drawn_at);
     expect(embed.footer?.text).toBe("Foilbury");
     expect(embed.color).toBe(FOILBURY_PALETTE.albumSage);
-    expect(embed.description).toContain("spends Foil on a new pull");
+    expect(embed.description).toContain("starts another pull");
     expect(callback.attachments).toEqual([
       {
         r2Key: render.r2Key,
@@ -474,6 +474,13 @@ describe("reveal receipt parity", () => {
       "Tour",
       "Open album",
     ]);
+  });
+
+  it("does not describe a zero-price next pull as costing Foil", () => {
+    const callback = reveal({ price: 0 });
+    expect(fieldValue(callback, "Opening debit")).toBe("−0 ✦");
+    expect(firstEmbed(callback).description).toContain("starts another pull");
+    expect(firstEmbed(callback).description).not.toMatch(/spends|paid|costs/i);
   });
 
   it("marks replayed receipts and explains that no second pull was made", () => {

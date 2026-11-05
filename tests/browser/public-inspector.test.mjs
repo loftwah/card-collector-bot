@@ -23,7 +23,7 @@ test(
     );
     await writeFile(
       path.join(dir, "main.tsx"),
-      `import React from 'react';import {createRoot} from 'react-dom/client';import PublicVariantViewer from ${JSON.stringify(source)};import CardInspector from ${JSON.stringify(inspector)};import ${JSON.stringify(styles)};createRoot(document.getElementById('root')!).render(location.search ? <CardInspector name="Fixture subject" finish="Plain" frontUrl="/brand/card-back.webp" backUrl="/brand/card-back.webp" /> : <PublicVariantViewer name="Fixture subject" subtitle="Fixture" description="A synthetic inspector fixture." rarity="Common" setName={null} tags={[]} variants={[{id:'one',name:'Plain',material_key:'plain',effect_key:null,render_url:'/brand/card-back.webp',back_render_url:'/brand/card-back.webp'}]} />);`,
+      `import React from 'react';import {createRoot} from 'react-dom/client';import PublicVariantViewer from ${JSON.stringify(source)};import CardInspector from ${JSON.stringify(inspector)};import ${JSON.stringify(styles)};createRoot(document.getElementById('root')!).render(location.search.includes('missing') ? <PublicVariantViewer name="Fixture subject" subtitle="Fixture" description="Synthetic" rarity="Common" setName={null} tags={[]} cardBackUrl="/brand/card-back.webp" variants={[{id:'one',name:'Plain',material_key:'plain',effect_key:null,render_url:'/brand/card-back.webp',back_render_url:null}]} /> : location.search ? <CardInspector name="Fixture subject" finish="Plain" frontUrl="/brand/card-back.webp" backUrl="/brand/card-back.webp" /> : <PublicVariantViewer name="Fixture subject" subtitle="Fixture" description="A synthetic inspector fixture." rarity="Common" setName={null} tags={[]} variants={[{id:'one',name:'Plain',material_key:'plain',effect_key:null,render_url:'/brand/card-back.webp',back_render_url:'/brand/card-back.webp'}]} />);`,
     );
     await writeFile(
       path.join(dir, "vite.config.mjs"),
@@ -166,6 +166,17 @@ test(
           await page.locator(".card-inspector__stage").getAttribute("data-flipped"),
           "false",
         );
+        if (label === "phone") {
+          await page.goto(new URL(path.relative(cwd, dir) + "/index.html?missing=1", url).href, { waitUntil: "networkidle" });
+          await page.getByRole("button", { name: "Show back" }).click();
+          const missing = page.getByRole("img", { name: "Back artwork unavailable for Fixture subject" });
+          assert.equal(await missing.getAttribute("src"), "/brand/kit/colophon/artwork-unavailable.svg");
+          await page.getByRole("button", { name: "Inspect in 3D" }).click();
+          const inspectorMissing = page.getByRole("img", { name: "Back artwork unavailable for Fixture subject" });
+          assert.equal(await inspectorMissing.getAttribute("src"), "/brand/kit/colophon/artwork-unavailable.svg");
+          assert.ok(await inspectorMissing.evaluate((image) => image.complete && image.naturalWidth > 0));
+          await page.screenshot({ path: path.join(dir, "missing-back.png"), fullPage: true });
+        }
         await context.close();
       }
       console.log(`Synthetic inspector evidence: ${dir}`);

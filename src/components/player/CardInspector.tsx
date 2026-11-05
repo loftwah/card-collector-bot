@@ -1,5 +1,7 @@
 "use client";
 
+import { uiCardFallback } from "@/lib/card-fallback";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Box, RotateCcw, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -49,8 +51,8 @@ export default function CardInspector({
   const dragging = useRef(false);
   const last = useRef({ x: 0, y: 0 });
 
-  const front = frontUrl ?? fallbackUrl;
-  const back = backUrl ?? fallbackUrl;
+  const front = frontUrl ?? uiCardFallback(fallbackUrl);
+  const back = backUrl ?? uiCardFallback(fallbackUrl);
 
   useEffect(() => {
     if (initialEnabled) modeButton.current?.focus({ preventScroll: true });
@@ -199,7 +201,7 @@ export default function CardInspector({
               {front ? (
                 <img
                   src={front}
-                  alt={`${name} front, ${finish} finish`}
+                  alt={frontUrl ? `${name} front, ${finish} finish` : `Front artwork unavailable for ${name}`}
                   width={750}
                   height={1050}
                 />
@@ -211,7 +213,7 @@ export default function CardInspector({
               {back ? (
                 <img
                   src={back}
-                  alt={`${name} back, ${finish} finish`}
+                  alt={backUrl ? `${name} back, ${finish} finish` : `Back artwork unavailable for ${name}`}
                   width={750}
                   height={1050}
                   loading="lazy"

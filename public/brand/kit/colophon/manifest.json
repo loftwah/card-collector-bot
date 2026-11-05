@@ -32,6 +32,10 @@
       "sha256": "cf11245d256ac6889712836d6351e9bc83d006641cf2aaccd738283642cef9c3"
     },
     {
+      "name": "artwork-unavailable.svg",
+      "sha256": "1ab2b7bf72d0a15aa9e6c9d220085a49ee646f790730548d4d3eb082cc87ac7f"
+    },
+    {
       "name": "discord-avatar-1024.png",
       "sha256": "ba8034c62e8504b09d45cb048ba1dcf4d1974db526cee5fec250e6d17e745e1a"
     },

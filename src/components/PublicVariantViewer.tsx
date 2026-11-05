@@ -1,5 +1,7 @@
 "use client";
 
+import { uiCardFallback } from "@/lib/card-fallback";
+
 import { useState } from "react";
 import { Box, RotateCcw, Sparkles } from "lucide-react";
 import { displayFinish, printTitle as editionPrintTitle } from "@/lib/utils";
@@ -66,7 +68,7 @@ export default function PublicVariantViewer({
           <CardInspector
             frontUrl={variant?.render_url ?? null}
             backUrl={variant?.back_render_url ?? null}
-            fallbackUrl={cardBackUrl}
+            fallbackUrl={uiCardFallback(cardBackUrl)}
             name={name}
             subtitle={subtitle}
             finish={displayFinish(variant?.name, variant?.material_key, variant?.effect_key)}
@@ -80,7 +82,7 @@ export default function PublicVariantViewer({
           <div className="card-face">
             {showBack ? (
               <div className="relative h-full w-full bg-[var(--ink)]">
-                <img src={variant?.back_render_url ?? cardBackUrl ?? "/brand/card-back.webp"} alt={`Back of ${name}`} className="h-full w-full object-cover" />
+                <img src={variant?.back_render_url ?? uiCardFallback(cardBackUrl)} alt={variant?.back_render_url ? `Back of ${name}` : `Back artwork unavailable for ${name}`} className="h-full w-full object-cover" />
                 {!variant?.back_render_url ? (
                   <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#141512] via-[#141512]/80 to-transparent p-5 text-[#f4f0e6]">
                     {collection?.logo_url ? <img src={collection.logo_url} alt="" className="mb-2 h-10 w-10 object-contain" /> : null}
@@ -94,7 +96,7 @@ export default function PublicVariantViewer({
         </div>
         )}
         {inspect ? null : (
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><p className="font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[var(--muted)]">{showBack ? `Card back${printTitle ? ` · ${printTitle}` : ""}` : `Published render · ${printTitle ? `${printTitle} · ` : ""}${variant?.name ?? "Awaiting render"}`}</p><div className="flex flex-wrap gap-1"><button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowBack((value) => !value)}><RotateCcw size={13} /> {showBack ? "Show front" : "Show back"}</button><button type="button" className="btn btn-secondary btn-sm" onClick={() => setInspect(true)}><Box size={13} /> Inspect in 3D</button></div></div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><p className="font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[var(--muted)]">{showBack ? (variant?.back_render_url ? `Card back${printTitle ? ` · ${printTitle}` : ""}` : "Back artwork unavailable") : `Published render · ${printTitle ? `${printTitle} · ` : ""}${variant?.name ?? "Awaiting render"}`}</p><div className="flex flex-wrap gap-1"><button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowBack((value) => !value)}><RotateCcw size={13} /> {showBack ? "Show front" : "Show back"}</button><button type="button" className="btn btn-secondary btn-sm" onClick={() => setInspect(true)}><Box size={13} /> Inspect in 3D</button></div></div>
         )}
       </div>
       <div className="min-w-0 [overflow-wrap:anywhere]">

@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import { assertCurrentBrandPage } from "./lib/brand-smoke.mjs";
 
 const base = process.env.FOILBURY_URL ?? "https://foilbury.loftwah.com";
 const expectedBuild = process.env.FOILBURY_EXPECTED_BUILD?.trim() || null;
@@ -39,15 +40,13 @@ try {
     pass(`production ${route} responds 200`);
   }
   const brand = await get("/brand-kit");
-  if (
-    !brand.body.includes("Signal Fold") ||
-    !brand.body.includes("Bastion") ||
-    !brand.body.includes("Aperture") ||
-    !brand.body.includes("Selected · Signal Fold")
-  ) {
-    throw new Error("Brand kit is missing a reviewed system or the recorded selection.");
-  }
+  assertCurrentBrandPage(brand.body);
   for (const asset of [
+    "/brand/kit/colophon/mark.svg",
+    "/brand/kit/colophon/wordmark-ink.svg",
+    "/brand/kit/colophon/discord-avatar-1024.png",
+    "/brand/kit/colophon/social-preview.png",
+    "/brand/kit/colophon/artwork-unavailable.svg",
     "/brand/kit/systems/signal-fold/icon-512.png",
     "/brand/kit/systems/signal-fold/banner-960x540.png",
     "/brand/kit/systems/bastion/icon-512.png",
@@ -57,7 +56,7 @@ try {
     const response = await get(asset);
     if (response.status !== 200) throw new Error(`${asset} returned ${response.status}`);
   }
-  pass("production brand kit exposes all three systems, the selection and live assets");
+  pass("production brand assets and retained archive respond");
   const tour = await get("/tour");
   if (!tour.body.includes("Hold it to the light") && !tour.body.includes("Inspect both faces")) throw new Error("Website tour is missing its inspection stage.");
   pass("production website tour is present and uses real public cards");
