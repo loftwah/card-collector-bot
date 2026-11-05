@@ -24,11 +24,27 @@ const statusResponse = await fetch(new URL("/api/v1/status", target), {
 });
 assert.equal(statusResponse.ok, true);
 const status = await statusResponse.json();
+assert.equal(status.name, "Foilbury");
+assert.equal(status.environment, "local");
 assert.equal(status.local, true);
 assert.equal(status.dev_login, true);
 assert.equal(status.configured, true);
+assert.equal(status.email, "outbox_only");
+assert.equal(status.discord, "disabled");
+assert.equal(status.access, "not_configured");
 assert.ok(
-  status.providers && Object.values(status.providers).every((enabled) => enabled === false),
+  status.providers &&
+    [
+      "fal",
+      "elevenlabs",
+      "resend",
+      "adminWebhook",
+      "discordApplication",
+      "discordBot",
+      "discordOAuth",
+      "cloudflareAccess",
+    ].every((key) => status.providers[key] === false) &&
+    Object.values(status.providers).every((enabled) => enabled === false),
   "Providers must be disabled",
 );
 const evidence = fs.mkdtempSync(
@@ -40,12 +56,13 @@ try {
     ["320-zoom", 320, 2, true, "light"],
     ["390-zoom", 390, 2, true, "dark"],
     ["320-nojs", 320, 2, false, "light"],
+    ["320-short", 320, 2, false, "light"],
     ["phone", 390, 1, true, "light"],
     ["desktop", 1440, 1, true, "light"],
   ]) {
     const context = await browser.newContext({
       baseURL: base,
-      viewport: { width, height: 844 },
+      viewport: { width, height: label === "320-short" ? 568 : 844 },
       javaScriptEnabled: js,
       colorScheme: theme,
       reducedMotion: "reduce",
@@ -133,7 +150,27 @@ try {
           menu && menu.x >= -1 && menu.x + menu.width <= width + 1,
           `${label}: menu outside viewport ${JSON.stringify(menu)}`,
         );
-        assert.ok((await page.locator(".site-header__menu a:visible").count()) > 0);
+        const menuLinks = page.locator(".site-header__menu a:visible");
+        const menuLinkCount = await menuLinks.count();
+        assert.ok(menuLinkCount > 0);
+        for (let i = 0; i < menuLinkCount; i++) await page.keyboard.press("Tab");
+        const lastLink = menuLinks.last();
+        assert.equal(
+          await lastLink.evaluate((el) => document.activeElement === el),
+          true,
+          `${label}: last menu link reachable`,
+        );
+        const lastRect = await lastLink.boundingBox();
+        const menuRect = await page.locator(".site-header__menu").boundingBox();
+        assert.ok(
+          lastRect &&
+            menuRect &&
+            lastRect.y >= menuRect.y - 1 &&
+            lastRect.y + lastRect.height <= menuRect.y + menuRect.height + 1 &&
+            lastRect.y + lastRect.height <= (label === "320-short" ? 568 : 844) + 1,
+          `${label}: last menu link must be visible ${JSON.stringify({ lastRect, menuRect })}`,
+        );
+        await page.screenshot({ path: path.join(evidence, `${label}-menu.png`) });
         if (js) {
           await page.keyboard.press("Escape");
           assert.equal(

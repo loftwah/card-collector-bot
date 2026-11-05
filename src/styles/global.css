@@ -2524,6 +2524,11 @@ html[data-motion="reduced"] .layered-card__effect {
 
 .site-header__menu {
   width: min(13rem, 100cqw);
+  max-height: min(12rem, 20vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--muted) transparent;
 }
 
 .cabinet-home .grid > * {
