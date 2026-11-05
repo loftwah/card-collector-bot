@@ -1290,7 +1290,8 @@ a:hover > .card-face,
 }
 
 .cabinet-link__short,
-.cabinet-more__link--mobile {
+.cabinet-more__link--mobile,
+.cabinet-more__current-mobile {
   display: none;
 }
 
@@ -1306,7 +1307,8 @@ a:hover > .card-face,
     display: none;
   }
   .cabinet-link__short,
-  .cabinet-more__link--mobile {
+  .cabinet-more__link--mobile,
+  .cabinet-more__current-mobile {
     display: inline;
   }
   .cabinet-more__summary--mobile-active {

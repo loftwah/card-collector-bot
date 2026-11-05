@@ -143,6 +143,26 @@ try {
         assert.deepEqual(violations, []);
       }
       assert.deepEqual(errors, []);
+      if (label === "phone" || label === "nojs") {
+        for (const [route, name] of [
+          ["/play/collections", "Worlds"],
+          ["/play/rewards", "Rewards"],
+        ]) {
+          await page.goto(route);
+          const currentMenu = page.locator(".cabinet-more__summary");
+          assert.match(
+            await currentMenu.ariaSnapshot(),
+            new RegExp(`More cabinet sections\\s*, current page: ${name}`),
+            `${label}: current page announced`,
+          );
+          await currentMenu.focus();
+          await page.keyboard.press("Enter");
+          const destination = page.locator(".cabinet-more__menu").getByRole("link", { name });
+          assert.equal(await destination.getAttribute("href"), route);
+          assert.equal(await destination.getAttribute("aria-current"), "page");
+        }
+        await page.goto("/play");
+      }
       await page.screenshot({ path: path.join(evidence, `${label}.png`), fullPage: true });
       await page
         .locator(".cabinet-nav")

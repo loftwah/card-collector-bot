@@ -30,6 +30,7 @@ const more = [
 const isActive = (href: string) =>
   href === "/play" ? path === href : path === href || path.startsWith(href + "/");
 const moreActive = more.some((link) => isActive(link.href));
+const mobileMoreCurrent = primary.find((link) => ["/play/collections", "/play/rewards"].includes(link.href) && isActive(link.href));
 ---
 
 <BaseLayout
@@ -74,9 +75,9 @@ const moreActive = more.some((link) => isActive(link.href));
         <details class="cabinet-more">
             <summary
               class:list={["cabinet-link cabinet-more__summary", moreActive && "is-active", ["/play/collections", "/play/rewards"].some((href) => isActive(href)) && "cabinet-more__summary--mobile-active"]}
-              aria-label="More cabinet sections"
             >
-              More
+              More<span class="sr-only"> cabinet sections</span>
+              {mobileMoreCurrent ? <span class="sr-only cabinet-more__current-mobile">, current page: {mobileMoreCurrent.label}</span> : null}
               <span aria-hidden="true">▾</span>
             </summary>
             <div class="cabinet-more__menu">
