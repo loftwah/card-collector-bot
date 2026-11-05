@@ -1215,7 +1215,7 @@ export function revealReceiptMessage(input: RevealReceiptInput): DiscordCallback
     { name: "Finish", value: finish, inline: true },
     { name: "Serial", value: `\`${serial}\``, inline: true },
     { name: "Opened from", value: `${poolName} · ${price} ${symbol}`, inline: true },
-    { name: "Opening debit", value: `−${price} ${symbol}`, inline: true },
+    { name: "Opening debit", value: `${price > 0 ? "−" : ""}${price} ${symbol}`, inline: true },
     ...(debitBalance === null
       ? []
       : [{ name: "After debit", value: `${debitBalance} ${symbol}`, inline: true }]),

@@ -478,7 +478,7 @@ describe("reveal receipt parity", () => {
 
   it("does not describe a zero-price next pull as costing Foil", () => {
     const callback = reveal({ price: 0 });
-    expect(fieldValue(callback, "Opening debit")).toBe("−0 ✦");
+    expect(fieldValue(callback, "Opening debit")).toBe("0 ✦");
     expect(firstEmbed(callback).description).toContain("starts another pull");
     expect(firstEmbed(callback).description).not.toMatch(/spends|paid|costs/i);
   });
