@@ -106,7 +106,13 @@ function isDrawReceipt(value: unknown): value is DrawReceipt {
 }
 
 function receiptBalance(receipt: DrawReceipt): number | undefined {
-  return receipt.current_balance ?? receipt.balance_after ?? receipt.balance_after_debit;
+  return [receipt.current_balance, receipt.balance_after, receipt.balance_after_debit].find(
+    (amount): amount is number => Number.isSafeInteger(amount) && Number(amount) >= 0,
+  );
+}
+
+function receiptSettlementPending(receipt: DrawReceipt | null | undefined): boolean {
+  return !!receipt && (receipt.settlement_pending === true || receipt.settlement_status !== "settled");
 }
 
 function failureFrom(
@@ -191,7 +197,7 @@ function changedOddsCopy(change: PreviewChange, receiptKnown: boolean): string {
   return `Your saved request used ${previous}. The live capsule is now ${current}.${distribution} We will not rebind the saved request to the new odds.`;
 }
 
-function DrawReceiptPanel({
+export function DrawReceiptPanel({
   receipt,
   phase,
   visible,
@@ -201,6 +207,8 @@ function DrawReceiptPanel({
   onReplay,
   onToggleVisible,
   onOpenAnother,
+  balanceRefreshing,
+  balanceRefreshError,
 }: {
   receipt: DrawReceipt;
   phase: Extract<DrawPhase, { status: "committed" | "revealed" }>;
@@ -211,10 +219,13 @@ function DrawReceiptPanel({
   onReplay: () => void;
   onToggleVisible: () => void;
   onOpenAnother: () => void;
+  balanceRefreshing: boolean;
+  balanceRefreshError: string;
 }) {
+  const settlementPending = receiptSettlementPending(receipt);
   return (
     <div
-      className={cn("draw-reveal mt-5", phase.status === "revealed" && visible && "is-revealed")}
+      className={cn("draw-reveal mt-5 scroll-mt-24", phase.status === "revealed" && visible && "is-revealed")}
       data-stage={visible ? "revealed" : "anticipation"}
       aria-live="polite"
       tabIndex={-1}
@@ -223,7 +234,12 @@ function DrawReceiptPanel({
       <div className="draw-reveal__stage">
         <div className="draw-reveal__beam" aria-hidden="true"></div>
         <div className="draw-reveal__card">
-          {receipt.render_url ? (
+          {!visible ? (
+            <div className="draw-reveal__back" role="img" aria-label="A face-down Foilbury card">
+              <img src="/brand/kit/signal-fold/mark.svg" alt="" />
+              <span aria-hidden="true">FOILBURY</span>
+            </div>
+          ) : receipt.render_url ? (
             <img
               src={receipt.render_url}
               alt={`${receipt.card_name} — ${
@@ -239,126 +255,142 @@ function DrawReceiptPanel({
           <div className="draw-reveal__wait">
             <span>
               {phase.status === "committed"
-                ? "Receipt committed. Revealing your card…"
+                ? "A card is waiting for you…"
                 : "Replaying the reveal…"}
             </span>
-            <button type="button" className="btn btn-secondary" onClick={onShowNow}>
-              Show result now
+            <button type="button" className="btn btn-secondary" data-reveal-wait onClick={onShowNow}>
+              Reveal card
             </button>
           </div>
         ) : null}
       </div>
       <div className="draw-reveal__receipt">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="studio-kicker">
-              {receipt.replayed
-                ? "Recorded result · replayed safely"
-                : phase.source === "reconcile"
-                  ? "Recovered draw receipt"
-                  : "Committed draw receipt"}
+        {!visible ? (
+          <>
+            <p className="text-sm text-[var(--muted)]">
+              {waitingForReveal ? "Your opening is saved." : "Your card is tucked away. Show it again whenever you like."}
             </p>
-            <h3 className="display-sm mt-1 text-3xl uppercase">{receipt.card_name}</h3>
-            <p className="text-sm text-[var(--brass)]">
-              {editionPrintTitle(receipt.edition_name)
-                ? `${editionPrintTitle(receipt.edition_name)} · `
-                : ""}
-              {receipt.variant_name} · {receipt.serial}
-            </p>
-          </div>
-          {phase.status === "revealed" ? (
-            <div className="flex flex-wrap gap-2">
-              <button type="button" className="btn btn-secondary" onClick={onReplay}>
-                <RotateCcw size={14} /> Replay
-              </button>
-              <button type="button" className="btn btn-secondary" onClick={onToggleVisible}>
-                {visible ? <EyeOff size={14} /> : <Eye size={14} />} {visible ? "Hide" : "Show"}
-              </button>
-              <button type="button" className="btn btn-secondary" onClick={onOpenAnother}>
-                <Sparkles size={14} /> Open another
-              </button>
+            {!waitingForReveal && phase.status === "revealed" ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" className="btn btn-secondary" disabled={balanceRefreshing} onClick={() => { revealRef.current?.focus({ preventScroll: true }); onReplay(); }}>
+                  <RotateCcw size={14} /> Replay
+                </button>
+                <button type="button" className="btn btn-secondary" disabled={balanceRefreshing} onClick={() => { revealRef.current?.focus({ preventScroll: true }); onToggleVisible(); }}>
+                  <Eye size={14} /> Show
+                </button>
+                <button type="button" className="btn btn-secondary" onClick={onOpenAnother} disabled={balanceRefreshing}>
+                  <Sparkles size={14} /> {balanceRefreshing ? "Checking balance…" : "Open another"}
+                </button>
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="studio-kicker">
+                  {receipt.replayed
+                    ? "Your saved card"
+                    : phase.source === "reconcile"
+                      ? "Your saved card"
+                      : "Your card"}
+                </p>
+                <h3 className="display-sm mt-1 text-2xl sm:text-3xl">{receipt.card_name}</h3>
+                <p className="text-sm text-[var(--brass)]">
+                  {editionPrintTitle(receipt.edition_name)
+                    ? `${editionPrintTitle(receipt.edition_name)} · `
+                    : ""}
+                  {receipt.variant_name} · {receipt.serial}
+                </p>
+              </div>
+              {phase.status === "revealed" ? (
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className="btn btn-secondary" disabled={balanceRefreshing} onClick={() => { revealRef.current?.focus({ preventScroll: true }); onReplay(); }}>
+                    <RotateCcw size={14} /> Replay
+                  </button>
+                  <button type="button" className="btn btn-secondary" disabled={balanceRefreshing} onClick={() => { revealRef.current?.focus({ preventScroll: true }); onToggleVisible(); }}>
+                    <EyeOff size={14} /> Hide
+                  </button>
+                  <button type="button" className="btn btn-secondary" onClick={onOpenAnother} disabled={balanceRefreshing}>
+                    <Sparkles size={14} /> {balanceRefreshing ? "Checking balance…" : "Open another"}
+                  </button>
+                </div>
+              ) : null}
             </div>
-          ) : null}
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <span className={cn("badge", receipt.new_subject && "badge-signal")}>
-            {receipt.new_subject ? "New subject" : `Duplicate · ${receipt.owned_copies} owned`}
-          </span>
-          <span className={cn("badge", receipt.new_finish && "badge-signal")}>
-            {receipt.new_finish ? "New finish" : "Finish already held"}
-          </span>
-          <span className="badge">Opening −✦ {receipt.price}</span>
-          {receipt.balance_after_debit !== undefined ? (
-            <span className="badge">After debit ✦ {receipt.balance_after_debit}</span>
-          ) : null}
-          {(receipt.credits_total ?? 0) > 0 ? (
-            <span className="badge badge-signal">Reward +✦ {receipt.credits_total}</span>
-          ) : null}
-          {receipt.balance_after !== undefined ? (
-            <span className="badge">Settled balance ✦ {receipt.balance_after}</span>
-          ) : null}
-          <span className="badge">{pct(receipt.probability_bps)} shown chance</span>
-        </div>
-        <div
-          className={cn(
-            "mt-4 overflow-hidden transition-all duration-500",
-            visible ? "max-h-[38rem] opacity-100" : "max-h-0 opacity-0",
-          )}
-          aria-hidden={!visible}
-          inert={!visible}
-        >
-          <p className="text-sm text-[var(--muted)]">
-            This exact copy was selected from pool revision {receipt.pool_revision}. The result was
-            committed before this animation. A retry or reload reads the same receipt and can never
-            reroll or charge twice.
-          </p>
-          {receipt.achievements?.length ? (
-            <div className="mt-3 border border-[var(--signal)] bg-[var(--ice)]/30 p-3">
-              <p className="studio-stat__label">Unlocked with this draw</p>
-              <ul className="mt-1 grid gap-1 text-sm">
-                {receipt.achievements.slice(0, 4).map((achievement) => (
-                  <li key={achievement.id}>
-                    <strong>{achievement.name}</strong>
-                    {achievement.reward_state === "failed"
-                      ? " · reward pending retry (not yet credited)"
-                      : achievement.reward_state &&
-                          achievement.reward_state !== "granted" &&
-                          achievement.reward_amount > 0
-                        ? " · reward not yet credited"
-                        : achievement.reward_amount
-                          ? ` · +${achievement.reward_amount} Foil`
-                          : " · cosmetic badge"}
-                  </li>
-                ))}
-                {receipt.achievements.length > 4 ? (
-                  <li className="text-xs text-[var(--muted)]">
-                    +{receipt.achievements.length - 4} more in the achievement cabinet
-                  </li>
-                ) : null}
-              </ul>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className={cn("badge", receipt.new_subject && "badge-signal")}>
+                {receipt.new_subject ? "New card" : `Duplicate · ${receipt.owned_copies} owned`}
+              </span>
+              <span className={cn("badge", receipt.new_finish && "badge-signal")}>
+                {receipt.new_finish ? "New finish" : "Finish already held"}
+              </span>
+              <span className="badge">Opened for ✦ {receipt.price}</span>
+              {!settlementPending && receipt.balance_after_debit !== undefined ? (
+                <span className="badge">After cost ✦ {receipt.balance_after_debit}</span>
+              ) : null}
+              {!settlementPending && (receipt.credits_total ?? 0) > 0 ? (
+                <span className="badge badge-signal">Reward +✦ {receipt.credits_total}</span>
+              ) : null}
+              {!settlementPending && receipt.balance_after !== undefined ? (
+                <span className="badge">Balance after rewards ✦ {receipt.balance_after}</span>
+              ) : null}
+              {settlementPending ? <span className="badge">Balance and rewards unconfirmed</span> : null}
+              <span className="badge">{pct(receipt.probability_bps)} chance</span>
             </div>
-          ) : null}
-          <p className="mt-2 font-mono text-[0.56rem] break-all text-[var(--muted)]">
-            draw proof {receipt.random_commitment.slice(0, 32)}…
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <a className="btn btn-primary" href={`/play/card/${receipt.instance_id}`}>
-              Inspect this copy <ArrowRight size={14} />
-            </a>
-            <ShareLinkButton
-              kind="latest"
-              targetId={receipt.instance_id}
-              label="Share latest pull"
-              size="md"
-            />
-          </div>
-        </div>
-        {!visible && phase.status === "revealed" ? (
-          <p className="mt-3 text-sm text-[var(--muted)]">
-            The card is already saved in your album. Show it, replay the moment, or inspect it later
-            — nothing is lost.
-          </p>
-        ) : null}
+            <div
+              className={cn(
+                "mt-4 overflow-hidden transition-all duration-500",
+                visible ? "max-h-[38rem] opacity-100" : "max-h-0 opacity-0",
+              )}
+              aria-hidden={!visible}
+              inert={!visible}
+            >
+              <p className="text-sm text-[var(--muted)]">
+                This card is yours. Replay the reveal as often as you like without spending more Foil.
+              </p>
+              {receipt.achievements?.length ? (
+                <div className="mt-3 border border-[var(--signal)] bg-[var(--ice)]/30 p-3">
+                  <p className="studio-stat__label">Unlocked with this draw</p>
+                  <ul className="mt-1 grid gap-1 text-sm">
+                    {receipt.achievements.slice(0, 4).map((achievement) => (
+                      <li key={achievement.id}>
+                        <strong>{achievement.name}</strong>
+                        {settlementPending && achievement.reward_amount > 0
+                          ? " · reward confirmation pending"
+                          : achievement.reward_state === "failed"
+                          ? " · reward pending retry (not yet credited)"
+                          : achievement.reward_state &&
+                              achievement.reward_state !== "granted" &&
+                              achievement.reward_amount > 0
+                            ? " · reward not yet credited"
+                            : achievement.reward_amount
+                              ? ` · +${achievement.reward_amount} Foil`
+                              : " · cosmetic badge"}
+                      </li>
+                    ))}
+                    {receipt.achievements.length > 4 ? (
+                      <li className="text-xs text-[var(--muted)]">
+                        +{receipt.achievements.length - 4} more in the achievement cabinet
+                      </li>
+                    ) : null}
+                  </ul>
+                </div>
+              ) : null}
+              <div className="mt-4 flex flex-wrap gap-2">
+                <a className="btn btn-primary" href={`/play/card/${receipt.instance_id}`}>
+                  Inspect this copy <ArrowRight size={14} />
+                </a>
+                <ShareLinkButton
+                  kind="latest"
+                  targetId={receipt.instance_id}
+                  label="Share latest pull"
+                  size="md"
+                />
+              </div>
+            </div>
+          </>
+        )}
+        {balanceRefreshError ? <p role="alert" className="mt-3 text-sm">{balanceRefreshError}</p> : null}
       </div>
     </div>
   );
@@ -398,6 +430,8 @@ export default function DrawStudio({
   );
   const [reduced, setReduced] = useState(false);
   const [storageWarning, setStorageWarning] = useState("");
+  const [balanceRefreshing, setBalanceRefreshing] = useState(false);
+  const [balanceRefreshError, setBalanceRefreshError] = useState("");
 
   const storageRef = useRef<OperationStorage | null>(null);
   const previewRequestRef = useRef(0);
@@ -413,6 +447,9 @@ export default function DrawStudio({
   const statusRef = useRef<HTMLDivElement | null>(null);
   const drawButtonRef = useRef<HTMLButtonElement | null>(null);
   const focusDrawOnReadyRef = useRef(false);
+  const playerMovedDuringDrawRef = useRef(false);
+  const initialRevealPendingRef = useRef(false);
+  const balanceRefreshLockRef = useRef(false);
 
   useEffect(() => {
     scopeKeyRef.current = scopeKey;
@@ -437,20 +474,30 @@ export default function DrawStudio({
     }
   }, []);
 
+  const preserveWaitFocus = useCallback(() => {
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && focused.matches("[data-reveal-wait]") && revealRef.current?.contains(focused)) {
+      revealRef.current.focus({ preventScroll: true });
+    }
+  }, []);
+
   const scheduleReveal = useCallback(
     (operationKey: string, replay = false) => {
       clearRevealTimer();
       const delay = revealDelayMs(reducedRef.current, replay);
+      if (delay === null) return;
       if (delay <= 0) {
+        preserveWaitFocus();
         dispatch({ type: "reveal/show", scopeKey: scopeKeyRef.current, operationKey });
         return;
       }
       revealTimerRef.current = window.setTimeout(() => {
         revealTimerRef.current = null;
+        preserveWaitFocus();
         dispatch({ type: "reveal/show", scopeKey: scopeKeyRef.current, operationKey });
       }, delay);
     },
-    [clearRevealTimer],
+    [clearRevealTimer, preserveWaitFocus],
   );
 
   const persistOperation = useCallback((operation: DrawOperation): boolean => {
@@ -582,6 +629,7 @@ export default function DrawStudio({
         }
         const committed = withOperationStatus(operation, "committed");
         persistOperation(committed);
+        initialRevealPendingRef.current = true;
         dispatch({
           type: "draw/committed",
           scopeKey: requestScopeKey,
@@ -706,6 +754,7 @@ export default function DrawStudio({
         }
         const committed = withOperationStatus(operation, "committed");
         persistOperation(committed);
+        initialRevealPendingRef.current = true;
         dispatch({
           type: "draw/committed",
           scopeKey: requestScopeKey,
@@ -788,12 +837,40 @@ export default function DrawStudio({
   );
 
   const openAnother = useCallback(
-    (current: DrawStudioState) => {
+    async (current: DrawStudioState) => {
       if (current.phase.status !== "revealed") return;
+      if (balanceRefreshLockRef.current) return;
+      let refreshedBalance: number | undefined;
+      if (receiptSettlementPending(current.phase.receipt)) {
+        balanceRefreshLockRef.current = true;
+        setBalanceRefreshing(true);
+        setBalanceRefreshError("");
+        try {
+          const me = await api<{ wallet: { balance: number } }>("/api/v1/me");
+          if (!Number.isSafeInteger(me.wallet?.balance) || me.wallet.balance < 0) throw new Error("Invalid wallet balance");
+          if (scopeKeyRef.current !== drawScopeKey(current.scope) || activeOperationKeyRef.current !== current.phase.operation.key) return;
+          refreshedBalance = me.wallet.balance;
+        } catch {
+          if (scopeKeyRef.current === drawScopeKey(current.scope) && activeOperationKeyRef.current === current.phase.operation.key) {
+            setBalanceRefreshError("Couldn’t check your balance. Try again before opening another capsule.");
+          }
+          return;
+        } finally {
+          balanceRefreshLockRef.current = false;
+          setBalanceRefreshing(false);
+        }
+      }
       activeOperationKeyRef.current = null;
       removePersistedOperation(current.phase.operation);
       focusDrawOnReadyRef.current = true;
-      dispatch({ type: "operation/reset", scopeKey: drawScopeKey(current.scope) });
+      dispatch({
+        type: "operation/reset",
+        scopeKey: drawScopeKey(current.scope),
+        balance: refreshedBalance,
+        ...(receiptSettlementPending(current.phase.receipt)
+          ? { notice: "Your balance is refreshed. The previous opening’s balance and any rewards remain unconfirmed." }
+          : {}),
+      });
       void loadPreview(current.selection);
     },
     [loadPreview, removePersistedOperation],
@@ -822,13 +899,14 @@ export default function DrawStudio({
         return;
       }
       clearRevealTimer();
+      preserveWaitFocus();
       dispatch({
         type: "reveal/show",
         scopeKey: drawScopeKey(current.scope),
         operationKey: current.phase.operation.key,
       });
     },
-    [clearRevealTimer],
+    [clearRevealTimer, preserveWaitFocus],
   );
 
   const setVisible = useCallback(
@@ -928,19 +1006,45 @@ export default function DrawStudio({
       (state.phase.status === "revealed" && state.phase.replaying)
     ) {
       clearRevealTimer();
+      preserveWaitFocus();
       dispatch({
         type: "reveal/show",
         scopeKey: drawScopeKey(state.scope),
         operationKey: state.phase.operation.key,
       });
     }
-  }, [reduced, state.phase, state.scope, clearRevealTimer]);
+  }, [reduced, state.phase, state.scope, clearRevealTimer, preserveWaitFocus]);
 
   useEffect(() => {
-    if (state.phase.status === "committed" || state.phase.status === "revealed") {
-      revealRef.current?.focus({ preventScroll: true });
+    if (state.phase.status !== "submitting" && state.phase.status !== "reconciling") return;
+    playerMovedDuringDrawRef.current = false;
+    const moved = (event: Event) => {
+      if (event.target !== drawButtonRef.current && event.target !== statusRef.current) playerMovedDuringDrawRef.current = true;
+    };
+    const scrolled = () => { playerMovedDuringDrawRef.current = true; };
+    document.addEventListener("focusin", moved);
+    document.addEventListener("pointerdown", moved);
+    document.addEventListener("keydown", scrolled);
+    window.addEventListener("wheel", scrolled, { passive: true });
+    window.addEventListener("touchstart", scrolled, { passive: true });
+    return () => {
+      document.removeEventListener("focusin", moved);
+      document.removeEventListener("pointerdown", moved);
+      document.removeEventListener("keydown", scrolled);
+      window.removeEventListener("wheel", scrolled);
+      window.removeEventListener("touchstart", scrolled);
+    };
+  }, [state.phase.status]);
+
+  useEffect(() => {
+    if ((state.phase.status === "committed" || state.phase.status === "revealed") && initialRevealPendingRef.current) {
+      initialRevealPendingRef.current = false;
+      if (!playerMovedDuringDrawRef.current) {
+        revealRef.current?.scrollIntoView({ block: "start", behavior: "instant" });
+        revealRef.current?.focus({ preventScroll: true });
+      }
     }
-    if (state.phase.status === "unknown" || state.phase.status === "reconciling") {
+    if ((state.phase.status === "unknown" || state.phase.status === "reconciling") && !playerMovedDuringDrawRef.current) {
       statusRef.current?.focus({ preventScroll: true });
     }
   }, [state.phase.status]);
@@ -953,7 +1057,7 @@ export default function DrawStudio({
   }, [state.phase.status]);
 
   useEffect(() => {
-    if (state.phase.status === "revealed") {
+    if (state.phase.status === "revealed" && !receiptSettlementPending(state.phase.receipt)) {
       removePersistedOperation(state.phase.operation);
     }
     if (state.phase.status !== "committed" && state.phase.status !== "revealed") {
@@ -965,14 +1069,18 @@ export default function DrawStudio({
     document.querySelectorAll<HTMLElement>("[data-foil-balance]").forEach((node) => {
       // The site header says "7000 Foil"; the draw and album cards use the
       // glyph. Keep each surface's existing notation instead of flattening it.
-      node.textContent = (node.textContent ?? "").includes("Foil")
+      node.dataset.foilBalanceFormat ??= (node.textContent ?? "").includes("Foil") ? "named" : "symbol";
+      const currentReceipt = receiptOf(state.phase);
+      const settlementPending = receiptSettlementPending(currentReceipt);
+      node.textContent = settlementPending ? "Balance unconfirmed" : node.dataset.foilBalanceFormat === "named"
         ? `${state.balance} Foil`
         : `✦ ${state.balance}`;
     });
-  }, [state.balance]);
+  }, [state.balance, state.phase]);
 
   useEffect(() => {
     return () => {
+      activeOperationKeyRef.current = null;
       clearRevealTimer();
       previewAbortRef.current?.abort();
       drawAbortRef.current?.abort();
@@ -1025,6 +1133,8 @@ export default function DrawStudio({
         onReplay={() => replayReveal(state)}
         onToggleVisible={() => setVisible(state, !visible)}
         onOpenAnother={() => openAnother(state)}
+        balanceRefreshing={balanceRefreshing}
+        balanceRefreshError={balanceRefreshError}
       />
     ) : null;
 
@@ -1136,7 +1246,7 @@ export default function DrawStudio({
 
         <div className="border border-[var(--line)] p-5">
           <p className="eyebrow">Balance</p>
-          <p className="display-sm mt-1 text-4xl text-[var(--brass)]">✦ {state.balance}</p>
+          <p className="display-sm mt-1 text-4xl text-[var(--brass)]">{receiptSettlementPending(receipt) ? "Unconfirmed" : `✦ ${state.balance}`}</p>
           <p className="mt-1 text-xs text-[var(--muted)]">
             {preview ? `${preview.currency.name} · price ✦ ${preview.price}` : "Select a pool"}
           </p>

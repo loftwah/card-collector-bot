@@ -514,8 +514,8 @@ try {
     ],
   });
   await memberPage.getByRole("button", { name: /Draw for/ }).click();
-  await memberPage.getByText(/New subject|Duplicate/).waitFor({ timeout: 20000 });
-  await memberPage.getByRole("button", { name: /Show result now/ }).click().catch(() => undefined);
+  await memberPage.getByRole("button", { name: /Reveal card/ }).click();
+  await memberPage.getByText(/New card|Duplicate/).waitFor({ timeout: 20000 });
   await memberPage.locator(".draw-reveal.is-revealed").waitFor({ timeout: 20000 });
   await memberPage.waitForTimeout(300);
   await capture(memberPage, {

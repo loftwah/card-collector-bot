@@ -2182,6 +2182,8 @@ html[data-motion="reduced"] .layered-card__effect {
   display: grid;
   min-height: 280px;
   place-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
   overflow: hidden;
   border: 1px solid var(--line);
   background:
@@ -2215,7 +2217,7 @@ html[data-motion="reduced"] .layered-card__effect {
 .draw-reveal__card {
   position: relative;
   z-index: 2;
-  width: min(220px, 56%);
+  width: min(260px, 76%);
   transform: rotateY(92deg) scale(0.92);
   transform-origin: 50% 50%;
   transition:
@@ -2229,6 +2231,11 @@ html[data-motion="reduced"] .layered-card__effect {
   filter: brightness(1) saturate(1);
 }
 
+.draw-reveal[data-stage="anticipation"] .draw-reveal__card {
+  transform: rotateY(-12deg) scale(0.96);
+  filter: brightness(0.9) saturate(0.9);
+}
+
 .draw-reveal__card img {
   display: block;
   width: 100%;
@@ -2236,10 +2243,33 @@ html[data-motion="reduced"] .layered-card__effect {
   box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.9);
 }
 
+.draw-reveal__back {
+  display: flex;
+  aspect-ratio: 5 / 7;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  border: 1px solid var(--line-strong);
+  outline: 1px solid rgba(201, 242, 95, 0.28);
+  outline-offset: -9px;
+  background: radial-gradient(circle at 50% 35%, #123e37, #07110f 70%);
+  box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.9);
+  color: #eff5f1;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.2em;
+}
+
+.draw-reveal__back img {
+  width: 38%;
+  border: 0;
+  box-shadow: none;
+}
+
 .draw-reveal__wait {
-  position: absolute;
+  position: relative;
   z-index: 3;
-  bottom: 1rem;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -2256,6 +2286,13 @@ html[data-motion="reduced"] .layered-card__effect {
 
 .draw-reveal__receipt {
   min-width: 0;
+}
+
+.draw-reveal__receipt .badge {
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 @media (min-width: 900px) {

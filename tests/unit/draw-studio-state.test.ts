@@ -247,6 +247,19 @@ describe("draw studio explicit state machine", () => {
     expect(next.preview?.price).toBe(80);
   });
 
+  it("uses the freshly read wallet when opening another after an uncertain settlement", () => {
+    let state = readyState();
+    const draw = operation(state);
+    state = dispatch(state, { type: "draw/started", scopeKey, operation: draw });
+    state = dispatch(state, { type: "draw/committed", scopeKey, operation: withOperationStatus(draw, "committed"), receipt: receipt(), source: "submit" });
+    state = dispatch(state, { type: "reveal/show", scopeKey, operationKey: draw.key });
+    state = dispatch(state, { type: "operation/reset", scopeKey, balance: 10, notice: "Earlier reward pending" });
+    expect(state.balance).toBe(10);
+    expect(state.notice).toBe("Earlier reward pending");
+    expect(state.phase.status).toBe("blocked");
+    if (state.phase.status === "blocked") expect(state.phase.reason).toBe("insufficient_funds");
+  });
+
   it("ignores a second draw start while the first is in flight", () => {
     let state = startDraw(readyState());
     const firstKey = state.phase.status === "submitting" ? state.phase.operation.key : "";
@@ -924,8 +937,8 @@ describe("failure classification and reduced motion", () => {
 
   it("reveals immediately when reduced motion is requested", () => {
     expect(revealDelayMs(true)).toBe(0);
-    expect(revealDelayMs(false)).toBe(950);
-    expect(revealDelayMs(false, true)).toBe(850);
+    expect(revealDelayMs(false)).toBeNull();
+    expect(revealDelayMs(false, true)).toBeNull();
     expect(revealDelayMs(true, true)).toBe(0);
   });
 

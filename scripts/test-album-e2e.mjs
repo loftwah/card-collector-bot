@@ -216,7 +216,8 @@ try {
   if (drawResponse.status() !== 200 || drawReceipt.card_name !== cardName) {
     throw new Error(`The selected capsule must award ${cardName}; received ${drawResponse.status()} ${JSON.stringify(drawReceipt)}.`);
   }
-  await member.getByText(/New subject|Another copy/).waitFor({ timeout: 20000 });
+  await member.getByRole("button", { name: "Reveal card" }).click();
+  await member.getByText(/New card|Duplicate/).waitFor({ timeout: 20000 });
   const inspect = member.getByRole("link", { name: /Inspect this copy/ });
   await inspect.waitFor();
   const instanceHref = await inspect.getAttribute("href");
