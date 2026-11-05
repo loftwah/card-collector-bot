@@ -1289,22 +1289,30 @@ a:hover > .card-face,
   white-space: nowrap;
 }
 
-.cabinet-link__short {
+.cabinet-link__short,
+.cabinet-more__link--mobile {
   display: none;
 }
 
 @media (max-width: 480px) {
   .cabinet-link {
     min-height: 44px;
-    padding: 0.55rem 0.3rem;
-    font-size: 0.58rem;
-    letter-spacing: 0.05em;
+    padding: 0.55rem 0.6rem;
+    font-size: 0.875rem;
+    letter-spacing: 0.02em;
   }
+  .cabinet-link--desktop,
   .cabinet-link__full {
     display: none;
   }
-  .cabinet-link__short {
+  .cabinet-link__short,
+  .cabinet-more__link--mobile {
     display: inline;
+  }
+  .cabinet-more__summary--mobile-active {
+    border-bottom-color: var(--signal);
+    color: var(--ink);
+    font-weight: 600;
   }
 }
 

@@ -70,25 +70,69 @@ try {
         console.log(
           `NOTE ${label}: page-level overflow ${geometry.scroll}/${geometry.viewport}; nav tested independently`,
         );
-      for (const item of geometry.items)
+      const links = page.locator(".cabinet-nav > a:visible");
+      const expectedLinks = width <= 480 ? 3 : 5;
+      assert.equal(await links.count(), expectedLinks);
+      for (let i = 0; i < expectedLinks; i++) {
+        const link = links.nth(i);
+        await link.focus();
+        const state = await link.evaluate((el) => {
+          const item = el.getBoundingClientRect();
+          const nav = el.closest("nav").getBoundingClientRect();
+          return {
+            focused: document.activeElement === el,
+            left: item.left,
+            right: item.right,
+            navLeft: nav.left,
+            navRight: nav.right,
+            fontSize: parseFloat(getComputedStyle(el).fontSize),
+            height: item.height,
+          };
+        });
         assert.ok(
-          item.left >= geometry.nav.left - 1 && item.right <= geometry.nav.right + 1,
-          `${label}: clipped ${item.label}`,
+          state.focused && state.left >= state.navLeft - 1 && state.right <= state.navRight + 1,
+          `${label}: keyboard focus must reveal link ${i}: ${JSON.stringify(state)}`,
         );
+        if (width <= 480 && zoom === 1)
+          assert.ok(
+            state.fontSize >= 14 && state.height >= 44,
+            `${label}: readable touch target ${i}`,
+          );
+      }
       const menu = page.locator(".cabinet-more__summary");
       await menu.focus();
       await page.keyboard.press("Enter");
       assert.equal(await page.locator(".cabinet-more").evaluate((e) => e.open), true);
+      if (width <= 480) {
+        await assert.equal(
+          await page.locator(".cabinet-more__menu").getByRole("link", { name: "Worlds" }).count(),
+          1,
+        );
+        await assert.equal(
+          await page.locator(".cabinet-more__menu").getByRole("link", { name: "Rewards" }).count(),
+          1,
+        );
+      }
       const box = await page.locator(".cabinet-more__menu").boundingBox();
       assert.ok(
         box && box.x >= -1 && box.x + box.width <= width + 1,
         `${label}: menu outside viewport ${JSON.stringify(box)}`,
+      );
+      await page.keyboard.press("Tab");
+      assert.equal(
+        await page
+          .locator(".cabinet-more__menu a:visible")
+          .first()
+          .evaluate((e) => document.activeElement === e),
+        true,
+        `${label}: first menu link receives keyboard focus`,
       );
       if (js) {
         await page.keyboard.press("Escape");
         assert.equal(await page.locator(".cabinet-more").evaluate((e) => e.open), false);
         assert.equal(await menu.evaluate((e) => document.activeElement === e), true);
       } else {
+        await menu.focus();
         await page.keyboard.press("Enter");
         assert.equal(await page.locator(".cabinet-more").evaluate((e) => e.open), false);
       }

@@ -64,21 +64,25 @@ const moreActive = more.some((link) => isActive(link.href));
               href={link.href}
               aria-label={link.shortLabel === "Home" ? "Home, overview" : link.label}
               aria-current={isActive(link.href) ? "page" : undefined}
-              class:list={["cabinet-link", isActive(link.href) && "is-active"]}
+              class:list={["cabinet-link", ["/play/collections", "/play/rewards"].includes(link.href) && "cabinet-link--desktop", isActive(link.href) && "is-active"]}
             >
               <span class:list={[link.shortLabel && "cabinet-link__full"]}>{link.label}</span>
               {link.shortLabel ? <span class="cabinet-link__short" aria-hidden="true">{link.shortLabel}</span> : null}
             </a>
           ))}
-          <details class="cabinet-more">
+        </nav>
+        <details class="cabinet-more">
             <summary
-              class:list={["cabinet-link cabinet-more__summary", moreActive && "is-active"]}
+              class:list={["cabinet-link cabinet-more__summary", moreActive && "is-active", ["/play/collections", "/play/rewards"].some((href) => isActive(href)) && "cabinet-more__summary--mobile-active"]}
               aria-label="More cabinet sections"
             >
               More
               <span aria-hidden="true">▾</span>
             </summary>
             <div class="cabinet-more__menu">
+              {primary.filter((link) => ["/play/collections", "/play/rewards"].includes(link.href)).map((link) => (
+                <a href={link.href} aria-current={isActive(link.href) ? "page" : undefined} class:list={["cabinet-more__link", "cabinet-more__link--mobile", isActive(link.href) && "is-active"]}>{link.label}</a>
+              ))}
               {more.map((link) => (
                 <a
                   href={link.href}
@@ -89,8 +93,7 @@ const moreActive = more.some((link) => isActive(link.href));
                 </a>
               ))}
             </div>
-          </details>
-        </nav>
+        </details>
       </div>
     </div>
   </section>
