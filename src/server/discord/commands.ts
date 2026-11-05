@@ -464,7 +464,7 @@ async function redeliverReceipt(
             "This is the recorded result of your original draw. No second pull was made and no second debit was recorded.",
             receipt.settlement_pending
               ? `**${receipt.price} ${receipt.currency_symbol}** was charged from **${receipt.pool_name}**. The balance is unconfirmed; check your wallet before opening another capsule.`
-              : `**${receipt.price} ${receipt.currency_symbol}** was charged from **${receipt.pool_name}**. Current balance: **${receipt.balance_after} ${receipt.currency_symbol}**.`,
+              : `**${receipt.price} ${receipt.currency_symbol}** was charged from **${receipt.pool_name}**. Balance after that opening: **${receipt.balance_after} ${receipt.currency_symbol}**.`,
             ...(!receipt.settlement_pending && credits > 0
               ? [
                   `Settled rewards: **+${credits} ${receipt.currency_symbol}**${creditNames.length ? ` · ${creditNames.join(", ")}` : ""}.`,

@@ -361,6 +361,23 @@ describe("Discord draw commit recovery", () => {
     await install();
   });
 
+  it("labels a recovered historical balance as the opening balance after the wallet changes", async () => {
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    await fixturePool(player);
+    const interactionId = "recovery-historical-balance";
+    const original = new DiscordTransport();
+    await deliverDeferred(interaction(command("open", [{ name: "pool", type: 3, value: "test-pool" }]), { id: interactionId }), runtime.DB, original);
+    const draw = await committedDraw(interactionId);
+    await runtime.DB.prepare("UPDATE fb_wallets SET balance = 999 WHERE tenant_id = ? AND user_id = ?").bind(player.tenant.id, draw.user_id).run();
+    const retry = new DiscordTransport();
+    await redeliver(interactionId, retry);
+    const visible = JSON.stringify(retry.original("redeliver-token")!.payload);
+    expect(visible).toContain("Balance after that opening");
+    expect(visible).not.toContain("Current balance");
+    expect(visible).not.toContain("999");
+    await committedDraw(interactionId);
+  });
+
   it("recovers from the draw row when the receipt write fails after the commit", async () => {
     const player = await ctxFor("cabinet", "player@foilbury.local");
     await fixturePool(player);
