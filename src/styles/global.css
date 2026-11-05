@@ -509,6 +509,12 @@ hr {
   color: var(--nav-active-fg);
 }
 
+/* A late stylesheet must not animate the header link from the browser's
+   default blue into its branded colours. Keep the hover lift. */
+.site-header .btn-primary {
+  transition: transform 160ms ease;
+}
+
 .btn-secondary {
   background: var(--panel);
   color: var(--ink);
