@@ -18,14 +18,14 @@ try {
 }
 ---
 <BaseLayout title="Journal · Foilbury" description="Notes from the Foilbury editorial desk: the cabinet, the source artwork and the collecting practice.">
-  <section class="border-b border-[var(--line)]">
+  <section class="journal-intro border-b border-[var(--line)]">
     <div class="container py-14 md:py-20">
       <p class="eyebrow">Editorial desk · EmDash</p>
       <h1 class="display mt-4 max-w-[14ch] text-[clamp(3rem,7vw,6.5rem)]">Notes from the cabinet.</h1>
       <p class="mt-5 max-w-2xl text-[var(--muted)]">Editorial drafts, media and journal entries are authored in EmDash. The journal is deliberately separate from the collectible catalogue: it cannot issue a card or change a wallet.</p>
     </div>
   </section>
-  <section class="container py-12">
+  <section class="journal-list container py-12">
     {error ? (
       <div class="notice max-w-2xl">
         <p class="eyebrow eyebrow-brass">Editorial desk unavailable</p>

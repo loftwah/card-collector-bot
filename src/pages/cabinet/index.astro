@@ -32,11 +32,11 @@ function href(next: { search?: string; category?: string; tag?: string; collecti
 }
 ---
 <BaseLayout title={selectedCollection ? `${selectedCollection.name} · Foilbury` : "The public showcase · Foilbury"} description="Explore the approved public showcase of original Foilbury worlds, characters and finishes.">
-  <section class="border-b border-[var(--line)]">
+  <section class="showcase-intro border-b border-[var(--line)]">
     <div class="container py-14 md:py-20">
       <p class="font-mono text-[0.62rem] uppercase tracking-[0.14em] text-[var(--coral)]">Public showcase · Loftwah originals</p>
       <div class="mt-4 flex flex-wrap items-end justify-between gap-6">
-        <div>
+        <div class="min-w-0">
           <h1 class="display text-[clamp(3rem,7vw,6rem)]">{selectedCollection ? selectedCollection.name : "The public showcase."}</h1>
           <p class="mt-4 max-w-2xl text-[var(--muted)]">{selectedCollection ? selectedCollection.description : "Bubbles, Fighter, Protocol 11 and the shared cast are reviewed for public viewing. Member franchise albums are never promoted here."}</p>
         </div>

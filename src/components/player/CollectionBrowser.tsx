@@ -223,7 +223,7 @@ export default function CollectionBrowser({
   }
 
   return (
-    <div data-hydrated={hydrated ? "true" : "false"}>
+    <div className="collection-browser" data-hydrated={hydrated ? "true" : "false"}>
       <form
         className="grid gap-3 border-b border-[var(--line)] pb-5 md:grid-cols-[1fr_auto_auto_auto]"
         method="get"
@@ -296,7 +296,7 @@ export default function CollectionBrowser({
             ))}
           </select>
         </label>
-        <div className="flex items-end gap-2">
+        <div className="flex flex-wrap items-end gap-2">
           <button
             type="button"
             className={cn(

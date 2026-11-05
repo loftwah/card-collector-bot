@@ -54,6 +54,7 @@ const nextFinish =
 ---
 
 <PlayerLayout title="Collection · Foilbury">
+  <div class="member-collection">
   <div class="flex flex-wrap items-end justify-between gap-4">
     <div>
       <p class="eyebrow">Private collection</p>
@@ -63,7 +64,7 @@ const nextFinish =
         trade and cannot be spent twice.
       </p>
     </div>
-    <div class="flex items-center gap-3">
+    <div class="flex flex-wrap items-center gap-3">
       <div class="text-right">
         <p class="eyebrow">Foil</p>
         <p class="font-mono text-2xl text-[var(--brass)]">✦ {wallet.balance}</p>
@@ -75,9 +76,9 @@ const nextFinish =
   </div>
   <div class="mt-7">
     {selected && progress && binder ? (
-      <section class="mb-8 border border-[var(--line)] bg-[var(--paper-2)]/35">
-        <div class="grid gap-5 border-b border-[var(--line)] p-5 lg:grid-cols-[1fr_auto] lg:items-start">
-          <div class="flex items-start gap-4">
+      <section class="member-collection__section mb-8 border border-[var(--line)] bg-[var(--paper-2)]/35">
+        <div class="member-collection__details grid gap-5 border-b border-[var(--line)] p-5 lg:grid-cols-[1fr_auto] lg:items-start">
+          <div class="flex flex-wrap items-start gap-4">
             {selected.logo_url ? (
               <img
                 src={selected.logo_url}
@@ -91,7 +92,7 @@ const nextFinish =
                 {selected.name.charAt(0)}
               </span>
             )}
-            <div>
+            <div class="min-w-0">
               <h3 class="display-sm text-3xl uppercase">{selected.name}</h3>
               <p class="mt-1 max-w-xl text-sm text-[var(--muted)]">{selected.description}</p>
               <p class="mt-2 font-mono text-[0.6rem] uppercase tracking-[0.1em] text-[var(--muted)]">
@@ -104,7 +105,7 @@ const nextFinish =
               </p>
             </div>
           </div>
-          <div class="grid grid-cols-3 gap-3 text-center">
+          <div class="member-collection__stats grid grid-cols-3 gap-3 text-center">
             <div>
               <p class="studio-stat__label">Subjects</p>
               <p class="display-sm text-2xl">
@@ -121,7 +122,7 @@ const nextFinish =
             </div>
           </div>
         </div>
-        <div class="grid gap-5 p-5 lg:grid-cols-[1fr_1fr]">
+        <div class="member-collection__details grid gap-5 p-5 lg:grid-cols-[1fr_1fr]">
           <div>
             <div class="flex items-end justify-between gap-3">
               <p class="studio-stat__label">Core finish progress</p>
@@ -229,7 +230,7 @@ const nextFinish =
             </div>
           </div>
         </div>
-        <div class="border-t border-[var(--line)] p-5">
+        <div class="member-collection__details border-t border-[var(--line)] p-5">
           <SharePanel
             client:load
             kind="collection"
@@ -259,5 +260,6 @@ const nextFinish =
         }))}
       initialCollection={initialCollection}
     />
+  </div>
   </div>
 </PlayerLayout>
