@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
+import { stripVTControlCharacters } from "node:util";
 import path from "node:path";
 import { chromium } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
@@ -37,7 +38,7 @@ test(
     const url = await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error(`Vite did not start: ${output}`)), 15000);
       const onData = (chunk) => {
-        output += String(chunk);
+        output = stripVTControlCharacters(output + String(chunk));
         const found = output.match(/http:\/\/127\.0\.0\.1:\d+\//);
         if (found) {
           clearTimeout(timeout);
@@ -50,6 +51,9 @@ test(
         clearTimeout(timeout);
         reject(new Error(`Vite exited ${code}: ${output}`));
       });
+    }).catch((error) => {
+      server.kill("SIGTERM");
+      throw error;
     });
     const browser = await chromium.launch();
     try {
