@@ -5,11 +5,27 @@ import { chromium } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
 const baseURL = process.env.FOILBURY_URL ?? 'http://127.0.0.1:5173';
+const target = new URL(baseURL);
+assert.ok(target.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(target.hostname)
+  && !target.username && !target.password && target.pathname === '/' && !target.search && !target.hash,
+  'Refusing to run: FOILBURY_URL must be a plain HTTP loopback origin');
+// Refuse redirects: a local server must not redirect the preflight to another host.
+const statusResponse = await fetch(new URL('/api/v1/status', target), {
+  redirect: 'error', signal: AbortSignal.timeout(5000),
+});
+assert.equal(statusResponse.status, 200, 'Local status preflight failed');
+const status = await statusResponse.json();
+assert.ok(status.name === 'Foilbury' && status.environment === 'local' && status.local === true
+  && status.dev_login === true && status.configured === true && status.email === 'outbox_only'
+  && status.discord === 'disabled' && status.access === 'not_configured', 'Expected an isolated local development Worker');
+const providers = ['fal', 'elevenlabs', 'resend', 'adminWebhook', 'discordApplication', 'discordBot', 'discordOAuth', 'cloudflareAccess'];
+assert.ok(status.providers && providers.every(key => status.providers[key] === false)
+  && Object.values(status.providers).every(value => value === false), 'All external providers must be disabled');
 const browser = await chromium.launch();
 try {
   for (const scheme of ['light', 'dark']) {
     const context = await browser.newContext({ baseURL, viewport: { width: 390, height: 844 }, colorScheme: scheme });
-    const login = await context.request.post('/api/v1/dev/login', { data: { email: 'owner@foilbury.local' } });
+    const login = await context.request.post('/api/v1/dev/login', { data: { email: 'owner@foilbury.local' }, maxRedirects: 0 });
     assert.equal(login.status(), 200, 'requires an isolated seeded dev-login fixture');
     const page = await context.newPage();
     await page.goto('/play', { waitUntil: 'networkidle' });
