@@ -119,14 +119,26 @@ const collectionTone = ["#e0492f", "#0e5b53", "#4a1e4d", "#b8791f"];
               style={`--tilt:${index === 0 ? "-5deg" : index === 2 ? "6deg" : "0deg"}`}
               aria-label={`${entry.card.name} card`}
             >
-              <div class="card-face rounded-[7px]">
+              <div class="card-face hero-card-frame rounded-[7px]">
                 <img
                   src={entry.variant.render_url!}
+                  srcset={
+                    entry.variant.preview_url
+                      ? `${entry.variant.preview_url} 600w, ${entry.variant.render_url} 750w`
+                      : undefined
+                  }
+                  sizes="(min-width: 1024px) 24vw, 40vw"
                   alt=""
                   loading="eager"
+                  decoding="async"
+                  fetchpriority={entry.slug === "tux" ? "high" : "auto"}
+                  data-hero-art
                   width="750"
                   height="1050"
                 />
+                <span class="hero-card-error" aria-hidden="true">
+                  Artwork unavailable
+                </span>
               </div>
             </a>
           ))}
@@ -144,6 +156,11 @@ const collectionTone = ["#e0492f", "#0e5b53", "#4a1e4d", "#b8791f"];
             </span>
           ))}
         </p>
+        <noscript>
+          <p class="mt-3 text-center text-sm text-[var(--muted)]">
+            If an image doesn't load, open its card page.
+          </p>
+        </noscript>
         <div class="absolute bottom-1 right-0 hidden max-w-[14rem] border-l border-[var(--brass)] pl-4 text-right lg:block">
           <p class="font-mono text-[0.58rem] uppercase tracking-[0.14em] text-[var(--brass)]">
             Public showcase
@@ -389,4 +406,24 @@ const collectionTone = ["#e0492f", "#0e5b53", "#4a1e4d", "#b8791f"];
       </div>
     </div>
   </section>
+  <script>
+    document.querySelectorAll<HTMLImageElement>("img[data-hero-art]").forEach((image) => {
+      const frame = image.closest<HTMLElement>(".hero-card-frame");
+      const link = image.closest<HTMLAnchorElement>("a.hero-card");
+      if (!frame || !link) return;
+      const unavailable = () => {
+        frame.dataset.artState = "error";
+        const label = link.getAttribute("aria-label");
+        if (label && !label.endsWith(", artwork unavailable")) {
+          link.setAttribute("aria-label", `${label}, artwork unavailable`);
+        }
+      };
+      const loaded = () => {
+        frame.dataset.artState = "loaded";
+      };
+      image.addEventListener("load", loaded);
+      image.addEventListener("error", unavailable);
+      if (image.complete) image.naturalWidth ? loaded() : unavailable();
+    });
+  </script>
 </BaseLayout>
