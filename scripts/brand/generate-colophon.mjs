@@ -96,10 +96,6 @@ const socialTitle = manropeSource.getVariation({ wght: 700 });
 const socialBody = manropeSource.getVariation({ wght: 500 });
 sources["social-master.svg"] =
   `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630"><title>Foilbury: a home for your cards</title><rect width="1200" height="630" fill="#f2efe8"/><path d="M35 0 V630 M65 0 V630 M1135 0 V630 M1165 0 V630 M0 62 H1200 M0 568 H1200" fill="none" stroke="#b6c8bc" stroke-width="2" opacity=".5"/><g aria-hidden="true"><rect x="-126" y="110" width="280" height="392" rx="13" fill="#d8e2d7" transform="rotate(-10 14 306)"/><rect x="1040" y="108" width="280" height="392" rx="13" fill="#e5d5c9" transform="rotate(11 1180 304)"/></g><svg x="380" y="82" width="230" height="60" viewBox="0 0 ${wordWidth} ${wordHeight}">${innerSvg(sources["wordmark-ink.svg"])}</svg><svg x="300" y="75" width="64" height="64" viewBox="0 0 512 512">${socialMark("header")}</svg>${socialLine(socialTitle, "A home for", 300, 230, 64, "#27332e")}${socialLine(socialTitle, "your cards.", 300, 320, 64, "#27332e")}<g transform="translate(235 50) scale(.75)" aria-hidden="true"><rect x="714" y="206" width="150" height="210" rx="8" fill="#b6c6ba" transform="rotate(-11 789 311)"/><rect x="728" y="199" width="150" height="210" rx="8" fill="#d0bcae" transform="rotate(9 803 304)"/><rect x="721" y="198" width="150" height="210" rx="8" fill="#27332e"/><rect x="733" y="210" width="126" height="186" rx="3" fill="none" stroke="#aebfb1" stroke-width="2"/><path d="M744 366 H848 M744 379 H822" stroke="#aebfb1" stroke-width="3"/><svg x="746" y="252" width="100" height="100" viewBox="0 0 512 512">${socialMark("card")}</svg></g><path d="M300 491 H900" stroke="#b7c0b6" stroke-width="1"/>${socialLine(socialBody, "Free to play", 300, 528, 28, "#52615a")}</svg>\n`;
-// Discord Bot profile banner: 680×240 (17:6), verified against the
-// signed-in Developer Portal on 2026-11-06. This art-free study is held locally.
-sources["bot-banner-master.svg"] =
-  `<svg xmlns="http://www.w3.org/2000/svg" width="680" height="240" viewBox="0 0 680 240"><title>Foilbury: a home for your cards</title><rect width="680" height="240" fill="#27332e"/><path d="M24 24 H656 V216 H24 Z" fill="none" stroke="#60766a" stroke-width="1"/><svg x="44" y="61" width="225" height="56" viewBox="0 0 ${wordWidth} ${wordHeight}">${innerSvg(sources["wordmark-reverse.svg"])}</svg>${socialLine(socialBody, "A home for your cards", 46, 145, 18, "#d6e0d5")}<g aria-hidden="true"><path d="M377 63 Q425 44 478 65 Q531 44 584 63 V186 Q531 167 478 186 Q425 167 377 186 Z" fill="#e9ede5"/><path d="M478 65 V184" fill="none" stroke="#738b7c" stroke-width="3"/><rect x="395" y="76" width="58" height="81" rx="2" fill="#a9bcae"/><path d="M396 76 H414 L396 94 Z" fill="#d6c183"/><path d="M500 84 H562 M500 100 H550 M500 116 H562 M500 143 H547" stroke="#738b7c" stroke-width="4" stroke-linecap="round"/></g></svg>\n`;
 for (const [name, body] of Object.entries(sources)) fs.writeFileSync(path.join(output, name), body);
 const raster = async (svg, size, name) => {
   const png = new Resvg(svg, { fitTo: { mode: "width", value: size } }).render().asPng();
@@ -118,10 +114,6 @@ for (const [name, size] of [
 for (const size of [192, 512])
   await raster(sources["maskable.svg"], size, `icon-${size}-maskable.png`);
 fs.writeFileSync(
-  path.join(output, "bot-banner.png"),
-  new Resvg(sources["bot-banner-master.svg"]).render().asPng(),
-);
-fs.writeFileSync(
   path.join(output, "social-preview.png"),
   new Resvg(sources["social-master.svg"]).render().asPng(),
 );
@@ -137,7 +129,6 @@ const manifest = {
   font_source: "public/fonts/Fraunces.ttf",
   social_font: "Manrope, The Manrope Project Authors, SIL Open Font License 1.1",
   social_font_source: "public/fonts/Manrope.ttf",
-  bot_banner_note: "Art-free local study, 680×240 Discord Bot profile banner; not applied.",
   social_note:
     "Vector-only provisional social image; no character artwork or invented card contents.",
   generator: "scripts/brand/generate-colophon.mjs",

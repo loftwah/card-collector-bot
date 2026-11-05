@@ -1286,7 +1286,9 @@ export function revealReceiptMessage(input: RevealReceiptInput): DiscordCallback
     attachments: attachment ? [attachment] : [],
     embed: {
       title: `${cardName} — ${finish}`,
-      description: `From **${poolName}**. This copy is in your cabinet. **Open again** spends Foil on a new pull.`,
+      description: input.replayed
+        ? `Recorded from **${poolName}**. **Open again** spends Foil on a new pull.`
+        : `From **${poolName}**. This copy is in your cabinet. **Open again** spends Foil on a new pull.`,
       accent: FOILBURY_PALETTE.albumSage,
       fields,
       footer: `Foilbury${input.scope_name ? ` · ${visibleText(input.scope_name, "scope_name")}` : ""}`,

@@ -35,17 +35,23 @@ const steps = [
   { title: "What Foilbury is", body: "A free collectible-card album. Loftwah's original worlds are the public showcase; the curated members' album holds the larger launch catalogue." },
   { title: "A real set", body: "Collections are branded worlds with a roster, a mark and a release boundary — not tags around a grid." },
   { title: "Free play", body: "Claim the allowance, see the exact price and live odds, then choose to open. Nothing is purchasable." },
-  { title: "Inspect the object", body: "Front, designed back, finish comparison and an on-demand 3D view. Reduced motion gets a clean static inspection." },
+  { title: "Inspect the object", body: "View the front and, where available, the back. Compare finishes and open an on-demand 3D view." },
   { title: "Progress and mastery", body: "Unique subjects, owned copies, duplicates and each core finish are separate facts. A complete roster is not the same as a complete finish run." },
-  { title: "Show it off", body: "Create a preview-first share for a card, collection, badge or wishlist. Member material stays behind membership." },
+  { title: "Show it off", body: "Choose what to share and preview it before creating a link." },
 ];
 const links = {
   next: step < 6 ? `/tour?step=${step + 1}` : user ? "/play" : "/login?next=%2Fplay",
   back: step > 1 ? `/tour?step=${step - 1}` : "/",
 };
 const fmtDuration = (seconds: number) => seconds >= 3600 ? `${Math.round(seconds / 3600)} hours` : `${Math.round(seconds / 60)} minutes`;
+const allowanceText = economy
+  ? [
+      economy.starter_grant > 0 ? `${economy.starter_grant} Foil to start.` : "",
+      economy.daily_reward > 0 ? `${economy.daily_reward} Foil every ${fmtDuration(economy.daily_cooldown_seconds)}.` : "The daily allowance is not enabled for this Bot.",
+    ].filter(Boolean).join(" ")
+  : "Allowance availability is shown in your cabinet.";
 ---
-<BaseLayout title="The guided tour · Foilbury" description="A short, real tour of Foilbury: the public showcase, a branded set, free play, card inspection, collection mastery and deliberate sharing." shareImage={hero?.variant.render_url ?? "/brand/kit/colophon/social-preview.png"}>
+<BaseLayout title="The guided tour · Foilbury" description="Explore Foilbury’s public cards and learn how collecting works." shareImage={hero?.variant.render_url ?? "/brand/kit/colophon/social-preview.png"}>
   <section class="signal-rule" aria-hidden="true"></section>
   <section class="container py-10 md:py-14">
     <div class="grid gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-start">
@@ -56,7 +62,7 @@ const fmtDuration = (seconds: number) => seconds >= 3600 ? `${Math.round(seconds
           <span class="badge">Skippable · resumable</span>
         </div>
         <h1 class="display mt-5 text-[clamp(3rem,8vw,6.8rem)] uppercase">See the whole cabinet.</h1>
-        <p class="mt-5 max-w-2xl text-lg leading-relaxed text-[var(--muted)]">A short route through the real product: a complete set, an honest opening, both faces of a card, the difference between roster and finish mastery, and a share you deliberately choose.</p>
+        <p class="mt-5 max-w-2xl text-lg leading-relaxed text-[var(--muted)]">Explore the public cards and see how capsules, collections and sharing work.</p>
         <div class="mt-7 flex flex-wrap gap-3">
           <a class="btn btn-signal" href="#step-1">Start the tour</a>
           <a class="btn btn-secondary" href="/cabinet">Skip to the public cabinet</a>
@@ -125,7 +131,7 @@ const fmtDuration = (seconds: number) => seconds >= 3600 ? `${Math.round(seconds
       <div class="tour-step__index">03</div>
       <div>
         <h2 class="display-sm text-3xl uppercase">Free play, with the odds in front of you.</h2>
-        <p class="mt-3 max-w-3xl text-[var(--muted)]">The cabinet grants {economy?.starter_grant ?? 800} Foil on first entry and {economy?.daily_reward ?? 480} Foil each {fmtDuration(economy?.daily_cooldown_seconds ?? 86400)}. You choose a capsule, see its price and eligible pool, then open one real card. No purchase, no cash-out, no hidden reroll.</p>
+        <p class="mt-3 max-w-3xl text-[var(--muted)]">{allowanceText} You choose a capsule, see its price and eligible pool, then open a card. No purchase or cash-out.</p>
         <div class="mt-5 grid gap-3 sm:grid-cols-3">
           <div class="tour-callout"><p class="studio-stat__label">Before the draw</p><p class="mt-1 text-sm">Exact price, balance, eligible variants and finish odds.</p></div>
           <div class="tour-callout"><p class="studio-stat__label">At the draw</p><p class="mt-1 text-sm">One server-committed receipt, one serial, one spend.</p></div>
@@ -139,7 +145,7 @@ const fmtDuration = (seconds: number) => seconds >= 3600 ? `${Math.round(seconds
       <div class="tour-step__index">04</div>
       <div>
         <h2 class="display-sm text-3xl uppercase">Inspect both faces.</h2>
-        <p class="mt-3 max-w-3xl text-[var(--muted)]">The front is the card; the back is the file. Flip, tilt and zoom this real public card. The 3D view is an inspection aid only — it never changes ownership, finish or serial. Reduced motion keeps a clean static view.</p>
+        <p class="mt-3 max-w-3xl text-[var(--muted)]">The front is the card; the back is the file. Flip and tilt this public card. The 3D view is an inspection aid only — it never changes ownership, finish or serial. Reduced motion keeps a clean static view.</p>
         {hero ? (
           <div class="mt-5 grid gap-5 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
             <CardInspector client:load frontUrl={hero.variant.render_url} backUrl={hero.variant.back_render_url} fallbackUrl="/brand/card-back.webp" name={hero.card.name} subtitle={hero.card.subtitle} finish={displayFinish(hero.variant.name, hero.variant.material_key, hero.variant.effect_key)} collection={hero.card.collections[0]?.name ?? null} serial={null} />

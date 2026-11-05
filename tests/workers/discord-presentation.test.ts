@@ -479,6 +479,8 @@ describe("reveal receipt parity", () => {
   it("marks replayed receipts and explains that no second pull was made", () => {
     const callback = reveal({ replayed: true });
     expect(fieldValue(callback, "Recorded result")).toContain("No second pull");
+    expect(firstEmbed(callback).description).not.toContain("This copy is in your cabinet");
+    expect(firstEmbed(callback).description).toContain("Recorded from");
   });
 
   it("uses render_url only for a verified public reveal", () => {
