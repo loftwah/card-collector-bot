@@ -43,7 +43,7 @@ import {
 } from "./receipts";
 import { audienceRank, canViewCard, effectiveCardAudience } from "../modules/visibility";
 import { HELP_TEXT } from "./command-definitions";
-import { channelAudienceFor, isBotAdmin, requireBotAdmin } from "./context";
+import { isBotAdmin, requireBotAdmin } from "./context";
 import {
   assertCardInDiscordScope,
   discordScopeCardIds,
@@ -170,6 +170,9 @@ function errorCallback(error: unknown, _ephemeral = true): DiscordCallback {
   const apiError = error instanceof ApiError ? error : null;
   if (apiError && ["draw_outcome_unavailable", "unknown_commit_outcome"].includes(apiError.code)) {
     return callback({content:"This opening may have completed. Check your collection and wallet before opening another capsule.",allowed_mentions:{parse:[]}},true);
+  }
+  if (apiError?.code === "discord_channel_policy_invalid") {
+    return callback({content: "This server's channel policy needs repair by an administrator. If you were opening a capsule, check your collection before trying again.", allowed_mentions:{parse:[]}}, true);
   }
   const nextEligibleAt =
     apiError?.details && typeof apiError.details.next_eligible_at === "string"
@@ -344,14 +347,15 @@ export async function presentDiscordDraw(
   // Audience lookup failure must fail closed: no share control and a private
   // reveal. The draw itself is already committed and safe in the cabinet.
   const cardAudience = await effectiveCardAudience(ctx, result.card_id).catch(() => "private" as const);
-  const channelAudience = channelAudienceFor(installation, interaction.channel_id);
+  // A channel label does not establish every present or future viewer's access.
+  const channelAudience = "public" as const;
   const inScope = scope
     ? await assertCardInDiscordScope(ctx, scope, result.card_id)
         .then(() => true)
         .catch(() => false)
     : true;
   const shareInChannel =
-    inScope &&
+    Boolean(scope?.aiArtEnabled) && inScope &&
     cardAudience !== "private" &&
     audienceRank(channelAudience) >= audienceRank(cardAudience);
   return revealReceiptMessage({
@@ -432,7 +436,14 @@ async function redeliverReceipt(
   ctx: Ctx,
   interaction: DiscordInteraction,
   originalInteractionId: string,
+  installation: DiscordInstallation,
 ): Promise<DiscordCallback> {
+  const unavailable=()=>callback({content:"Your earlier result cannot be shown here right now. No new draw was started. Check your signed-in collection or ask the Bot Owner for access.",allowed_mentions:{parse:[]}},true);
+  let scope:DiscordScope;
+  try {
+    scope=await resolveDiscordScope(ctx,installation,interaction.channel_id);
+    if(scope.emptyReason) return unavailable();
+  } catch { return unavailable(); }
   const receipt = await recoverDrawReceipt(ctx.db, {
     tenantId: ctx.tenant.id,
     userId: ctx.user!.id,
@@ -445,30 +456,38 @@ async function redeliverReceipt(
       "No committed draw receipt could be found for that button. Nothing new was charged; open the cabinet to inspect your cards.",
     );
   }
+  let current:Awaited<ReturnType<typeof getCard>>,currentEdition:Awaited<ReturnType<typeof getCard>>["editions"][number],currentVariant:Awaited<ReturnType<typeof getCard>>["editions"][number]["variants"][number];
+  try {
+    await assertCardInDiscordScope(ctx,scope,receipt.card_id);
+    current=await getCard(ctx,receipt.card_id,{includeAi:scope.aiArtEnabled});
+    const edition=current.editions.find(item=>item.status==="published" && item.variants.some(variant=>variant.id===receipt.variant_id && variant.status==="published"));
+    const variant=edition?.variants.find(item=>item.id===receipt.variant_id && item.status==="published");
+    if(current.id!==receipt.card_id || current.status!=="published" || !edition || !variant) return unavailable();
+    currentEdition=edition;currentVariant=variant;
+  } catch { return unavailable(); }
   const render = await first<{ width: number; height: number; r2_key: string; mime: string }>(
     ctx.db,
     `SELECT vr.width, vr.height, a.r2_key, a.mime
        FROM fb_variant_renders vr JOIN fb_assets a ON a.id = vr.asset_id AND a.tenant_id = vr.tenant_id
-      WHERE vr.tenant_id = ? AND vr.variant_id = ? AND vr.status = 'published' LIMIT 1`,
+      WHERE vr.tenant_id = ? AND vr.variant_id = ? AND vr.status = 'published' AND a.archived_at IS NULL LIMIT 1`,
     ctx.tenant.id,
     receipt.variant_id,
   ).catch(() => null);
-  const print = editionPrintTitle(receipt.edition_name);
+  const print = editionPrintTitle(currentEdition.name);
   const credits = receipt.credits_total ?? 0;
-  const creditNames = receipt.achievement_credits?.map((item) => item.name).filter(Boolean) ?? [];
   const result = callback(
     {
       embeds: [
         {
           title: print
-            ? `${receipt.card_name} — ${print}`
-            : `${receipt.card_name} — ${receipt.variant_name}`,
+            ? `${current.name} — ${print}`
+            : `${current.name} — ${currentVariant.name}`,
           description: [
             "This is the recorded result of your original draw. No second pull was made and no second debit was recorded.",
-            `**${receipt.price} ${receipt.currency_symbol}** was charged from **${receipt.pool_name}**. Current balance: **${receipt.balance_after} ${receipt.currency_symbol}**.`,
+            `**${receipt.price} ${receipt.currency_symbol}** was charged. Balance recorded with that draw: **${receipt.balance_after} ${receipt.currency_symbol}**.`,
             ...(credits > 0
               ? [
-                  `Settled rewards: **+${credits} ${receipt.currency_symbol}**${creditNames.length ? ` · ${creditNames.join(", ")}` : ""}.`,
+                  `Settled rewards: **+${credits} ${receipt.currency_symbol}**.`,
                 ]
               : []),
             ...(receipt.settlement_pending
@@ -561,6 +580,7 @@ async function collection(
   const scope =
     providedScope ??
     (await resolveDiscordScope(ctx, installation, installation.channel_key ?? null));
+  if (scope.emptyReason) return scopeFailureMessage(scope);
   const scopedCardIds = await discordScopeCardIds(ctx, scope);
   const allInventory = await getInventory(ctx, { limit: 500 });
   const inventory = allInventory.filter(
@@ -570,10 +590,10 @@ async function collection(
   );
   const hidden = allInventory.length - inventory.length;
   const wallet = await getWalletSummary(ctx.db, ctx.tenant.id, ctx.user!.id, 1);
-  const scopeNotice =
-    hidden > 0
-      ? `${hidden} historical ${hidden === 1 ? "copy is" : "copies are"} outside this server's current collection or AI-artwork scope. They remain owned and are visible in the signed-in website cabinet; they are not available to draw or share here.`
-      : null;
+  const scopeNotice = [
+    hidden > 0 ? `${hidden} ${hidden === 1 ? "copy is" : "copies are"} outside the current collection or artwork scope.` : "",
+    allInventory.length === 500 ? "Counts cover up to the 500 most recent copies, not the whole collection." : "",
+  ].filter(Boolean).join(" ") || null;
   if (inventory.length === 0) {
     return cabinetSummaryMessage({
       scopeName: ctx.tenant.name,
@@ -591,7 +611,7 @@ async function collection(
   }
   const counts = new Map<string, number>();
   for (const item of inventory) counts.set(item.card_id, (counts.get(item.card_id) ?? 0) + 1);
-  const duplicates = [...counts.values()].filter((count) => count > 1).length;
+  const duplicates = [...counts.values()].reduce((total, count) => total + Math.max(0, count - 1), 0);
   return cabinetSummaryMessage({
     scopeName: ctx.tenant.name,
     currencySymbol: wallet.currencySymbol,
@@ -699,6 +719,7 @@ async function cardFace(
   const scope =
     providedScope ??
     (await resolveDiscordScope(ctx, installation, installation.channel_key ?? null));
+  if (scope.emptyReason) return scopeFailureMessage(scope);
   await assertCardInDiscordScope(ctx, scope, cardId);
   const found = await getCard(ctx, cardId, { includeAi: scope.aiArtEnabled });
   if (found.status !== "published")
@@ -758,6 +779,7 @@ async function cardDetails(
   const scope =
     providedScope ??
     (await resolveDiscordScope(ctx, installation, installation.channel_key ?? null));
+  if (scope.emptyReason) return scopeFailureMessage(scope);
   await assertCardInDiscordScope(ctx, scope, cardId);
   const found = await getCard(ctx, cardId, { includeAi: scope.aiArtEnabled });
   const owned = await first<{ copies: number; finishes: number; serials: string | null }>(
@@ -845,6 +867,7 @@ async function achievements(
   const scope =
     providedScope ??
     (await resolveDiscordScope(ctx, installation, installation.channel_key ?? null));
+  if (scope.emptyReason) return scopeFailureMessage(scope);
   const items = (await listAchievements(ctx, ctx.user!.id)).filter(
     (item) =>
       !item.criteria?.collection_id ||
@@ -944,9 +967,11 @@ async function profile(
   const scope =
     providedScope ??
     (await resolveDiscordScope(ctx, installation, installation.channel_key ?? null));
+  if (scope.emptyReason) return scopeFailureMessage(scope);
   const wallet = await getWalletSummary(ctx.db, ctx.tenant.id, ctx.user!.id, 1);
   const scopedCardIds = await discordScopeCardIds(ctx, scope);
-  const inventory = (await getInventory(ctx, { limit: 500 })).filter(
+  const allInventory=await getInventory(ctx,{limit:500});
+  const inventory = allInventory.filter(
     (item) =>
       scopedCardIds.has(item.card_id) &&
       (scope.aiArtEnabled || !isAiEditionOrigin(item.subject_origin)),
@@ -974,6 +999,7 @@ async function profile(
     currencySymbol: wallet.currencySymbol,
     balance: wallet.balance,
     ownedCards: inventory.length,
+    inventoryPartial: allInventory.length===500,
     uniqueCards: new Set(inventory.map((item) => item.card_id)).size,
     dailyAvailable: !next || next.getTime() <= Date.now(),
     nextDailyAt: next?.toISOString() ?? null,
@@ -1429,6 +1455,7 @@ function tourNav(
  */
 async function tourAlbum(ctx: Ctx, scope: DiscordScope) {
   const ranked = await rankDiscordAlbums(ctx, scope);
+  const scopedCards=await discordScopeCardIds(ctx,scope);
   for (const candidate of ranked) {
     if (candidate.collection.card_count <= 0) continue;
     let detail;
@@ -1441,7 +1468,12 @@ async function tourAlbum(ctx: Ctx, scope: DiscordScope) {
       listCollectionCards(ctx, detail.id, { includeAi: scope.aiArtEnabled }),
       collectionProgress(ctx, detail.id),
     ]);
-    if (cards.length === 0) continue;
+    const total=await first<{count:number}>(ctx.db,`SELECT COUNT(DISTINCT cd.id) AS count FROM fb_collection_cards cc
+      JOIN fb_card_definitions cd ON cd.id=cc.card_id AND cd.status='published' AND cd.archived_at IS NULL
+      WHERE cc.collection_id=?`,detail.id);
+    // The roster/progress helpers are broader than Discord scope. Withhold the
+    // album entirely if any published roster card is absent or out of scope.
+    if (cards.length === 0 || cards.length!==Number(total?.count??-1) || cards.some(card=>!scopedCards.has(card.id))) continue;
     return { detail, cards, progress };
   }
   return null;
@@ -1883,9 +1915,11 @@ async function tour(
   }
 
   if (stage === "progress") {
-    const inventory = (await getInventory(ctx, { collection: album.detail.slug, limit: 500 })).filter(
+    const checkedInventory=await getInventory(ctx,{collection:album.detail.slug,limit:500});
+    const inventory = checkedInventory.filter(
       (item) => scope.aiArtEnabled || !isAiEditionOrigin(item.subject_origin),
     );
+    const partial=checkedInventory.length===500;
     const unique = new Set(inventory.map((item) => item.card_id));
     const variants = new Set(inventory.map((item) => item.variant_id));
     const duplicates = inventory.length - unique.size;
@@ -1912,6 +1946,7 @@ async function tour(
     const expandedAfterUnlock = Boolean(
       completion && frozenRoster > 0 && frozenRoster < album.progress.total_cards,
     );
+    const canShareCompletion=scope.aiArtEnabled && album.detail.view_audience==="public" && await publiclyShareableAlbum(ctx,scope,album.detail.id);
     const celebration = album.progress.complete
       ? completion
         ? `Completion unlocked: **${completion.name}**${completion.reward_amount ? ` · +${completion.reward_amount} Foil credited once` : ""}${completion.earned_at ? ` · ${new Date(completion.earned_at).toISOString().slice(0, 10)}` : ""}${versionLabel ? ` · ${versionLabel}` : ""}${expandedAfterUnlock ? ` · the live roster has since expanded to ${album.progress.total_cards}; this earned version stays complete at ${frozenRoster}` : ""}`
@@ -1926,14 +1961,14 @@ async function tour(
             color: album.progress.complete ? 0x3f9d5a : 0x7c6b4f,
             fields: [
               {
-                name: "Unique subjects",
+                name: partial ? "Unique subjects in sample" : "Unique subjects",
                 value: `${unique.size}/${album.progress.total_cards}`,
                 inline: true,
               },
-              { name: "Owned copies", value: String(inventory.length), inline: true },
-              { name: "Duplicates", value: String(duplicates), inline: true },
+              { name: partial ? "Owned copies in sample" : "Owned copies", value: String(inventory.length), inline: true },
+              { name: partial ? "Duplicates in sample" : "Duplicates", value: String(duplicates), inline: true },
               {
-                name: "Variant progress",
+                name: partial ? "Variants in sample" : "Variant progress",
                 value: `${variants.size}/${album.progress.total_variants}`,
                 inline: true,
               },
@@ -1965,14 +2000,14 @@ async function tour(
                 inline: false,
               },
             ],
-            footer: { text: "Progress uses committed receipts, not local counters" },
+            footer: { text: partial ? "Sample of up to 500 recent copies · progress uses committed receipts" : "Progress uses committed receipts, not local counters" },
           },
         ],
         components: tourNav("progress", [
           [
             button("Achievements", "foilbury:achievements", 2),
             button("Share progress", "foilbury:tour:share", 2),
-            ...(album.progress.complete
+            ...(album.progress.complete && canShareCompletion
               ? [button("Share completion", `foilbury:tourshare:completion:${album.detail.id}`, 1)]
               : []),
           ],
@@ -1989,7 +2024,7 @@ async function tour(
         scopedCardIds.has(item.card_id) &&
         (scope.aiArtEnabled || !isAiEditionOrigin(item.subject_origin)),
     );
-    const channelAudience = channelAudienceFor(installation, channelId);
+    const channelAudience = "public" as const;
     let publicCard: (typeof inventory)[number] | null = null;
     for (const item of inventory.slice(0, 20)) {
       if ((await effectiveCardAudience(ctx, item.card_id)) === "public") {
@@ -2011,21 +2046,20 @@ async function tour(
         )
       : null;
     const canShareAlbumCard =
-      albumCard !== null &&
+      scope.aiArtEnabled && albumCard !== null &&
       (scope.aiArtEnabled || !["ai_assisted", "ai_generated"].includes(albumCardAi?.origin ?? "")) &&
       albumCardAudience !== "private" &&
       audienceRank(channelAudience) >= audienceRank(albumCardAudience);
-    const canShareCompletion =
-      album.detail.view_audience !== "private" &&
-      audienceRank(channelAudience) >= audienceRank(album.detail.view_audience);
+    const canShareProfile=scope.aiArtEnabled && scope.collections.every(collection=>collection.view_audience==="public");
+    const canShareCompletion=scope.aiArtEnabled && album.detail.view_audience==="public" && await publiclyShareableAlbum(ctx,scope,album.detail.id);
     const available = [
-      publicCard
+      scope.aiArtEnabled && publicCard
         ? `• Public showcase card: ${publicCard.card_name} — ${publicCard.variant_name}`
         : "",
       canShareAlbumCard && albumCard
-        ? `• Member album card: ${albumCard.card_name} — ${albumCard.variant_name}`
+        ? `• Album card: ${albumCard.card_name} — ${albumCard.variant_name}`
         : "",
-      "• Your profile summary (no wallet or private account data)",
+      canShareProfile ? "• Your profile summary (no wallet or private account data)" : "",
       album.progress.complete && canShareCompletion ? "• This complete album" : "",
     ].filter(Boolean);
     return callback(
@@ -2049,7 +2083,7 @@ async function tour(
                 name: "Available here",
                 value: available.length
                   ? available.join("\n")
-                  : "Only your profile summary is available in this channel.",
+                  : "No items are available to share here right now.",
                 inline: false,
               },
               ...(albumCard && !canShareAlbumCard
@@ -2057,7 +2091,7 @@ async function tour(
                     {
                       name: "Restricted artwork",
                       value:
-                        "This channel has not been verified for the member album's audience, so its card art stays private to you.",
+                        "This card stays in your private view. Public sharing is unavailable for it right now.",
                       inline: false,
                     },
                   ]
@@ -2068,13 +2102,13 @@ async function tour(
         ],
         components: tourNav("share", [
           [
-            ...(publicCard
+            ...(scope.aiArtEnabled && publicCard
               ? [button("Share public card", `foilbury:tourshare:card:${publicCard.id}`, 1)]
               : []),
             ...(canShareAlbumCard && albumCard
               ? [button("Share album card", `foilbury:tourshare:card:${albumCard.id}`, 1)]
               : []),
-            button("Share profile", `foilbury:tourshare:profile:${ctx.user!.id}`, 2),
+            ...(canShareProfile ? [button("Share profile", `foilbury:tourshare:profile:${ctx.user!.id}`, 2)] : []),
             ...(album.progress.complete && canShareCompletion
               ? [button("Share completion", `foilbury:tourshare:completion:${album.detail.id}`, 1)]
               : []),
@@ -2187,6 +2221,15 @@ async function tour(
   throw new ApiError(404, "tour_stage_unknown", "That tour stage is not recognised.");
 }
 
+async function publiclyShareableAlbum(ctx:Ctx,scope:DiscordScope,albumId:string):Promise<boolean> {
+  if(!scope.collectionIds.length || scope.collections.some(collection=>collection.view_audience!=="public")) return false;
+  const restricted=await first<{found:number}>(ctx.db,`SELECT 1 AS found FROM fb_collection_cards base
+    JOIN fb_collection_cards other ON other.card_id=base.card_id
+    LEFT JOIN fb_collections c ON c.id=other.collection_id
+    WHERE base.collection_id=? AND (c.id IS NULL OR c.status<>'published' OR c.archived_at IS NOT NULL OR c.view_audience<>'public' OR c.public_approved_at IS NULL OR c.id NOT IN (${scope.collectionIds.map(()=>"?").join(",")})) LIMIT 1`,albumId,...scope.collectionIds);
+  return !restricted;
+}
+
 async function tourShare(
   ctx: Ctx,
   interaction: DiscordInteraction,
@@ -2208,7 +2251,12 @@ async function tourShare(
     providedScope ??
     (await resolveDiscordScope(ctx, installation, interaction.channel_id));
   if (scope.emptyReason) throw new ApiError(403, "share_scope_empty", scope.emptyReason);
-  const channelAudience = channelAudienceFor(installation, interaction.channel_id);
+  // AI-off policy requires full render lineage, including recipe contributors.
+  // Until that proof is available, a stale share control must fail closed.
+  if (!scope.aiArtEnabled) return callback({content:"Public sharing is unavailable for this server right now. Your private view is still available.",allowed_mentions:{parse:[]}},true);
+  const channelAudience = "public" as const;
+  if ((kind === "profile" || kind === "completion") && scope.collections.some(collection=>collection.view_audience!=="public"))
+    throw new ApiError(403,"share_channel_audience","This summary includes restricted collection scope and cannot be shared publicly.");
   let embed: DiscordEmbed;
   let audience: "public" | "members" | "private" = "public";
   let render: { r2_key: string; mime: string; width: number; height: number } | null = null;
@@ -2260,7 +2308,8 @@ async function tourShare(
       row.card_id,
       ...scope.collectionIds,
     );
-    row.collection_name = scopedCollection?.name ?? row.collection_name;
+    if (!scopedCollection) throw new ApiError(403,"share_outside_scope","That collection is not available for this share.");
+    row.collection_name = scopedCollection.name;
     audience = await effectiveCardAudience(ctx, row.card_id);
     if (audience === "private") {
       throw new ApiError(403, "share_private_not_available", "Private collection artwork cannot be shared to a channel.");
@@ -2301,6 +2350,7 @@ async function tourShare(
         "That album is not enabled for this server. Nothing was shared.",
       );
     }
+    if(!(await publiclyShareableAlbum(ctx,scope,album.id))) throw new ApiError(403,"share_channel_audience","This album includes material that is not approved for public sharing.");
     const progress = await collectionProgress(ctx, album.id);
     if (!progress.complete)
       throw new ApiError(
@@ -2359,14 +2409,14 @@ async function tourShare(
       color: 0x7c6b4f,
       fields: [
         {
-          name: "Public showcase cards",
+          name: "Public showcase cards in sample",
           value: String(new Set(publicCards).size),
           inline: true,
         },
         { name: "Public badges", value: String(publicBadges.length), inline: true },
       ],
       footer: {
-        text: "Only approved public counts · no wallet, email, member roster, session or administrator data",
+        text: "Sample of up to 20 copies · approved public counts · no wallet or account details",
       },
     };
   }
@@ -2439,21 +2489,21 @@ export async function runCommand(
     case "missions":
       return missionsView(ctx);
     case "collection":
-      return collection(ctx, installation);
+      return collection(ctx, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
     case "card": {
       const query = typeof values.query === "string" ? values.query.trim() : "";
       if (!query)
         throw new ApiError(422, "card_query_required", "Provide a card name, slug or ID.");
-      return card(ctx, query, installation);
+      return card(ctx, query, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
     }
     case "packs":
-      return packs(ctx, installation);
+      return packs(ctx, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
     case "achievements":
-      return achievements(ctx, installation);
+      return achievements(ctx, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
     case "tour":
       return tour(ctx, installation, "welcome", interaction.channel_id);
     case "profile":
-      return profile(ctx, installation);
+      return profile(ctx, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
     case "npc":
       return npcView(ctx, typeof values.name === "string" ? values.name : "");
     case "help":
@@ -2630,24 +2680,24 @@ export async function runComponent(
     if (!originalInteractionId || !/^[A-Za-z0-9_-]{4,80}$/.test(originalInteractionId)) {
       throw new ApiError(422, "redeliver_invalid", "That receipt retry control is incomplete.");
     }
-    return redeliverReceipt(ctx, interaction, originalInteractionId);
+    return redeliverReceipt(ctx, interaction, originalInteractionId, installation);
   }
-  if (customId === "foilbury:collection") return collection(ctx, installation);
+  if (customId === "foilbury:collection") return collection(ctx, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
   if (customId === "foilbury:daily") return daily(ctx, interaction);
   if (customId.startsWith("foilbury:mission:claim:")) {
     const key = customId.slice("foilbury:mission:claim:".length);
     const claimed = await claimDailyMission(ctx, key, `discord:${interaction.id}:mission:${key}`);
     return missionsView(ctx, `+${claimed.amount} Foil credited. Balance ${claimed.balance_after}.`);
   }
-  if (customId === "foilbury:packs") return packs(ctx, installation);
+  if (customId === "foilbury:packs") return packs(ctx, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
   if (customId === "foilbury:help") return help(ctx);
   if (customId.startsWith("foilbury:card:")) {
     const [, , cardId, variantId, action] = customId.split(":");
     if (!cardId)
       throw new ApiError(422, "card_component_invalid", "That card control is incomplete.");
     if (action === "front" || action === "back")
-      return cardFace(ctx, cardId, variantId ?? null, action, installation);
-    if (action === "details") return cardDetails(ctx, cardId, installation);
+      return cardFace(ctx, cardId, variantId ?? null, action, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
+    if (action === "details") return cardDetails(ctx, cardId, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
     throw new ApiError(404, "card_component_unknown", "That card control is not recognised.");
   }
   if (customId.startsWith("foilbury:confirm:")) {

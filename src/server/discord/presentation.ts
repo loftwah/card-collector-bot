@@ -1857,6 +1857,7 @@ export interface ProfileInput {
   currencySymbol: string;
   balance: number;
   ownedCards: number;
+  inventoryPartial?: boolean;
   uniqueCards?: number;
   dailyAvailable: boolean;
   nextDailyAt?: string | null;
@@ -1903,7 +1904,7 @@ export function profileMessage(input: ProfileInput): DiscordCallback {
       inline: true,
     });
   }
-  fields.push({ name: "Inventory scope", value: "This Bot across every server", inline: false });
+  fields.push({ name: "Inventory scope", value: input.inventoryPartial ? "Eligible collections in this channel · counts cover up to 500 recent copies" : "Eligible collections in this channel", inline: false });
   fields.push({
     name: "Privacy",
     value:
@@ -2208,14 +2209,14 @@ export const SAFE_ERROR_COPY: Record<string, SafeErrorCopy> = {
     kind: "denied",
     title: "This channel is not verified for that artwork",
     message:
-      "The card or album is wider than this channel's verified audience. Nothing was posted.",
-    nextStep: "Choose a public item, or ask a Bot Admin to verify the channel audience.",
+      "This item is not approved for public sharing. Nothing was posted.",
+    nextStep: "Choose a public-safe item. Restricted content stays in your private view.",
   },
   share_private_not_available: {
     kind: "denied",
     title: "Private artwork stays private",
     message: "Private collection artwork cannot be shared to a channel. Nothing was posted.",
-    nextStep: "Choose an approved public or member-safe item.",
+    nextStep: "Choose an approved public item.",
   },
   share_already_delivered: {
     kind: "empty",

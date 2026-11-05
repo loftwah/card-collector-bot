@@ -136,6 +136,13 @@ async function install() {
   return player;
 }
 
+async function grantRestrictedCollection(owner:Awaited<ReturnType<typeof ctxFor>>,collectionId:string) {
+  await send(interaction(command("help"),{id:`prepare-grant-${collectionId}`}));
+  const identity=await runtime.DB.prepare("SELECT user_id FROM fb_discord_identities WHERE tenant_id=? AND discord_user_id=? AND revoked_at IS NULL").bind(owner.tenant.id,DISCORD_USER_ID).first<{user_id:string}>();
+  if(!identity) throw new Error("Discord identity fixture missing.");
+  await runtime.DB.prepare("INSERT INTO fb_collection_viewers (collection_id,user_id,granted_by,created_at) VALUES (?,?,?,?)").bind(collectionId,identity.user_id,owner.user!.id,new Date().toISOString()).run();
+}
+
 describe("Discord HTTP interactions", () => {
   beforeEach(async () => {
     await bootstrap();
@@ -291,7 +298,7 @@ describe("Discord HTTP interactions", () => {
 
     const profile = await send(interaction(command("profile"), { id: "presentation-profile" }));
     expect(profile.payload.data?.embeds?.[0]?.title).toContain("Dean");
-    expect(JSON.stringify(profile.payload.data)).toContain("This Bot across every server");
+    expect(JSON.stringify(profile.payload.data)).toContain("Eligible collections in this channel");
 
     const denied = await send(
       interaction(command("admin", [{ name: "status", type: 1, options: [] }]), {
@@ -482,6 +489,7 @@ describe("Discord HTTP interactions", () => {
 
   it("posts a public share only after the private original is settled", async () => {
     const player = await ctxFor("cabinet", "player@foilbury.local");
+    await runtime.DB.prepare("UPDATE fb_bots SET ai_art_enabled=1 WHERE tenant_id=?").bind(player.tenant.id).run();
     const fixture = await fixturePool(player);
     // The signed interaction creates or reuses the Discord-linked player, so
     // resolve that durable identity before attaching a controlled owned card.
@@ -560,6 +568,7 @@ describe("Discord HTTP interactions", () => {
       .bind(collection.id, new Date().toISOString(), owner.tenant.id)
       .run();
     await setBalance(owner, owner.user!.id, 1000);
+    await grantRestrictedCollection(owner,collection.id);
     await runtime.DB.prepare(
       "UPDATE fb_discord_installations SET channel_audience_json = ? WHERE id = 'dci_test'",
     )
@@ -1133,8 +1142,9 @@ describe("Discord HTTP interactions", () => {
     expect(installation?.game_enabled).toBe(1);
   });
 
-  it("keeps restricted artwork ephemeral until the channel audience is verified", async () => {
+  it("keeps restricted artwork ephemeral even when the channel audience is marked members", async () => {
     const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    await runtime.DB.prepare("UPDATE fb_bots SET ai_art_enabled=1 WHERE tenant_id=?").bind(owner.tenant.id).run();
     const fixture = await fixturePool(owner);
     const collection = await createCollection(owner, {
       name: "Tour Members",
@@ -1152,6 +1162,7 @@ describe("Discord HTTP interactions", () => {
       .bind(collection.id, new Date().toISOString(), owner.tenant.id)
       .run();
     await setBalance(owner, owner.user!.id, 1000);
+    await grantRestrictedCollection(owner,collection.id);
     const publicReveal = await send(
       interaction(command("open", [{ name: "pool", type: 3, value: "test-pool" }]), {
         id: "restricted-public-reveal",
@@ -1186,11 +1197,10 @@ describe("Discord HTTP interactions", () => {
         id: "restricted-member-reveal",
       }),
     );
-    // The reveal stays private even when the channel audience would allow a
-    // share. Posting is a separate, explicit Share to channel action.
+    // Member artwork remains private even when the channel is labelled members.
     expect(memberReveal.payload.data?.flags).toBe(64);
     expect(memberReveal.payload.data?.embeds?.[0]?.title).toContain("Test One");
-    expect(JSON.stringify(memberReveal.payload.data)).toContain("Share to channel");
+    expect(JSON.stringify(memberReveal.payload.data)).not.toContain("Share to channel");
 
     const instance = await runtime.DB.prepare(
       "SELECT ci.id FROM fb_card_instances ci JOIN fb_memberships m ON m.user_id = ci.user_id WHERE ci.card_id = ? AND ci.status = 'owned' LIMIT 1",
@@ -1204,15 +1214,25 @@ describe("Discord HTTP interactions", () => {
         { id: "verified-share", type: 3 },
       ),
     );
-    expect(shared.payload.data?.flags).toBeUndefined();
-    expect(JSON.stringify(shared.payload.data)).toContain("Shared by");
+    expect(shared.payload.data?.flags).toBe(64);
+    expect(JSON.stringify(shared.payload.data)).not.toContain("Shared by");
+    expect(JSON.stringify(shared.payload.data)).not.toContain("attachment://");
     const duplicate = await send(
       interaction(
         { custom_id: `foilbury:tourshare:card:${instance?.id}`, component_type: 2 },
         { id: "verified-share-2", type: 3 },
       ),
     );
-    expect(duplicate.payload.data?.embeds?.[0]?.description).toMatch(/already shared/i);
+    expect(duplicate.payload.data?.flags).toBe(64);
+    expect(JSON.stringify(duplicate.payload.data)).not.toContain("Shared by");
+    expect((await runtime.DB.prepare("SELECT COUNT(*) n FROM fb_discord_shares WHERE object_type='card'").first<{n:number}>())?.n).toBe(0);
+    for(const customId of [`foilbury:tourshare:completion:${collection.id}`,`foilbury:tourshare:profile:any`]) {
+      const result=await send(interaction({custom_id:customId,component_type:2},{id:`deny-${customId}`,type:3}));
+      expect(result.payload.data?.flags).toBe(64);
+      expect(JSON.stringify(result.payload.data)).not.toContain("Shared by");
+      expect(JSON.stringify(result.payload.data)).not.toContain("Tour Members");
+    }
+    expect((await runtime.DB.prepare("SELECT COUNT(*) n FROM fb_discord_shares").first<{n:number}>())?.n).toBe(0);
   });
 
   it("selects the server's enabled album without a hard-coded slug", async () => {

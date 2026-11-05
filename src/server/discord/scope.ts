@@ -11,6 +11,7 @@ import {
   type Audience,
 } from "../modules/visibility";
 import { channelAudienceFor } from "./context";
+import { assertChannelAllowed, parseChannelPolicy } from "./channel-policy";
 import type { DiscordInstallation } from "./types";
 
 export interface DiscordScopeCollection {
@@ -82,6 +83,10 @@ export async function resolveDiscordScope(
   channelId: string | null | undefined,
 ): Promise<DiscordScope> {
   const channel = channelId ?? null;
+  const { allowedChannels } = parseChannelPolicy(installation);
+  // Headless previews may omit a Discord channel; they then use public audience.
+  // A supplied destination must be allowed by the installation.
+  if (channel !== null) assertChannelAllowed(allowedChannels, channel);
   const channelAudience = channelAudienceFor(installation, channel);
   const allowlist = parseAllowlist(installation.collection_allowlist_json);
   const bot = installation.bot_id
@@ -167,10 +172,31 @@ export async function resolveDiscordScope(
   }
 
   const access = await viewerAccess(ctx);
-  const eligible = configured.filter((collection) => canViewAudience(access, collection));
+  const principal=ctx.discordPrincipal;
+  let provisionedOwner=false;
+  if (principal) {
+    const live=await first<{id:string;platform_admin:number;active_platform_admin:number}>(ctx.db,`SELECT di.id,u.platform_admin,
+      EXISTS (SELECT 1 FROM fb_platform_admins pa WHERE pa.user_id=u.id AND pa.status='active' AND pa.revoked_at IS NULL) AS active_platform_admin
+      FROM fb_discord_identities di
+      JOIN fb_users u ON u.id=di.user_id AND u.disabled_at IS NULL AND u.is_synthetic=0
+      JOIN fb_memberships m ON m.user_id=u.id AND m.tenant_id=di.tenant_id AND m.status='active' AND m.revoked_at IS NULL
+      JOIN fb_discord_installations ins ON ins.tenant_id=di.tenant_id AND ins.id=? AND ins.application_id=? AND ins.guild_id=? AND ins.active=1 AND ins.revoked_at IS NULL AND ins.game_enabled=1
+        AND ins.bot_id IS ? AND ins.channel_allowlist_json IS ? AND ins.channel_audience_json IS ? AND ins.collection_allowlist_json IS ? AND ins.configuration_revision IS ?
+      WHERE di.tenant_id=? AND di.user_id=? AND di.discord_user_id=? AND di.revoked_at IS NULL`,
+      installation.id,principal.applicationId,principal.guildId,installation.bot_id??null,installation.channel_allowlist_json,installation.channel_audience_json??null,installation.collection_allowlist_json??null,installation.configuration_revision??1,installation.tenant_id,ctx.user?.id??'',principal.discordUserId);
+    if (!live || principal.channelId!==channel) return empty("Your Discord access changed. Reconnect your account or ask the Bot Owner for help.");
+    provisionedOwner=ctx.user?.id==='usr_prod_owner' && live.platform_admin===1 && live.active_platform_admin===1;
+  }
+  // Discord onboarding can automatically create an active Bot membership. It is
+  // not an explicit admission to restricted collections: require a direct
+  // viewer grant, except for the separately provisioned production owner.
+  const eligible = configured.filter((collection) =>
+    canViewAudience(access, collection) && (!principal || collection.view_audience==='public' ||
+      provisionedOwner || access.explicitCollectionIds.has(collection.id)));
+
   if (eligible.length === 0) {
     return empty(
-      "Your account is not an active member of any collection enabled for this server. Ask the Bot Owner to restore membership. Nothing was charged.",
+      "Your account is not admitted to the collections enabled for this server. Ask the Bot Owner for access. Nothing was charged.",
       configuredCollectionIds,
     );
   }
@@ -248,12 +274,12 @@ export async function assertCardInDiscordScope(
   scope: DiscordScope,
   cardId: string,
 ): Promise<{ collectionIds: string[]; audience: Audience }> {
-  const rows = await all<{ collection_id: string; view_audience: Audience }>(
+  const rows = await all<{ collection_id: string | null; view_audience: Audience; status:string | null; public_approved_at:string | null }>(
     ctx.db,
-    `SELECT c.id AS collection_id, c.view_audience
+    `SELECT c.id AS collection_id, c.view_audience, c.status, c.public_approved_at
        FROM fb_collection_cards cc
-       JOIN fb_collections c ON c.id = cc.collection_id
-      WHERE cc.card_id = ? AND c.archived_at IS NULL AND c.status = 'published'`,
+       LEFT JOIN fb_collections c ON c.id = cc.collection_id
+      WHERE cc.card_id = ? AND (c.id IS NULL OR c.archived_at IS NULL)`,
     cardId,
   );
   if (rows.length === 0) {
@@ -263,7 +289,8 @@ export async function assertCardInDiscordScope(
       "That card is not filed in an enabled collection for this server. Nothing was charged.",
     );
   }
-  const outside = rows.filter((row) => !scopeIncludesCollection(scope, row.collection_id));
+  const outside = rows.filter((row) => !row.collection_id || row.status!=="published" ||
+    (row.view_audience==="public" && !row.public_approved_at) || !scopeIncludesCollection(scope, row.collection_id));
   if (outside.length > 0) {
     throw new ApiError(
       403,
@@ -281,7 +308,7 @@ export async function assertCardInDiscordScope(
       "This channel has not been verified for that card's audience. Restricted artwork stays private.",
     );
   }
-  return { collectionIds: rows.map((row) => row.collection_id), audience };
+  return { collectionIds: rows.map((row) => row.collection_id!), audience };
 }
 
 export interface RankedAlbum {
@@ -300,15 +327,18 @@ export async function rankDiscordAlbums(
   scope: DiscordScope,
 ): Promise<RankedAlbum[]> {
   if (!ctx.user) return [];
+  const visibleCardIds=await discordScopeCardIds(ctx,scope);
   const rows = await all<{ collection_id: string; owned: number }>(
     ctx.db,
     `SELECT cc.collection_id, COUNT(DISTINCT ci.card_id) AS owned
        FROM fb_card_instances ci
        JOIN fb_collection_cards cc ON cc.card_id = ci.card_id
       WHERE ci.tenant_id = ? AND ci.user_id = ? AND ci.status IN ('owned','reserved')
+        AND ci.card_id IN (SELECT value FROM json_each(?))
       GROUP BY cc.collection_id`,
     ctx.tenant.id,
     ctx.user.id,
+    JSON.stringify([...visibleCardIds]),
   );
   const owned = new Map(rows.map((row) => [row.collection_id, Number(row.owned)]));
   return scope.collections
@@ -368,14 +398,15 @@ export async function discordScopeCardIds(
     `SELECT DISTINCT cc.card_id
        FROM fb_collection_cards cc
        JOIN fb_collections c ON c.id = cc.collection_id
+       JOIN fb_card_definitions cd ON cd.id=cc.card_id AND cd.status='published' AND cd.archived_at IS NULL
       WHERE cc.collection_id IN (${placeholders})
         AND c.status = 'published' AND c.archived_at IS NULL
         AND NOT EXISTS (
           SELECT 1 FROM fb_collection_cards other
-          JOIN fb_collections oc ON oc.id = other.collection_id
+          LEFT JOIN fb_collections oc ON oc.id = other.collection_id
            WHERE other.card_id = cc.card_id
-             AND oc.status = 'published' AND oc.archived_at IS NULL
-             AND oc.id NOT IN (${placeholders})
+             AND (oc.id IS NULL OR (oc.archived_at IS NULL AND
+               (oc.status <> 'published' OR (oc.view_audience='public' AND oc.public_approved_at IS NULL) OR oc.id NOT IN (${placeholders}))))
         )`,
     ...scope.collectionIds,
     ...scope.collectionIds,

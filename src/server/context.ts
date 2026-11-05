@@ -60,6 +60,8 @@ export interface Actor {
 export interface Ctx {
   db: D1Database;
   media: R2Bucket;
+  /** Set only after a verified Discord interaction has resolved its identity. */
+  discordPrincipal?: { discordUserId: string; guildId: string; applicationId: string; channelId: string };
   config: RuntimeConfig;
   requestId: string;
   /**

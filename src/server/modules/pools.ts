@@ -208,6 +208,11 @@ export async function getPoolPreview(
         AND v.status = 'published' AND v.archived_at IS NULL AND cd.status = 'published' AND cd.archived_at IS NULL
         AND r.id IS NOT NULL
         AND (${visibility.sql})
+        ${options?.scope ? `AND NOT EXISTS (
+          SELECT 1 FROM fb_collection_cards scoped_link LEFT JOIN fb_collections scoped_c ON scoped_c.id=scoped_link.collection_id
+          WHERE scoped_link.card_id=cd.id AND (scoped_c.id IS NULL OR (scoped_c.archived_at IS NULL AND
+            (scoped_c.status<>'published' OR (scoped_c.view_audience='public' AND scoped_c.public_approved_at IS NULL)
+             OR scoped_c.id NOT IN (SELECT value FROM json_each(?))))))` : ""}
         AND (
           (v.tenant_id = pe.tenant_id AND cd.tenant_id = pe.tenant_id)
           OR EXISTS (
@@ -228,6 +233,7 @@ export async function getPoolPreview(
     pool.id,
     pool.revision,
     ...visibility.params,
+    ...(options?.scope ? [JSON.stringify(options.scope.collectionIds)] : []),
   );
   const eligible: EligibleEntry[] = [];
   let unfiledCount = 0;
