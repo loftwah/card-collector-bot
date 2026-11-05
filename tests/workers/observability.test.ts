@@ -20,12 +20,13 @@ describe("delivery health is based on verified outcomes", () => {
   });
 
   it("distinguishes configured-unverified, healthy and degraded", async () => {
-    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const base = await ctxFor("cabinet", "owner@foilbury.local");
+    const unconfigured = { ...base, config: { ...base.config, providers: { ...base.config.providers, discordApplication: false } } };
+    expect((await operationsStatus(unconfigured)).discord.status).toBe("unavailable");
+    const owner = { ...base, config: { ...base.config, providers: { ...base.config.providers, discordApplication: true } } };
     const empty = await operationsStatus(owner);
-    if (empty.discord.connected) {
-      expect(empty.discord.status).toBe("configured_unverified");
-      expect(empty.discord.recent.total).toBe(0);
-    }
+    expect(empty.discord.status).toBe("configured_unverified");
+    expect(empty.discord.recent.total).toBe(0);
 
     const now = new Date().toISOString();
     await interaction("obs-ok", "completed", null, now);
