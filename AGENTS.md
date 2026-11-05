@@ -1,18 +1,32 @@
 # Foilbury agent workflow
 
-Read `PRODUCT.md`, `DESIGN.md`, `docs/AGENT_GUIDE.md` and `docs/DISCORD_ACCEPTANCE.md` before changing this repository. The production origin is `https://foilbury.loftwah.com`; the canonical local origin is `http://localhost:5173`.
+## Delivery contract — current owner direction
+
+This section supersedes older routine approval/checkpoint and blanket testing defaults. Explicit task-specific owner holds, security/privacy, wallet and inventory integrity, credentials, spending, destructive operations and final-art approval remain binding.
+
+A draft PR is unfinished work. The delivery owner carries authorised runtime changes through implementation, review, merge, existing-target deployment and a focused live check. A worker hand-off, green test or merged runtime change is not delivery. Report `IN_PROGRESS`, `BLOCKED` or `PRODUCTION_VERIFIED`; documentation/tooling-only changes finish on the default branch with their relevant check, without redeploying an unchanged application.
+
+A current implementation/delivery request authorises routine commit, push, review, merge and existing-target deployment within that scope. Do not request the same permission again at each checkpoint. Respect actual branch protections and specific holds. New paid work, public showcase approval, private-content publication, irreversible changes and production data operations retain their separate safeguards.
+
+Recover existing PRs first. One parent/integrator owns worker changes until delivered. Finish the oldest executable delivery before opening unrelated work; stop spawning branches when integration/release is the bottleneck. A blocked draft remains unfinished, not a completed worker slot. Keep related fixes in a coherent delivery unit rather than creating one PR per review finding or receipt.
+
+During implementation run focused tests and relevant static checks. Docs-only edits need diff/link/contract checks, not all product suites. A UI change needs its affected real journey and representative phone/desktop inspection; auth, privacy, wallets, trades, inventory and migrations require their relevant negative and integrity tests. Run integrated release checks once per coherent candidate, not per worker, commit or hand-off. Reuse evidence only while its source, configuration and dependencies remain valid. Fix real failures; never forge receipts, report skips as passes or delete useful assertions to get green. A redundant executable gate must be corrected with its focused regression, not silently bypassed.
+
+Keep review and evidence proportional. Report an actual blocker immediately in the existing PR/issue with the failing step, risk and next action. Do not create repeated audit cycles, evidence-only PRs or fresh human acceptance gates for routine reversible fixes. A missing physical device does not block unrelated software delivery. Preserve active agents' changes, reread current instructions and use one integration writer.
+
+Read `PRODUCT.md`, `DESIGN.md`, `docs/AGENT_GUIDE.md` and `docs/DISCORD_ACCEPTANCE.md` when their scope is affected. The production origin is `https://foilbury.loftwah.com`; the canonical local origin is `http://localhost:5173`.
 
 ## Required skills
 
-Use the installed project skills under `.agents/skills/` through the harness, not by copying files into prompts:
+Use the installed project skills under `.agents/skills/` through the harness, not by copying files into prompts. Load only skills relevant to the changed outcome; do not rerun their entire workflow for every follow-up edit:
 
-- `impeccable` for any UI/UX change. Run its context script, critique the rendered product, implement, polish, then audit in the browser. A clean detector is not design acceptance.
+- `impeccable` for UI/UX work: inspect the rendered result, correct concrete defects and check the affected journey. A clean detector is not design acceptance.
 - `shadcn` for component work. Inspect `components.json` and the resolved UI alias before adding components. Use the project token palette; do not introduce a second primitive library or palette.
-- `cloudflare-one`, `wrangler` and `workers-best-practices` before Access, Worker, D1, R2 or deployment changes.
-- `building-emdash-site`, `creating-plugins` and `emdash-cli` before EmDash schema, admin, auth or deployment changes.
-- Playwright for real browser journeys, screenshots, network/console inspection and axe checks.
+- `cloudflare-one`, `wrangler` and `workers-best-practices` for affected Access, Worker, D1, R2 or deployment work.
+- `building-emdash-site`, `creating-plugins` and `emdash-cli` for affected EmDash schema, admin, auth or deployment work.
+- Playwright for affected real browser journeys, screenshots, network/console inspection and axe checks.
 
-Record source → installed location → actual use → findings → changes → evidence in `docs/SKILLS.md`.
+Record a material skill installation/adoption change in `docs/SKILLS.md`; ordinary reuse does not require another provenance report.
 
 ## Identity and authority
 
@@ -40,7 +54,7 @@ Record source → installed location → actual use → findings → changes →
 - Before a production data change: inspect the live state, take a D1 JSON backup (`node scripts/backup-d1-json.mjs`), prepare rollback, then apply an idempotent migration or trusted provisioning script.
 - Do not reset, clean or overwrite an active checkout. Preserve `.foilbury/`, `.dev.vars`, `.env` and existing evidence.
 - Never rotate the Discord bot token, OAuth secret, application identity or Access policy without a demonstrated need.
-- Run `pnpm check` and the relevant Playwright scripts before deploying. Do not count skipped or mocked human steps as passes.
+- Run `pnpm check` once for an integrated runtime release and select relevant Playwright scripts by the changed behaviour below. Do not repeat the same checks at intermediate hand-offs or count skipped or mocked human steps as passes.
 - Keep `.dev.vars` out of the production bundle; `scripts/deploy-production.mjs` removes it.
 
 ## Album increment rules (2026-11-03)
@@ -59,26 +73,28 @@ Record source → installed location → actual use → findings → changes →
 - Do not run paid generation without a recorded bounded ceiling. The launch art
   is a deterministic, clearly labelled original interpretation.
 - `pnpm test` includes unit, Workers, achievement, gift and visibility tests.
-  Run `node scripts/test-album-e2e.mjs` and `node scripts/test-privacy.mjs`
-  against the local server before deploying.
+  Album, inventory or visibility changes require the affected cases in
+  `node scripts/test-album-e2e.mjs` and `node scripts/test-privacy.mjs`
+  against the local server before deploying. Unrelated copy/docs changes do not
+  require rerunning both whole suites.
 - Production data changes require a JSON backup first
   (`node scripts/backup-d1-json.mjs`), a reversible migration and a live smoke
   check. Do not seed over live edits.
 
-## Product quality gate (2026-11-03)
+## Product verification by affected scope
 
-A change is not complete because unit tests pass or a detector is clean. Before
-deployment, run the real product:
+A change is not complete because unit tests pass or a detector is clean. Check
+its actual product behaviour. The following are available checks, selected by
+risk rather than a mandatory all-suite checklist for every deployment:
 
-- `pnpm test:ui` — rendered axe, light/dark, mobile and 200% zoom.
-- `pnpm test:product` — public/member journeys, real totals, card 5:7 geometry,
-  no nested interactive controls, forced failure/retry, no-JS filters, admin and
-  mobile, plus deliberate negative controls.
-- `pnpm test:artwork` — local editor preview, strong-auth gate, TOTP recovery,
-  save, persisted composition and cleanup.
-- `pnpm perf:local` — record LCP/CLS/bytes; do not treat Vite dev JS as the
-  production bundle.
-- Inspect the same screens before and after. A screenshot that still contains the
+- `pnpm test:ui` — affected rendered accessibility, theme, mobile and zoom work.
+- `pnpm test:product` — affected public/member journeys, totals, card geometry,
+  failure/retry, filters, admin and mobile work; preserve relevant negative controls.
+- `pnpm test:artwork` — artwork editor, strong-auth, TOTP recovery, save,
+  persisted composition and cleanup when those surfaces change.
+- `pnpm perf:local` — meaningful asset, loading or rendering performance changes;
+  do not benchmark unchanged pages or treat Vite dev JS as the production bundle.
+- Inspect affected screens before and after. A screenshot still containing the
   reported defect is not a pass. Keep private screenshots under `.foilbury/`.
 
 Card contract: one 5:7 object; art and information bands are reserved; controls
@@ -86,5 +102,7 @@ live outside the object; type is container-relative; only square opaque avatars
 get a medallion crop; tall/wide art is contained. Member surfaces show the saved
 front/back renders, not re-composed private source layers.
 
-Deployment and production render batches remain approval-gated. A successful
-local run is not a deployed revision.
+Routine deployment is covered by the current delivery instruction, not a fresh
+blanket approval gate. Production data/render batches, paid generation and public
+showcase promotion retain their specific authority and safeguards. A successful
+local run is not a deployed revision; confirm the affected live behaviour.
