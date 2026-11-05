@@ -44,6 +44,7 @@ export default function ClaimButton({
   return (
     <div>
       <Button
+        className="h-auto min-h-11 max-w-full whitespace-normal py-2"
         onClick={claim}
         disabled={busy || !enabled}
         variant={enabled ? "primary" : "secondary"}
