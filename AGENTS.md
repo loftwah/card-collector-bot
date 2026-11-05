@@ -1,5 +1,18 @@
 # Foilbury agent workflow
 
+## Routine change-to-production service target — current owner direction
+
+**Default target: 3 minutes; maximum normal target: 5 minutes from the first relevant code change to verified production.** This is the expected end-to-end delivery time for routine, low-risk, independently releasable changes, **not** five minutes each for tests, review, merge, build and deploy. The integrating agent owns the whole elapsed interval and cannot reset the clock by creating a PR, changing workers, handing off, rebasing or splitting a change. Measure elapsed time honestly; do not promise an actual release deadline that external systems cannot guarantee.
+
+- Use only the smallest checks justified by the changed behaviour while implementing; re-use valid checks and build outputs. For routine changes, keep all automated validation within the same 3–5-minute end-to-end budget. Do not perform comprehensive browser matrices, repeated full builds, multi-agent review cycles or general audits as default release ceremony.
+- Integrate, publish to the existing production environment and verify the affected real behaviour without waiting for another prompt. A draft PR, worktree, passed test or merged code is **not** completion.
+- **Exceptions must be real and specific:** a failing security or privacy guard, possible loss/corruption of saves or financial/collectible data, gameplay or device-safety invariants, an incompatible migration, branch protection, explicit owner hold, unavailable production credentials/provider, or a genuinely large or dependent change may require more than five minutes. Never bypass a real safeguard or conceal a failure to hit the target.
+- At the moment a delivery exceeds five minutes, report the concrete reason, elapsed time, stage consuming time, and next executable action in the existing task/PR; continue resolving it or deliver other genuinely independent work without flooding the integration queue. No generic 'testing', 'review', 'qualification' or 'awaiting acceptance' explanation is sufficient.
+- If an existing mandatory gate makes normal low-risk delivery consistently exceed five minutes, treat the **gate itself as a performance defect**: measure the costly stages and safely simplify, cache or scope it without deleting assertions protecting actual risk. Do not keep growing a draft backlog behind it.
+- For a change that does not affect the deployed runtime (documentation, tests or internal tooling), completion is integration into `main` and the relevant focused check, not a pointless production redeploy. Do not game delivery metrics by turning one coherent change into dozens of tiny PRs.
+- Preserve all uncommitted, branch-only and worktree-only changes before any cleanup. No deletion or retirement based on the assumption that a draft was already delivered.
+
+
 ## Delivery contract — current owner direction
 
 This section supersedes older routine approval/checkpoint and blanket testing defaults. Explicit task-specific owner holds, security/privacy, wallet and inventory integrity, credentials, spending, destructive operations and final-art approval remain binding.
