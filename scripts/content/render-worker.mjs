@@ -6,7 +6,8 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { composeCard, composeCardBack } from "../../art/compose.mjs";
+import { composeCardBack } from "../../art/compose.mjs";
+import { renderQueuedFront } from "./render-queued-front.mjs";
 import { apiForm, apiJson, BASE_URL, agentToken, accessHeaders } from "../lib/api.mjs";
 
 const root = process.cwd();
@@ -75,20 +76,7 @@ while (true) {
         markPath = "";
       }
     }
-    await composeCard({
-      subjectPath,
-      backgroundPath: payload.background_asset_id ? backgroundPath : null,
-      material: payload.material_key,
-      effect: payload.effect_key ?? "none",
-      name: payload.card_name,
-      subtitle: meta?.subtitle ?? "",
-      setName: meta?.collections?.[0]?.name ?? "Cabinet",
-      serial: meta?.collections?.[0]?.view_audience === "public" ? "PUBLIC SHOWCASE" : "MEMBER EDITION",
-      className: meta?.class?.name ?? "",
-      rarity: meta?.rarity?.name ?? "",
-      markPath,
-      outputPath,
-    });
+    await renderQueuedFront({ payload, meta, subjectPath, backgroundPath, markPath, outputPath });
     const backSource = backBySlug.get(payload.card_slug) ?? backByName.get(payload.card_name);
     let backBytes;
     if (backSource) {
