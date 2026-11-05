@@ -517,6 +517,15 @@ function AdminOverview() {
   );
 }
 
+function SavedArtworkReference({ url, name }: { url: string; name: string }) {
+  const [failed, setFailed] = useState(false);
+  return failed ? (
+    <p className="mt-2 text-xs text-[var(--muted)]" role="status">Saved render could not be loaded. Check access or render status.</p>
+  ) : (
+    <img className="mt-2 h-auto w-full" src={url} alt={`Saved render of ${name}`} onError={() => setFailed(true)} />
+  );
+}
+
 function AdminCatalogue() {
   const [cards, setCards] = useState<Card[]>([]);
   const [taxonomy, setTaxonomy] = useState<Taxonomy | null>(null);
@@ -542,6 +551,10 @@ function AdminCatalogue() {
     ? "gold"
     : (artwork.materials[0] ?? "plain");
   const previewEffect = artwork.materials.includes("holographic") ? "holographic" : null;
+  const referenceEdition = artworkFor?.editions.find((edition) => edition.id === revising?.editionId);
+  const referenceVariant = referenceEdition?.variants.find((variant) =>
+    variant.material_key === previewMaterial && (variant.effect_key ?? "none") === (previewEffect ?? "none"),
+  );
   const [uploading, setUploading] = useState("");
   const [uploadKind, setUploadKind] = useState<"subject" | "background">("subject");
   const [search, setSearch] = useState("");
@@ -1370,7 +1383,7 @@ function AdminCatalogue() {
           <DialogTitle>{revising ? "Revise artwork for" : "Add artwork to"} {artworkFor?.name}</DialogTitle>
           <DialogDescription>
             Choose an uploaded subject and optional background, then create explicit finish
-            variants. The render queue composes the public image.
+            variants. The render queue composes the saved image for each finish.
           </DialogDescription>
           <div className="mt-5 grid gap-3">
             {error ? (
@@ -1521,7 +1534,7 @@ function AdminCatalogue() {
                     showToolbar={false}
                   />
                   <p className="mt-2 text-center font-mono text-[0.55rem] tracking-[0.1em] text-[var(--muted)] uppercase">
-                    Live composition preview
+                    Approximate placement
                   </p>
                 </div>
                 <div className="grid gap-3">
@@ -1538,7 +1551,7 @@ function AdminCatalogue() {
                         })
                       }
                     >
-                      <option value="contain">Fit the whole artwork — no crop</option>
+                      <option value="contain">Fit artwork in the window</option>
                       <option value="fill">Fill the art window — intentional crop</option>
                       <option value="medallion">Medallion — square avatars</option>
                     </Select>
@@ -1608,10 +1621,19 @@ function AdminCatalogue() {
                     </Button>
                   </div>
                   <p className="text-xs leading-relaxed text-[var(--muted)]">
-                    A tall character stays complete in Fit mode. Fill is the explicit choice for a
-                    background or a deliberate close crop. The saved placement is applied by the
-                    render queue and the live card preview.
+                    This preview estimates placement. The saved render can differ in cropping,
+                    transparent padding, lighting and text. Zoom or movement can crop artwork even
+                    in Fit mode; check the resulting render before relying on it.
                   </p>
+                  {referenceEdition ? (
+                    <details className="border-t border-[var(--line)] pt-3">
+                      <summary className="cursor-pointer text-sm font-semibold">Compare saved {referenceVariant?.name ?? "finish"}</summary>
+                      <p className="mt-1 text-xs text-[var(--muted)]">Original edition, before these edits.</p>
+                      {referenceVariant?.render_url ? (
+                        <div className="max-w-[220px]"><SavedArtworkReference key={`${referenceVariant.id}:${referenceVariant.render_url}`} url={referenceVariant.render_url} name={artworkFor?.name ?? "Card"} /></div>
+                      ) : <p className="mt-2 text-xs text-[var(--muted)]">No saved render is available for this finish.</p>}
+                    </details>
+                  ) : null}
                 </div>
               </div>
             ) : null}
