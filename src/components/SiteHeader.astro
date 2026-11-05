@@ -114,15 +114,16 @@ if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform"
     </div>
   </div>
 </header>
-<script is:inline>
+<script>
   document.addEventListener("click", (event) => {
-    document.querySelectorAll(".site-header details[open]").forEach((details) => {
-      if (!details.contains(event.target)) details.open = false;
+    if (!(event.target instanceof Node)) return;
+    document.querySelectorAll<HTMLDetailsElement>(".site-header details[open]").forEach((details) => {
+      if (!details.contains(event.target as Node)) details.open = false;
     });
   });
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
-    document.querySelectorAll(".site-header details[open]").forEach((details) => {
+    document.querySelectorAll<HTMLDetailsElement>(".site-header details[open]").forEach((details) => {
       details.open = false;
     });
   });
