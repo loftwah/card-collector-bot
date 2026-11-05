@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Heart, Loader2, Lock, Search } from "lucide-react";
-import { api, describeError } from "@/lib/client";
+import { ApiClientError, api, describeError } from "@/lib/client";
 import { cn, printTitle } from "@/lib/utils";
 
 interface Item {
@@ -35,6 +35,7 @@ const PAGE_SIZE = 24;
 export default function CollectionBrowser({
   initialItems,
   initialTotal,
+  scopeKey,
   sets,
   collections = [],
   initialCollection = "",
@@ -44,6 +45,7 @@ export default function CollectionBrowser({
 }: {
   initialItems: Item[];
   initialTotal?: number;
+  scopeKey: string;
   sets: Array<{ slug: string; name: string }>;
   collections?: Array<{ slug: string; name: string; logo_url: string | null }>;
   initialCollection?: string;
@@ -59,13 +61,20 @@ export default function CollectionBrowser({
   const [collectionSlug, setCollectionSlug] = useState(initialCollection);
   const [hydrated, setHydrated] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [placeholderCount, setPlaceholderCount] = useState(8);
+  const [placeholderHeight, setPlaceholderHeight] = useState(0);
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const initialScope = useRef(scopeKey);
+  const [scopeInvalidated, setScopeInvalidated] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
   const [failedFilter, setFailedFilter] = useState<FilterState | null>(null);
+  const [failedMode, setFailedMode] = useState<"replace" | "append" | null>(null);
   const requestId = useRef(0);
   const abort = useRef<AbortController | null>(null);
 
   const hasMore = items.length < total;
+  const scopeChanged = scopeInvalidated || initialScope.current !== scopeKey;
 
   const load = useCallback(
     async (next: Partial<FilterState> = {}, mode: "replace" | "append" = "replace") => {
@@ -81,9 +90,16 @@ export default function CollectionBrowser({
       abort.current = controller;
       const offset = mode === "append" ? items.length : 0;
       if (mode === "append") setLoadingMore(true);
-      else setLoading(true);
+      else {
+        setPlaceholderCount(Math.min(PAGE_SIZE, Math.max(1, items.length || 8)));
+        setPlaceholderHeight(gridRef.current?.offsetHeight ?? 0);
+        setItems([]);
+        setTotal(0);
+        setLoading(true);
+      }
       setError("");
       setFailedFilter(null);
+      setFailedMode(null);
 
       const params = new URLSearchParams();
       if (filters.search) params.set("search", filters.search);
@@ -118,6 +134,13 @@ export default function CollectionBrowser({
         if (controller.signal.aborted || sequence !== requestId.current) return;
         setError(describeError(cause));
         setFailedFilter(filters);
+        const authLost =
+          cause instanceof ApiClientError && (cause.status === 401 || cause.status === 403);
+        if (authLost) {
+          setItems([]);
+          setTotal(0);
+        }
+        setFailedMode(authLost ? "replace" : mode);
       } finally {
         if (sequence === requestId.current) {
           setLoading(false);
@@ -157,6 +180,15 @@ export default function CollectionBrowser({
     return () => abort.current?.abort();
   }, []);
 
+  useEffect(() => {
+    if (initialScope.current === scopeKey) return;
+    abort.current?.abort();
+    requestId.current += 1;
+    setItems([]);
+    setTotal(0);
+    setScopeInvalidated(true);
+  }, [scopeKey]);
+
   async function favourite(item: Item) {
     const next = !item.favourite;
     setItems((current) =>
@@ -181,6 +213,14 @@ export default function CollectionBrowser({
       ? `${countLabel} in this view`
       : `${items.length} of ${countLabel} loaded`;
   const hasFilters = Boolean(search || favouriteOnly || setSlug || collectionSlug);
+
+  if (scopeChanged) {
+    return (
+      <p className="notice" role="alert">
+        Your account or Bot changed. Reload this page to view the current collection.
+      </p>
+    );
+  }
 
   return (
     <div data-hydrated={hydrated ? "true" : "false"}>
@@ -283,7 +323,11 @@ export default function CollectionBrowser({
           className="font-mono text-[0.62rem] tracking-[0.12em] text-[var(--muted)] uppercase"
           aria-live="polite"
         >
-          {loading ? "Loading your cards…" : visibleLabel}
+          {loading
+            ? "Loading your cards…"
+            : failedFilter && failedMode === "replace"
+              ? "Filters not applied"
+              : visibleLabel}
         </p>
         <p className="font-mono text-[0.58rem] tracking-[0.12em] text-[var(--muted)] uppercase">
           Foil ledger lives on the server
@@ -293,10 +337,15 @@ export default function CollectionBrowser({
       {error ? (
         <div className="error-box mt-4" role="alert">
           <p>{error}</p>
+          {failedFilter && failedMode === "replace" ? (
+            <p className="mt-1 text-sm">
+              The selected filters could not be loaded. Try again to see your cards.
+            </p>
+          ) : null}
           <button
             type="button"
             className="btn btn-secondary btn-sm mt-2"
-            onClick={() => void load(failedFilter ?? {}, "replace")}
+            onClick={() => void load(failedFilter ?? {}, failedMode ?? "replace")}
           >
             Try again
           </button>
@@ -304,8 +353,12 @@ export default function CollectionBrowser({
       ) : null}
 
       {loading && items.length === 0 ? (
-        <div className="card-grid mt-5" aria-hidden="true">
-          {Array.from({ length: 8 }, (_, index) => (
+        <div
+          className="card-grid mt-5 content-start"
+          style={{ minHeight: placeholderHeight || undefined }}
+          aria-hidden="true"
+        >
+          {Array.from({ length: placeholderCount }, (_, index) => (
             <div key={index} className="grid gap-2">
               <div className="skeleton aspect-[5/7] w-full" />
               <div className="skeleton h-3 w-2/3" />
@@ -313,9 +366,9 @@ export default function CollectionBrowser({
             </div>
           ))}
         </div>
-      ) : items.length ? (
+      ) : failedFilter && failedMode === "replace" ? null : items.length ? (
         <>
-          <div className="card-grid mt-5">
+          <div ref={gridRef} className="card-grid mt-5">
             {items.map((item, index) => (
               <article key={item.id} className="group relative">
                 <a href={`/play/card/${item.id}`} className="block no-underline">

@@ -242,6 +242,7 @@ const nextFinish =
       </section>
     ) : null}
     <CollectionBrowser
+      scopeKey={JSON.stringify([ctx.tenant.id, user.id])}
       client:load
       initialItems={items}
       initialTotal={totalItems}
