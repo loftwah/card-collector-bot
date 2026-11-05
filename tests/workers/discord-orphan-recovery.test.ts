@@ -1,7 +1,7 @@
 import { beforeEach, expect, it } from 'vitest';
 import { bootstrap,ctxFor,runtime,tenant } from './helpers';
 import { createSession } from '../../src/server/modules/identity';
-import { beginVerifiedDiscordRecovery,confirmDiscordRecovery,expireDiscordRecoveryArtifacts,startDiscordRecoveryIntent } from '../../src/server/discord/recovery';
+import { beginVerifiedDiscordRecovery,confirmDiscordRecovery,expireDiscordRecoveryArtifacts,expireDiscordRecoveryArtifactsIfInstalled,startDiscordRecoveryIntent } from '../../src/server/discord/recovery';
 
 const discord={id:'333333333333333333',username:'fixture'};
 async function begin(ctx:Awaited<ReturnType<typeof fixture>>){const state=await startDiscordRecoveryIntent(ctx);return beginVerifiedDiscordRecovery(ctx,state,discord);}
@@ -25,7 +25,8 @@ it('links an explicitly confirmed account with a fresh session and consumes its 
  await confirmDiscordRecovery(ctx,id);
  expect((await runtime.DB.prepare('SELECT user_id FROM fb_discord_identities WHERE discord_user_id=?').bind(discord.id).first<{user_id:string}>())?.user_id).toBe('orphan');
  expect((await runtime.DB.prepare('SELECT COUNT(*) AS n FROM fb_discord_binding_admissions').first<{n:number}>())?.n).toBe(0);
- await expect(confirmDiscordRecovery(ctx,id)).rejects.toMatchObject({code:'recovery_unavailable'});
+ await expect(confirmDiscordRecovery(ctx,id)).resolves.toBeUndefined();
+ expect((await runtime.DB.prepare("SELECT COUNT(*) AS n FROM fb_audit_events WHERE action='discord.identity.recovered'").first<{n:number}>())?.n).toBe(1);
 });
 
 it.each(['session','membership','disabled','assurance'])('rejects %s revoked after OAuth proof without consuming the challenge',async(change)=>{
@@ -51,8 +52,7 @@ it('rejects a different session and a conflicting established global binding',as
 it('accepts at most one of two concurrent confirmations',async()=>{
  const ctx=await fixture(),id=await begin(ctx);
  const results=await Promise.allSettled([confirmDiscordRecovery(ctx,id),confirmDiscordRecovery(ctx,id)]);
- expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1);
- expect(results.filter(r=>r.status==='rejected')).toHaveLength(1);
+ expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(2);
  expect((await runtime.DB.prepare('SELECT COUNT(*) AS n FROM fb_discord_identities WHERE discord_user_id=?').bind(discord.id).first<{n:number}>())?.n).toBe(1);
 });
 
@@ -107,4 +107,59 @@ it('cleans at most 100 old challenges and leaves live challenges intact',async()
  await expireDiscordRecoveryArtifacts(runtime.DB);
  expect((await runtime.DB.prepare("SELECT COUNT(*) AS n FROM fb_discord_recovery_challenges WHERE id LIKE 'old_%'").first<{n:number}>())?.n).toBe(1);
  expect(await runtime.DB.prepare('SELECT id FROM fb_discord_recovery_challenges WHERE id=?').bind(id).first()).not.toBeNull();
+});
+
+it('rolls back recovery if the required audit event cannot be recorded',async()=>{
+ const ctx=await fixture(),id=await begin(ctx);
+ await runtime.DB.exec("CREATE TRIGGER recovery_audit_fail BEFORE INSERT ON fb_audit_events BEGIN SELECT RAISE(ABORT,'audit_fixture_failure'); END;");
+ try{
+  await expect(confirmDiscordRecovery(ctx,id)).rejects.toThrow();
+  expect(await runtime.DB.prepare('SELECT id FROM fb_discord_identities WHERE discord_user_id=?').bind(discord.id).first()).toBeNull();
+  expect((await runtime.DB.prepare('SELECT consumed_at FROM fb_discord_recovery_challenges WHERE id=?').bind(id).first<{consumed_at:string|null}>())?.consumed_at).toBeNull();
+  expect((await runtime.DB.prepare('SELECT COUNT(*) AS n FROM fb_discord_binding_admissions').first<{n:number}>())?.n).toBe(0);
+ }finally{await runtime.DB.exec('DROP TRIGGER recovery_audit_fail;');}
+});
+
+it('keeps cleanup active when installed and fails visibly for a partial schema',async()=>{
+ const ctx=await fixture(),id=await begin(ctx);
+ await runtime.DB.prepare("UPDATE fb_discord_recovery_challenges SET expires_at='2000-01-01T00:00:00.000Z' WHERE id=?").bind(id).run();
+ await expireDiscordRecoveryArtifactsIfInstalled(runtime.DB);
+ expect(await runtime.DB.prepare('SELECT id FROM fb_discord_recovery_challenges WHERE id=?').bind(id).first()).toBeNull();
+ await runtime.DB.exec('DROP TABLE fb_discord_recovery_intents;');
+ await expect(expireDiscordRecoveryArtifactsIfInstalled(runtime.DB)).rejects.toThrow('schema is incomplete');
+});
+
+it('rechecks session expiry inside the confirmation batch',async()=>{
+ const ctx=await fixture(),id=await begin(ctx),originalDb=ctx.db;let injected=false;
+ ctx.db=new Proxy(originalDb,{get(target,key){
+  if(key==='batch')return async(statements:D1PreparedStatement[])=>{injected=true;await originalDb.prepare("UPDATE fb_sessions SET expires_at='2000-01-01T00:00:00.000Z' WHERE id=?").bind(ctx.sessionId).run();return target.batch(statements);};
+  const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
+ }});
+ await expect(confirmDiscordRecovery(ctx,id)).rejects.toMatchObject({code:'recovery_unavailable'});
+ expect(injected).toBe(true);
+ expect(await originalDb.prepare('SELECT id FROM fb_discord_identities WHERE discord_user_id=?').bind(discord.id).first()).toBeNull();
+});
+
+it.each([null,42,'','bad\nname','x'.repeat(81)])('rejects malformed Discord usernames before using them',async(username)=>{
+ const ctx=await fixture(),state=await startDiscordRecoveryIntent(ctx);
+ await expect(beginVerifiedDiscordRecovery(ctx,state,{id:discord.id,username} as never)).rejects.toMatchObject({code:'discord_identity_invalid'});
+ expect((await runtime.DB.prepare('SELECT COUNT(*) AS n FROM fb_discord_recovery_challenges').first<{n:number}>())?.n).toBe(0);
+});
+
+it('keeps an active rate window and deletes only bounded stale rate rows',async()=>{
+ const ctx=await fixture();await startDiscordRecoveryIntent(ctx);
+ const inserts=Array.from({length:101},(_,i)=>runtime.DB.prepare("INSERT INTO fb_discord_recovery_rate_limits VALUES (?,?,?,10)").bind(ctx.tenant.id,`stale_${i}`,'2000-01-01T00:00:00.000Z'));
+ await runtime.DB.batch(inserts);await expireDiscordRecoveryArtifacts(runtime.DB);
+ expect((await runtime.DB.prepare("SELECT COUNT(*) AS n FROM fb_discord_recovery_rate_limits WHERE user_id LIKE 'stale_%'").first<{n:number}>())?.n).toBe(1);
+ expect((await runtime.DB.prepare('SELECT attempts FROM fb_discord_recovery_rate_limits WHERE tenant_id=? AND user_id=?').bind(ctx.tenant.id,ctx.user!.id).first<{attempts:number}>())?.attempts).toBe(1);
+ const plan=await runtime.DB.prepare("EXPLAIN QUERY PLAN SELECT rowid FROM fb_discord_recovery_rate_limits WHERE window_started_at<? ORDER BY window_started_at LIMIT 100").bind(new Date().toISOString()).all<{detail:string}>();
+ expect(plan.results?.map(row=>row.detail).join(' ')).toContain('fb_discord_recovery_rate_expiry_idx');
+});
+
+it('does not erase a refreshed limit when cleanup overlaps a new intent',async()=>{
+ const ctx=await fixture();await startDiscordRecoveryIntent(ctx);
+ await runtime.DB.prepare("UPDATE fb_discord_recovery_rate_limits SET window_started_at='2000-01-01T00:00:00.000Z',attempts=10 WHERE tenant_id=? AND user_id=?").bind(ctx.tenant.id,ctx.user!.id).run();
+ const results=await Promise.allSettled([startDiscordRecoveryIntent(ctx),expireDiscordRecoveryArtifacts(runtime.DB)]);
+ expect(results.every(r=>r.status==='fulfilled')).toBe(true);
+ expect((await runtime.DB.prepare('SELECT attempts FROM fb_discord_recovery_rate_limits WHERE tenant_id=? AND user_id=?').bind(ctx.tenant.id,ctx.user!.id).first<{attempts:number}>())?.attempts).toBe(1);
 });

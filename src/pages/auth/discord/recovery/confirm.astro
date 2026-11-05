@@ -1,0 +1,51 @@
+---
+import BaseLayout from '../../../../layouts/BaseLayout.astro';
+import { pageContext } from '../../../../server/page';
+import { runtimeEnv } from '../../../../server/context';
+import { readRecoveryForm } from '../../../../server/discord/recovery-form';
+import { confirmDiscordRecovery,discordRecoveryEnabled,recoveryPreview,recoveryResult } from '../../../../server/discord/recovery';
+
+const ctx=await pageContext(Astro.request);
+if(!ctx.user) return Astro.redirect(`/login?next=${encodeURIComponent('/auth/discord/recovery')}`);
+Astro.response.headers.set('cache-control','no-store');
+Astro.response.headers.set('referrer-policy','no-referrer');
+let challenge=Astro.url.searchParams.get('challenge')??'';
+let error=false;
+if(Astro.request.method==='POST'){
+ try{
+  if(!discordRecoveryEnabled(runtimeEnv()))throw new Error('recovery unavailable');
+  const form=await readRecoveryForm(ctx,Astro.request);
+  if(form.getAll('challenge').length!==1)throw new Error('invalid challenge');
+  challenge=form.get('challenge')??'';
+  await confirmDiscordRecovery(ctx,challenge);
+  return Astro.redirect(`/auth/discord/recovery?receipt=${encodeURIComponent(challenge)}`,303);
+ }catch{error=true;}
+}
+let preview=null;
+try{if(challenge && discordRecoveryEnabled(runtimeEnv()))preview=await recoveryPreview(ctx,challenge);}catch{}
+if(!preview && challenge && discordRecoveryEnabled(runtimeEnv())){
+ try{if(await recoveryResult(ctx,challenge))return Astro.redirect(`/auth/discord/recovery?receipt=${encodeURIComponent(challenge)}`,303);}catch{}
+}
+---
+<BaseLayout title="Check your Discord · Foilbury" description="Check the account before connecting Discord." noIndex>
+ <section class="container max-w-3xl py-12 sm:py-20">
+  <a href="/auth/discord/recovery" class="text-sm text-[var(--muted)]">← Back to connection</a>
+  <p class="mt-8 font-mono text-xs uppercase tracking-[0.12em] text-[var(--brass)]">One last check</p>
+  <h1 class="display mt-3 text-[clamp(2.8rem,7vw,5rem)]">Is this your Discord?</h1>
+  {preview ? (
+   <section class="surface mt-8 p-6 sm:p-8" aria-labelledby="account-heading">
+    <h2 id="account-heading" class="display-sm text-3xl">{preview.global_name || preview.username}</h2>
+    <p class="mt-1 text-sm text-[var(--muted)]">Discord username: {preview.username}</p>
+    <p class="mt-5 leading-relaxed">Connect this Discord account to <strong>{ctx.user.displayName}</strong> in {ctx.tenant.name}.</p>
+    {error ? <p class="error-box mt-5" role="alert">We couldn’t complete that connection. Refresh your account security and try again.</p> : null}
+    <form method="post" class="mt-6 flex flex-wrap items-center gap-4">
+     <input type="hidden" name="csrf" value={ctx.csrfToken} /><input type="hidden" name="challenge" value={challenge} />
+     <button class="btn btn-primary" type="submit">Connect this Discord</button>
+     <a href="/auth/discord/recovery" class="text-sm">Cancel</a>
+    </form>
+   </section>
+  ) : (
+   <div class="notice mt-8" role="status"><p>That confirmation is no longer available. Start again to check your Discord account.</p><a href="/auth/discord/recovery" class="btn btn-secondary mt-4">Start again</a></div>
+  )}
+ </section>
+</BaseLayout>

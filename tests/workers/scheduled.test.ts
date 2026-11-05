@@ -29,6 +29,7 @@ describe("scheduled Worker entry", () => {
     expect(result.steps.map((step) => step.name)).toEqual([
       "rate_limits",
       "magic_links",
+      "discord_recovery_cleanup",
       "stale_interactions",
       "npc_progression",
     ]);

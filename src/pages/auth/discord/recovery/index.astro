@@ -1,0 +1,39 @@
+---
+import BaseLayout from '../../../../layouts/BaseLayout.astro';
+import { pageContext } from '../../../../server/page';
+import { requireRecentStrongAuth,runtimeEnv } from '../../../../server/context';
+import { discordRecoveryEnabled,recoveryResult } from '../../../../server/discord/recovery';
+
+const ctx=await pageContext(Astro.request);
+if(!ctx.user) return Astro.redirect(`/login?next=${encodeURIComponent('/auth/discord/recovery')}`);
+Astro.response.headers.set('cache-control','no-store');
+Astro.response.headers.set('referrer-policy','no-referrer');
+let ready=false;
+try {requireRecentStrongAuth(ctx);ready=['passkey','mfa'].includes(ctx.sessionAssurance??'');} catch {}
+const enabled=discordRecoveryEnabled(runtimeEnv());
+const failure=Astro.url.searchParams.get('error');
+let linked=false;
+try{const receipt=Astro.url.searchParams.get('receipt');if(enabled && receipt)linked=await recoveryResult(ctx,receipt);}catch{}
+---
+<BaseLayout title="Connect Discord · Foilbury" description="Connect Discord to your Foilbury account." noIndex>
+ <section class="container max-w-3xl py-12 sm:py-20">
+  <a href="/account/security" class="text-sm text-[var(--muted)]">← Account security</a>
+  <p class="mt-8 font-mono text-xs uppercase tracking-[0.12em] text-[var(--brass)]">Your account · Discord</p>
+  <h1 class="display mt-3 text-[clamp(2.8rem,7vw,5rem)]">Connect your Discord.</h1>
+  <p class="mt-4 max-w-2xl text-lg leading-relaxed text-[var(--muted)]">Keep your cards and Foil together. You’ll sign in to Discord, then check the account before you connect it.</p>
+  <section class="surface mt-8 p-6 sm:p-8" aria-labelledby="connect-heading">
+   <h2 id="connect-heading" class="display-sm text-3xl">A deliberate connection</h2>
+   <p class="mt-3 text-sm leading-relaxed text-[var(--muted)]">You’re connecting Discord to <strong class="text-[var(--ink)]">{ctx.user.displayName}</strong> in {ctx.tenant.name}. This won’t combine two Foilbury accounts or restore a revoked connection.</p>
+   {linked ? <p class="notice mt-5" role="status">Discord is connected to this Foilbury account.</p> : null}
+   {failure ? <p class="error-box mt-5" role="alert">{failure==='explicit' ? 'To connect Discord to this account, start the connection here.' : 'We couldn’t start that connection. Confirm your account security and try again.'}</p> : null}
+   {linked ? <a href="/play" class="btn btn-primary mt-6">Return to your cabinet</a> : !enabled ? <div class="notice mt-6">Discord account connection is temporarily unavailable.</div> : ready ? (
+    <form method="post" action="/auth/discord/recovery/start" class="mt-6">
+     <input type="hidden" name="csrf" value={ctx.csrfToken} />
+     <button class="btn btn-primary" type="submit">Continue to Discord</button>
+    </form>
+   ) : (
+    <div class="notice mt-6"><p>Confirm your identity with a passkey or authenticator before connecting Discord.</p><a href="/account/security" class="btn btn-secondary mt-4">Open account security</a></div>
+   )}
+  </section>
+ </section>
+</BaseLayout>

@@ -2,7 +2,8 @@
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import SecurityPanel from "../../components/account/SecurityPanel";
 import { pageContext } from "../../server/page";
-import { roleLabel } from "../../server/context";
+import { roleLabel,runtimeEnv } from "../../server/context";
+import { discordRecoveryEnabled } from "../../server/discord/recovery";
 
 const ctx = await pageContext(Astro.request);
 if (!ctx.user) return Astro.redirect(`/login?next=${encodeURIComponent("/account/security")}`);
@@ -16,6 +17,7 @@ const user = ctx.user;
         <h1 class="display text-[clamp(2.8rem,7vw,5.5rem)]">Security that fits the cabinet.</h1>
         <div class="flex flex-wrap gap-2">
           <a class="btn btn-secondary btn-sm" href="/play">Back to collection</a>
+          {discordRecoveryEnabled(runtimeEnv()) ? <a class="btn btn-secondary btn-sm" href="/auth/discord/recovery">Connect Discord</a> : null}
           {user.platformAdmin ? <a class="btn btn-brass btn-sm" href="/platform-admin">Platform administration</a> : null}
           {["owner", "editor", "economy_admin"].includes(user.role) ? <a class="btn btn-secondary btn-sm" href="/admin">Bot administration</a> : null}
         </div>

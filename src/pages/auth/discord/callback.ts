@@ -1,7 +1,8 @@
 import type { APIRoute } from "astro";
 import { buildContext, runtimeEnv } from "../../../server/context";
 import { createSession } from "../../../server/modules/identity";
-import { ensureDiscordPlayer, linkDiscordIdentity } from "../../../server/discord/context";
+import { ensureDiscordPlayer,linkDiscordIdentity } from "../../../server/discord/context";
+import { beginVerifiedDiscordRecovery,discordRecoveryEnabled } from "../../../server/discord/recovery";
 import type { DiscordEnv, DiscordUser } from "../../../server/discord/types";
 import { sessionCookies } from "../../../server/api/helpers";
 
@@ -9,7 +10,7 @@ export const prerender = false;
 
 function cookiesForClear(secure: boolean): string[] {
   const base = `Path=/auth/discord; HttpOnly; SameSite=Lax; Max-Age=0${secure ? "; Secure" : ""}`;
-  return ["fb_oauth_state=; " + base, "fb_oauth_verifier=; " + base, "fb_oauth_next=; " + base];
+  return ["fb_oauth_state=; " + base, "fb_oauth_verifier=; " + base, "fb_oauth_next=; " + base, "fb_oauth_recovery=; " + base];
 }
 
 function safeNext(value: string | undefined): string {
@@ -17,7 +18,7 @@ function safeNext(value: string | undefined): string {
 }
 
 function redirectWithCookies(location: string, cookies: string[]): Response {
-  const headers = new Headers({ location, "cache-control": "no-store" });
+  const headers = new Headers({ location, "cache-control": "no-store", "referrer-policy": "no-referrer" });
   for (const cookie of cookies) headers.append("set-cookie", cookie);
   return new Response(null, { status: 302, headers });
 }
@@ -31,6 +32,7 @@ export const GET: APIRoute = async ({ request, cookies }) => {
   const state = cookies.get("fb_oauth_state")?.value;
   const verifier = cookies.get("fb_oauth_verifier")?.value;
   const next = safeNext(cookies.get("fb_oauth_next")?.value);
+  const recovery = cookies.get("fb_oauth_recovery")?.value === "1";
   const query = new URL(request.url).searchParams;
 
   if (query.get("error") || !query.get("code")) return fail("discord_cancelled");
@@ -77,8 +79,18 @@ export const GET: APIRoute = async ({ request, cookies }) => {
   try {
     const ctx = await buildContext(request);
     let user = ctx.user;
-    if (user) {
-      await linkDiscordIdentity(raw, ctx.tenant, user, discordUser);
+    if (recovery) {
+      if (!user || !discordRecoveryEnabled(raw)) return fail("discord_link");
+      const challenge=await beginVerifiedDiscordRecovery(ctx,state,discordUser);
+      return redirectWithCookies(`/auth/discord/recovery/confirm?challenge=${encodeURIComponent(challenge)}`,cookiesForClear(secure));
+    } else if (user && discordRecoveryEnabled(raw)) {
+      // Account linking is a sensitive, deliberate action, not a side effect
+      // of an ordinary Discord sign-in callback.
+      return redirectWithCookies('/auth/discord/recovery?error=explicit',cookiesForClear(secure));
+    } else if (user) {
+      // Preserve the existing sign-in/link journey while the explicit recovery
+      // flow is disabled. The binding schema and the rollout remain held.
+      await linkDiscordIdentity(raw,ctx.tenant,user,discordUser);
     } else {
       const player = await ensureDiscordPlayer(raw, ctx.tenant, discordUser);
       user = player.user;

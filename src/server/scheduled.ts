@@ -3,6 +3,7 @@ import { runScheduledNpcProgression } from "./modules/npcs";
 import { pruneMagicLinks, pruneRateLimits } from "./modules/magic-links";
 import { readConfig } from "./config";
 import { buildAdminAlert, deliverAdminAlert } from "./observability/alert";
+import { expireDiscordRecoveryArtifactsIfInstalled } from './discord/recovery';
 
 /**
  * Scheduled work is isolated per step. One failed maintenance task must not
@@ -25,6 +26,7 @@ export interface ScheduledEnv {
 export const SCHEDULED_MAINTENANCE_STEPS: ScheduledMaintenanceStep[] = [
   { name: "rate_limits", run: (env) => pruneRateLimits(env.DB) },
   { name: "magic_links", run: (env) => pruneMagicLinks(env.DB) },
+  { name: "discord_recovery_cleanup", run: (env) => expireDiscordRecoveryArtifactsIfInstalled(env.DB) },
   { name: "stale_interactions", run: (env) => expireStaleDiscordInteractions(env.DB) },
   {
     name: "npc_progression",

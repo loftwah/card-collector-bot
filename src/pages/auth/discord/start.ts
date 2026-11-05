@@ -36,6 +36,7 @@ export const GET: APIRoute = async ({ request, cookies, redirect }) => {
   cookies.set("fb_oauth_state", state, cookieOptions);
   cookies.set("fb_oauth_verifier", verifier, cookieOptions);
   cookies.set("fb_oauth_next", next, cookieOptions);
+  cookies.delete("fb_oauth_recovery", { path: "/auth/discord" });
 
   const authorize = new URL("https://discord.com/oauth2/authorize");
   authorize.searchParams.set("client_id", clientId);

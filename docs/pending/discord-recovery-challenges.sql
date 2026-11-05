@@ -31,3 +31,4 @@ CREATE TABLE fb_discord_recovery_rate_limits (
   attempts INTEGER NOT NULL,
   PRIMARY KEY (tenant_id,user_id)
 );
+CREATE INDEX fb_discord_recovery_rate_expiry_idx ON fb_discord_recovery_rate_limits(window_started_at);
