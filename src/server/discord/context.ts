@@ -2,8 +2,6 @@ import { ApiError, type Ctx, type CurrentUser, type Tenant } from "../context";
 import { readConfig } from "../config";
 import { first, nowIso } from "../db";
 import { newId } from "../ids";
-import { addMembership, ensureWallet } from "../modules/identity";
-import { creditWallet } from "../modules/wallet";
 import type {
   DiscordEnv,
   DiscordIdentity,
@@ -135,6 +133,32 @@ function safeDisplayName(user: DiscordUser): string {
   return (raw || "Discord Player").slice(0, 80);
 }
 
+type LiveDiscordPlayer = DiscordIdentity & {
+  email: string; user_display_name: string; platform_admin: number;
+  role: CurrentUser["role"]; capabilities_json: string | null;
+  self_grants_enabled: number; grant_limit: number; capability_revision: number;
+};
+
+async function liveDiscordPlayer(env: DiscordEnv, tenantId: string, discordUserId: string, expectedUserId: string): Promise<LiveDiscordPlayer | null> {
+  return first<LiveDiscordPlayer>(env.DB,`SELECT di.*,u.email,u.display_name AS user_display_name,u.platform_admin,
+    m.role,m.capabilities_json,m.self_grants_enabled,m.grant_limit,m.capability_revision
+    FROM fb_discord_identities di JOIN fb_users u ON u.id=di.user_id
+    JOIN fb_memberships m ON m.tenant_id=di.tenant_id AND m.user_id=di.user_id
+    WHERE di.tenant_id=? AND di.discord_user_id=? AND di.user_id=? AND di.revoked_at IS NULL
+      AND u.disabled_at IS NULL AND u.is_synthetic=0 AND m.status='active' AND m.revoked_at IS NULL
+      AND NOT EXISTS (SELECT 1 FROM fb_discord_identities other INDEXED BY fb_discord_identity_global_lookup_idx
+        WHERE other.discord_user_id=di.discord_user_id AND other.user_id<>di.user_id)`,
+    tenantId,discordUserId,expectedUserId);
+}
+
+function resolvedDiscordPlayer(row: LiveDiscordPlayer, created: boolean): ResolvedPlayer {
+  let capabilities:string[]=[];
+  try { const parsed=JSON.parse(row.capabilities_json??'[]');if(Array.isArray(parsed))capabilities=parsed.filter((item):item is string=>typeof item==='string'); } catch { /* fail closed */ }
+  return {created,identity:row,user:{id:row.user_id,email:row.email,displayName:row.user_display_name,
+    role:row.role,platformAdmin:Boolean(row.platform_admin),capabilities,
+    selfGrantsEnabled:Boolean(row.self_grants_enabled),grantLimit:Number(row.grant_limit??0),capabilityRevision:Number(row.capability_revision??1)}};
+}
+
 /**
  * A verified Discord interaction is enough to become a lightweight Player.
  * There is no separate /register step and no privileged intent requirement.
@@ -156,13 +180,14 @@ export async function ensureDiscordPlayer(
       grant_limit: number;
       capability_revision: number;
       disabled_at: string | null;
+      is_synthetic: number;
       membership_status: string | null;
       membership_revoked_at: string | null;
       tenant_name: string;
     }
   >(
     env.DB,
-    `SELECT di.*, u.email, u.display_name AS user_display_name, u.platform_admin, u.disabled_at,
+    `SELECT di.*, u.email, u.display_name AS user_display_name, u.platform_admin, u.disabled_at, u.is_synthetic,
             m.role, m.capabilities_json, m.self_grants_enabled, m.grant_limit, m.capability_revision,
             m.status AS membership_status, m.revoked_at AS membership_revoked_at, t.name AS tenant_name
        FROM fb_discord_identities di
@@ -173,6 +198,19 @@ export async function ensureDiscordPlayer(
     tenant.id,
     discordUser.id,
   );
+  // Global identity is derived from Discord's signed user ID, never email.
+  // The index is a test-only migration proposal; absence must fail closed.
+  let mapping:{user_id:string|null;users:number;active_links:number;total:number}|null;
+  try {
+    mapping=await first(env.DB,`SELECT MIN(user_id) AS user_id,COUNT(DISTINCT user_id) AS users,
+      SUM(CASE WHEN revoked_at IS NULL THEN 1 ELSE 0 END) AS active_links,COUNT(*) AS total
+      FROM fb_discord_identities INDEXED BY fb_discord_identity_global_lookup_idx WHERE discord_user_id=?`,discordUser.id);
+  } catch(error) {
+    if(String(error).includes('no such index')) throw new ApiError(503,'discord_identity_unavailable','Discord account linking is temporarily unavailable.');
+    throw error;
+  }
+  if(!mapping || Number(mapping.users)>1)
+    throw new ApiError(409,'discord_link_conflict','This Discord account needs help from the Bot Owner before it can be connected.');
   if (existing) {
     // A verified Discord identity never restores a revoked membership. The
     // membership and the identity's revocation state are checked on every
@@ -184,7 +222,7 @@ export async function ensureDiscordPlayer(
         "This Discord identity was revoked for this Bot. Ask the Bot Owner to restore it.",
       );
     }
-    if (existing.disabled_at)
+    if (existing.disabled_at || existing.is_synthetic)
       throw new ApiError(403, "account_disabled", "This player account is disabled.");
     if (
       !existing.membership_status ||
@@ -197,184 +235,103 @@ export async function ensureDiscordPlayer(
         "This player is no longer an active member of this Bot. Nothing was changed.",
       );
     }
-    await env.DB.prepare(
-      "UPDATE fb_discord_identities SET username = ?, global_name = ?, last_seen_at = ? WHERE id = ?",
-    )
-      .bind(discordUser.username, discordUser.global_name ?? null, nowIso(), existing.id)
-      .run();
-    return {
-      created: false,
-      identity: existing,
-      user: {
-        id: existing.user_id,
-        email: existing.email,
-        displayName: existing.user_display_name,
-        role: existing.role,
-        platformAdmin: Boolean(existing.platform_admin),
-        capabilities: existing.capabilities_json
-          ? (JSON.parse(existing.capabilities_json) as string[])
-          : [],
-        selfGrantsEnabled: Boolean(existing.self_grants_enabled),
-        grantLimit: Number(existing.grant_limit ?? 0),
-        capabilityRevision: Number(existing.capability_revision ?? 1),
-      },
-    };
+    const touched=await env.DB.prepare(`UPDATE fb_discord_identities SET username=?,global_name=?,last_seen_at=?
+      WHERE id=? AND revoked_at IS NULL AND EXISTS (SELECT 1 FROM fb_users u JOIN fb_memberships m ON m.user_id=u.id
+        WHERE u.id=fb_discord_identities.user_id AND u.disabled_at IS NULL AND u.is_synthetic=0
+          AND m.tenant_id=fb_discord_identities.tenant_id AND m.status='active' AND m.revoked_at IS NULL)
+        AND NOT EXISTS (SELECT 1 FROM fb_discord_identities other INDEXED BY fb_discord_identity_global_lookup_idx
+          WHERE other.discord_user_id=fb_discord_identities.discord_user_id AND other.user_id<>fb_discord_identities.user_id) RETURNING id`)
+      .bind(discordUser.username,discordUser.global_name??null,nowIso(),existing.id).first<{id:string}>();
+    if(!touched) throw new ApiError(403,'membership_revoked','Your Discord access changed. Ask the Bot Owner for help.');
+    const live=await liveDiscordPlayer(env,tenant.id,discordUser.id,existing.user_id);
+    if(!live) throw new ApiError(403,'membership_revoked','Your Discord access changed. Ask the Bot Owner for help.');
+    return resolvedDiscordPlayer(live,false);
   }
 
   const email = `discord.${discordUser.id}@players.foilbury.invalid`;
-  let user = await first<{
-    id: string;
-    email: string;
-    display_name: string;
-    platform_admin: number;
-    disabled_at: string | null;
-  }>(
-    env.DB,
-    "SELECT id, email, display_name, platform_admin, disabled_at FROM fb_users WHERE email = ?",
-    email,
-  );
-  let created = false;
-  if (!user) {
-    const userId = newId("usr");
-    try {
-      await env.DB.prepare(
-        "INSERT INTO fb_users (id, email, display_name, password_hash, platform_admin, created_at) VALUES (?, ?, ?, 'discord_only$no_password', 0, ?)",
-      )
-        .bind(userId, email, displayName, nowIso())
-        .run();
-      user = { id: userId, email, display_name: displayName, platform_admin: 0, disabled_at: null };
-      created = true;
-    } catch (error) {
-      if (!String(error).includes("UNIQUE")) throw error;
-      user = await first<{
-        id: string;
-        email: string;
-        display_name: string;
-        platform_admin: number;
-        disabled_at: string | null;
-      }>(
-        env.DB,
-        "SELECT id, email, display_name, platform_admin, disabled_at FROM fb_users WHERE email = ?",
-        email,
-      );
-    }
+  if(Number(mapping.total)>0 && Number(mapping.active_links)===0)
+    throw new ApiError(409,'discord_link_conflict','This Discord account needs help from the Bot Owner before it can be connected.');
+  const linkedUserId=Number(mapping.active_links)>0 ? mapping.user_id : null;
+  const accountWhere=linkedUserId ? 'u.id=?' : "u.email=? AND u.password_hash='discord_only$no_password'";
+  const accountKey=linkedUserId??email;
+  const priorUser=await first<{id:string;password_hash:string;disabled_at:string|null;is_synthetic:number}>(env.DB,
+    linkedUserId ? 'SELECT id,password_hash,disabled_at,is_synthetic FROM fb_users WHERE id=?' : 'SELECT id,password_hash,disabled_at,is_synthetic FROM fb_users WHERE email=?',accountKey);
+  if(linkedUserId && !priorUser) throw new ApiError(409,'discord_link_conflict','This Discord account needs help from the Bot Owner before it can be connected.');
+  if(priorUser && (priorUser.disabled_at || priorUser.is_synthetic))
+    throw new ApiError(403,'account_disabled','This player account is disabled.');
+  // Neither the reserved address nor the password sentinel proves identity.
+  // A prior orphan requires an explicit verified recovery flow.
+  if(!linkedUserId && priorUser)
+    throw new ApiError(409,'discord_link_conflict','This Discord account could not be linked to this Foilbury account.');
+  if(priorUser){
+    const priorMembership=await first<{status:string;revoked_at:string|null}>(env.DB,
+      'SELECT status,revoked_at FROM fb_memberships WHERE tenant_id=? AND user_id=?',tenant.id,priorUser.id);
+    if(priorMembership && (priorMembership.status!=='active' || priorMembership.revoked_at))
+      throw new ApiError(403,'membership_revoked','This player is no longer an active member of this Bot. Ask the Bot Owner for help.');
   }
-  if (!user)
-    throw new ApiError(500, "player_create_failed", "The player identity could not be created.");
-  if (user.disabled_at)
-    throw new ApiError(403, "account_disabled", "This player account is disabled.");
-
-  // A partially created account may already have a membership. Never let a
-  // later interaction silently reactivate a revoked or suspended membership.
-  const priorMembership = await first<{ status: string; revoked_at: string | null }>(
-    env.DB,
-    "SELECT status, revoked_at FROM fb_memberships WHERE tenant_id = ? AND user_id = ?",
-    tenant.id,
-    user.id,
-  );
-  if (priorMembership && (priorMembership.status !== "active" || priorMembership.revoked_at)) {
-    throw new ApiError(
-      403,
-      "membership_revoked",
-      "This player is no longer an active member of this Bot. Nothing was changed.",
-    );
-  }
-  if (!priorMembership) await addMembership(env.DB, tenant.id, user.id, "player");
-  await ensureWallet(env.DB, tenant.id, user.id);
-
-  const starterKey = `starter:${tenant.id}:${user.id}`;
-  const alreadyGranted = await first<{ id: string }>(
-    env.DB,
-    "SELECT id FROM fb_ledger_entries WHERE tenant_id = ? AND user_id = ? AND idempotency_key = ?",
-    tenant.id,
-    user.id,
-    starterKey,
-  );
-  if (!alreadyGranted) {
-    const economy = await first<{ starter_grant: number }>(
-      env.DB,
-      "SELECT starter_grant FROM fb_economy_settings WHERE tenant_id = ?",
-      tenant.id,
-    );
-    if (economy && economy.starter_grant > 0) {
-      try {
-        await creditWallet(env.DB, {
-          tenantId: tenant.id,
-          userId: user.id,
-          amount: economy.starter_grant,
-          kind: "issue",
-          description: "Welcome to Foilbury",
-          idempotencyKey: starterKey,
-          referenceType: "welcome_reward",
-          metadata: { source: "discord_first_interaction" },
-          actorType: "system",
-          actorId: "discord",
-        });
-      } catch (error) {
-        if (!String(error).includes("UNIQUE")) throw error;
-      }
-    }
-  }
-
-  const identityId = newId("dci");
+  const now=nowIso(), candidateUserId=newId('usr'), identityId=newId('dci'), ledgerId=newId('led');
+  let created=false;
   try {
-    await env.DB.prepare(
-      `INSERT INTO fb_discord_identities
-        (id, tenant_id, discord_user_id, user_id, username, global_name, linked_at, last_seen_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-      .bind(
-        identityId,
-        tenant.id,
-        discordUser.id,
-        user.id,
-        discordUser.username,
-        discordUser.global_name ?? null,
-        nowIso(),
-        nowIso(),
-      )
-      .run();
-  } catch (error) {
-    if (!String(error).includes("UNIQUE")) throw error;
+    // Account, membership, starter ledger and identity share one D1 batch.
+    // The global Discord mapping and current authority are checked in it.
+    const results=await env.DB.batch([
+      env.DB.prepare('INSERT INTO fb_discord_binding_admissions (discord_user_id,user_id) VALUES (?,COALESCE((SELECT user_id FROM fb_discord_global_bindings WHERE discord_user_id=?),?))')
+        .bind(discordUser.id,discordUser.id,linkedUserId??candidateUserId),
+      env.DB.prepare(`INSERT INTO fb_users (id,email,display_name,password_hash,platform_admin,created_at)
+        SELECT ?,?,?,'discord_only$no_password',0,? WHERE ?=0
+          AND NOT EXISTS (SELECT 1 FROM fb_discord_global_bindings WHERE discord_user_id=?) ON CONFLICT(email) DO NOTHING RETURNING id`)
+        .bind(candidateUserId,email,displayName,now,linkedUserId?1:0,discordUser.id),
+      env.DB.prepare(`SELECT CASE WHEN EXISTS (SELECT 1 FROM fb_users u WHERE ${accountWhere}
+        AND (? IS NULL OR u.id=?) AND u.disabled_at IS NULL AND u.is_synthetic=0
+        AND EXISTS (SELECT 1 FROM fb_discord_binding_admissions p WHERE p.discord_user_id=? AND p.user_id=u.id)
+        AND NOT EXISTS (SELECT 1 FROM fb_discord_identities di INDEXED BY fb_discord_identity_global_lookup_idx WHERE di.discord_user_id=? AND di.user_id<>u.id)
+        AND ((?=1 AND EXISTS (SELECT 1 FROM fb_discord_identities di INDEXED BY fb_discord_identity_global_lookup_idx WHERE di.discord_user_id=? AND di.user_id=u.id AND di.revoked_at IS NULL))
+          OR (?=0 AND (changes()=1 OR EXISTS (SELECT 1 FROM fb_discord_identities di INDEXED BY fb_discord_identity_global_lookup_idx WHERE di.discord_user_id=? AND di.user_id=u.id AND di.revoked_at IS NULL)))))
+        THEN 1 ELSE json('discord_admission_changed') END`)
+        .bind(accountKey,priorUser?.id??null,priorUser?.id??null,discordUser.id,discordUser.id,linkedUserId?1:0,discordUser.id,linkedUserId?1:0,discordUser.id),
+      env.DB.prepare(`INSERT INTO fb_memberships (tenant_id,user_id,role,created_at,capabilities_json,status,accepted_at,revoked_at)
+        SELECT ?,u.id,'player',?,'[]','active',?,NULL FROM fb_users u WHERE ${accountWhere} AND u.disabled_at IS NULL AND u.is_synthetic=0
+        ON CONFLICT(tenant_id,user_id) DO NOTHING`).bind(tenant.id,now,now,accountKey),
+      env.DB.prepare(`SELECT CASE WHEN EXISTS (SELECT 1 FROM fb_users u JOIN fb_memberships m ON m.user_id=u.id
+        WHERE ${accountWhere} AND u.disabled_at IS NULL AND u.is_synthetic=0 AND m.tenant_id=? AND m.status='active' AND m.revoked_at IS NULL)
+        THEN 1 ELSE json('discord_admission_changed') END`).bind(accountKey,tenant.id),
+      env.DB.prepare(`INSERT INTO fb_wallets (tenant_id,user_id,balance,updated_at)
+        SELECT ?,u.id,0,? FROM fb_users u WHERE ${accountWhere} ON CONFLICT(tenant_id,user_id) DO NOTHING`).bind(tenant.id,now,accountKey),
+      env.DB.prepare(`UPDATE fb_wallets SET balance=balance+(SELECT starter_grant FROM fb_economy_settings WHERE tenant_id=?),updated_at=?
+        WHERE tenant_id=? AND user_id=(SELECT u.id FROM fb_users u WHERE ${accountWhere}) AND EXISTS (SELECT 1 FROM fb_economy_settings e WHERE e.tenant_id=? AND e.starter_grant>0)
+          AND NOT EXISTS (SELECT 1 FROM fb_ledger_entries l WHERE l.tenant_id=fb_wallets.tenant_id AND l.user_id=fb_wallets.user_id
+            AND l.idempotency_key='starter:' || fb_wallets.tenant_id || ':' || fb_wallets.user_id)`)
+        .bind(tenant.id,now,tenant.id,accountKey,tenant.id),
+      env.DB.prepare(`INSERT INTO fb_ledger_entries
+        (id,tenant_id,user_id,kind,amount,balance_after,reference_type,reference_id,description,idempotency_key,metadata_json,actor_type,actor_id,created_at)
+        SELECT ?,w.tenant_id,w.user_id,'issue',(SELECT starter_grant FROM fb_economy_settings WHERE tenant_id=w.tenant_id),w.balance,'welcome_reward',NULL,
+          'Welcome to Foilbury','starter:' || w.tenant_id || ':' || w.user_id,'{\"source\":\"discord_first_interaction\"}','system','discord',?
+        FROM fb_wallets w WHERE w.tenant_id=? AND w.user_id=(SELECT u.id FROM fb_users u WHERE ${accountWhere}) AND changes()=1`)
+        .bind(ledgerId,now,tenant.id,accountKey),
+      env.DB.prepare(`SELECT CASE WHEN COALESCE((SELECT starter_grant FROM fb_economy_settings WHERE tenant_id=?),0)=0
+        OR EXISTS (SELECT 1 FROM fb_ledger_entries l JOIN fb_users u ON u.id=l.user_id
+          WHERE l.tenant_id=? AND ${accountWhere} AND l.idempotency_key='starter:' || l.tenant_id || ':' || l.user_id)
+        THEN 1 ELSE json('discord_starter_unavailable') END`).bind(tenant.id,tenant.id,accountKey),
+      env.DB.prepare(`INSERT INTO fb_discord_identities (id,tenant_id,discord_user_id,user_id,username,global_name,linked_at,last_seen_at)
+        SELECT ?,?,?,u.id,?,?,?,? FROM fb_users u WHERE ${accountWhere} ON CONFLICT(tenant_id,discord_user_id) DO NOTHING`)
+        .bind(identityId,tenant.id,discordUser.id,discordUser.username,discordUser.global_name??null,now,now,accountKey),
+      env.DB.prepare(`SELECT CASE WHEN EXISTS (SELECT 1 FROM fb_discord_identities di
+        JOIN fb_users u ON u.id=di.user_id JOIN fb_memberships m ON m.tenant_id=di.tenant_id AND m.user_id=di.user_id
+        WHERE di.tenant_id=? AND di.discord_user_id=? AND ${accountWhere} AND di.revoked_at IS NULL
+          AND u.disabled_at IS NULL AND u.is_synthetic=0 AND m.status='active' AND m.revoked_at IS NULL)
+        THEN 1 ELSE json('discord_admission_changed') END`).bind(tenant.id,discordUser.id,accountKey),
+      env.DB.prepare("SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM fb_discord_binding_admissions WHERE discord_user_id=?) THEN 1 ELSE json('discord_admission_unconsumed') END").bind(discordUser.id),
+    ]);
+    created=(results[1]?.results?.length??0)===1;
+  } catch(error) {
+    if(String(error).includes('malformed JSON')) throw new ApiError(409,'discord_setup_changed','Your Discord setup could not be completed. Try again or ask the Bot Owner for help.');
+    if(String(error).includes('UNIQUE')) throw new ApiError(409,'discord_link_conflict','This Discord account could not be linked to this Foilbury account.');
+    throw error;
   }
-
-  const resolved = await first<
-    DiscordIdentity & {
-      email: string;
-      user_display_name: string;
-      platform_admin: number;
-      role: CurrentUser["role"];
-      capabilities_json: string | null;
-      self_grants_enabled: number;
-      grant_limit: number;
-      capability_revision: number;
-      disabled_at: string | null;
-      tenant_name: string;
-    }
-  >(
-    env.DB,
-    `SELECT di.*, u.email, u.display_name AS user_display_name, u.platform_admin, u.disabled_at, m.role, t.name AS tenant_name
-       FROM fb_discord_identities di
-       JOIN fb_users u ON u.id = di.user_id
-       JOIN fb_memberships m ON m.user_id = u.id AND m.tenant_id = di.tenant_id
-       JOIN fb_tenants t ON t.id = di.tenant_id
-      WHERE di.tenant_id = ? AND di.discord_user_id = ? AND di.revoked_at IS NULL`,
-    tenant.id,
-    discordUser.id,
-  );
-  if (!resolved)
-    throw new ApiError(500, "player_link_failed", "The Discord identity could not be linked.");
-  return {
-    created,
-    identity: resolved,
-    user: {
-      id: resolved.user_id,
-      email: resolved.email,
-      displayName: resolved.user_display_name,
-      role: resolved.role,
-      platformAdmin: Boolean(resolved.platform_admin),
-    },
-  };
+  const current=await first<{id:string}>(env.DB,`SELECT u.id FROM fb_users u WHERE ${accountWhere}`,accountKey);
+  const live=current && await liveDiscordPlayer(env,tenant.id,discordUser.id,current.id);
+  if(!live) throw new ApiError(403,'membership_revoked','Your Discord access changed. Ask the Bot Owner for help.');
+  return resolvedDiscordPlayer(live,created);
 }
 
 /**
@@ -416,11 +373,14 @@ export async function linkDiscordIdentity(
   }
   const now = nowIso();
   if (existingForDiscord) {
-    await env.DB.prepare(
-      "UPDATE fb_discord_identities SET username = ?, global_name = ?, last_seen_at = ? WHERE id = ?",
-    )
-      .bind(discordUser.username, discordUser.global_name ?? null, now, existingForDiscord.id)
-      .run();
+    const updated=await env.DB.prepare(`UPDATE fb_discord_identities SET username=?,global_name=?,last_seen_at=?
+      WHERE id=? AND revoked_at IS NULL AND EXISTS (SELECT 1 FROM fb_users u JOIN fb_memberships m ON m.user_id=u.id
+        WHERE u.id=fb_discord_identities.user_id AND u.disabled_at IS NULL AND u.is_synthetic=0
+          AND m.tenant_id=fb_discord_identities.tenant_id AND m.status='active' AND m.revoked_at IS NULL) AND NOT EXISTS (
+        SELECT 1 FROM fb_discord_identities other INDEXED BY fb_discord_identity_global_lookup_idx
+        WHERE other.discord_user_id=fb_discord_identities.discord_user_id AND other.user_id<>fb_discord_identities.user_id)
+      RETURNING id`).bind(discordUser.username,discordUser.global_name??null,now,existingForDiscord.id).first();
+    if(!updated) throw new ApiError(409,'discord_link_conflict','That Discord account could not be linked to this Foilbury account.');
     return {
       ...existingForDiscord,
       username: discordUser.username,
@@ -428,13 +388,17 @@ export async function linkDiscordIdentity(
       last_seen_at: now,
     };
   }
-  await ensureWallet(env.DB, tenant.id, user.id);
   const id = newId("dci");
   try {
-    await env.DB.prepare(
+    await env.DB.batch([
+      env.DB.prepare('INSERT INTO fb_discord_binding_admissions (discord_user_id,user_id) VALUES (?,?)').bind(discordUser.id,user.id),
+      env.DB.prepare(
       `INSERT INTO fb_discord_identities
         (id, tenant_id, discord_user_id, user_id, username, global_name, linked_at, last_seen_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM fb_users u JOIN fb_memberships m ON m.user_id=u.id
+         WHERE u.id=? AND u.disabled_at IS NULL AND u.is_synthetic=0 AND m.tenant_id=? AND m.status='active' AND m.revoked_at IS NULL) AND NOT EXISTS (
+         SELECT 1 FROM fb_discord_identities other INDEXED BY fb_discord_identity_global_lookup_idx
+         WHERE other.discord_user_id=? AND other.user_id<>?)`,
     )
       .bind(
         id,
@@ -445,9 +409,21 @@ export async function linkDiscordIdentity(
         discordUser.global_name ?? null,
         now,
         now,
-      )
-      .run();
+        user.id,
+        tenant.id,
+        discordUser.id,
+        user.id,
+      ),
+      env.DB.prepare(`SELECT CASE WHEN EXISTS (SELECT 1 FROM fb_discord_identities di JOIN fb_users u ON u.id=di.user_id
+        JOIN fb_memberships m ON m.tenant_id=di.tenant_id AND m.user_id=di.user_id
+        WHERE di.tenant_id=? AND di.discord_user_id=? AND di.user_id=? AND di.revoked_at IS NULL
+          AND u.disabled_at IS NULL AND u.is_synthetic=0 AND m.status='active' AND m.revoked_at IS NULL)
+        AND NOT EXISTS (SELECT 1 FROM fb_discord_binding_admissions WHERE discord_user_id=?)
+        THEN 1 ELSE json('discord_admission_changed') END`).bind(tenant.id,discordUser.id,user.id,discordUser.id),
+    ]);
   } catch (error) {
+    if (String(error).includes('malformed JSON') || String(error).includes('discord_global_binding_'))
+      throw new ApiError(409,'discord_link_conflict','That Discord account could not be linked to this Foilbury account.');
     if (!String(error).includes("UNIQUE")) throw error;
   }
   const linked = await first<DiscordIdentity>(
@@ -463,6 +439,14 @@ export async function linkDiscordIdentity(
       "That Discord account could not be linked to this Foilbury account.",
     );
   }
+  await env.DB.prepare(`INSERT INTO fb_wallets (tenant_id,user_id,balance,updated_at)
+    SELECT ?,?,0,? WHERE EXISTS (SELECT 1 FROM fb_users u JOIN fb_memberships m ON m.user_id=u.id
+      JOIN fb_discord_identities di ON di.user_id=u.id AND di.tenant_id=m.tenant_id
+      WHERE u.id=? AND u.disabled_at IS NULL AND u.is_synthetic=0 AND m.tenant_id=?
+        AND m.status='active' AND m.revoked_at IS NULL AND di.discord_user_id=? AND di.revoked_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM fb_discord_identities other INDEXED BY fb_discord_identity_global_lookup_idx
+          WHERE other.discord_user_id=di.discord_user_id AND other.user_id<>di.user_id))
+    ON CONFLICT(tenant_id,user_id) DO NOTHING`).bind(tenant.id,user.id,now,user.id,tenant.id,discordUser.id).run();
   return linked;
 }
 

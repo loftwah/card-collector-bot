@@ -285,6 +285,8 @@ export async function createSession(
     authTime?: string | null;
     /** Refuse session issuance unless current Bot membership is active at the insert. */
     requireActiveMembership?: boolean;
+    /** Recheck the verified Discord binding atomically with session issuance. */
+    requireDiscordIdentity?: string;
   },
 ): Promise<{
   token: string;
@@ -309,11 +311,16 @@ export async function createSession(
         (id, token_hash, user_id, tenant_id, csrf_token, created_at, expires_at, last_seen_at,
          auth_method, assurance, auth_time, user_agent, ip_hash, access_subject)
        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-       WHERE ? = 0 OR EXISTS (
+       WHERE (? = 0 OR EXISTS (
          SELECT 1 FROM fb_memberships m JOIN fb_users u ON u.id = m.user_id
          WHERE m.tenant_id = ? AND m.user_id = ? AND m.status = 'active'
            AND m.revoked_at IS NULL AND u.disabled_at IS NULL AND u.is_synthetic = 0
-       ) RETURNING id`,
+       )) ${options?.requireDiscordIdentity ? `AND EXISTS (
+         SELECT 1 FROM fb_discord_identities di WHERE di.tenant_id=? AND di.user_id=?
+           AND di.discord_user_id=? AND di.revoked_at IS NULL
+           AND NOT EXISTS (SELECT 1 FROM fb_discord_identities other INDEXED BY fb_discord_identity_global_lookup_idx
+             WHERE other.discord_user_id=di.discord_user_id AND other.user_id<>di.user_id)
+       )` : ''} RETURNING id`,
     )
     .bind(
       id,
@@ -333,6 +340,7 @@ export async function createSession(
       options?.requireActiveMembership ? 1 : 0,
       tenant.id,
       user.id,
+      ...(options?.requireDiscordIdentity ? [tenant.id,user.id,options.requireDiscordIdentity] : []),
     );
   if (!(await statement.first<{ id: string }>())) {
     throw new ApiError(403, "membership_inactive", "This album membership is not active. Ask an administrator for access.");

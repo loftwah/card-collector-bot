@@ -86,6 +86,8 @@ export const GET: APIRoute = async ({ request, cookies }) => {
     const session = await createSession(ctx.db, ctx.tenant, user, {
       authMethod: "discord",
       assurance: "discord",
+      requireActiveMembership: true,
+      requireDiscordIdentity: discordUser.id,
       userAgent: request.headers.get("user-agent"),
     });
     const headers = new Headers({ location: next, "cache-control": "no-store" });
