@@ -13,7 +13,7 @@
     "opsz": 72,
     "SOFT": 30,
     "WONK": 0,
-    "monogram": "F on 5:7 card with second card",
+    "monogram": "asymmetric open album with card pocket and facing index",
     "wordmarkTracking": 30,
     "background": "#27332e",
     "foreground": "#f7f5ef"
@@ -29,63 +29,63 @@
     },
     {
       "name": "apple-touch-icon.png",
-      "sha256": "c7fcfd971f91db80bac4e613bf8aa3fe5febb7c616f0d270f70a16f0126b064a"
+      "sha256": "cf11245d256ac6889712836d6351e9bc83d006641cf2aaccd738283642cef9c3"
     },
     {
       "name": "discord-avatar-1024.png",
-      "sha256": "c1d097f933af28e508f677f77f3db5bb74ec0a04b796e20722a55412637643ca"
+      "sha256": "ba8034c62e8504b09d45cb048ba1dcf4d1974db526cee5fec250e6d17e745e1a"
     },
     {
       "name": "favicon-16.png",
-      "sha256": "34bb071ee89601f0788745574f582215798737b027f7b8a9d0b0ba5c7e3a181c"
+      "sha256": "7d427d8a3fb5971908249c947b097ed33c558d8ed720216dfcb0c357b5e6ad5f"
     },
     {
       "name": "favicon-32.png",
-      "sha256": "222b3dd36e2c8b105b827b64a8d8a158ae4fd7743a3d5bc91ace0f9936364a04"
+      "sha256": "33b9d471926b704eb411a72970b97b2ca77b074c423a5f8e6f02160868c637c9"
     },
     {
       "name": "favicon-48.png",
-      "sha256": "a8efc8e22bf5076ee38b66156d33cdfaf9bbae8852d26224ec49827192d0ec19"
+      "sha256": "62092727b8f3f6f3159e598ae6468e48df91fc170cc74bc8ba0d8735760c2d57"
     },
     {
       "name": "icon-192-maskable.png",
-      "sha256": "a60c1ef27d26a571b76cbe12ebb1d2524668fbe83b597f7bd332d491c825d0af"
+      "sha256": "223265543c6d3f68c03f2342acf57c61af1898da022b1285b199e8713e4b7694"
     },
     {
       "name": "icon-192.png",
-      "sha256": "5b7d6678f68ce2e63652c62d50cbf34d58c4fb025ae45d0bf00a97d566b19a94"
+      "sha256": "d40879a2469491ece58f197f05c95ac5e17619792a40a8ba2990b732cde469f2"
     },
     {
       "name": "icon-512-maskable.png",
-      "sha256": "d0bfba4a26e54bc6199a6040361c4853efeb6999ed07ea9808c2eb3b9febffd7"
+      "sha256": "812697facd781377dd67073e0ff653e053359defc32d7e9fa61e2b5ad7f05064"
     },
     {
       "name": "icon-512.png",
-      "sha256": "fcb8145a624a62cc09559b62ffa799a651a390678888442424e539861f1db9b7"
+      "sha256": "1267a7cbcb4f546482129d2e88d1309b9ae82143a721560e85cc49a4f4bace67"
     },
     {
       "name": "mark-reverse.svg",
-      "sha256": "912ab701ab6d003038faa2077b9847098b000c42ab05249c8c6bdc04b02589c4"
+      "sha256": "2c6021f479d6f1265b978d6102fb859124ca324018718aa10cb40ce854401c81"
     },
     {
       "name": "mark-transparent.svg",
-      "sha256": "4f30d8bee0b867b749132811f2792c4d66c79e52ace12092223087102388cc40"
+      "sha256": "e7f64c3fd9aed9f5ba7c6a57799f6454ed509e796a76b8116e4b23635d51a118"
     },
     {
       "name": "mark.svg",
-      "sha256": "0ede1b7910a62db9e833825c0091d0112f92f0a48419bf45cca595209dd04d68"
+      "sha256": "5a9a0864f5475ba4d5d6592a629350269ea4035b34d451044e9194dc429dc21d"
     },
     {
       "name": "maskable.svg",
-      "sha256": "34b4b0413db0ee406326dafedf6213da039b6461a0fbb02ae97edb70be1e27ef"
+      "sha256": "a067cb49a5982b32bbf0c270d31d189a61f31fc34093da1c79152fdd2efaa4ce"
     },
     {
       "name": "social-master.svg",
-      "sha256": "9fc017ce9ba7b50b4d31d3f3e7fe48a9d61197a8c1ecd6f737baa8f5d7130c24"
+      "sha256": "e9f7ed617bb0e94372f27e40ce3ceacc6f99ac54dbc03156fc4b397031414a44"
     },
     {
       "name": "social-preview.png",
-      "sha256": "13685c8973b35e57a1d15b928749d4c71f14689ba9c2c01b0a20a3a74c5d7989"
+      "sha256": "49e61f15486b7d428d850dcd67b99c83f4034a46f8fccaac66c82c2732774a42"
     },
     {
       "name": "wordmark-ink.svg",
