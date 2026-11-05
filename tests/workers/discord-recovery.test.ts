@@ -1029,6 +1029,37 @@ describe("Discord draw commit recovery", () => {
     const next=await runtime.DB.prepare('SELECT * FROM fb_discord_timeout_reconcile_cursor WHERE id=1').first<{high_completed_at:string}>();
     expect(next?.high_completed_at).toBe('2001-01-01T00:00:00.000Z');
   });
+  it('keeps each recovery page capped while a sustained newer tail grows',async()=>{
+    const insert=async(prefix:string,at:string,count:number)=>runtime.DB.prepare(`INSERT INTO fb_discord_interactions
+      (interaction_id,application_id,guild_id,channel_id,discord_user_id,command_name,status,error_code,created_at,completed_at)
+      SELECT ?||printf('%05d',value),?,?,?,?,'fixture','failed','delivery_timeout',?,? FROM json_each(?)`)
+      .bind(prefix,APPLICATION_ID,GUILD_ID,CHANNEL_ID,DISCORD_USER_ID,at,at,JSON.stringify(Array.from({length:count},(_,i)=>i))).run();
+    await insert('load-old-','2000-01-01T00:00:00.000Z',1200);
+    const statements=new WeakMap<object,D1PreparedStatement>(),pageSizes:number[]=[];
+    const db=new Proxy(runtime.DB,{get(target,key){
+      if(key==='prepare')return(sql:string)=>{
+        const wrap=(raw:D1PreparedStatement):D1PreparedStatement=>{
+          const proxy=new Proxy(raw,{get(statement,method){
+            if(method==='bind')return(...args:unknown[])=>wrap(statement.bind(...args));
+            if(method==='all'&&sql.includes('AND (completed_at,interaction_id)>')&&sql.includes('LIMIT 50'))return async(...args:[])=>{
+              const result=await statement.all(...args);pageSizes.push(result.results?.length??0);return result;
+            };
+            const value=Reflect.get(statement,method,statement);return typeof value==='function'?value.bind(statement):value;
+          }});statements.set(proxy,raw);return proxy;
+        };return wrap(target.prepare(sql));
+      };
+      if(key==='batch')return(items:D1PreparedStatement[])=>target.batch(items.map(item=>statements.get(item)??item));
+      const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
+    }});
+    for(let pass=0;pass<24;pass++){
+      await reconcileTimedOutDraws(db);
+      await insert(`load-new-${String(pass).padStart(2,'0')}-`,'2001-01-01T00:00:00.000Z',40);
+    }
+    expect(pageSizes).toHaveLength(24);
+    expect(Math.max(...pageSizes)).toBe(50);
+    const cursor=await runtime.DB.prepare('SELECT completed_at,high_completed_at,generation FROM fb_discord_timeout_reconcile_cursor WHERE id=1').first();
+    expect(cursor).toEqual({completed_at:'',high_completed_at:'',generation:24});
+  });
   it('rejects a stale cursor even after another pass completes a full cycle',async()=>{
     await runtime.DB.prepare(`INSERT INTO fb_discord_interactions
       (interaction_id,application_id,guild_id,channel_id,discord_user_id,command_name,status,error_code,created_at,completed_at)
@@ -1049,11 +1080,12 @@ describe("Discord draw commit recovery", () => {
   it('uses the intended timeout-page and draw-identity indexes',async()=>{
     const page=await runtime.DB.prepare(`EXPLAIN QUERY PLAN SELECT interaction_id,completed_at FROM fb_discord_interactions
       WHERE status='failed' AND error_code='delivery_timeout' AND completed_at IS NOT NULL
-        AND (completed_at>? OR (completed_at=? AND interaction_id>?)) AND (completed_at<? OR (completed_at=? AND interaction_id<=?)) ORDER BY completed_at,interaction_id LIMIT 50`)
-      .bind('','','','z','z','z').all<{detail:string}>();
+        AND (completed_at,interaction_id)>(?,?) AND (completed_at,interaction_id)<=(?,?) ORDER BY completed_at,interaction_id LIMIT 50`)
+      .bind('','','z','z').all<{detail:string}>();
     const pagePlan=(page.results??[]).map(row=>row.detail).join('\n');
     expect(pagePlan).toContain('fb_discord_timeout_reconcile_idx');
     expect(pagePlan).not.toContain('USE TEMP B-TREE');
+    expect(pagePlan).toContain('(completed_at,interaction_id)>(?,?)');
     const lookup=await runtime.DB.prepare(`EXPLAIN QUERY PLAN SELECT x.interaction_id FROM fb_discord_interactions x WHERE x.interaction_id=?
       AND EXISTS (SELECT 1 FROM fb_discord_installations i
         JOIN fb_discord_identities di ON di.tenant_id=i.tenant_id AND di.discord_user_id=x.discord_user_id
@@ -1078,5 +1110,11 @@ describe("Discord draw commit recovery", () => {
     expect(parentPlan).toContain('fb_discord_processing_attempt_idx');
     expect(parentPlan).toContain('fb_discord_attempts_expiry_batch_idx');
     expect(parentPlan).not.toContain('USE TEMP B-TREE');
+    const expiryUpdate=await runtime.DB.prepare(`EXPLAIN QUERY PLAN UPDATE fb_discord_interaction_attempts
+      SET status='expired',error_code='delivery_timeout',finished_at=?,expiry_batch_id=? WHERE attempt_id IN
+      (SELECT attempt_id FROM fb_discord_interaction_attempts WHERE status='processing' AND started_at<? ORDER BY started_at,attempt_id LIMIT 50)`)
+      .bind('now','batch','2100-01-01').all<{detail:string}>();
+    const expiryPlan=(expiryUpdate.results??[]).map(row=>row.detail).join('\n');
+    expect(expiryPlan).toContain('fb_discord_attempts_expiry_idx');expect(expiryPlan).not.toContain('USE TEMP B-TREE');
   });
 });

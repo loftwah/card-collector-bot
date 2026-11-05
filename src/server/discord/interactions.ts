@@ -78,9 +78,8 @@ export async function reconcileTimedOutDraws(db: DiscordEnv['DB'], mayWrap=true)
   if(!high) return 0;
   const page=await db.prepare(`SELECT interaction_id,completed_at FROM fb_discord_interactions
     WHERE status='failed' AND error_code='delivery_timeout' AND completed_at IS NOT NULL
-      AND (completed_at>? OR (completed_at=? AND interaction_id>?))
-      AND (completed_at<? OR (completed_at=? AND interaction_id<=?))
-    ORDER BY completed_at,interaction_id LIMIT 50`).bind(cursor.completed_at,cursor.completed_at,cursor.interaction_id,high.completed_at,high.completed_at,high.interaction_id)
+      AND (completed_at,interaction_id)>(?,?) AND (completed_at,interaction_id)<=(?,?)
+    ORDER BY completed_at,interaction_id LIMIT 50`).bind(cursor.completed_at,cursor.interaction_id,high.completed_at,high.interaction_id)
     .all<{interaction_id:string;completed_at:string}>();
   const rows=page.results??[],last=rows.at(-1);
   const cycleDone=!last || (last.completed_at===high.completed_at && last.interaction_id===high.interaction_id);
