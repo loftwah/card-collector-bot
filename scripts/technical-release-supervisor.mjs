@@ -55,7 +55,7 @@ try {
   step('checkout', ['sh','-c',`set -eu; test ! -e .git; test ! -e .env; test ! -e .dev.vars; test ! -e .wrangler; test ! -e .foilbury; git init -q; git fetch -q /tmp/source.bundle HEAD; git reset -q --hard FETCH_HEAD; test "$(git rev-parse HEAD)" = '${before.sha}'; test -z "$(git status --porcelain)"; corepack enable pnpm`]);
   step('setup', ['pnpm','setup:local','--skip-sources']);
   step('synthetic-fixtures', ['node','scripts/setup-ci-fixtures.mjs']);
-  step('technical-gate-tests', ['node','--test','tests/scripts/technical-release-receipt.test.mjs']);
+  step('technical-gate-tests', ['node','--test','tests/scripts/technical-release-receipt.test.mjs','tests/scripts/post-propagation-baseline.test.mjs']);
   step('check', ['pnpm','check']);
   step('built-worker-test', ['pnpm','test:production-path']);
   step('stop-dev', ['node','scripts/technical-release-stop-dev.mjs']);
@@ -65,6 +65,7 @@ try {
   step('synthetic-owner-copy', ['node','scripts/technical-release-seed-copy.mjs']);
   for (const [name,cmd] of [
     ['landing-loading',['node','scripts/test-landing-loading.mjs']],['inspector-component',['node','--test','tests/browser/public-inspector.test.mjs']],
+    ['draw-odds-component',['node','--test','tests/browser/draw-odds-loading.test.mjs']],
     ['ui',['pnpm','test:ui']],['product',['pnpm','test:product']],['artwork',['pnpm','test:artwork']],
     ['album',['node','scripts/test-album-e2e.mjs']],['privacy',['node','scripts/test-privacy.mjs']],['performance',['pnpm','perf:local']],
   ]) { step('worker-still-owned', ['node','scripts/technical-release-worker-ready.mjs']); step(name,cmd); }

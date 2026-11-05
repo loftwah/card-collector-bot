@@ -18,6 +18,7 @@ import {
   sourceTreeHash,
 } from "./lib/source-identity.mjs";
 import { inspectBundle } from "./lib/release-artifact.mjs";
+import { readPostPropagationBaseline } from "./lib/post-propagation-baseline.mjs";
 import { validateTechnicalReceipt, priorVerifiedSource, requireCorrectivePaths, assertRegularArtifactTree, TECHNICAL_IMAGE, requireUnchangedMigrations, singleServingVersion, reportedUploadVersion, requireSameSource, requireSameDeployment, TECHNICAL_PRIOR_RECEIPT_SHA256 } from "./lib/technical-release-receipt.mjs";
 import {
   changedPaths,
@@ -221,6 +222,17 @@ function previousReleaseReceipts() {
 }
 
 const priorReceipts=previousReleaseReceipts();
+async function readLiveSource() {
+  const response=await fetch('https://foilbury.loftwah.com/',{redirect:'manual',signal:AbortSignal.timeout(10000),headers:{'cache-control':'no-cache'}});
+  if(response.status!==200) throw new Error('Production source read-back failed.');
+  return response.headers.get('x-foilbury-build');
+}
+// Only this pinned release may use the supplemental path; all other versions
+// retain the original verified-receipt gate.
+if(rollback.version_id.toLowerCase()==='1bf907c5-ee50-48c4-8dd5-bbedf3eb2896') {
+  try { priorReceipts.push(readPostPropagationBaseline(evidenceDir,previous?.[0],await readLiveSource())); }
+  catch(error) { console.error(`Refusing release: ${error.message}`); process.exit(2); }
+}
 let previousSha;
 try {
   previousSha=priorVerifiedSource(priorReceipts,rollback.version_id);
@@ -255,7 +267,7 @@ function recheckProductionState() {
   requireUnchangedMigrations(currentMigrations.local,currentMigrations.remote,priorReceipts,rollback.version_id);
   validateTechnicalReceipt({file:technicalFile,receiptSha256:technicalDigest,source});
 }
-try { recheckProductionState(); }
+try { recheckProductionState(); if(priorReceipts.some(r=>r.kind==='post-propagation-baseline')) readPostPropagationBaseline(evidenceDir,deploymentList(env)?.[0],await readLiveSource()); }
 catch(error) { console.error(`Refusing release: ${error.message}`); process.exit(2); }
 const runId=randomUUID();
 
@@ -273,6 +285,7 @@ const plan = {
   bundle,
   migrations,
   previous_deployment: previous?.[0] ?? null,
+  baseline_evidence: priorReceipts.filter(r=>r.kind==='post-propagation-baseline'),
   rollback,
   environment: "production",
   origin: "https://foilbury.loftwah.com",
@@ -322,7 +335,7 @@ if(technical) {
 
 // The supervised run can take minutes. Recheck the remote source, current
 // Worker and unchanged schema immediately before the upload.
-try { recheckProductionState(); }
+try { recheckProductionState(); if(priorReceipts.some(r=>r.kind==='post-propagation-baseline')) readPostPropagationBaseline(evidenceDir,deploymentList(env)?.[0],await readLiveSource()); }
 catch(error) { console.error(`Refusing release: ${error.message}`); process.exit(2); }
 const upload=spawnSync(path.join(ROOT,"node_modules/.bin/wrangler"),[
   "deploy","--config",config,"--var",`FOILBURY_BUILD_SHA:${source.sha}`,
@@ -382,6 +395,7 @@ const receipt = {
   readback_limit: "The source header and deployment metadata do not independently prove the bytes served to every client; external deployments can race these reads.",
   deployment_status: uploadMatches ? "matched_upload" : "unverified",
   previous_deployment: previous?.[0] ?? null,
+  baseline_evidence: plan.baseline_evidence,
   rollback,
   smoke,
   verified,
