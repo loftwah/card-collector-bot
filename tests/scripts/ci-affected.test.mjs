@@ -12,7 +12,7 @@ test('scope browser checks to affected product behavior', () => {
   assert.equal(affectedJourneys(['src/pages/s/[token].astro']).privacy, true);
   assert.equal(affectedJourneys(['src/server/modules/imports.ts']).album, true);
   assert.equal(affectedJourneys(['src/styles/global.css']).browser, false);
-  assert.equal(affectedJourneys(['src/components/player/DrawStudio.tsx']).browser, false);
+  assert.equal(affectedJourneys(['src/components/player/DrawStudio.tsx', 'src/pages/play/draw.astro', 'tests/browser/draw-odds-loading.test.mjs']).browser, false);
   assert.equal(affectedJourneys(['src/components/player/CollectionBrowser.tsx']).privacy, true);
   assert.deepEqual(affectedJourneys(['migrations/0028_new.sql']), {auth:true,editorial:true,album:true,privacy:true,browser:true});
   assert.deepEqual(affectedJourneys(['pnpm-lock.yaml']), {auth:true,editorial:true,album:true,privacy:true,browser:true});
