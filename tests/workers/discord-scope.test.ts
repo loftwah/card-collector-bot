@@ -221,6 +221,11 @@ describe("Discord configured-server scope", () => {
     expect(JSON.stringify(memberCollection.data)).toContain("Test One");
     const collectionButton = await send(interaction({ custom_id: "foilbury:collection", component_type: 2 }, { type: 3 }));
     expect(JSON.stringify(collectionButton.data)).toContain("Test One");
+    for (const id of ["scope-member-duplicate-1", "scope-member-duplicate-2"]) {
+      await send(interaction(command("open", [{ name: "pool", type: 3, value: "test-pool" }]), { id }));
+    }
+    const duplicates = await send(interaction(command("collection")));
+    expect(duplicates.data?.embeds?.[0]?.fields?.find((field) => field.name === "Duplicates")?.value).toBe("2");
     await setAudience("public");
     const publicCollection = await send(interaction(command("collection")));
     expect(JSON.stringify(publicCollection.data)).not.toContain("Test One");

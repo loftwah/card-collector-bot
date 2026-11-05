@@ -588,7 +588,7 @@ async function collection(
   }
   const counts = new Map<string, number>();
   for (const item of inventory) counts.set(item.card_id, (counts.get(item.card_id) ?? 0) + 1);
-  const duplicates = [...counts.values()].filter((count) => count > 1).length;
+  const duplicates = [...counts.values()].reduce((total, count) => total + Math.max(0, count - 1), 0);
   return cabinetSummaryMessage({
     scopeName: ctx.tenant.name,
     currencySymbol: wallet.currencySymbol,
