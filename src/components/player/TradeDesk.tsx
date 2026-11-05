@@ -274,7 +274,7 @@ export default function TradeDesk({
               <div className="mt-4 grid gap-4">
                 {["proposer", "recipient"].map((side) => (
                   <div key={side}>
-                    <p className="label">{side === "proposer" ? "They offer" : "You offer"}</p>
+                    <p className="label">{(side === "proposer") === (detail.proposer_id === currentUserId) ? "You offer" : "They offer"}</p>
                     <div className="mt-1 grid gap-1">
                       {detail.items.filter((item) => item.side === side).map((item) => <p key={item.id} className="text-sm">{item.card_name} · {item.variant_name} · <span className="font-mono text-xs text-[var(--muted)]">{item.serial}</span></p>)}
                       {detail.items.filter((item) => item.side === side).length === 0 ? <p className="text-xs text-[var(--muted)]">No cards on this side.</p> : null}

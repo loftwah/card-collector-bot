@@ -461,7 +461,8 @@ export async function listTenantMembers(ctx: Ctx) {
     ctx.db,
     `SELECT u.id, u.display_name, m.role
        FROM fb_memberships m JOIN fb_users u ON u.id = m.user_id
-      WHERE m.tenant_id = ? AND m.status = 'active' AND u.disabled_at IS NULL
+      WHERE m.tenant_id = ? AND m.status = 'active' AND m.revoked_at IS NULL
+        AND u.disabled_at IS NULL AND u.is_synthetic = 0
       ORDER BY u.display_name`,
     ctx.tenant.id,
   );
