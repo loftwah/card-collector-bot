@@ -48,6 +48,7 @@ export const FOILBURY_PALETTE = {
   lime: 0xc9f25f,
   ink: 0x07110f,
   bone: 0xeff5f1,
+  albumSage: 0x84978a,
 } as const;
 
 export type FoilburyAccent = (typeof FOILBURY_PALETTE)[keyof typeof FOILBURY_PALETTE];
@@ -1285,10 +1286,10 @@ export function revealReceiptMessage(input: RevealReceiptInput): DiscordCallback
     attachments: attachment ? [attachment] : [],
     embed: {
       title: `${cardName} — ${finish}`,
-      description: `Pulled from **${poolName}**. This copy is in your cabinet immediately. **Open again** is a new, priced pull; this receipt is committed and cannot re-draw.`,
-      accent: FOILBURY_PALETTE.deepAqua,
+      description: `From **${poolName}**. This copy is in your cabinet. **Open again** spends Foil on a new pull.`,
+      accent: FOILBURY_PALETTE.albumSage,
       fields,
-      footer: `Foilbury · committed receipt${input.scope_name ? ` · ${visibleText(input.scope_name, "scope_name")}` : ""}`,
+      footer: `Foilbury${input.scope_name ? ` · ${visibleText(input.scope_name, "scope_name")}` : ""}`,
       timestamp: drawnAt,
       ...(attachment
         ? {

@@ -395,8 +395,8 @@ hr {
 }
 
 .signal-strip {
-  height: 4px;
-  background: linear-gradient(90deg, var(--signal) 0 46%, var(--lime) 46% 68%, var(--ink) 68% 100%);
+  height: 1px;
+  background: var(--line-strong);
 }
 
 .kpi-grid {
@@ -2280,8 +2280,8 @@ html[data-motion="reduced"] .layered-card__effect {
 }
 
 .signal-rule {
-  height: 4px;
-  background: linear-gradient(90deg, var(--signal) 0 38%, var(--lime) 38% 62%, var(--ink) 62% 100%);
+  height: 1px;
+  background: var(--line-strong);
 }
 
 @media (max-width: 640px) {

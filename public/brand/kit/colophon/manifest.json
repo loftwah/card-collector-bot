@@ -6,6 +6,7 @@
   "font_source": "public/fonts/Fraunces.ttf",
   "social_font": "Manrope, The Manrope Project Authors, SIL Open Font License 1.1",
   "social_font_source": "public/fonts/Manrope.ttf",
+  "bot_banner_note": "Art-free local study, 680×240 Discord Bot profile banner; not applied.",
   "social_note": "Vector-only provisional social image; no character artwork or invented card contents.",
   "generator": "scripts/brand/generate-colophon.mjs",
   "settings": {
@@ -30,6 +31,14 @@
     {
       "name": "apple-touch-icon.png",
       "sha256": "cf11245d256ac6889712836d6351e9bc83d006641cf2aaccd738283642cef9c3"
+    },
+    {
+      "name": "bot-banner-master.svg",
+      "sha256": "7bb71fc156a656b018252ffa6426fff3de5a74c7fdb905fe5f2d78a6d7d47898"
+    },
+    {
+      "name": "bot-banner.png",
+      "sha256": "6ebeb460cf19be02de54cd5d1992b47da95aa2c663fe4bc75690e89e59ea6685"
     },
     {
       "name": "discord-avatar-1024.png",

@@ -450,7 +450,9 @@ describe("reveal receipt parity", () => {
     expect(fieldValue(callback, "Settled balance")).toBe("390 ✦");
     expect(fieldValue(callback, "Odds")).toBe("12.50% for this copy");
     expect(embed.timestamp).toBe(revealBase.drawn_at);
-    expect(embed.footer?.text).toBe("Foilbury · committed receipt");
+    expect(embed.footer?.text).toBe("Foilbury");
+    expect(embed.color).toBe(FOILBURY_PALETTE.albumSage);
+    expect(embed.description).toContain("spends Foil on a new pull");
     expect(callback.attachments).toEqual([
       {
         r2Key: render.r2Key,

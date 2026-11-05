@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import sharp from 'sharp';
@@ -17,10 +17,11 @@ test('candidate exports match the recorded reproducible manifest',()=>{
   }
 });
 test('destination raster sizes and social mask references remain correct',async()=>{
-  for(const [file,width,height] of [['favicon-16.png',16,16],['favicon-32.png',32,32],['icon-192-maskable.png',192,192],['icon-512-maskable.png',512,512],['discord-avatar-1024.png',1024,1024],['social-preview.png',1200,630]]) {
+  for(const [file,width,height] of [['favicon-16.png',16,16],['favicon-32.png',32,32],['icon-192-maskable.png',192,192],['icon-512-maskable.png',512,512],['discord-avatar-1024.png',1024,1024],['social-preview.png',1200,630],['bot-banner.png',680,240]]) {
     const metadata=await sharp(path.join(root,file)).metadata();
     assert.equal(metadata.width,width,file);assert.equal(metadata.height,height,file);
   }
+  assert.ok(statSync(path.join(root,'bot-banner.png')).size < 10_000_000, 'Bot banner exceeds the portal size limit');
   const svg=readFileSync(path.join(root,'social-master.svg'),'utf8');
   for(const suffix of ['header','card']) {
     assert.ok(svg.includes(`id="social-album-${suffix}"`));
