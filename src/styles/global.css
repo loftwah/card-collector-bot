@@ -732,6 +732,45 @@ select.select option {
   backdrop-filter: blur(14px);
 }
 
+.site-header .btn-sm,
+.site-header button,
+.site-header a[aria-label="Foilbury home"] {
+  min-height: 44px;
+}
+
+.site-header button {
+  min-width: 44px;
+}
+
+.site-header .btn-sm {
+  padding-inline: 0.5rem;
+  white-space: nowrap;
+}
+
+.landing .grid > * {
+  min-width: 0;
+}
+
+.landing .display,
+.landing .display-sm {
+  overflow-wrap: anywhere;
+}
+
+.landing .btn {
+  max-width: 100%;
+  white-space: normal;
+}
+
+.landing-hero {
+  container-type: inline-size;
+}
+
+@container (max-width: 240px) {
+  .landing-hero h1 {
+    font-size: 2rem;
+  }
+}
+
 .site-footer {
   border-top: 1px solid var(--line);
   margin-top: 6rem;
