@@ -154,7 +154,7 @@ describe("Discord configured-server scope", () => {
     await install([]);
     const welcome = await send(interaction(command("tour")));
     expect(welcome.data?.flags).toBe(64);
-    expect(welcome.data?.embeds?.[0]?.title).toBe("This server has no eligible collection");
+    expect(welcome.data?.embeds?.[0]?.title).toBe("No worlds available here");
     expect(JSON.stringify(welcome.data)).toContain("explicit empty collection allowlist");
     expect(await draws()).toBe(0);
   });
@@ -167,7 +167,7 @@ describe("Discord configured-server scope", () => {
       "UPDATE fb_bot_collections SET enabled = 0 WHERE collection_id = 'col_test_public'",
     ).run();
     const welcome = await send(interaction(command("tour")));
-    expect(JSON.stringify(welcome.data)).toContain("This server has no eligible collection");
+    expect(JSON.stringify(welcome.data)).toContain("No worlds available here");
     expect(JSON.stringify(welcome.data)).not.toContain("Test Public");
     const open = await send(interaction(command("open", [{ name: "pool", type: 3, value: "test-pool" }])));
     expect(JSON.stringify(open.data)).not.toContain("Test One");

@@ -1452,18 +1452,13 @@ function scopeFailureMessage(scope: DiscordScope): DiscordCallback {
     {
       embeds: [
         {
-          title: "This server has no eligible collection",
+          title: "No worlds available here",
           description: [
-            scope.emptyReason ?? "No collection is available for this server and channel.",
-            "",
-            "The tour does not fall back to the global catalogue, a hard-coded album or another Bot's content. Nothing was charged or awarded.",
-            "",
-            "A Bot Owner or scoped admin can reconcile this in Studio → Collections and the Discord installation settings.",
-          ].join("\n"),
+            scope.emptyReason ?? "No collection is available in this channel yet.",
+            "Ask the Bot Owner to check the collection and channel settings.",
+          ].join("\n\n"),
           color: 0x8a8f98,
-          footer: {
-            text: `Server scope ${scope.digest.slice(0, 12)} · installation ${scope.installationId}`,
-          },
+          footer: { text: "Foilbury" },
         },
       ],
     },
@@ -1485,54 +1480,28 @@ async function tour(
 
   if (stage === "welcome") {
     const selected = album?.detail.name ?? "No eligible album";
-    const collectionLines = scope.collections
-      .slice(0, 6)
-      .map((collection) => `• ${collection.name} · ${collection.audience_label}`)
-      .join("\n");
+    const collectionLines = [
+      ...scope.collections.slice(0, 6).map((collection) => `• ${collection.name}`),
+      ...(scope.collections.length > 6 ? [`+ ${scope.collections.length - 6} more`] : []),
+    ].join("\n");
     return callback(
       {
         embeds: [
           {
             title: "Foilbury · guided tour",
-            description: [
-              "Foilbury is a collectible-card cabinet. Claim a free allowance, open a capsule, and keep the copy in this Bot's cabinet.",
-              "",
-              "**What you can see here:** this private response, your own inventory and the albums this server actually enables. Nothing in the tour spends Foil, draws a card or grants a reward until you choose an action.",
-            ].join("\n"),
-            color: 0xc9a227,
+            description: "Choose a world, open a capsule and keep the cards you find. Exploring this tour is free; opening a capsule spends Foil only when you choose to open it.",
+            color: 0x84978a,
             fields: [
               {
-                name: "This server's enabled collections",
-                value: collectionLines || "No collection is eligible for this channel.",
+                name: "Worlds here",
+                value: collectionLines || "No worlds are available here yet.",
                 inline: false,
               },
-              {
-                name: "Tour album",
-                value: selected,
-                inline: true,
-              },
-              {
-                name: "Member albums",
-                value: `${scope.collections.length} available here`,
-                inline: true,
-              },
-              {
-                name: "Free play",
-                value: `${economy.starter_grant} welcome · ${economy.daily_reward} daily`,
-                inline: true,
-              },
-              {
-                name: "Your balance",
-                value: `${wallet.balance} ${wallet.currencySymbol}`,
-                inline: true,
-              },
-              {
-                name: "Server scope",
-                value: `\`${scope.digest.slice(0, 16)}\` · ${scope.channelAudience} channel · AI artwork ${scope.aiArtEnabled ? "included" : "excluded"}`,
-                inline: false,
-              },
+              { name: "Start with", value: selected, inline: true },
+              { name: "Your balance", value: `${wallet.balance} ${wallet.currencySymbol}`, inline: true },
+              { name: "Free Foil", value: `${economy.starter_grant} to start · ${economy.daily_reward} daily`, inline: true },
             ],
-            footer: { text: "Private tour · configured server collections only · use Next to continue" },
+            footer: { text: "Only you can see this tour" },
           },
         ],
         components: tourNav("welcome", [
