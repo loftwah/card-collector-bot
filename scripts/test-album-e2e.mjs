@@ -200,7 +200,7 @@ try {
     await heldPreview;
     await route.continue();
   }, { times: 1 });
-  const drawButton = member.getByRole("button", { name: /Draw for/ });
+  const drawButton = member.getByRole("button", { name: /Draw for|Loading odds/ });
   try {
     const previewRequested = member.waitForRequest((request) => new URL(request.url()).pathname === previewPath, { timeout: 20000 });
     await member.getByLabel("Choose a capsule").selectOption(`album-pool-${stamp}`);
