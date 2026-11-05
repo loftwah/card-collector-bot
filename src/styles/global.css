@@ -2516,3 +2516,33 @@ html[data-motion="reduced"] .layered-card__effect {
   background: var(--raised);
   font-weight: 700;
 }
+
+/* Let narrow or magnified cabinets reflow without clipping content. */
+.site-header__inner {
+  container-type: inline-size;
+}
+
+.site-header__menu {
+  width: min(13rem, 100cqw);
+}
+
+.cabinet-home .grid > * {
+  min-width: 0;
+}
+
+.cabinet-home {
+  overflow-wrap: anywhere;
+}
+
+.cabinet-home [data-foil-balance] {
+  overflow-wrap: normal;
+}
+
+.cabinet-home .panel-head {
+  flex-wrap: wrap;
+}
+
+.cabinet-home .kpi-grid,
+.cabinet-home__shortcuts {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
+}
