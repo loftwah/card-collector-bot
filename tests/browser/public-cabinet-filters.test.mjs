@@ -25,6 +25,12 @@ try {
   assert.equal(await page.locator('details').filter({hasText:'Category and tag filters'}).getAttribute('open'),'');
   const preserved = new URL(await page.locator('a.chip[href*=\"collection=\"]').first().getAttribute('href'), base);
   assert.equal(preserved.searchParams.get('category'),'unknown'); assert.equal(preserved.searchParams.get('tag'),'unknown');
+  assert.equal(await page.getByLabel('Category').inputValue(),'unknown'); assert.equal(await page.getByLabel('Tag').inputValue(),'unknown');
+  await page.getByRole('button',{name:'Search and filter'}).click();
+  url=new URL(page.url()); assert.equal(url.searchParams.get('category'),'unknown'); assert.equal(url.searchParams.get('tag'),'unknown');
+  await page.getByLabel('Category').selectOption(''); await page.getByLabel('Tag').selectOption('');
+  await page.getByRole('button',{name:'Search and filter'}).click();
+  url=new URL(page.url()); assert.equal(url.searchParams.get('category'),''); assert.equal(url.searchParams.get('tag'),'');
   await page.goto('/cabinet');
   for(const width of [320,390,1440]) {await page.setViewportSize({width,height:844});const geometry=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,client:document.documentElement.clientWidth}));assert.ok(geometry.scroll<=geometry.client+1,`${width}: ${JSON.stringify(geometry)}`);}
   if (js) { const axe=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze();assert.deepEqual(axe.violations.filter(v=>['serious','critical'].includes(v.impact)).map(v=>v.id),[]); }

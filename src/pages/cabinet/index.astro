@@ -62,6 +62,7 @@ function href(next: { search?: string; category?: string; tag?: string; collecti
             <span class="label">Category</span>
             <select class="select" name="category">
               <option value="">All categories</option>
+              {category && !categories.some((item) => item.slug === category) ? <option value={category} selected>Unavailable category</option> : null}
               {categories.map((item) => <option value={item.slug} selected={item.slug === category}>{item.name}</option>)}
             </select>
           </label>
@@ -69,6 +70,7 @@ function href(next: { search?: string; category?: string; tag?: string; collecti
             <span class="label">Tag</span>
             <select class="select" name="tag">
               <option value="">All tags</option>
+              {tag && !tags.some((item) => item.slug === tag) ? <option value={tag} selected>Unavailable tag</option> : null}
               {tags.map((item) => <option value={item.slug} selected={item.slug === tag}>{item.name}</option>)}
             </select>
           </label>
