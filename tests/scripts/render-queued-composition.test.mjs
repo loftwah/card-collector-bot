@@ -33,5 +33,8 @@ test('queued worker renders the saved edition composition and keeps legacy defau
   assert.deepEqual(fs.readFileSync(legacyPath), fs.readFileSync(directLegacyPath));
   assert.notDeepEqual(fs.readFileSync(queuePath), fs.readFileSync(legacyPath), 'fixture must expose the omitted composition');
   await assert.rejects(renderQueuedFront({ ...common, payload: { ...payload, composition_json: '{invalid' }, outputPath: path.join(dir, 'invalid.png') }), SyntaxError);
+  for (const value of [[], 42, 'text', { mode: 'other' }, { zoom: 2 }, { offsetX: '5' }, { typo: 1 }]) {
+    await assert.rejects(renderQueuedFront({ ...common, payload: { ...payload, composition_json: JSON.stringify(value) }, outputPath: path.join(dir, 'invalid.png') }), /Invalid queued artwork composition/);
+  }
   console.log(`Synthetic compositor evidence: ${dir}`);
 });
