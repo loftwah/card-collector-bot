@@ -996,6 +996,13 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
   if (segments[0] === "npcs" && segments[1] && segments.length >= 2) {
     const npcId = segments[1];
+    if (segments.length === 3 && segments[2] === "trade-preview" && method === "POST") {
+      playerWrite(ctx);
+      requireScope(ctx, "trade:write");
+      const body = await readJson(request, z.object({ offeredInstanceId: idSchema, requestedInstanceId: idSchema }));
+      const { previewNpcTrade } = await import("../modules/npc-trade-preview");
+      return json(await previewNpcTrade(ctx, npcId, body.offeredInstanceId, body.requestedInstanceId));
+    }
     if (segments.length === 2 && method === "GET") {
       requireNpcRead(ctx);
       return json((await getNpc(ctx, npcId)).summary);
