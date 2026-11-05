@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Box, RotateCcw, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/client";
@@ -60,7 +60,7 @@ export default function CardInspector({
 
   useEffect(() => { setHydrated(true); }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (hydrated && initialEnabled) modeButton.current?.focus({ preventScroll: true });
   }, [hydrated, initialEnabled]);
 

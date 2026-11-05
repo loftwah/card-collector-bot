@@ -79,6 +79,14 @@ test(
         assert.ok(initial && Math.abs(initial.width / initial.height - 5 / 7) < 0.01);
         await page.getByRole("button", { name: "Show back" }).click();
         await page.getByRole("button", { name: "Inspect in 3D" }).focus();
+        await page.evaluate(() => {
+          window.__inspectionFocusGap = false;
+          const observer = new MutationObserver(() => {
+            const button = [...document.querySelectorAll('button')].find((element) => element.textContent?.includes('Exit 3D'));
+            if (button && !button.disabled && document.activeElement !== button) window.__inspectionFocusGap = true;
+          });
+          observer.observe(document.body, {subtree:true, childList:true, attributes:true});
+        });
         await page.keyboard.press("Enter");
         const stage = page.locator(".card-inspector__stage");
         const current = await stage.boundingBox();
@@ -99,6 +107,7 @@ test(
           await stage.getAttribute("data-mode"),
           motion === "reduce" ? "static" : "interactive",
         );
+        assert.equal(await page.evaluate(() => window.__inspectionFocusGap), false, `${label}: focus was absent after the enabled inspector appeared`);
         await assert.doesNotReject(() =>
           page.getByRole("button", { name: "Exit 3D" }).evaluate((element) => {
             if (document.activeElement !== element) throw new Error("focus was lost");
