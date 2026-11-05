@@ -2534,10 +2534,6 @@ html[data-motion="reduced"] .layered-card__effect {
   overflow-wrap: anywhere;
 }
 
-.cabinet-home [data-foil-balance] {
-  overflow-wrap: normal;
-}
-
 .cabinet-home .panel-head {
   flex-wrap: wrap;
 }

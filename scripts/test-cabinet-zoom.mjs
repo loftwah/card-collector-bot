@@ -100,6 +100,18 @@ try {
           return range.getClientRects().length;
         });
       assert.equal(balanceLines, 1, `${label}: balance should remain on one line`);
+      if (label === "320-zoom") {
+        const largeBalance = await page
+          .locator(".cabinet-home [data-foil-balance]")
+          .evaluate((element) => {
+            const original = element.textContent;
+            element.textContent = "✦ 123456789012";
+            const width = document.documentElement.scrollWidth;
+            element.textContent = original;
+            return width;
+          });
+        assert.ok(largeBalance <= width + 1, `${label}: large balance overflows`);
+      }
       const card = page.locator(".published-card").first();
       if (await card.count()) {
         const rect = await card.boundingBox();
