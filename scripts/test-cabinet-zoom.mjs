@@ -52,11 +52,23 @@ const evidence = fs.mkdtempSync(
 );
 const browser = await chromium.launch();
 try {
+  const loginContext = await browser.newContext({ baseURL: base });
+  assert.equal(
+    (
+      await loginContext.request.post("/api/v1/dev/login", {
+        data: { email: "owner@foilbury.local" },
+      })
+    ).status(),
+    200,
+  );
+  const storageState = await loginContext.storageState();
+  await loginContext.close();
   for (const [label, width, zoom, js, theme] of [
     ["320-zoom", 320, 2, true, "light"],
     ["390-zoom", 390, 2, true, "dark"],
     ["320-nojs", 320, 2, false, "light"],
     ["320-short", 320, 2, false, "light"],
+    ["320-normal", 320, 1, true, "light"],
     ["phone", 390, 1, true, "light"],
     ["desktop", 1440, 1, true, "light"],
   ]) {
@@ -66,16 +78,9 @@ try {
       javaScriptEnabled: js,
       colorScheme: theme,
       reducedMotion: "reduce",
+      storageState,
     });
     try {
-      assert.equal(
-        (
-          await context.request.post("/api/v1/dev/login", {
-            data: { email: "owner@foilbury.local" },
-          })
-        ).status(),
-        200,
-      );
       const page = await context.newPage();
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.message));
@@ -150,6 +155,15 @@ try {
           menu && menu.x >= -1 && menu.x + menu.width <= width + 1,
           `${label}: menu outside viewport ${JSON.stringify(menu)}`,
         );
+        if (zoom === 1) {
+          const menuHeight = await page
+            .locator(".site-header__menu")
+            .evaluate((el) => ({ height: el.clientHeight, content: el.scrollHeight }));
+          assert.ok(
+            menuHeight.height >= Math.min(250, menuHeight.content),
+            `${label}: normal-size menu is unnecessarily short`,
+          );
+        }
         const menuLinks = page.locator(".site-header__menu a:visible");
         const menuLinkCount = await menuLinks.count();
         assert.ok(menuLinkCount > 0);
