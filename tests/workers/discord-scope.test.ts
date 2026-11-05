@@ -203,7 +203,7 @@ describe("Discord configured-server scope", () => {
     expect(JSON.stringify(denied.data)).toMatch(/not enabled for this channel|no eligible|cannot/i);
     expect(await draws()).toBe(0);
     const publicPacks = await send(interaction(command("packs")));
-    expect(JSON.stringify(publicPacks.data)).not.toContain("Test One");
+    expect(JSON.stringify(publicPacks.data)).not.toContain("test-pool");
     await setAudience("members");
     const memberPacks = await send(interaction(command("packs")));
     expect(JSON.stringify(memberPacks.data)).toContain("test-pool");
@@ -231,6 +231,57 @@ describe("Discord configured-server scope", () => {
     expect(JSON.stringify(publicCollection.data)).not.toContain("Test One");
     const publicButton = await send(interaction({ custom_id: "foilbury:collection", component_type: 2 }, { type: 3 }));
     expect(JSON.stringify(publicButton.data)).not.toContain("Test One");
+  });
+
+  it("applies the invoking channel to card controls, achievements and profile", async () => {
+    const player = await install();
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const fixture = await fixturePool(player);
+    const members = await createCollection(owner, {name:"Scoped Members",scope:"global",status:"published",viewAudience:"members"});
+    await addCollectionCards(owner, members.id, [fixture.cardId]);
+    await runtime.DB.prepare("DELETE FROM fb_collection_cards WHERE collection_id='col_test_public'").run();
+    await runtime.DB.prepare("INSERT OR REPLACE INTO fb_bot_collections (bot_id,collection_id,enabled,updated_at) SELECT id,?,1,? FROM fb_bots WHERE tenant_id=?").bind(members.id,new Date().toISOString(),player.tenant.id).run();
+    const now = new Date().toISOString();
+    await runtime.DB.prepare("INSERT INTO fb_variant_back_renders(id,tenant_id,variant_id,recipe_id,asset_id,width,height,sha256,status,created_at,published_at) VALUES('scope_back',?,?,?,?,750,1050,'fixture','published',?,?)").bind(player.tenant.id,fixture.variantId,fixture.recipeId,fixture.renderAsset,now,now).run();
+    await runtime.DB.prepare(`INSERT INTO fb_achievement_definitions(id,scope,tenant_id,key,version,name,description,criteria_json,reward_json,visibility,art_key,category,sort,status,created_by,created_at,updated_at) VALUES('ach_scope_member','bot',?,'scope-member',1,'Members-only achievement','Restricted fixture',?,'{"foil":0}','member','medal-test','collection',0,'active','test',?,?)`).bind(player.tenant.id,JSON.stringify({type:'collection_unique',collection_id:members.id,target:1,roster_card_ids:[fixture.cardId]}),now,now).run();
+    await runtime.DB.prepare("INSERT INTO fb_achievement_progress(tenant_id,user_id,achievement_id,achievement_version,progress,target,state,updated_at) VALUES(?,?,'ach_scope_member',1,1,1,'earned',?)").bind(player.tenant.id,owner.user!.id,now).run();
+    await runtime.DB.prepare("INSERT INTO fb_achievement_unlocks(id,tenant_id,user_id,achievement_id,achievement_version,earned_at,reward_state,reward_amount,notification_state,created_at) VALUES('unlock_scope',?,?,'ach_scope_member',1,?,'none',0,'suppressed',?)").bind(player.tenant.id,owner.user!.id,now,now).run();
+    const invokeCard = () => send(interaction(command("card",[{name:"query",type:3,value:"Test One"}])));
+    const invokeControl = (action:string) => send(interaction({custom_id:`foilbury:card:${fixture.cardId}:${fixture.variantId}:${action}`,component_type:2},{type:3}));
+    await setAudience("members");
+    for (const response of [await invokeCard(),await invokeControl("front"),await invokeControl("back"),await invokeControl("details")]) {
+      expect(response.data?.flags).toBe(64);
+      expect(JSON.stringify(response.data)).toContain("Test One");
+    }
+    const mapped = await runtime.DB.prepare("SELECT user_id FROM fb_discord_identities WHERE tenant_id=? AND discord_user_id=? AND revoked_at IS NULL").bind(player.tenant.id,DISCORD_USER_ID).first<{user_id:string}>();
+    expect(mapped?.user_id).toBeTruthy();
+    await runtime.DB.prepare("UPDATE fb_achievement_progress SET user_id=? WHERE achievement_id='ach_scope_member'").bind(mapped!.user_id).run();
+    await runtime.DB.prepare("UPDATE fb_achievement_unlocks SET user_id=? WHERE achievement_id='ach_scope_member'").bind(mapped!.user_id).run();
+    const memberAchievements=await send(interaction(command("achievements")));
+    expect(memberAchievements.data?.flags).toBe(64);
+    expect(JSON.stringify(memberAchievements.data)).toContain("Members-only achievement");
+    const memberProfile=await send(interaction(command("profile")));
+    expect(memberProfile.data?.flags).toBe(64);
+    const memberBadges=memberProfile.data?.embeds?.[0]?.fields?.find(field=>field.name==="Badges")?.value;
+    expect(memberBadges).toMatch(/^1 earned/);
+    const assertPublic = async (channelId?:string) => {
+      for (const response of [await send(interaction(command("card",[{name:"query",type:3,value:"Test One"}]),{channelId})), ...await Promise.all(["front","back","details"].map(action=>send(interaction({custom_id:`foilbury:card:${fixture.cardId}:${fixture.variantId}:${action}`,component_type:2},{type:3,channelId}))))]) {
+        expect(response.data?.flags).toBe(64);
+        expect(JSON.stringify(response.data)).not.toContain("Test One");
+        expect(JSON.stringify(response.data)).not.toContain("attachment://");
+      }
+      const achievements=await send(interaction(command("achievements"),{channelId}));
+      expect(achievements.data?.flags).toBe(64);
+      expect(JSON.stringify(achievements.data)).not.toContain("Members-only achievement");
+      const profile=await send(interaction(command("profile"),{channelId}));
+      expect(profile.data?.flags).toBe(64);
+      expect(profile.data?.embeds?.[0]?.fields?.find(field=>field.name==="Badges")?.value).toMatch(/^0 earned/);
+    };
+    await setAudience("public");await assertPublic();
+    await runtime.DB.prepare("UPDATE fb_discord_installations SET channel_allowlist_json='[]', channel_audience_json=? WHERE id='dci_scope'").bind(JSON.stringify({[CHANNEL_ID]:'members'})).run();
+    await assertPublic("1566700752385081356");
+    await runtime.DB.prepare("UPDATE fb_discord_installations SET channel_audience_json='{broken' WHERE id='dci_scope'").run();
+    await assertPublic();
   });
 
   it("excludes AI-assisted artwork when the Bot preference is off and includes it when on", async () => {
