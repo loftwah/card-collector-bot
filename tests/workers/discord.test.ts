@@ -939,64 +939,20 @@ describe("Discord HTTP interactions", () => {
     expect(result.payload.data?.embeds?.[0]?.title).toContain("Test One");
   });
 
-  it("requires a confirmation button for a sensitive admin grant and records it once", async () => {
-    const first = await send(interaction(command("daily"), { id: "grant-player-create" }));
-    expect(first.payload.type).toBe(4);
-    const identity = await runtime.DB.prepare(
-      "SELECT user_id FROM fb_discord_identities WHERE discord_user_id = ?",
-    )
-      .bind(DISCORD_USER_ID)
-      .first<{ user_id: string }>();
-    await runtime.DB.prepare("UPDATE fb_memberships SET role = 'owner' WHERE user_id = ?")
-      .bind(identity?.user_id)
-      .run();
-
-    const requested = await send(
-      interaction(
-        command("admin", [
-          {
-            name: "grant",
-            type: 1,
-            options: [
-              { name: "user", type: 3, value: DISCORD_USER_ID },
-              { name: "amount", type: 4, value: 100 },
-              { name: "reason", type: 3, value: "test grant" },
-            ],
-          },
-        ]),
-        { id: "grant-request" },
-      ),
-    );
-    expect(requested.payload.data?.embeds?.[0]?.title).toMatch(/Confirm admin grant/i);
-    const confirmation = await runtime.DB.prepare(
-      "SELECT id, used_at FROM fb_discord_confirmations WHERE discord_user_id = ? ORDER BY created_at DESC LIMIT 1",
-    )
-      .bind(DISCORD_USER_ID)
-      .first<{ id: string; used_at: string | null }>();
-    expect(confirmation?.id).toBeTruthy();
-    expect(confirmation?.used_at).toBeNull();
-
-    const confirmed = await send(
-      interaction(
-        { custom_id: `foilbury:confirm:${confirmation?.id}`, component_type: 2 },
-        { id: "grant-confirm", type: 3 },
-      ),
-    );
-    expect(confirmed.payload.data?.embeds?.[0]?.title).toMatch(/Admin grant recorded/i);
-    const used = await runtime.DB.prepare(
-      "SELECT used_at FROM fb_discord_confirmations WHERE id = ?",
-    )
-      .bind(confirmation?.id)
-      .first<{ used_at: string | null }>();
-    expect(used?.used_at).toBeTruthy();
-
-    const replay = await send(
-      interaction(
-        { custom_id: `foilbury:confirm:${confirmation?.id}`, component_type: 2 },
-        { id: "grant-confirm-replay", type: 3 },
-      ),
-    );
-    expect(replay.payload.data?.embeds?.[0]?.description).toMatch(/already been used|consumed once/i);
+  it("directs Discord grants to strongly authenticated Studio and rejects old buttons", async () => {
+    await send(interaction(command("daily"), { id: "grant-player-create" }));
+    const identity = await runtime.DB.prepare("SELECT user_id,tenant_id FROM fb_discord_identities WHERE discord_user_id = ?").bind(DISCORD_USER_ID).first<{user_id:string;tenant_id:string}>();
+    await runtime.DB.prepare("UPDATE fb_memberships SET role = 'owner' WHERE user_id = ?").bind(identity!.user_id).run();
+    const before = await runtime.DB.prepare("SELECT balance FROM fb_wallets WHERE tenant_id=? AND user_id=?").bind(identity!.tenant_id,identity!.user_id).first<{balance:number}>();
+    const requested = await send(interaction(command("admin", [{name:"grant",type:1,options:[{name:"user",type:3,value:DISCORD_USER_ID},{name:"amount",type:4,value:100},{name:"reason",type:3,value:"test grant"}]}]), {id:"grant-request"}));
+    expect(requested.payload.data?.embeds?.[0]?.description).toMatch(/strong authentication.*Studio/i);
+    expect(requested.payload.data?.components?.[0]?.components.map((item) => item.label)).toEqual(["Open Studio", "Account security"]);
+    expect((await runtime.DB.prepare("SELECT COUNT(*) AS n FROM fb_discord_confirmations WHERE action='wallet.grant'").first<{n:number}>())?.n).toBe(0);
+    await runtime.DB.prepare("INSERT INTO fb_discord_confirmations (id,tenant_id,discord_user_id,action,payload_json,expires_at,created_at) VALUES ('old-grant',?,?,'wallet.grant',?,?,?)").bind(identity!.tenant_id,DISCORD_USER_ID,JSON.stringify({targetUserId:identity!.user_id,amount:100,reason:'test grant'}),new Date(Date.now()+60000).toISOString(),new Date().toISOString()).run();
+    const old = await send(interaction({custom_id:'foilbury:confirm:old-grant',component_type:2},{id:'old-grant-click',type:3}));
+    expect(old.payload.data?.embeds?.[0]?.description).toMatch(/strong authentication.*Studio/i);
+    const after=await runtime.DB.prepare("SELECT balance FROM fb_wallets WHERE tenant_id=? AND user_id=?").bind(identity!.tenant_id,identity!.user_id).first<{balance:number}>();
+    expect(after?.balance).toBe(before?.balance);
   });
 
   it("handles a button interaction with the same idempotent draw path", async () => {
@@ -1030,28 +986,10 @@ describe("Discord HTTP interactions", () => {
     await runtime.DB.prepare("UPDATE fb_memberships SET role = 'owner' WHERE user_id = ?")
       .bind(identity?.user_id)
       .run();
-    const requested = await send(
-      interaction(
-        command("admin", [
-          {
-            name: "grant",
-            type: 1,
-            options: [
-              { name: "user", type: 3, value: DISCORD_USER_ID },
-              { name: "amount", type: 4, value: 100 },
-              { name: "reason", type: 3, value: "revocation test" },
-            ],
-          },
-        ]),
-        { id: "revoked-grant-request" },
-      ),
-    );
-    expect(requested.payload.data?.embeds?.[0]?.title).toMatch(/Confirm admin grant/i);
-    const confirmation = await runtime.DB.prepare(
-      "SELECT id FROM fb_discord_confirmations WHERE discord_user_id = ? ORDER BY created_at DESC LIMIT 1",
-    )
-      .bind(DISCORD_USER_ID)
-      .first<{ id: string }>();
+    const tenant = await ctxFor("cabinet", "owner@foilbury.local");
+    await runtime.DB.prepare("INSERT INTO fb_discord_confirmations (id,tenant_id,discord_user_id,action,payload_json,expires_at,created_at) VALUES ('revoked-old-grant',?,?,'wallet.grant',?,?,?)")
+      .bind(tenant.tenant.id, DISCORD_USER_ID, JSON.stringify({targetUserId:identity!.user_id,amount:100,reason:'revocation test'}),new Date(Date.now()+60000).toISOString(),new Date().toISOString()).run();
+    const confirmation = { id: 'revoked-old-grant' };
     const revokedAt = new Date().toISOString();
     const balanceBefore = await runtime.DB.prepare(
       "SELECT balance FROM fb_wallets WHERE user_id = ?",

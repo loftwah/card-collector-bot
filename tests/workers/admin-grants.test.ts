@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { ApiError } from "../../src/server/context";
 import { adjustWallet } from "../../src/server/modules/economy";
+import { createSession } from "../../src/server/modules/identity";
+import { resolveSession } from "../../src/server/context";
 import { getWalletSummary } from "../../src/server/modules/wallet";
 import { bootstrap, ctxFor, runtime, setBalance, walletBalance } from "./helpers";
 import { routeApi } from "../../src/server/api/router";
@@ -45,6 +47,8 @@ describe("scoped Admin Foil grants", () => {
       grantLimit: 250,
     });
     const admin = await ctxFor("cabinet", "player@foilbury.local");
+    const strong = await createSession(admin.db, admin.tenant, admin.user!, { authMethod: "mfa", assurance: "mfa" });
+    admin.sessionId = (await resolveSession(admin.db, strong.token))!.sessionId;
     const result = await adjustWallet(admin, {
       userId: admin.user!.id,
       amount: 100,
