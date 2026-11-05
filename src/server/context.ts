@@ -73,6 +73,8 @@ export interface Ctx {
   actor: Actor;
   scopes: string[] | null;
   sessionId: string | null;
+  /** Exact bearer token used for this request, for live authority checks. */
+  agentTokenId?: string | null;
   csrfToken: string;
   sessionAssurance: string | null;
   sessionAuthTime: string | null;
@@ -129,6 +131,7 @@ export async function buildContext(
   };
   let scopes: string[] | null = null;
   let sessionId: string | null = null;
+  let agentTokenId: string | null = null;
   let csrfToken = cookie.fb_csrf ?? "";
   let sessionAssurance: string | null = null;
   let sessionAuthTime: string | null = null;
@@ -142,6 +145,7 @@ export async function buildContext(
     user = resolved.user;
     actor = resolved.actor;
     scopes = resolved.scopes;
+    agentTokenId = resolved.tokenId;
   } else if (sessionToken) {
     const resolved = await resolveSession(db, sessionToken);
     if (resolved) {
@@ -295,6 +299,7 @@ export async function buildContext(
     actor,
     scopes,
     sessionId,
+    agentTokenId,
     csrfToken,
     sessionAssurance,
     sessionAuthTime,
@@ -411,7 +416,7 @@ export async function resolveAgent(
   config: RuntimeConfig,
   token: string,
   tenantFilter?: Tenant,
-): Promise<{ user: CurrentUser; actor: Actor; scopes: string[]; tenant: Tenant }> {
+): Promise<{ user: CurrentUser; actor: Actor; scopes: string[]; tenant: Tenant; tokenId: string }> {
   const tokenHash = await hmacHex(config.agentPepper || config.sessionSecret || "local", token);
   const row = await first<{
     id: string;
@@ -478,6 +483,7 @@ export async function resolveAgent(
     .run()
     .catch(() => undefined);
   return {
+    tokenId: row.id,
     scopes,
     tenant: { id: row.tenant_id, slug: row.tenant_slug, name: row.tenant_name },
     user: {
