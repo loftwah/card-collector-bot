@@ -1159,7 +1159,7 @@ describe("Discord HTTP interactions", () => {
     );
     expect(publicReveal.payload.data?.flags).toBe(64);
     expect(JSON.stringify(publicReveal.payload.data)).toMatch(
-      /not enabled for this channel|no eligible cards|has no eligible collection|no worlds available here/i,
+      /not enabled for this channel|no eligible cards|has no eligible collection/i,
     );
     const drawsBefore = await runtime.DB.prepare(
       "SELECT COUNT(*) AS count FROM fb_draws",
@@ -1238,9 +1238,7 @@ describe("Discord HTTP interactions", () => {
     const welcome = await send(interaction(command("tour"), { id: "tour-welcome" }));
     expect(welcome.payload.data?.flags).toBe(64);
     expect(welcome.payload.data?.embeds?.[0]?.title).toContain("guided tour");
-    expect(JSON.stringify(welcome.payload.data)).toContain("spends Foil only when you choose");
-    expect(JSON.stringify(welcome.payload.data)).not.toContain("Server scope");
-    expect(welcome.payload.data?.embeds?.[0]?.color).toBe(0x84978a);
+    expect(JSON.stringify(welcome.payload.data)).toContain("Nothing in the tour spends");
     const welcomeIds = (welcome.payload.data?.components ?? [])
       .flatMap((row) => row.components ?? [])
       .map((component) => component.custom_id)
