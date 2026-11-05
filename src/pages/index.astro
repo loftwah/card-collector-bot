@@ -411,15 +411,16 @@ const collectionTone = ["#e0492f", "#0e5b53", "#4a1e4d", "#b8791f"];
       const frame = image.closest<HTMLElement>(".hero-card-frame");
       const link = image.closest<HTMLAnchorElement>("a.hero-card");
       if (!frame || !link) return;
+      const originalLabel = link.getAttribute("aria-label");
       const unavailable = () => {
         frame.dataset.artState = "error";
-        const label = link.getAttribute("aria-label");
-        if (label && !label.endsWith(", artwork unavailable")) {
-          link.setAttribute("aria-label", `${label}, artwork unavailable`);
+        if (originalLabel) {
+          link.setAttribute("aria-label", `${originalLabel}, artwork unavailable`);
         }
       };
       const loaded = () => {
         frame.dataset.artState = "loaded";
+        if (originalLabel) link.setAttribute("aria-label", originalLabel);
       };
       image.addEventListener("load", loaded);
       image.addEventListener("error", unavailable);
