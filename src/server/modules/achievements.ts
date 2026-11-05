@@ -202,7 +202,7 @@ function criteriaTarget(criteria: Record<string, unknown>): number {
 export async function evaluateAchievements(
   ctx: Ctx,
   input: { userId?: string; eventId?: string; notify?: boolean } = {},
-): Promise<{ evaluated: number; unlocked: AchievementView[] }> {
+): Promise<{ evaluated: number; unlocked: AchievementView[]; newlyUnlocked: AchievementView[] }> {
   const user = ctx.user;
   const userId = input.userId ?? user?.id;
   if (!userId)
@@ -288,6 +288,7 @@ export async function evaluateAchievements(
   }
 
   const unlocked: AchievementView[] = [];
+  const newlyUnlocked: AchievementView[] = [];
   for (const definition of definitions) {
     const criteria = parseJson<Record<string, unknown>>(definition.criteria_json, {});
     const reward = parseJson<Record<string, unknown>>(definition.reward_json, {});
@@ -496,8 +497,7 @@ export async function evaluateAchievements(
         notification_state: fulfilled.notificationState,
       }),
     ]);
-    unlocked.push(
-      toView(
+    const earned = toView(
         definition,
         criteria,
         reward,
@@ -506,11 +506,12 @@ export async function evaluateAchievements(
         rewardAmount,
         fulfilled.rewardState,
         fulfilled.notificationState,
-      ),
-    );
+      );
+    unlocked.push(earned);
+    newlyUnlocked.push(earned);
   }
 
-  return { evaluated: definitions.length, unlocked };
+  return { evaluated: definitions.length, unlocked, newlyUnlocked };
 }
 
 function toView(

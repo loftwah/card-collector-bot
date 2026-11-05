@@ -78,7 +78,7 @@ interface DrawReceipt {
   pool_name: string;
   price: number;
   currency: { name: string; symbol: string };
-  balance_after: number;
+  balance_after?: number;
   balance_after_debit?: number;
   current_balance?: number;
   credits_total?: number;
@@ -462,15 +462,17 @@ async function redeliverReceipt(
             : `${receipt.card_name} — ${receipt.variant_name}`,
           description: [
             "This is the recorded result of your original draw. No second pull was made and no second debit was recorded.",
-            `**${receipt.price} ${receipt.currency_symbol}** was charged from **${receipt.pool_name}**. Current balance: **${receipt.balance_after} ${receipt.currency_symbol}**.`,
-            ...(credits > 0
+            receipt.settlement_pending
+              ? `**${receipt.price} ${receipt.currency_symbol}** was charged from **${receipt.pool_name}**. The balance is unconfirmed; check your wallet before opening another capsule.`
+              : `**${receipt.price} ${receipt.currency_symbol}** was charged from **${receipt.pool_name}**. Current balance: **${receipt.balance_after} ${receipt.currency_symbol}**.`,
+            ...(!receipt.settlement_pending && credits > 0
               ? [
                   `Settled rewards: **+${credits} ${receipt.currency_symbol}**${creditNames.length ? ` · ${creditNames.join(", ")}` : ""}.`,
                 ]
               : []),
             ...(receipt.settlement_pending
               ? [
-                  "Reward settlement is still being confirmed from the ledger. The draw, serial and debit are already recorded and will not be paid twice.",
+                  "Reward settlement has not yet been confirmed from the ledger. The draw, serial and debit are already recorded and will not be paid twice.",
                 ]
               : []),
           ].join("\n\n"),

@@ -126,6 +126,8 @@ const revealBase: RevealReceiptInput = {
   price: 80,
   currency: { name: "Foil", symbol: "✦" },
   balance_after: 390,
+  settlement_status: "settled",
+  settlement_pending: false,
   probability_bps: 1250,
   drawn_at: "2026-11-03T05:00:00.000Z",
   replayed: false,

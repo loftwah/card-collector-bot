@@ -1150,7 +1150,7 @@ export interface RevealReceiptDomainFields {
   pool_name: string;
   price: number;
   currency: { name: string; symbol: string };
-  balance_after: number;
+  balance_after?: number;
   probability_bps: number;
   drawn_at: string;
   replayed: boolean;
@@ -1174,6 +1174,8 @@ export interface RevealReceiptInput extends RevealReceiptDomainFields {
   balance_after_debit?: number;
   credits_total?: number;
   achievement_credits?: Array<{ name: string; amount: number }>;
+  settlement_status?: "settled" | "pending";
+  settlement_pending?: boolean;
 }
 
 function publicRenderUrl(input: RevealReceiptInput): string | undefined {
@@ -1192,7 +1194,8 @@ export function revealReceiptMessage(input: RevealReceiptInput): DiscordCallback
   const serial = visibleText(input.serial, "serial");
   const symbol = assertCurrencySymbol(input.currency.symbol);
   const price = assertNonNegative(input.price, "price");
-  const balance = assertNonNegative(input.balance_after, "balance_after");
+  const balance = input.balance_after === undefined ? null : assertNonNegative(input.balance_after, "balance_after");
+  const settlementPending = input.settlement_pending === true || input.settlement_status !== "settled" || balance === null;
   const probability = assertNonNegative(input.probability_bps, "probability_bps");
   if (probability > 10000) fail("invalid_input", "probability_bps", "Odds must use basis points.");
   const drawnAt = assertIsoTimestamp(input.drawn_at, "drawn_at");
@@ -1215,10 +1218,7 @@ export function revealReceiptMessage(input: RevealReceiptInput): DiscordCallback
     { name: "Serial", value: `\`${serial}\``, inline: true },
     { name: "Opened from", value: `${poolName} · ${price} ${symbol}`, inline: true },
     { name: "Opening debit", value: `−${price} ${symbol}`, inline: true },
-    ...(debitBalance === null
-      ? []
-      : [{ name: "After debit", value: `${debitBalance} ${symbol}`, inline: true }]),
-    ...(credits > 0
+    ...(!settlementPending && credits > 0
       ? [
           {
             name: "Reward credited",
@@ -1226,13 +1226,15 @@ export function revealReceiptMessage(input: RevealReceiptInput): DiscordCallback
               input.achievement_credits?.length
                 ? ` · ${input.achievement_credits.map((item) => item.name).join(", ")}`
                 : ""
-            }`,
+            }${debitBalance === null ? "" : `\nBalance after opening: ${debitBalance} ${symbol}`}`,
             inline: false,
           },
         ]
       : []),
-    { name: "Settled balance", value: `${balance} ${symbol}`, inline: true },
-    { name: "Odds", value: `${(probability / 100).toFixed(2)}% for this copy`, inline: false },
+    ...(settlementPending
+      ? [{ name: "Balance and rewards", value: "Not yet confirmed · check your wallet before opening another capsule.", inline: false }]
+      : [{ name: "Settled balance", value: `${balance} ${symbol}`, inline: true }]),
+    { name: "Odds", value: `${(probability / 100).toFixed(2)}% for this copy`, inline: true },
   ];
   if (!canShare) {
     fields.push({
@@ -1285,7 +1287,7 @@ export function revealReceiptMessage(input: RevealReceiptInput): DiscordCallback
     attachments: attachment ? [attachment] : [],
     embed: {
       title: `${cardName} — ${finish}`,
-      description: `Pulled from **${poolName}**. This copy is in your cabinet immediately. **Open again** is a new, priced pull; this receipt is committed and cannot re-draw.`,
+      description: `From **${poolName}** · Saved to your cabinet.\n**Open again** starts a new ${price} ${symbol} opening.`,
       accent: FOILBURY_PALETTE.deepAqua,
       fields,
       footer: `Foilbury · committed receipt${input.scope_name ? ` · ${visibleText(input.scope_name, "scope_name")}` : ""}`,
