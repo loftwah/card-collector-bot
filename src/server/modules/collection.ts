@@ -467,18 +467,81 @@ export async function listTenantMembers(ctx: Ctx) {
   );
 }
 
+/** Peer shelves deliberately disclose only the fields needed to choose a trade.
+ * Collection and principal predicates are evaluated in the same D1 read.
+ * Private curatorial access without an explicit viewer grant is conservatively
+ * limited to the current owning Bot owner; unfiled cards are withheld.
+ */
 export async function getMemberTradeInventory(ctx: Ctx, memberId: string) {
-  const member = await first<{ user_id: string }>(
+  const user = ctx.user;
+  if (!user) throw new ApiError(401, "authentication_required", "Sign in to continue.");
+  const userSession = ctx.actor.type === "user" ? ctx.sessionId : null;
+  const agentToken = ctx.actor.type === "agent" ? ctx.agentTokenId : null;
+  if (!userSession && !agentToken)
+    throw new ApiError(
+      403,
+      "trade_peer_authority_unavailable",
+      "This shelf is unavailable for this credential.",
+    );
+  // Missing, inactive or newly revoked members produce the same empty shelf.
+  // Checking existence separately would expose their state after a caller's
+  // authority was revoked between reads.
+  return all(
     ctx.db,
-    "SELECT user_id FROM fb_memberships WHERE tenant_id = ? AND user_id = ?",
+    `WITH principal AS (
+    SELECT u.id AS user_id FROM fb_users u
+    JOIN fb_memberships m ON m.user_id = u.id AND m.tenant_id = ?
+    WHERE u.id = ? AND u.disabled_at IS NULL AND u.is_synthetic = 0 AND m.status = 'active' AND m.revoked_at IS NULL
+      AND (EXISTS (SELECT 1 FROM fb_sessions s WHERE s.id = ? AND s.user_id = u.id AND s.tenant_id = m.tenant_id
+             AND s.revoked_at IS NULL AND julianday(s.expires_at) > julianday('now'))
+        OR EXISTS (SELECT 1 FROM fb_agent_tokens tok JOIN fb_agent_grants g ON g.id = tok.grant_id
+             WHERE tok.id = ? AND tok.revoked_at IS NULL AND g.agent_id = ? AND g.represented_user_id = u.id
+               AND g.tenant_id = m.tenant_id AND g.status = 'active' AND g.revoked_at IS NULL
+               AND julianday(g.expires_at) > julianday('now')
+               AND EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(g.scopes_json) THEN g.scopes_json ELSE '[]' END) scope
+                           WHERE json_type(CASE WHEN json_valid(g.scopes_json) THEN g.scopes_json ELSE '[]' END) = 'array'
+                             AND scope.type = 'text' AND scope.value = 'inventory:read')
+               AND NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(g.scopes_json) THEN g.scopes_json ELSE '[]' END) scope_bad WHERE scope_bad.type <> 'text')))
+  )
+  SELECT ci.id, cd.name AS card_name, v.name AS variant_name, ci.serial
+  FROM principal p JOIN fb_card_instances ci ON ci.tenant_id = ? AND ci.user_id = ?
+  JOIN fb_card_definitions cd ON cd.id = ci.card_id
+  JOIN fb_variants v ON v.id = ci.variant_id AND v.card_id = cd.id
+  JOIN fb_artwork_editions e ON e.id = v.edition_id AND e.tenant_id = v.tenant_id AND e.card_id = cd.id
+  JOIN fb_assets subject ON subject.id = e.subject_asset_id AND subject.tenant_id = e.tenant_id
+  WHERE ci.status = 'owned' AND ci.locked = 0 AND cd.status = 'published' AND cd.archived_at IS NULL
+    AND v.status = 'published' AND v.archived_at IS NULL AND e.status = 'published' AND e.archived_at IS NULL
+    AND (subject.origin NOT IN ('ai_assisted', 'ai_generated') OR EXISTS (
+      SELECT 1 FROM fb_bots b WHERE b.tenant_id = ci.tenant_id AND b.status <> 'archived' AND b.ai_art_enabled = 1))
+    AND EXISTS (SELECT 1 FROM fb_memberships target JOIN fb_users tu ON tu.id = target.user_id
+      WHERE target.tenant_id = ci.tenant_id AND target.user_id = ci.user_id
+        AND target.status = 'active' AND target.revoked_at IS NULL AND tu.disabled_at IS NULL AND tu.is_synthetic = 0)
+    AND EXISTS (SELECT 1 FROM fb_collection_cards cc WHERE cc.card_id = cd.id)
+    AND NOT EXISTS (
+      SELECT 1 FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id
+      WHERE cc.card_id = cd.id AND NOT COALESCE(
+        c.status = 'published' AND c.archived_at IS NULL
+        AND (c.scope = 'global' OR c.owner_tenant_id = ci.tenant_id) AND (
+          (c.view_audience = 'public' AND c.public_approved_at IS NOT NULL)
+          OR (c.view_audience = 'members' AND EXISTS (SELECT 1 FROM fb_memberships cm
+            WHERE cm.user_id = p.user_id AND cm.status = 'active' AND cm.revoked_at IS NULL
+              AND (c.scope = 'global' OR cm.tenant_id = c.owner_tenant_id)))
+          OR (c.view_audience = 'private' AND (
+            EXISTS (SELECT 1 FROM fb_collection_viewers cv WHERE cv.collection_id = c.id AND cv.user_id = p.user_id AND cv.revoked_at IS NULL)
+            OR (? = 1 AND EXISTS (SELECT 1 FROM fb_bots b JOIN fb_memberships om ON om.tenant_id = b.tenant_id AND om.user_id = p.user_id
+              WHERE b.tenant_id = c.owner_tenant_id AND b.owner_user_id = p.user_id AND b.status <> 'archived'
+                AND om.role = 'owner' AND om.status = 'active' AND om.revoked_at IS NULL))
+          ))
+        ), 0)
+    )
+  ORDER BY ci.acquired_at DESC LIMIT 200`,
+    ctx.tenant.id,
+    user.id,
+    userSession,
+    agentToken,
+    ctx.actor.id,
     ctx.tenant.id,
     memberId,
-  );
-  if (!member) throw new ApiError(404, "member_not_found", "That member is not in this cabinet.");
-  return all<InventoryRow>(
-    ctx.db,
-    `${INVENTORY_SELECT.replace("ci.user_id = ?", "ci.user_id = ?")} WHERE ci.tenant_id = ? AND ci.user_id = ? AND ci.status = 'owned' ORDER BY ci.acquired_at DESC LIMIT 200`,
-    ctx.tenant.id,
-    memberId,
+    ctx.actor.type === "user" ? 1 : 0,
   );
 }

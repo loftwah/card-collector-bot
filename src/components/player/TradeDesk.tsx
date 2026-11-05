@@ -19,6 +19,8 @@ interface OwnItem {
   status: string;
 }
 
+type PeerItem = Pick<OwnItem, "id" | "card_name" | "variant_name" | "serial">;
+
 interface Member {
   id: string;
   display_name: string;
@@ -65,7 +67,7 @@ export default function TradeDesk({
   const [trades, setTrades] = useState(initialTrades);
   const [detail, setDetail] = useState<TradeDetail | null>(null);
   const [recipientId, setRecipientId] = useState("");
-  const [recipientItems, setRecipientItems] = useState<OwnItem[] | null>(null);
+  const [recipientItems, setRecipientItems] = useState<PeerItem[] | null>(null);
   const [proposerIds, setProposerIds] = useState<string[]>([]);
   const [recipientIds, setRecipientIds] = useState<string[]>([]);
   const [giftInstance, setGiftInstance] = useState("");
@@ -85,7 +87,7 @@ export default function TradeDesk({
     try {
       const member = members.find((item) => item.id === recipientId);
       if (!member) throw new Error("Choose a member from this cabinet.");
-      const result = await api<{ items: OwnItem[] }>(`/api/v1/members/${member.id}/trade-items`);
+      const result = await api<{ items: PeerItem[] }>(`/api/v1/members/${member.id}/trade-items`);
       setRecipientItems(result.items);
     } catch (cause) {
       setError(describeError(cause));
