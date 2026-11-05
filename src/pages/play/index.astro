@@ -13,6 +13,7 @@ import { listCollections } from "../../server/modules/collections";
 import { listAchievements } from "../../server/modules/achievements";
 import { first } from "../../server/db";
 import { formatDual, printTitle as editionPrintTitle } from "../../lib/utils";
+import { cabinetNextStep } from "../../lib/cabinet-next-step";
 
 const ctx = await pageContext(Astro.request);
 const user = ctx.user!;
@@ -57,7 +58,8 @@ const canClaim = !nextEligible || new Date(nextEligible) <= new Date();
 const completed = sets.filter((set) => set.progress?.complete && !set.progress.claimed);
 const featured = inventory[0] ?? null;
 const recent = inventory.slice(1, 7);
-const printTitleOf = (item: (typeof inventory)[number] | null) => editionPrintTitle(item?.edition_name);
+const printTitleOf = (item: (typeof inventory)[number] | null) =>
+  editionPrintTitle(item?.edition_name);
 const featuredPrint = printTitleOf(featured);
 const enabledCollections = collections.filter((collection) => collection.enabled);
 const publishedSets = sets.filter((set) => set.status === "published");
@@ -77,25 +79,13 @@ const nextAchievement =
     .filter((item) => item.state !== "earned")
     .sort((a, b) => b.progress / Math.max(1, b.target) - a.progress / Math.max(1, a.target))[0] ??
   null;
-const nextMove = canClaim
-  ? {
-      title: "Claim your daily Foil",
-      body: `✦ ${economy.daily_reward} is waiting. It takes one click and never expires into a purchase.`,
-      href: null,
-    }
-  : cabinetPool && wallet.balance >= cabinetPool.price
-    ? {
-        title: "Open a capsule",
-        body: `${cabinetPool.eligible_count} eligible finishes · ✦ ${cabinetPool.price}. Odds are shown before anything leaves your wallet.`,
-        href: "/play/draw",
-      }
-    : {
-        title: "Come back for the next allowance",
-        body: nextEligible
-          ? `The next daily Foil arrives ${formatDual(nextEligible)}.`
-          : "The daily allowance refills on a rolling schedule.",
-        href: "/play/collection",
-      };
+const nextMove = cabinetNextStep({
+  canClaim,
+  dailyReward: economy.daily_reward,
+  nextEligible: nextEligible ? formatDual(nextEligible) : null,
+  balance: wallet.balance,
+  pool: cabinetPool,
+});
 ---
 
 <PlayerLayout title="Your cabinet · Foilbury">
@@ -182,7 +172,7 @@ const nextMove = canClaim
             <div class="empty min-h-[280px]">
               <div>
                 <p class="display-sm text-2xl">The first card is waiting.</p>
-                <p class="mt-2 text-sm">Claim the allowance, then open the cabinet pool.</p>
+                <p class="mt-2 text-sm">Your first card will appear here after you open a capsule.</p>
               </div>
             </div>
           )}
@@ -192,13 +182,13 @@ const nextMove = canClaim
             <p class="studio-stat__label">Next best move</p>
             <p class="panel-title">{nextMove.title}</p>
             <p class="text-sm leading-relaxed text-[var(--muted)]">{nextMove.body}</p>
-            {canClaim ? (
+            {nextMove.kind === "claim" ? (
               <p class="font-mono text-[0.58rem] uppercase tracking-[0.1em] text-[var(--signal)]">
                 Use the allowance control above
               </p>
             ) : (
               <a class="btn btn-primary btn-sm w-fit" href={nextMove.href ?? "/play/draw"}>
-                Continue
+                {nextMove.action}
               </a>
             )}
           </div>
@@ -382,7 +372,7 @@ const nextMove = canClaim
       <div class="empty mt-4">
         <div>
           <p class="display-sm text-2xl">The drawers are empty.</p>
-          <p class="mt-2 text-sm">Claim the daily allowance, then open the draw room.</p>
+          <p class="mt-2 text-sm">Your recent cards will appear here after your first opening.</p>
         </div>
       </div>
     )}
