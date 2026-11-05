@@ -13,6 +13,9 @@ interface Props {
   collection?: string | null;
   serial?: string | null;
   fallbackUrl?: string | null;
+  initialEnabled?: boolean;
+  initialFlipped?: boolean;
+  framed?: boolean;
 }
 
 /**
@@ -31,19 +34,27 @@ export default function CardInspector({
   collection,
   serial,
   fallbackUrl,
+  initialEnabled = false,
+  initialFlipped = false,
+  framed = false,
 }: Props) {
-  const [enabled, setEnabled] = useState(false);
-  const [flipped, setFlipped] = useState(false);
+  const [enabled, setEnabled] = useState(initialEnabled);
+  const [flipped, setFlipped] = useState(initialFlipped);
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
-  const [reduced, setReduced] = useState(false);
+  const [reduced, setReduced] = useState<boolean | null>(null);
   const [active, setActive] = useState(true);
   const shell = useRef<HTMLDivElement>(null);
+  const modeButton = useRef<HTMLButtonElement>(null);
   const frame = useRef<number | null>(null);
   const dragging = useRef(false);
   const last = useRef({ x: 0, y: 0 });
 
   const front = frontUrl ?? fallbackUrl;
   const back = backUrl ?? fallbackUrl;
+
+  useEffect(() => {
+    if (initialEnabled) modeButton.current?.focus({ preventScroll: true });
+  }, []);
 
   useEffect(() => {
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -81,7 +92,7 @@ export default function CardInspector({
     };
   }, []);
 
-  const canTilt = enabled && !reduced && active;
+  const canTilt = enabled && reduced === false && active;
   // The selected side is independent of the presentation mode. Flat, reduced
   // motion and temporarily inactive views still rotate to the chosen face;
   // only the pointer/keyboard tilt is suppressed when interaction is off.
@@ -159,49 +170,60 @@ export default function CardInspector({
 
   return (
     <div className="card-inspector">
-      <div
-        ref={shell}
-        className={cn("card-inspector__stage", enabled && "is-3d", canTilt && "is-live")}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerLeave={() => {
-          onPointerUp();
-          if (canTilt) setTilt({ x: 0, y: 0 });
-        }}
-        onKeyDown={onKeyDown}
-        tabIndex={0}
-        role="group"
-        aria-label={`${name} card inspector. Use left and right arrows to tilt, F to flip, Escape to reset.`}
-        data-active={active ? "true" : "false"}
-        data-flipped={flipped ? "true" : "false"}
-        data-mode={enabled ? (canTilt ? "interactive" : "static") : "flat"}
-      >
-        <div className="card-inspector__object" style={style}>
-          <div className="card-inspector__face card-inspector__front" aria-hidden={flipped}>
-            {front ? (
-              <img src={front} alt={`${name} front, ${finish} finish`} width={750} height={1050} />
-            ) : (
-              <div className="card-face-fallback">{name.charAt(0)}</div>
-            )}
+      <div className={framed ? "card-rail p-3" : "contents"}>
+        <div
+          ref={shell}
+          className={cn(
+            "card-inspector__stage",
+            framed && "card-inspector__stage--framed",
+            enabled && "is-3d",
+            canTilt && "is-live",
+          )}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerLeave={() => {
+            onPointerUp();
+            if (canTilt) setTilt({ x: 0, y: 0 });
+          }}
+          onKeyDown={onKeyDown}
+          tabIndex={0}
+          role="group"
+          aria-label={`${name} card inspector. Use left and right arrows to tilt, F to flip, Escape to reset.`}
+          data-active={active ? "true" : "false"}
+          data-flipped={flipped ? "true" : "false"}
+          data-mode={enabled ? (canTilt ? "interactive" : "static") : "flat"}
+        >
+          <div className="card-inspector__object" style={style}>
+            <div className="card-inspector__face card-inspector__front" aria-hidden={flipped}>
+              {front ? (
+                <img
+                  src={front}
+                  alt={`${name} front, ${finish} finish`}
+                  width={750}
+                  height={1050}
+                />
+              ) : (
+                <div className="card-face-fallback">{name.charAt(0)}</div>
+              )}
+            </div>
+            <div className="card-inspector__face card-inspector__back" aria-hidden={!flipped}>
+              {back ? (
+                <img
+                  src={back}
+                  alt={`${name} back, ${finish} finish`}
+                  width={750}
+                  height={1050}
+                  loading="lazy"
+                />
+              ) : (
+                <div className="card-face-fallback">Back</div>
+              )}
+            </div>
+            <div className="card-inspector__edge" aria-hidden="true" />
           </div>
-          <div className="card-inspector__face card-inspector__back" aria-hidden={!flipped}>
-            {back ? (
-              <img
-                src={back}
-                alt={`${name} back, ${finish} finish`}
-                width={750}
-                height={1050}
-                loading="lazy"
-              />
-            ) : (
-              <div className="card-face-fallback">Back</div>
-            )}
-          </div>
-          <div className="card-inspector__edge" aria-hidden="true" />
         </div>
       </div>
-
       <div className="card-inspector__controls">
         <button
           type="button"
@@ -214,6 +236,7 @@ export default function CardInspector({
         <button
           type="button"
           className={cn("btn btn-sm", enabled ? "btn-primary" : "btn-secondary")}
+          ref={modeButton}
           onClick={() => {
             setEnabled((value) => {
               const next = !value;
