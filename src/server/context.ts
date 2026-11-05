@@ -365,7 +365,7 @@ export async function resolveSession(
             t.id AS tenant_id, t.slug AS tenant_slug, t.name AS tenant_name
        FROM fb_sessions s
        JOIN fb_users u ON u.id = s.user_id
-       JOIN fb_memberships m ON m.user_id = u.id AND m.tenant_id = s.tenant_id AND m.status = 'active'
+       JOIN fb_memberships m ON m.user_id = u.id AND m.tenant_id = s.tenant_id AND m.status = 'active' AND m.revoked_at IS NULL
        JOIN fb_tenants t ON t.id = s.tenant_id
       WHERE s.token_hash = ?`,
     tokenHash,

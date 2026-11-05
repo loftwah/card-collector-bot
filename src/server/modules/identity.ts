@@ -190,6 +190,26 @@ export async function addMembership(
     .run();
 }
 
+/** Self-service admission can create a new row but must never restore or change an existing one. */
+export async function addPlayerMembershipIfAbsent(
+  db: D1Database,
+  tenantId: string,
+  userId: string,
+  acceptedAt = nowIso(),
+): Promise<boolean> {
+  const result = await db
+    .prepare(
+      `INSERT INTO fb_memberships
+        (tenant_id, user_id, role, created_at, capabilities_json, status, accepted_at, revoked_at)
+       SELECT ?, ?, 'player', ?, '[]', 'active', ?, NULL
+       WHERE EXISTS (SELECT 1 FROM fb_users WHERE id = ? AND disabled_at IS NULL AND is_synthetic = 0)
+       ON CONFLICT(tenant_id, user_id) DO NOTHING RETURNING user_id`,
+    )
+    .bind(tenantId, userId, acceptedAt, acceptedAt, userId)
+    .first<{ user_id: string }>();
+  return result !== null;
+}
+
 export async function ensureWallet(
   db: D1Database,
   tenantId: string,
@@ -263,6 +283,8 @@ export async function createSession(
     ttlSeconds?: number;
     /** Preserve an existing strong-auth timestamp when minting a switched session. */
     authTime?: string | null;
+    /** Refuse session issuance unless current Bot membership is active at the insert. */
+    requireActiveMembership?: boolean;
   },
 ): Promise<{
   token: string;
@@ -281,12 +303,17 @@ export async function createSession(
   const authMethod = options?.authMethod ?? "password";
   const assurance = options?.assurance ?? "password";
   const authTime = options?.authTime ?? createdAt;
-  await db
+  const statement = db
     .prepare(
       `INSERT INTO fb_sessions
         (id, token_hash, user_id, tenant_id, csrf_token, created_at, expires_at, last_seen_at,
          auth_method, assurance, auth_time, user_agent, ip_hash, access_subject)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       WHERE ? = 0 OR EXISTS (
+         SELECT 1 FROM fb_memberships m JOIN fb_users u ON u.id = m.user_id
+         WHERE m.tenant_id = ? AND m.user_id = ? AND m.status = 'active'
+           AND m.revoked_at IS NULL AND u.disabled_at IS NULL AND u.is_synthetic = 0
+       ) RETURNING id`,
     )
     .bind(
       id,
@@ -303,8 +330,13 @@ export async function createSession(
       options?.userAgent ?? null,
       options?.ipHash ?? null,
       options?.accessSubject ?? null,
-    )
-    .run();
+      options?.requireActiveMembership ? 1 : 0,
+      tenant.id,
+      user.id,
+    );
+  if (!(await statement.first<{ id: string }>())) {
+    throw new ApiError(403, "membership_inactive", "This album membership is not active. Ask an administrator for access.");
+  }
   return { token: raw, csrf, expiresAt, user, assurance };
 }
 

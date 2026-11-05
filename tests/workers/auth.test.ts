@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { bootstrap, ctxFor, fixturePool, runtime, tenant } from "./helpers";
-import { createUser, addMembership, findUserByEmail, createSession, ensureWallet } from "../../src/server/modules/identity";
+import { createUser, addMembership, addPlayerMembershipIfAbsent, findUserByEmail, createSession, ensureWallet } from "../../src/server/modules/identity";
 import { joinMainAlbum } from "../../src/server/modules/membership";
 import { requestMagicLink, redeemMagicLink } from "../../src/server/modules/magic-links";
 import { findAccessTenantForIdentity, resolveAccessIdentity } from "../../src/server/access";
@@ -63,11 +63,125 @@ describe("passwordless identity, Access linking, bots and collections", () => {
     }
   });
 
+  it("does not overwrite an inactive membership created during magic-link admission", async () => {
+    const ctx = await ctxFor("cabinet", "owner@foilbury.local");
+    const player = await createUser(runtime.DB, { email: "racing-admission@example.com", displayName: "Racing", password: "a-long-test-password" });
+    const requested = await requestMagicLink(ctx, { email: "racing-admission@example.com", purpose: "signin" });
+    let injected = false;
+    const wrapped = new Proxy(runtime.DB, {
+      get(target, key) {
+        if (key !== "prepare") return Reflect.get(target, key, target);
+        return (sql: string) => {
+          const statement = target.prepare(sql);
+          if (!sql.includes("INSERT INTO fb_memberships")) return statement;
+          return new Proxy(statement, {
+            get(original, prop) {
+              if (prop !== "bind") return Reflect.get(original, prop, original);
+              return (...values: unknown[]) => {
+                const bound = original.bind(...values);
+                return new Proxy(bound, {
+                  get(boundStatement, method) {
+                    if (method !== "run" && method !== "first") return Reflect.get(boundStatement, method, boundStatement);
+                    return async () => {
+                      if (!injected) {
+                        injected = true;
+                        await runtime.DB.prepare("INSERT INTO fb_memberships (tenant_id,user_id,role,created_at,capabilities_json,status,revoked_at) VALUES (?,?,'editor',?,'[\"members\"]','revoked',?)")
+                          .bind(ctx.tenant.id, player.id, nowIso(), nowIso()).run();
+                      }
+                      return method === "run" ? boundStatement.run() : boundStatement.first();
+                    };
+                  },
+                });
+              };
+            },
+          });
+        };
+      },
+    });
+    await expect(redeemMagicLink({ ...ctx, db: wrapped }, requested.devToken!)).rejects.toMatchObject({ code: "membership_inactive" });
+    const membership = await runtime.DB.prepare("SELECT status, role, capabilities_json, revoked_at FROM fb_memberships WHERE tenant_id=? AND user_id=?")
+      .bind(ctx.tenant.id, player.id).first<{ status: string; role: string; capabilities_json: string; revoked_at: string | null }>();
+    expect(injected).toBe(true);
+    expect(membership).toMatchObject({ status: "revoked", role: "editor", capabilities_json: '["members"]' });
+    expect(membership?.revoked_at).toBeTruthy();
+  });
+
+  it("reports a new admission correctly when an insert trigger also writes", async () => {
+    const ctx = await ctxFor("cabinet", "owner@foilbury.local");
+    const player = await createUser(runtime.DB, { email: "trigger-admission@example.com", displayName: "Trigger", password: "a-long-test-password" });
+    await runtime.DB.exec("CREATE TABLE IF NOT EXISTS test_membership_trigger (user_id TEXT); CREATE TRIGGER test_membership_insert AFTER INSERT ON fb_memberships BEGIN INSERT INTO test_membership_trigger(user_id) VALUES (NEW.user_id); END;");
+    try {
+      expect(await addPlayerMembershipIfAbsent(runtime.DB, ctx.tenant.id, player.id)).toBe(true);
+      expect(await addPlayerMembershipIfAbsent(runtime.DB, ctx.tenant.id, player.id)).toBe(false);
+      expect((await runtime.DB.prepare("SELECT COUNT(*) AS n FROM test_membership_trigger WHERE user_id = ?").bind(player.id).first<{n:number}>())?.n).toBe(1);
+    } finally {
+      await runtime.DB.exec("DROP TRIGGER test_membership_insert; DROP TABLE test_membership_trigger;");
+    }
+  });
+
+  it("does not create membership for an account disabled before insertion", async () => {
+    const ctx = await ctxFor("cabinet", "owner@foilbury.local");
+    const player = await createUser(runtime.DB, { email: "disabled-admission@example.com", displayName: "Disabled", password: "a-long-test-password" });
+    await runtime.DB.prepare("UPDATE fb_users SET disabled_at=? WHERE id=?").bind(nowIso(), player.id).run();
+    expect(await addPlayerMembershipIfAbsent(runtime.DB, ctx.tenant.id, player.id)).toBe(false);
+    expect(await runtime.DB.prepare("SELECT user_id FROM fb_memberships WHERE tenant_id=? AND user_id=?").bind(ctx.tenant.id, player.id).first()).toBeNull();
+  });
+
+  it("does not mint a session after membership is revoked during sign-in", async () => {
+    const ctx = await ctxFor("cabinet", "owner@foilbury.local");
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const requested = await requestMagicLink(ctx, { email: player.user!.email, purpose: "signin" });
+    const before = await runtime.DB.prepare("SELECT COUNT(*) AS n FROM fb_sessions WHERE tenant_id=? AND user_id=?")
+      .bind(ctx.tenant.id, player.user!.id).first<{n:number}>();
+    let injected = false;
+    const wrapped = new Proxy(runtime.DB, {
+      get(target, key) {
+        if (key !== "prepare") return Reflect.get(target, key, target);
+        return (sql: string) => {
+          const statement = target.prepare(sql);
+          if (!sql.includes("INSERT INTO fb_sessions")) return statement;
+          return new Proxy(statement, {
+            get(original, prop) {
+              if (prop !== "bind") return Reflect.get(original, prop, original);
+              return (...values: unknown[]) => {
+                const bound = original.bind(...values);
+                return new Proxy(bound, {
+                  get(boundStatement, method) {
+                    if (method !== "first" && method !== "run") return Reflect.get(boundStatement, method, boundStatement);
+                    return async () => {
+                      if (!injected) {
+                        injected = true;
+                        await runtime.DB.prepare("UPDATE fb_memberships SET status='revoked', revoked_at=? WHERE tenant_id=? AND user_id=?")
+                          .bind(nowIso(), ctx.tenant.id, player.user!.id).run();
+                      }
+                      return method === "first" ? boundStatement.first() : boundStatement.run();
+                    };
+                  },
+                });
+              };
+            },
+          });
+        };
+      },
+    });
+    await expect(redeemMagicLink({ ...ctx, db: wrapped }, requested.devToken!)).rejects.toMatchObject({ code: "membership_inactive" });
+    expect(injected).toBe(true);
+    await runtime.DB.prepare("UPDATE fb_memberships SET status='active', revoked_at=NULL WHERE tenant_id=? AND user_id=?")
+      .bind(ctx.tenant.id, player.user!.id).run();
+    const after = await runtime.DB.prepare("SELECT COUNT(*) AS n FROM fb_sessions WHERE tenant_id=? AND user_id=?")
+      .bind(ctx.tenant.id, player.user!.id).first<{n:number}>();
+    expect(after?.n).toBe(before?.n);
+    await expect(redeemMagicLink(ctx, requested.devToken!)).rejects.toMatchObject({ code: "magic_link_invalid" });
+  });
+
   it("invalidates an existing session immediately when membership is revoked", async () => {
     const ctx = await ctxFor("cabinet", "owner@foilbury.local");
     const player = await ctxFor("cabinet", "player@foilbury.local");
     const session = await createSession(runtime.DB, player.tenant, player.user!, { authMethod: "magic_link", assurance: "email" });
     expect(await resolveSession(runtime.DB, session.token)).not.toBeNull();
+    await runtime.DB.prepare("UPDATE fb_memberships SET revoked_at = ? WHERE tenant_id = ? AND user_id = ?")
+      .bind(nowIso(), player.tenant.id, player.user!.id).run();
+    expect(await resolveSession(runtime.DB, session.token)).toBeNull();
     await runtime.DB
       .prepare("UPDATE fb_memberships SET status = 'revoked', revoked_at = ? WHERE tenant_id = ? AND user_id = ?")
       .bind(nowIso(), player.tenant.id, player.user!.id)
@@ -108,6 +222,47 @@ describe("passwordless identity, Access linking, bots and collections", () => {
       .bind(ctx.tenant.id, player.id)
       .first<{ status: string }>();
     expect(membership?.status).toBe("suspended");
+  });
+
+  it("does not accept a concurrent invitation during explicit join", async () => {
+    const ctx = await ctxFor("cabinet", "owner@foilbury.local");
+    const player = await createUser(runtime.DB, { email: "racing-join@example.com", displayName: "Join", password: "a-long-test-password" });
+    let injected = false;
+    const wrapped = new Proxy(runtime.DB, {
+      get(target, key) {
+        if (key !== "prepare") return Reflect.get(target, key, target);
+        return (sql: string) => {
+          const statement = target.prepare(sql);
+          if (!sql.includes("INSERT INTO fb_memberships")) return statement;
+          return new Proxy(statement, { get(original, prop) {
+            if (prop !== "bind") return Reflect.get(original, prop, original);
+            return (...values: unknown[]) => {
+              const bound = original.bind(...values);
+              return new Proxy(bound, { get(boundStatement, method) {
+                if (method !== "first" && method !== "run") return Reflect.get(boundStatement, method, boundStatement);
+                return async () => {
+                  if (!injected) {
+                    injected = true;
+                    await runtime.DB.prepare("INSERT INTO fb_memberships (tenant_id,user_id,role,created_at,capabilities_json,status,accepted_at) VALUES (?,?,'editor',?,'[\"content\"]','invited',NULL)")
+                      .bind(ctx.tenant.id, player.id, nowIso()).run();
+                  }
+                  return method === "first" ? boundStatement.first() : boundStatement.run();
+                };
+              }});
+            };
+          }});
+        };
+      },
+    });
+    const playerCtx = { ...ctx, db: wrapped, user: { ...ctx.user!, id: player.id, email: player.email } };
+    await expect(joinMainAlbum(playerCtx)).rejects.toMatchObject({ code: "membership_inactive" });
+    expect(injected).toBe(true);
+    const membership = await runtime.DB.prepare("SELECT status,role,capabilities_json,accepted_at FROM fb_memberships WHERE tenant_id=? AND user_id=?")
+      .bind(ctx.tenant.id, player.id).first();
+    expect(membership).toMatchObject({ status: "invited", role: "editor", capabilities_json: '["content"]', accepted_at: null });
+    const events = await runtime.DB.prepare("SELECT COUNT(*) AS n FROM fb_membership_events WHERE tenant_id=? AND user_id=? AND event='joined'")
+      .bind(ctx.tenant.id, player.id).first<{n:number}>();
+    expect(events?.n).toBe(0);
   });
 
   it("rejects an expired magic link and keeps it single-use", async () => {

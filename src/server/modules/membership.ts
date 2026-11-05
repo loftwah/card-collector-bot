@@ -2,7 +2,7 @@ import { ApiError, hasCapability, requireRecentStrongAuth, type Ctx } from "../c
 import { all, first, nowIso } from "../db";
 import { newId } from "../ids";
 import { auditStatement } from "../http";
-import { addMembership, ensureWallet } from "./identity";
+import { addPlayerMembershipIfAbsent, ensureWallet } from "./identity";
 import { assertTransition } from "../state";
 
 export interface MembershipView {
@@ -51,29 +51,34 @@ export async function getMyMemberships(ctx: Ctx): Promise<MembershipView[]> {
 export async function joinMainAlbum(ctx: Ctx): Promise<{ joined: boolean; membership: MembershipView }> {
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in to join the album.");
-  const existing = await first<{ status: string; role: string }>(
+  const existing = await first<{ status: string; role: string; revoked_at: string | null }>(
     ctx.db,
-    "SELECT status, role FROM fb_memberships WHERE tenant_id = ? AND user_id = ?",
+    "SELECT status, role, revoked_at FROM fb_memberships WHERE tenant_id = ? AND user_id = ?",
     ctx.tenant.id,
     user.id,
   );
-  if (existing?.status === "active") {
+  if (existing?.status === "active" && !existing.revoked_at) {
     await ensureWallet(ctx.db, ctx.tenant.id, user.id);
     const memberships = await getMyMemberships(ctx);
     return { joined: false, membership: memberships.find((item) => item.tenant_id === ctx.tenant.id)! };
   }
-  if (existing && existing.status !== "active") {
+  if (existing) {
     throw new ApiError(
       403,
       "membership_inactive",
       "This album membership is suspended, revoked or still awaiting approval. An administrator must restore it deliberately; signing in cannot do so.",
     );
   }
-  await addMembership(ctx.db, ctx.tenant.id, user.id, "player", { status: "active", acceptedAt: nowIso() });
+  const joined = await addPlayerMembershipIfAbsent(ctx.db, ctx.tenant.id, user.id);
+  const current = await first<{ status: string; revoked_at: string | null }>(ctx.db,
+    "SELECT status, revoked_at FROM fb_memberships WHERE tenant_id = ? AND user_id = ?", ctx.tenant.id, user.id);
+  if (!current || current.status !== "active" || current.revoked_at) {
+    throw new ApiError(403, "membership_inactive", "This album membership is not active. Ask an administrator for access.");
+  }
   await ensureWallet(ctx.db, ctx.tenant.id, user.id);
-  await recordMembershipEvent(ctx, ctx.tenant.id, user.id, "joined", "member", "Self-service membership from a verified account.");
+  if (joined) await recordMembershipEvent(ctx, ctx.tenant.id, user.id, "joined", "member", "Self-service membership from a verified account.");
   const memberships = await getMyMemberships(ctx);
-  return { joined: true, membership: memberships.find((item) => item.tenant_id === ctx.tenant.id)! };
+  return { joined, membership: memberships.find((item) => item.tenant_id === ctx.tenant.id)! };
 }
 
 export async function listAlbumMembers(ctx: Ctx) {

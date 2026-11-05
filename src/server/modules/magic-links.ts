@@ -3,7 +3,7 @@ import { ApiError, checkRateLimit, requireRecentStrongAuth, requireUser, type Ct
 import { first, nowIso } from "../db";
 import { newId, sha256Hex, token } from "../ids";
 import { magicLinkEmail, sendEmail } from "../email";
-import { addMembership, createEmailUser, createSession, findUserByEmail, markEmailVerified } from "./identity";
+import { addPlayerMembershipIfAbsent, createEmailUser, createSession, findUserByEmail, markEmailVerified } from "./identity";
 import { ensureWallet } from "./identity";
 
 const TTL_MINUTES = 15;
@@ -231,8 +231,8 @@ export async function redeemMagicLink(
       403,
       "membership_inactive",
       membership.status === "invited"
-        ? "This album invitation has not been accepted by an administrator. Nothing was changed."
-        : "This album membership is suspended or revoked. Ask an administrator to restore it deliberately. Nothing was changed.",
+        ? "This album invitation has not been accepted by an administrator."
+        : "This album membership is suspended or revoked. Ask an administrator to restore it deliberately.",
     );
   }
   if (!membership) {
@@ -240,8 +240,7 @@ export async function redeemMagicLink(
     // account explicitly joins the public album. Deferred registration here is
     // indistinguishable from the explicit /me/join path and never restores an
     // existing row.
-    await addMembership(ctx.db, ctx.tenant.id, user.id, "player", { acceptedAt: now });
-    await ensureWallet(ctx.db, ctx.tenant.id, user.id);
+    await addPlayerMembershipIfAbsent(ctx.db, ctx.tenant.id, user.id, now);
   }
 
   const sessionUser: CurrentUser = {
@@ -257,10 +256,12 @@ export async function redeemMagicLink(
     ctx.db,
     `SELECT m.role, m.capabilities_json, u.platform_admin
        FROM fb_memberships m JOIN fb_users u ON u.id = m.user_id
-      WHERE m.user_id = ? AND m.tenant_id = ? AND m.status = 'active'`,
+      WHERE m.user_id = ? AND m.tenant_id = ? AND m.status = 'active' AND m.revoked_at IS NULL AND u.disabled_at IS NULL AND u.is_synthetic = 0`,
     user.id,
     ctx.tenant.id,
   );
+  if (!role) throw new ApiError(403, "membership_inactive", "This album membership is not active. Ask an administrator for access.");
+  await ensureWallet(ctx.db, ctx.tenant.id, user.id);
   if (role) {
     sessionUser.role = role.role;
     sessionUser.platformAdmin = Boolean(role.platform_admin);
@@ -274,6 +275,7 @@ export async function redeemMagicLink(
   const session = await createSession(ctx.db, ctx.tenant, sessionUser, {
     authMethod: "magic_link",
     assurance: "email",
+    requireActiveMembership: true,
     userAgent: options?.userAgent,
     ipHash: options?.ipHash,
   });
