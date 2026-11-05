@@ -50,3 +50,22 @@ it("rejects a stale MFA session without changing settings", async () => {
   expect(result.json.error.code).toBe("strong_auth_stale");
   expect(await getEconomy(owner)).toEqual(before);
 });
+it("permits a recent passkey session", async () => {
+  const owner = await ctxFor("cabinet", "owner@foilbury.local");
+  const before = await getEconomy(owner);
+  const session = await createSession(runtime.DB, owner.tenant, owner.user!, { authMethod: "passkey", assurance: "passkey" });
+  const headers = { cookie: `fb_session=${session.token}; fb_csrf=${session.csrf}`, "x-foilbury-csrf": session.csrf };
+  const result = await request("studio/economy", "PATCH", headers, { expectedVersion: before.version, dailyReward: before.daily_reward + 1 });
+  expect(result.status).toBe(200);
+  expect((await getEconomy(owner)).daily_reward).toBe(before.daily_reward + 1);
+});
+it("requires a linked Access identity and accepts an already-verified Access context", async () => {
+  const owner = await ctxFor("cabinet", "owner@foilbury.local");
+  const before = await getEconomy(owner);
+  owner.sessionAssurance = "access";
+  owner.accessIdentity = { subject: "fixture-subject", email: owner.user!.email, audience: "fixture", payload: { exp: Math.floor(Date.now() / 1000) + 60 } };
+  owner.accessStatus = "unlinked";
+  await expect(updateEconomy(owner, { expectedVersion: before.version, dailyReward: before.daily_reward + 1 })).rejects.toMatchObject({ code: "strong_auth_required" });
+  owner.accessStatus = "linked";
+  expect((await updateEconomy(owner, { expectedVersion: before.version, dailyReward: before.daily_reward + 1 })).daily_reward).toBe(before.daily_reward + 1);
+});
