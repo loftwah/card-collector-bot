@@ -472,12 +472,14 @@ export function buildDiscordContext(
   user: CurrentUser,
   interaction: DiscordInteraction,
 ): Ctx {
+  const discordUser = interactionUser(interaction);
   return {
     db: env.DB,
     media: env.MEDIA,
     config: readConfig(env),
     requestId: `discord:${interaction.id}`,
-    clientKey: `discord:${interaction.user?.id ?? interaction.id}`,
+    clientKey: `discord:${discordUser.id}`,
+    ...(interaction.guild_id && interaction.channel_id ? { discordPrincipal: { discordUserId:discordUser.id,applicationId:interaction.application_id,guildId:interaction.guild_id,channelId:interaction.channel_id } } : {}),
     tenant,
     user,
     actor: {

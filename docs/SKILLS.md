@@ -221,3 +221,10 @@ explicitly synthetic local fixtures; this is not production launch evidence.
 | --- | --- | --- | --- | --- |
 | Workers best practices | Project skill → `.agents/skills/workers-best-practices` | Reviewed D1 read boundaries and bounded queries for a player-initiated preview. | The existing trade service blocks synthetic recipients; a preview must not relax that guard or imply that a transfer occurred. | `src/server/modules/npc-trade-preview.ts`; isolated Workers tests. |
 | Wrangler | Project skill → `.agents/skills/wrangler` | Checked the local Workers test setup and isolated D1 fixture boundaries. | This slice needs no schema migration, deployment, production mutation or remote provider. | `tests/workers/npc-trade-preview.test.ts`; real exchange and Discord controls remain unimplemented. |
+
+### Expanded local candidate
+
+| Skill | Source → installed location | Actual use | Findings | Changes / evidence |
+| --- | --- | --- | --- | --- |
+| Impeccable | Project skill → `.agents/skills/impeccable`; context script and craft floor | Shaped private Discord trade suggestions, explicit review/confirm/cancel and truthful terminal copy. | The committed product context is stale, and the rendered Discord client has not been inspected; the text-only draft does not meet the full art-led demonstration standard. | `src/server/discord/commands.ts`; signed local handler tests only. |
+| Workers best practices | Project skill → `.agents/skills/workers-best-practices` | Reviewed bounded idempotent D1 transactions, exact-copy guards, expiry recovery and safe retry states. | Unnumbered schema is deliberately held pending migration ordering, rollback and independent review; candidate filtering caps pair formation but worst-case eligible-side scanning needs further evidence. | `docs/pending/npc-trade-schema.sql`, `tests/workers/npc-trade-preview.test.ts`, private local Workers log. |

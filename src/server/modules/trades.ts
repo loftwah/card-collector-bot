@@ -100,7 +100,7 @@ export async function getTrade(ctx: Ctx, tradeId: string) {
     ctx.db,
     `SELECT t.*, p.display_name AS proposer_name, r.display_name AS recipient_name
        FROM fb_trades t JOIN fb_users p ON p.id = t.proposer_id JOIN fb_users r ON r.id = t.recipient_id
-      WHERE t.id = ? AND t.tenant_id = ? AND (t.proposer_id = ? OR t.recipient_id = ?)`,
+      WHERE t.id = ? AND t.tenant_id = ? AND p.is_synthetic=0 AND r.is_synthetic=0 AND (t.proposer_id = ? OR t.recipient_id = ?)`,
     tradeId,
     ctx.tenant.id,
     user.id,
@@ -153,7 +153,7 @@ export async function listTrades(ctx: Ctx) {
             p.display_name AS proposer_name, r.display_name AS recipient_name,
             (SELECT COUNT(*) FROM fb_trade_items ti WHERE ti.trade_id = t.id) AS item_count
        FROM fb_trades t JOIN fb_users p ON p.id = t.proposer_id JOIN fb_users r ON r.id = t.recipient_id
-      WHERE t.tenant_id = ? AND (t.proposer_id = ? OR t.recipient_id = ?)
+      WHERE t.tenant_id = ? AND p.is_synthetic=0 AND r.is_synthetic=0 AND (t.proposer_id = ? OR t.recipient_id = ?)
       ORDER BY t.updated_at DESC LIMIT 100`,
     ctx.tenant.id,
     user.id,
@@ -161,9 +161,16 @@ export async function listTrades(ctx: Ctx) {
   );
 }
 
+async function requireHumanTrade(ctx: Ctx, trade: { proposer_id: string; recipient_id: string }) {
+  const synthetic = await first<{id:string}>(ctx.db,
+    "SELECT id FROM fb_users WHERE id IN (?,?) AND is_synthetic=1 LIMIT 1",trade.proposer_id,trade.recipient_id);
+  if (synthetic) throw new ApiError(403,"npc_trade_route_required","Use the NPC offer controls for this trade.");
+}
+
 export async function acceptTrade(ctx: Ctx, tradeId: string) {
   const user = ctx.user!;
   const trade = await getTrade(ctx, tradeId);
+  await requireHumanTrade(ctx, trade);
   if (trade.status !== "open") throw new ApiError(409, "trade_not_open", `This trade is ${trade.status}.`);
   if (new Date(trade.expires_at) <= new Date()) throw new ApiError(409, "trade_expired", "This trade has expired.");
   const side = user.id === trade.proposer_id ? "proposer" : "recipient";
@@ -251,6 +258,7 @@ export async function acceptTrade(ctx: Ctx, tradeId: string) {
 export async function declineTrade(ctx: Ctx, tradeId: string) {
   const user = ctx.user!;
   const trade = await getTrade(ctx, tradeId);
+  await requireHumanTrade(ctx, trade);
   if (trade.recipient_id !== user.id) throw new ApiError(403, "recipient_required", "Only the recipient can decline this offer.");
   if (trade.status !== "open") throw new ApiError(409, "trade_not_open", "This trade is no longer open.");
   await releaseTrade(ctx, trade.id, "declined", user.id);
@@ -260,6 +268,7 @@ export async function declineTrade(ctx: Ctx, tradeId: string) {
 export async function cancelTrade(ctx: Ctx, tradeId: string) {
   const user = ctx.user!;
   const trade = await getTrade(ctx, tradeId);
+  await requireHumanTrade(ctx, trade);
   if (trade.proposer_id !== user.id) throw new ApiError(403, "proposer_required", "Only the proposer can cancel this offer.");
   if (trade.status !== "open") throw new ApiError(409, "trade_not_open", "This trade is no longer open.");
   await releaseTrade(ctx, trade.id, "cancelled", user.id);

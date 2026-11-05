@@ -994,6 +994,18 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     requireNpcManager(ctx);
     return json(await runDueNpcs(ctx.db, ctx));
   }
+  if (segments[0] === "npcs" && segments[1] === "trades" && segments.length === 2 && method === "GET") {
+    playerWrite(ctx);
+    requireScope(ctx, "trade:write");
+    const { listNpcTradeOffers } = await import("../modules/npc-trades");
+    return json({items:await listNpcTradeOffers(ctx)});
+  }
+  if (segments[0] === "npcs" && segments[1] === "trades" && segments[2] && ["confirm","cancel"].includes(segments[3] ?? "") && segments.length === 4 && method === "POST") {
+    playerWrite(ctx);
+    requireScope(ctx, "trade:write");
+    const { confirmNpcTrade, cancelNpcTrade } = await import("../modules/npc-trades");
+    return json(await (segments[3] === "confirm" ? confirmNpcTrade(ctx, segments[2]) : cancelNpcTrade(ctx, segments[2])));
+  }
   if (segments[0] === "npcs" && segments[1] && segments.length >= 2) {
     const npcId = segments[1];
     if (segments.length === 3 && segments[2] === "trade-preview" && method === "POST") {
@@ -1002,6 +1014,15 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       const body = await readJson(request, z.object({ offeredInstanceId: idSchema, requestedInstanceId: idSchema }));
       const { previewNpcTrade } = await import("../modules/npc-trade-preview");
       return json(await previewNpcTrade(ctx, npcId, body.offeredInstanceId, body.requestedInstanceId));
+    }
+    if (segments.length === 3 && segments[2] === "trade-offers" && method === "POST") {
+      playerWrite(ctx);
+      requireScope(ctx, "trade:write");
+      const body = await readJson(request, z.object({ offeredInstanceId: idSchema, requestedInstanceId: idSchema }));
+      const key = request.headers.get("idempotency-key")?.trim();
+      if (!key) throw new ApiError(400,"idempotency_key_required","Provide an Idempotency-Key header.");
+      const { createNpcTradeOffer } = await import("../modules/npc-trades");
+      return json(await createNpcTradeOffer(ctx,npcId,body.offeredInstanceId,body.requestedInstanceId,key));
     }
     if (segments.length === 2 && method === "GET") {
       requireNpcRead(ctx);

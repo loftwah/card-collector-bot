@@ -68,6 +68,8 @@ export interface Ctx {
    * forwarding header. Correlation IDs stay separate in `requestId`.
    */
   clientKey: string;
+  /** Internal identity from a verified Discord interaction. */
+  discordPrincipal?: { discordUserId:string; applicationId:string; guildId:string; channelId:string };
   tenant: Tenant;
   user: CurrentUser | null;
   actor: Actor;

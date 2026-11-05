@@ -30,6 +30,7 @@ describe("scheduled Worker entry", () => {
       "rate_limits",
       "magic_links",
       "stale_interactions",
+      "npc_trade_expiry",
       "npc_progression",
     ]);
     expect(result.ok).toBe(true);

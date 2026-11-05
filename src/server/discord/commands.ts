@@ -168,6 +168,8 @@ function callback(message: DiscordMessage, ephemeral = false): DiscordCallback {
 
 function errorCallback(error: unknown, _ephemeral = true): DiscordCallback {
   const apiError = error instanceof ApiError ? error : null;
+  if (apiError && ["npc_offer_changed","npc_offer_unavailable","npc_trade_outcome_uncertain"].includes(apiError.code))
+    return callback({content:"The trade outcome could not be confirmed. Check your offer history and collection before retrying."},true);
   const nextEligibleAt =
     apiError?.details && typeof apiError.details.next_eligible_at === "string"
       ? apiError.details.next_eligible_at
@@ -1050,7 +1052,7 @@ async function npcView(ctx: Ctx, query: string): Promise<DiscordCallback> {
           footer: { text: "Foilbury · on-demand NPC inspection" },
         },
       ],
-      components: components([[{ type: 2, style: 5, label: "Compare in the lounge", url: absoluteUrl(ctx.config.publicOrigin, "/play/rivals")! }]]),
+      components: components([[button("Browse trade ideas", `fnt:b:${selected.id}`, 1), button("My offers", "fnt:l"), { type: 2, style: 5, label: "Compare in the lounge", url: absoluteUrl(ctx.config.publicOrigin, "/play/rivals")! }]]),
     },
     true,
   );
@@ -2605,6 +2607,43 @@ export async function runComponent(
   installation: DiscordInstallation,
 ): Promise<DiscordCallback> {
   const customId = interaction.data?.custom_id ?? "";
+  if (customId.startsWith("fnt:")) {
+    const [, action, ...parts] = customId.split(":");
+    if (parts.some(part=>!/^[A-Za-z0-9_-]{3,80}$/.test(part))) throw new ApiError(422,"npc_trade_invalid","That trade control is incomplete.");
+    const { suggestNpcTradeOffers, createNpcTradeOffer, inspectOpenNpcTrade, confirmNpcTrade, cancelNpcTrade, listNpcTradeOffers } = await import("../modules/npc-trades");
+    if (action === "l" && parts.length === 0) {
+      const offers=(await listNpcTradeOffers(ctx)).filter(offer=>offer.status === "open").slice(0,5);
+      return callback({embeds:[{title:"Your open offers",description:offers.length ? "Review an offer or cancel it to release its copies." : "You have no open NPC offers.",color:0x7c6b4f,footer:{text:"Only you can manage these offers"}}],components:components([offers.map((offer,index)=>button(`Review offer ${index+1}`,`fnt:r:${offer.trade_id}`))])},true);
+    }
+    if (action === "r" && parts.length === 1) {
+      const detail=await inspectOpenNpcTrade(ctx,parts[0]!);
+      return callback({embeds:[{title:"Review your offer",description:detail ? `Give **${truncate(detail.offered_name,100)}** · ${truncate(detail.offered_serial,60)}\nReceive **${truncate(detail.requested_name,100)}** · ${truncate(detail.requested_serial,60)}\n\nConfirm to exchange these copies.` : "The details are currently unavailable. You can cancel an open offer to release its copies.",color:0x7c6b4f}],components:components([[(detail ? button("Confirm trade",`fnt:c:${parts[0]}`,1) : null),button("Cancel offer",`fnt:x:${parts[0]}`)].filter((item):item is DiscordComponent=>item !== null)])},true);
+    }
+    if (action === "b" && parts.length === 1) {
+      const ideas=await suggestNpcTradeOffers(ctx,parts[0]!);
+      const visible=ideas.filter(idea=>`fnt:o:${idea.npc.id}:${idea.give.instance_id}:${idea.receive.instance_id}`.length<=100);
+      return callback({embeds:[{title:"Trade ideas · NPC collector",description:visible.length ? "Choose an idea to see the exact copies. Nothing changes until you confirm." : "No matching idea in this small selection. Try again after your collections change.",color:0x7c6b4f,
+        fields:visible.map((idea,index)=>({name:`Idea ${index+1}`,value:`Give **${truncate(idea.give.card_name,100)}** · ${truncate(idea.give.serial,60)}\nReceive **${truncate(idea.receive.card_name,100)}** · ${truncate(idea.receive.serial,60)}`})),footer:{text:"Suggestions use actual copies · shown only to you"}}],
+        components:components([visible.map((idea,index)=>button(`Review idea ${index+1}`,`fnt:o:${idea.npc.id}:${idea.give.instance_id}:${idea.receive.instance_id}`,1))])},true);
+    }
+    if (action === "o" && parts.length === 3) {
+      let offer:Awaited<ReturnType<typeof createNpcTradeOffer>>;
+      try { offer=await createNpcTradeOffer(ctx,parts[0]!,parts[1]!,parts[2]!,`discord:npc:${interaction.id}`); }
+      catch { throw new ApiError(409,"npc_trade_outcome_uncertain","The offer outcome could not be confirmed. Check your offer history before retrying."); }
+      if (offer.status !== "open") return callback({content:offer.status === "declined" ? "The NPC declined this offer. No cards moved." : `This offer is ${offer.status}. No additional exchange was made.`},true);
+      const detail=await inspectOpenNpcTrade(ctx,offer.trade_id);
+      return callback({embeds:[{title:"Review your offer",description:detail ? `Give **${truncate(detail.offered_name,100)}** · ${truncate(detail.offered_serial,60)}\nReceive **${truncate(detail.requested_name,100)}** · ${truncate(detail.requested_serial,60)}\n\n${truncate(detail.npc_name,80)} is interested. Confirm to exchange these copies.` : "Your offer is reserved, but its current details are unavailable. You can cancel it.",color:0x7c6b4f,footer:{text:"An NPC collector · this offer expires"}}],
+        components:components([[...(detail ? [button("Confirm trade",`fnt:c:${offer.trade_id}`,1)] : []),button("Cancel offer",`fnt:x:${offer.trade_id}`,2)]])},true);
+    }
+    if ((action === "c" || action === "x") && parts.length === 1) {
+      const detail=action === "c" ? await inspectOpenNpcTrade(ctx,parts[0]!) : null;
+      let result:Awaited<ReturnType<typeof confirmNpcTrade>>;
+      try { result=await (action === "c" ? confirmNpcTrade(ctx,parts[0]!) : cancelNpcTrade(ctx,parts[0]!)); }
+      catch { throw new ApiError(409,"npc_trade_outcome_uncertain","The trade outcome could not be confirmed. Check your offer history and collection before retrying."); }
+      return callback({embeds:[{title:result.status === "completed" ? "Trade complete" : result.status === "expired" ? "Offer expired" : "Offer cancelled",description:result.status === "completed" && detail ? `You gave **${truncate(detail.offered_name,100)}** · ${truncate(detail.offered_serial,60)}\nYou received **${truncate(detail.requested_name,100)}** · ${truncate(detail.requested_serial,60)}` : result.status === "completed" ? "This exchange was already completed. Your collection has the recorded result." : "Both reserved copies are back with their owners.",color:0x7c6b4f,footer:{text:result.replayed ? "Recorded result · no second exchange" : "Real copies · serials preserved"}}]},true);
+    }
+    throw new ApiError(404,"npc_trade_invalid","That trade control is not recognised.");
+  }
   if (customId.startsWith("foilbury:tour:")) {
     const stage = customId.slice("foilbury:tour:".length);
     if (!isTourStage(stage))

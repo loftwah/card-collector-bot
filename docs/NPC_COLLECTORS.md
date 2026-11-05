@@ -92,15 +92,26 @@ not third-party likenesses.
 A local NPC proving its own persisted records does not prove a real Discord
 host/spectator journey, which remains #7's human acceptance gate.
 
-## Local draft: trade assessment
+## Local draft: NPC trade candidate
 
 `POST /api/v1/npcs/:id/trade-preview` accepts `offeredInstanceId` and
 `requestedInstanceId` from a signed-in human player. It reports interest in a
 one-copy-for-one-copy offer when the NPC has a spare of the requested subject
 and does not already have the offered subject. The assessment is read-only:
 it neither reserves nor transfers copies, and is not a promise that a later
-offer will be accepted. It currently excludes private collections, delegated
-agents, and artwork whose non-AI origin cannot be established from the source
-asset records when the Bot has AI art disabled. A full trading flow still
-needs separate enablement, current-scope and anti-farming policy, atomic
-confirmation, retry and cancellation, Discord controls and real-client proof.
+offer will be accepted. `POST /api/v1/npcs/:id/trade-offers` uses an
+idempotency key to persist a decision and reserve an interested pair. The
+player explicitly confirms or cancels via `/api/v1/npcs/trades/:id/confirm`
+or `/cancel`; `/api/v1/npcs/trades` returns a minimal private status list.
+The pending Discord entry offers private, actor-bound suggestions and buttons.
+
+The draft conservatively excludes private collections, delegated agents, and
+artwork with unknown, derivative or recorded input ancestry when AI art is
+disabled. It applies daily attempt/completion caps and prevents returning a
+previously exchanged copy to the same NPC. A bounded scheduled task expires
+abandoned offers and releases both reservations atomically. The schema under
+`docs/pending/` is not numbered or automatically applied; migration ordering,
+rollback and the shared recursive lineage policy must be resolved first.
+Nothing here is deployed. Real Discord rendering, inline artwork, performance
+with large inventories, full audience review and a real-client exchange remain
+unverified.

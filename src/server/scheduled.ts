@@ -3,6 +3,7 @@ import { runScheduledNpcProgression } from "./modules/npcs";
 import { pruneMagicLinks, pruneRateLimits } from "./modules/magic-links";
 import { readConfig } from "./config";
 import { buildAdminAlert, deliverAdminAlert } from "./observability/alert";
+import { expireNpcTradeOffers } from "./modules/npc-trades";
 
 /**
  * Scheduled work is isolated per step. One failed maintenance task must not
@@ -26,6 +27,7 @@ export const SCHEDULED_MAINTENANCE_STEPS: ScheduledMaintenanceStep[] = [
   { name: "rate_limits", run: (env) => pruneRateLimits(env.DB) },
   { name: "magic_links", run: (env) => pruneMagicLinks(env.DB) },
   { name: "stale_interactions", run: (env) => expireStaleDiscordInteractions(env.DB) },
+  { name: "npc_trade_expiry", run: (env) => expireNpcTradeOffers(env.DB) },
   {
     name: "npc_progression",
     run: (env) => runScheduledNpcProgression(env.DB, env.MEDIA, readConfig(env as never)),
