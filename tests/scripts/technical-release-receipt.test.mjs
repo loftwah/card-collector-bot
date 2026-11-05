@@ -47,6 +47,7 @@ test('corrective scope and prior production identity fail closed',async()=>{
   const {requireCorrectivePaths,priorVerifiedSource}=await import('../../scripts/lib/technical-release-receipt.mjs');
   assert.deepEqual(requireCorrectivePaths(['src/pages/index.astro']).corrective,['src/pages/index.astro']);
   assert.deepEqual(requireCorrectivePaths(['scripts/discord/preflight.mjs']).operational_only,['scripts/discord/preflight.mjs']);
+  assert.deepEqual(requireCorrectivePaths(['AGENTS.md']).operational_only,['AGENTS.md']);
   for(const paths of [[],['src/server/api/router.ts'],['migrations/0999.sql'],['src/pages/index.astro','wrangler.production.jsonc']]) assert.throws(()=>requireCorrectivePaths(paths));
   const version='12345678-1234-1234-1234-123456789abc',sha='a'.repeat(40);
   assert.equal(priorVerifiedSource([{verified:true,deployment_version:version,source_sha:sha}],version),sha);

@@ -62,6 +62,7 @@ const CORRECTIVE_PATHS=new Set([
   'scripts/technical-release-stop-dev.mjs','scripts/technical-release-supervisor.mjs','scripts/technical-release-worker-ready.mjs',
 ]);
 const OPERATIONAL_ONLY_PATHS=new Set([
+  'AGENTS.md',
   'docs/ACCEPTANCE_CURRENT.md','docs/DISCORD_TOUR.md','docs/PERSISTENT_DEMO_2026-11-04.md','docs/RELEASE_2026-11-04.md',
   'scripts/discord/persistent-demo.mjs','scripts/discord/preflight.mjs','scripts/discord/verify-persistent-demo.mjs',
 ]);
