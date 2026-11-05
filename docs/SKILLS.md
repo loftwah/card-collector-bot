@@ -228,3 +228,15 @@ explicitly synthetic local fixtures; this is not production launch evidence.
 | --- | --- | --- | --- | --- |
 | Impeccable | Project skill → `.agents/skills/impeccable`; context script and craft floor | Shaped private Discord trade suggestions, explicit review/confirm/cancel and truthful terminal copy. | The committed product context is stale, and the rendered Discord client has not been inspected; the text-only draft does not meet the full art-led demonstration standard. | `src/server/discord/commands.ts`; signed local handler tests only. |
 | Workers best practices | Project skill → `.agents/skills/workers-best-practices` | Reviewed bounded idempotent D1 transactions, exact-copy guards, expiry recovery and safe retry states. | Unnumbered schema is deliberately held pending migration ordering, rollback and independent review; candidate filtering caps pair formation but worst-case eligible-side scanning needs further evidence. | `docs/pending/npc-trade-schema.sql`, `tests/workers/npc-trade-preview.test.ts`, private local Workers log. |
+
+### Bounded spare proof experiment
+
+| Skill | Source → installed location | Actual use | Findings | Changes / evidence |
+| --- | --- | --- | --- | --- |
+| Workers best practices | Project skill → `.agents/skills/workers-best-practices` | Bounded the eligible spare search and repeated its check in the D1 mutation. | A fixed eight-copy window can produce a neutral false negative; page delivery recovery and traversal remain unresolved, and the branch is held. | `src/server/modules/npc-trade-preview.ts`; `src/server/modules/npc-trades.ts`; four focused local tests. |
+
+### Four-page live-authorized discovery experiment
+
+| Skill | Source → installed location | Actual use | Findings | Changes / evidence |
+| --- | --- | --- | --- | --- |
+| Workers best practices | Project skill → `.agents/skills/workers-best-practices` | Used indexed, live-authorized candidate windows instead of a stale materialized index; rechecked each returned pair in the page transaction. | Fixed four pages and four windows per page cap work and avoid a long run of empty pages, but sampling can miss valid pairs and position/timing can reveal coarse information. Remote D1 and Discord response timing remain unmeasured. | `src/server/modules/npc-trades.ts`; 1,000-copy local fixture and private `latest-workers.log`; no deployment. |

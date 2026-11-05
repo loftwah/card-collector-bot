@@ -2609,22 +2609,27 @@ export async function runComponent(
   const customId = interaction.data?.custom_id ?? "";
   if (customId.startsWith("fnt:")) {
     const [, action, ...parts] = customId.split(":");
-    if (parts.some(part=>!/^[A-Za-z0-9_-]{3,80}$/.test(part))) throw new ApiError(422,"npc_trade_invalid","That trade control is incomplete.");
-    const { suggestNpcTradeOffers, createNpcTradeOffer, inspectOpenNpcTrade, confirmNpcTrade, cancelNpcTrade, listNpcTradeOffers } = await import("../modules/npc-trades");
+    if (parts.some((part,index)=>action === "n" && index===1 ? !/^\d{1,2}$/.test(part) : !/^[A-Za-z0-9_-]{3,80}$/.test(part))) throw new ApiError(422,"npc_trade_invalid","That trade control is incomplete.");
+    const { startNpcTradeSearch, nextNpcTradeSearchPage, stopNpcTradeSearch, createNpcTradeOffer, inspectOpenNpcTrade, confirmNpcTrade, cancelNpcTrade, listNpcTradeOffers } = await import("../modules/npc-trades");
     if (action === "l" && parts.length === 0) {
       const offers=(await listNpcTradeOffers(ctx)).filter(offer=>offer.status === "open").slice(0,5);
       return callback({embeds:[{title:"Your open offers",description:offers.length ? "Review an offer or cancel it to release its copies." : "You have no open NPC offers.",color:0x7c6b4f,footer:{text:"Only you can manage these offers"}}],components:components([offers.map((offer,index)=>button(`Review offer ${index+1}`,`fnt:r:${offer.trade_id}`))])},true);
     }
     if (action === "r" && parts.length === 1) {
       const detail=await inspectOpenNpcTrade(ctx,parts[0]!);
-      return callback({embeds:[{title:"Review your offer",description:detail ? `Give **${truncate(detail.offered_name,100)}** · ${truncate(detail.offered_serial,60)}\nReceive **${truncate(detail.requested_name,100)}** · ${truncate(detail.requested_serial,60)}\n\nConfirm to exchange these copies.` : "The details are currently unavailable. You can cancel an open offer to release its copies.",color:0x7c6b4f}],components:components([[(detail ? button("Confirm trade",`fnt:c:${parts[0]}`,1) : null),button("Cancel offer",`fnt:x:${parts[0]}`)].filter((item):item is DiscordComponent=>item !== null)])},true);
+      return callback({embeds:[{title:"Review your offer",description:detail ? `Give **${truncate(detail.offered_name,100)}** · ${truncate(detail.offered_variant,80)} · ${truncate(detail.offered_serial,60)}\nReceive **${truncate(detail.requested_name,100)}** · ${truncate(detail.requested_variant,80)} · ${truncate(detail.requested_serial,60)}\n\nConfirm to exchange these copies.` : "The details are currently unavailable. You can cancel an open offer to release its copies.",color:0x7c6b4f}],components:components([[(detail ? button("Confirm trade",`fnt:c:${parts[0]}`,1) : null),button("Cancel offer",`fnt:x:${parts[0]}`)].filter((item):item is DiscordComponent=>item !== null)])},true);
     }
-    if (action === "b" && parts.length === 1) {
-      const ideas=await suggestNpcTradeOffers(ctx,parts[0]!);
-      const visible=ideas.filter(idea=>`fnt:o:${idea.npc.id}:${idea.give.instance_id}:${idea.receive.instance_id}`.length<=100);
-      return callback({embeds:[{title:"Trade ideas · NPC collector",description:visible.length ? "Choose an idea to see the exact copies. Nothing changes until you confirm." : "No matching idea in this small selection. Try again after your collections change.",color:0x7c6b4f,
-        fields:visible.map((idea,index)=>({name:`Idea ${index+1}`,value:`Give **${truncate(idea.give.card_name,100)}** · ${truncate(idea.give.serial,60)}\nReceive **${truncate(idea.receive.card_name,100)}** · ${truncate(idea.receive.serial,60)}`})),footer:{text:"Suggestions use actual copies · shown only to you"}}],
-        components:components([visible.map((idea,index)=>button(`Review idea ${index+1}`,`fnt:o:${idea.npc.id}:${idea.give.instance_id}:${idea.receive.instance_id}`,1))])},true);
+    if (action === "q" && parts.length === 1) {
+      const closed=await stopNpcTradeSearch(ctx,parts[0]!);
+      return callback({content:"Trade search closed. Closing a search does not move copies.",components:components([[button("Start a new search",`fnt:b:${closed.npc_id}`,2)]])},true);
+    }
+    if ((action === "b" && parts.length === 1) || (action === "n" && parts.length === 2)) {
+      const search=action === "b" ? await startNpcTradeSearch(ctx,parts[0]!,`discord:search:${interaction.id}`) : {id:parts[0]!,revision:Number(parts[1])};
+      const page=await nextNpcTradeSearchPage(ctx,search.id,search.revision);
+      const visible=page.ideas.filter(idea=>`fnt:o:${idea.npc.id}:${idea.give.instance_id}:${idea.receive.instance_id}`.length<=100);
+      return callback({embeds:[{title:"Trade ideas · NPC collector",description:visible.length ? "Reviewing an idea reserves both copies briefly. They change hands only when you confirm." : page.can_continue ? "No ideas in this sample. You can check the next page." : page.end === "limit" ? "No ideas in this sample. You have reached the search limit." : "No ideas on this page. You reached the end of these sampled ideas.",color:0x7c6b4f,
+        fields:visible.map((idea,index)=>({name:`Idea ${index+1}`,value:`Give **${truncate(idea.give.card_name,100)}** · ${truncate(idea.give.variant_name,80)} · ${truncate(idea.give.serial,60)}\nReceive **${truncate(idea.receive.card_name,100)}** · ${truncate(idea.receive.variant_name,80)} · ${truncate(idea.receive.serial,60)}`})),footer:{text:`Page ${page.revision} of 4 · sampled ideas · only you can see these`}}],
+        components:components([visible.map((idea,index)=>button(`Review idea ${index+1}`,`fnt:o:${idea.npc.id}:${idea.give.instance_id}:${idea.receive.instance_id}`,1)),[...(page.can_continue ? [button("Next page",`fnt:n:${page.id}:${page.revision}`,2)] : []),button("Stop search",`fnt:q:${page.id}`,2)]].filter(row=>row.length>0))},true);
     }
     if (action === "o" && parts.length === 3) {
       let offer:Awaited<ReturnType<typeof createNpcTradeOffer>>;
@@ -2632,7 +2637,7 @@ export async function runComponent(
       catch { throw new ApiError(409,"npc_trade_outcome_uncertain","The offer outcome could not be confirmed. Check your offer history before retrying."); }
       if (offer.status !== "open") return callback({content:offer.status === "declined" ? "The NPC declined this offer. No cards moved." : `This offer is ${offer.status}. No additional exchange was made.`},true);
       const detail=await inspectOpenNpcTrade(ctx,offer.trade_id);
-      return callback({embeds:[{title:"Review your offer",description:detail ? `Give **${truncate(detail.offered_name,100)}** · ${truncate(detail.offered_serial,60)}\nReceive **${truncate(detail.requested_name,100)}** · ${truncate(detail.requested_serial,60)}\n\n${truncate(detail.npc_name,80)} is interested. Confirm to exchange these copies.` : "Your offer is reserved, but its current details are unavailable. You can cancel it.",color:0x7c6b4f,footer:{text:"An NPC collector · this offer expires"}}],
+      return callback({embeds:[{title:"Review your offer",description:detail ? `Give **${truncate(detail.offered_name,100)}** · ${truncate(detail.offered_variant,80)} · ${truncate(detail.offered_serial,60)}\nReceive **${truncate(detail.requested_name,100)}** · ${truncate(detail.requested_variant,80)} · ${truncate(detail.requested_serial,60)}\n\n${truncate(detail.npc_name,80)} is interested. Confirm to exchange these copies.` : "Your offer is reserved, but its current details are unavailable. You can cancel it.",color:0x7c6b4f,footer:{text:"An NPC collector · this offer expires"}}],
         components:components([[...(detail ? [button("Confirm trade",`fnt:c:${offer.trade_id}`,1)] : []),button("Cancel offer",`fnt:x:${offer.trade_id}`,2)]])},true);
     }
     if ((action === "c" || action === "x") && parts.length === 1) {

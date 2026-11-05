@@ -10,10 +10,10 @@ export function npcTradeAuthority(ctx: Ctx, userAlias: string, tenantSql: string
     JOIN fb_bots active_bot ON active_bot.tenant_id=di.tenant_id AND active_bot.status='active' AND (di.bot_id IS NULL OR di.bot_id=active_bot.id)
     WHERE d.tenant_id=${tenantSql} AND d.user_id=${userAlias}.id AND d.discord_user_id=? AND d.revoked_at IS NULL
       AND di.application_id=? AND di.guild_id=? AND di.active=1 AND di.revoked_at IS NULL AND di.game_enabled=1
-      AND json_type(CASE WHEN json_valid(di.channel_allowlist_json) THEN di.channel_allowlist_json ELSE 'null' END)='array'
-      AND NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(di.channel_allowlist_json) THEN di.channel_allowlist_json ELSE '[]' END) WHERE type<>'text' OR length(value) NOT BETWEEN 15 AND 22 OR value GLOB '*[^0-9]*')
-      AND (json_array_length(CASE WHEN json_valid(di.channel_allowlist_json) THEN di.channel_allowlist_json ELSE '[]' END)=0
-        OR EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(di.channel_allowlist_json) THEN di.channel_allowlist_json ELSE '[]' END) WHERE value=?)))`,
+      AND json_type(CASE WHEN length(di.channel_allowlist_json)<=8192 AND json_valid(di.channel_allowlist_json) THEN di.channel_allowlist_json ELSE 'null' END)='array'
+      AND NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN length(di.channel_allowlist_json)<=8192 AND json_valid(di.channel_allowlist_json) THEN di.channel_allowlist_json ELSE '[]' END) WHERE type<>'text' OR length(value) NOT BETWEEN 15 AND 22 OR value GLOB '*[^0-9]*')
+      AND (json_array_length(CASE WHEN length(di.channel_allowlist_json)<=8192 AND json_valid(di.channel_allowlist_json) THEN di.channel_allowlist_json ELSE '[]' END)=0
+        OR EXISTS (SELECT 1 FROM json_each(CASE WHEN length(di.channel_allowlist_json)<=8192 AND json_valid(di.channel_allowlist_json) THEN di.channel_allowlist_json ELSE '[]' END) WHERE value=?)))`,
       args: [discord.discordUserId, discord.applicationId, discord.guildId, discord.channelId],
     };
   const access =
@@ -43,15 +43,16 @@ export function npcDiscordScope(
   if (!p) return { sql: "1=1", args: [] };
   return {
     sql: `EXISTS (SELECT 1 FROM fb_discord_installations di WHERE di.tenant_id=n.tenant_id AND di.application_id=? AND di.guild_id=? AND di.active=1 AND di.revoked_at IS NULL AND di.game_enabled=1 AND (di.bot_id IS NULL OR di.bot_id=b.id)
-    AND (di.collection_allowlist_json IS NULL OR (json_type(CASE WHEN json_valid(di.collection_allowlist_json) THEN di.collection_allowlist_json ELSE 'null' END)='array'
-      AND NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(di.collection_allowlist_json) THEN di.collection_allowlist_json ELSE '[]' END) WHERE type<>'text' OR value='')))
-    AND json_type(CASE WHEN json_valid(COALESCE(di.channel_audience_json,'{}')) THEN COALESCE(di.channel_audience_json,'{}') ELSE 'null' END)='object'
-    AND NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(COALESCE(di.channel_audience_json,'{}')) THEN COALESCE(di.channel_audience_json,'{}') ELSE '{}' END) WHERE type<>'text' OR value NOT IN ('public','members','private') OR length(key) NOT BETWEEN 15 AND 22 OR key GLOB '*[^0-9]*')
-    AND NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(COALESCE(di.channel_audience_json,'{}')) THEN COALESCE(di.channel_audience_json,'{}') ELSE '{}' END) GROUP BY key HAVING COUNT(*)>1)
+    AND (di.collection_allowlist_json IS NULL OR (json_type(CASE WHEN length(di.collection_allowlist_json)<=8192 AND json_valid(di.collection_allowlist_json) THEN di.collection_allowlist_json ELSE 'null' END)='array'
+      AND NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN length(di.collection_allowlist_json)<=8192 AND json_valid(di.collection_allowlist_json) THEN di.collection_allowlist_json ELSE '[]' END) WHERE type<>'text' OR value='')))
+    AND json_type(CASE WHEN length(COALESCE(di.channel_audience_json,'{}'))<=8192 AND json_valid(COALESCE(di.channel_audience_json,'{}')) THEN COALESCE(di.channel_audience_json,'{}') ELSE 'null' END)='object'
+    AND NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN length(COALESCE(di.channel_audience_json,'{}'))<=8192 AND json_valid(COALESCE(di.channel_audience_json,'{}')) THEN COALESCE(di.channel_audience_json,'{}') ELSE '{}' END) WHERE type<>'text' OR value NOT IN ('public','members','private') OR length(key) NOT BETWEEN 15 AND 22 OR key GLOB '*[^0-9]*')
+    AND NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN length(COALESCE(di.channel_audience_json,'{}'))<=8192 AND json_valid(COALESCE(di.channel_audience_json,'{}')) THEN COALESCE(di.channel_audience_json,'{}') ELSE '{}' END) GROUP BY key HAVING COUNT(*)>1)
     AND NOT EXISTS (SELECT 1 FROM fb_collection_cards scoped_cc JOIN fb_collections scoped_c ON scoped_c.id=scoped_cc.collection_id
-      WHERE scoped_cc.card_id IN (${cards.join(",")})
-      AND ((di.collection_allowlist_json IS NOT NULL AND NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(di.collection_allowlist_json) THEN di.collection_allowlist_json ELSE '[]' END) WHERE value=scoped_c.id))
-        OR (scoped_c.view_audience='members' AND COALESCE((SELECT value FROM json_each(CASE WHEN json_valid(COALESCE(di.channel_audience_json,'{}')) THEN COALESCE(di.channel_audience_json,'{}') ELSE '{}' END) WHERE key=?),'public')='public'))))`,
+      WHERE scoped_cc.card_id IN (${cards.join(",")}) AND scoped_cc.rowid IN
+        (SELECT rowid FROM fb_collection_cards INDEXED BY fb_collection_cards_card_idx WHERE card_id IN (${cards.join(",")}) LIMIT ${cards.length * 16})
+      AND ((di.collection_allowlist_json IS NOT NULL AND NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN length(di.collection_allowlist_json)<=8192 AND json_valid(di.collection_allowlist_json) THEN di.collection_allowlist_json ELSE '[]' END) WHERE value=scoped_c.id))
+        OR (scoped_c.view_audience='members' AND COALESCE((SELECT value FROM json_each(CASE WHEN length(COALESCE(di.channel_audience_json,'{}'))<=8192 AND json_valid(COALESCE(di.channel_audience_json,'{}')) THEN COALESCE(di.channel_audience_json,'{}') ELSE '{}' END) WHERE key=?),'public')='public'))))`,
     args: [p.applicationId, p.guildId, p.channelId],
   };
 }

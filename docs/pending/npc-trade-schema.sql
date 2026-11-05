@@ -16,6 +16,14 @@ CREATE TABLE fb_npc_trade_offers (
 );
 CREATE INDEX fb_npc_trade_player_idx ON fb_npc_trade_offers(tenant_id, player_id, created_at);
 CREATE INDEX fb_npc_trade_npc_idx ON fb_npc_trade_offers(tenant_id, npc_id, created_at);
+CREATE TABLE fb_npc_trade_exchanged_copies (
+  tenant_id TEXT NOT NULL REFERENCES fb_tenants(id),
+  player_id TEXT NOT NULL REFERENCES fb_users(id),
+  npc_id TEXT NOT NULL REFERENCES fb_npc_collectors(id),
+  instance_id TEXT NOT NULL REFERENCES fb_card_instances(id),
+  trade_id TEXT NOT NULL REFERENCES fb_trades(id),
+  PRIMARY KEY (tenant_id,player_id,npc_id,instance_id)
+);
 CREATE TABLE fb_npc_trade_expiry_cursor (
   id INTEGER PRIMARY KEY CHECK (id=1),
   expires_at TEXT,
@@ -24,3 +32,22 @@ CREATE TABLE fb_npc_trade_expiry_cursor (
 );
 INSERT INTO fb_npc_trade_expiry_cursor (id,expires_at,trade_id) VALUES (1,NULL,NULL);
 CREATE INDEX fb_npc_trade_candidate_idx ON fb_card_instances(tenant_id,user_id,status,locked,id);
+CREATE INDEX fb_npc_trade_subject_idx ON fb_card_instances(tenant_id,user_id,card_id,status,locked,id);
+CREATE TABLE fb_npc_trade_searches (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES fb_tenants(id),
+  player_id TEXT NOT NULL REFERENCES fb_users(id),
+  npc_id TEXT NOT NULL REFERENCES fb_npc_collectors(id),
+  source_key TEXT NOT NULL,
+  request_key TEXT NOT NULL,
+  player_cursor TEXT NOT NULL DEFAULT '',
+  npc_cursor TEXT NOT NULL DEFAULT '',
+  revision INTEGER NOT NULL DEFAULT 0,
+  pages INTEGER NOT NULL DEFAULT 0,
+  scan_exhausted INTEGER NOT NULL DEFAULT 0 CHECK(scan_exhausted IN (0,1)),
+  last_result_json TEXT,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  UNIQUE (tenant_id,player_id,source_key,request_key)
+);
+CREATE INDEX fb_npc_trade_search_player_idx ON fb_npc_trade_searches(tenant_id,player_id,expires_at);

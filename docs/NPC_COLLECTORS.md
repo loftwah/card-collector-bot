@@ -96,8 +96,10 @@ host/spectator journey, which remains #7's human acceptance gate.
 
 `POST /api/v1/npcs/:id/trade-preview` accepts `offeredInstanceId` and
 `requestedInstanceId` from a signed-in human player. It reports interest in a
-one-copy-for-one-copy offer when the NPC has a spare of the requested subject
-and does not already have the offered subject. The assessment is read-only:
+one-copy-for-one-copy offer for different subjects in the same catalogue with the same valid rarity,
+material and effect, provided an additional currently eligible NPC copy of the
+requested subject can be proven. This is a simple matching rule, not a claim of
+equal market value; print scarcity and player preferences are not priced. The assessment is read-only:
 it neither reserves nor transfers copies, and is not a promise that a later
 offer will be accepted. `POST /api/v1/npcs/:id/trade-offers` uses an
 idempotency key to persist a decision and reserve an interested pair. The
@@ -112,6 +114,24 @@ previously exchanged copy to the same NPC. A bounded scheduled task expires
 abandoned offers and releases both reservations atomically. The schema under
 `docs/pending/` is not numbered or automatically applied; migration ordering,
 rollback and the shared recursive lineage policy must be resolved first.
-Nothing here is deployed. Real Discord rendering, inline artwork, performance
+The spare proof checks at most eight other copies using the subject index and
+current visibility and art rules. It can return unavailable even when another
+eligible spare exists outside that window; availability and timing may vary
+with copy order, including when hidden copies precede an eligible spare. This is not perfect secrecy. The proof is checked again in the transaction. Discovery stores a source-bound receipt for the latest page and rechecks the
+current audience before retry; it offers a fixed budget of four pages. Each
+page scans at most four distinct indexed windows of eight copies per side, and
+shows up to three live-authorized pairs. Once internal traversal is exhausted,
+remaining pages are empty without repeating pairs. Continuation does not reveal
+whether more inaccessible copies exist. Players can stop or start a new search;
+a new search can repeat the same sample. Timing and result position can still
+vary with hidden copies, and the fixed budget can miss valid pairs. The SQL
+limits JSON parsing, but SQLite still has to read TEXT values to evaluate their
+length, so this is not a hard total CPU or storage-read guarantee. The change
+remains held pending independent review and realistic latency testing.
+Each window samples up to three of 64 possible pairs, so these are sampled
+ideas, not an exhaustive match list. The implementation remains held pending
+independent review and wider adversarial tests.
+The exchanged-copy index also needs migration preflight/backfill if prior NPC
+exchanges exist. Nothing here is deployed. Real Discord rendering, inline artwork, performance
 with large inventories, full audience review and a real-client exchange remain
 unverified.

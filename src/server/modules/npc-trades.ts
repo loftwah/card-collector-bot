@@ -122,8 +122,8 @@ function quotaGuard(
       WHERE o.tenant_id=? AND o.npc_id=? AND t.status='completed' AND t.completed_at>strftime('%Y-%m-%dT%H:%M:%fZ','now','-1 day'))<10
     AND (?=0 OR (SELECT COUNT(*) FROM fb_npc_trade_offers o JOIN fb_trades t ON t.id=o.trade_id AND t.tenant_id=o.tenant_id
       WHERE o.tenant_id=? AND o.player_id=? AND t.status='open')<3)
-    AND NOT EXISTS (SELECT 1 FROM fb_instance_history h JOIN fb_npc_trade_offers o ON o.trade_id=h.reference_id AND o.tenant_id=h.tenant_id
-      WHERE h.tenant_id=? AND o.player_id=? AND o.npc_id=? AND h.reference_type='npc_trade' AND h.instance_id IN (?,?))
+    AND NOT EXISTS (SELECT 1 FROM fb_npc_trade_exchanged_copies x
+      WHERE x.tenant_id=? AND x.player_id=? AND x.npc_id=? AND x.instance_id IN (?,?))
     THEN 1 ELSE json('npc_trade_limit') END`,
     )
     .bind(
@@ -161,21 +161,30 @@ function assessmentGuard(
   decision: "interested" | "declined",
   reservationId?: string,
   reason?: string,
+  snapshot?: {npc:{name:string};give:{card_name:string;variant_name:string;serial:string};receive:{card_name:string;variant_name:string;serial:string}},
 ) {
   const q = npcTradeAssessmentQuery(ctx, npcId, offeredId, requestedId, reservationId);
+  const spare = npcTradeCandidateQuery(ctx,npcId,"npc","",{cardId:"__REPLACE_CARD__",excludeId:requestedId});
+  // Bind the selected card through a scalar primary-key lookup; candidate proof stays bounded.
+  spare.sql=spare.sql.replace("raw.card_id=?", "raw.card_id=(SELECT card_id FROM fb_card_instances WHERE id=?)");
+  spare.args[1]=requestedId;
   const predicate =
     decision === "interested"
-      ? "requested_copies>1 AND already_has_subject=0"
-      : reason === "This collector has no eligible spare to offer."
-        ? "requested_copies<=1"
-        : reason === "This collector already has an eligible copy of that subject."
-          ? "requested_copies>1 AND already_has_subject<>0"
-          : "0=1";
+      ? "decision_reason='interested'"
+      : reason === "This collector trades for a different subject."
+        ? "decision_reason='same_subject'"
+        : reason === "This collector matches copies within the same catalogue."
+          ? "decision_reason='catalogue_mismatch'"
+        : reason === "This collector prefers a card of the same rarity."
+          ? "decision_reason='rarity_mismatch'"
+          : reason === "This collector prefers the same finish and effect."
+            ? "decision_reason='finish_mismatch'"
+            : "0=1";
   return ctx.db
     .prepare(
-      `SELECT CASE WHEN EXISTS (SELECT 1 FROM (${q.sql}) candidate WHERE ${predicate}) THEN 1 ELSE json('npc_offer_changed') END`,
+      `SELECT CASE WHEN EXISTS (SELECT 1 FROM (${q.sql}) candidate WHERE ${predicate} ${snapshot ? "AND npc_name IS ? AND offered_name IS ? AND offered_variant IS ? AND offered_serial IS ? AND requested_name IS ? AND requested_variant IS ? AND requested_serial IS ?" : ""}) ${decision === "interested" ? `AND EXISTS (SELECT 1 FROM (${spare.sql}) eligible_spare)` : ""} THEN 1 ELSE json('npc_offer_changed') END`,
     )
-    .bind(...q.args);
+    .bind(...q.args,...(snapshot ? [snapshot.npc.name,snapshot.give.card_name,snapshot.give.variant_name,snapshot.give.serial,snapshot.receive.card_name,snapshot.receive.variant_name,snapshot.receive.serial] : []),...(decision === "interested" ? spare.args : []));
 }
 
 function callerGuard(ctx: Ctx) {
@@ -399,6 +408,8 @@ export async function confirmNpcTrade(ctx: Ctx, tradeId: string) {
             "INSERT INTO fb_instance_history (id,tenant_id,instance_id,event,from_user_id,to_user_id,reference_type,reference_id,metadata_json,created_at) VALUES (?,?,?,'traded',?,?,'npc_trade',?,'{}',?)",
           )
           .bind(newId("ih"), ctx.tenant.id, move.id, move.from, move.to, tradeId, now),
+        ctx.db.prepare("INSERT INTO fb_npc_trade_exchanged_copies (tenant_id,player_id,npc_id,instance_id,trade_id) VALUES (?,?,?,?,?)")
+          .bind(ctx.tenant.id,player,offer.npc_id,move.id,tradeId),
       ]),
       ctx.db
         .prepare(
@@ -489,11 +500,11 @@ export async function cancelNpcTrade(ctx: Ctx, tradeId: string) {
   return releaseNpcTrade(ctx, tradeId, false);
 }
 
-/** Cap each authorized side before forming pairs. The filters can still scan
- * more rows to find eligible candidates, so large-inventory cost needs evidence. */
-export async function suggestNpcTradeOffers(ctx: Ctx, npcId: string) {
-  const mineQuery = npcTradeCandidateQuery(ctx, npcId, "player"),
-    npcQuery = npcTradeCandidateQuery(ctx, npcId, "npc");
+/** Scan fixed indexed windows, then expose only currently authorized pairs.
+ * Cursors are server-only; callers expose only an opaque search record. */
+export async function suggestNpcTradeOffers(ctx: Ctx, npcId: string, playerCursor = "", npcCursor = "") {
+  const mineQuery = npcTradeCandidateQuery(ctx, npcId, "player",playerCursor),
+    npcQuery = npcTradeCandidateQuery(ctx, npcId, "npc",npcCursor);
   const [mine, theirs] = await Promise.all([
     all<{ id: string }>(ctx.db, mineQuery.sql, ...mineQuery.args),
     all<{ id: string }>(ctx.db, npcQuery.sql, ...npcQuery.args),
@@ -511,14 +522,23 @@ export async function suggestNpcTradeOffers(ctx: Ctx, npcId: string) {
     requested_name: string;
     requested_variant: string;
     requested_serial: string;
+    requested_card_id: string;
   }>(
     ctx.db,
-    `SELECT * FROM (${q.sql} AND offered.id IN (SELECT value FROM json_each(?)) AND requested.id IN (SELECT value FROM json_each(?))) candidate WHERE requested_copies>1 AND already_has_subject=0 ORDER BY offered_id,requested_id LIMIT 3`,
+    `SELECT * FROM (${q.sql} AND offered.id IN (SELECT value FROM json_each(?)) AND requested.id IN (SELECT value FROM json_each(?))) candidate WHERE decision_reason='interested' ORDER BY offered_id,requested_id LIMIT 64`,
     ...q.args,
     JSON.stringify(mine.map((row) => row.id)),
     JSON.stringify(theirs.map((row) => row.id)),
   );
-  return rows.map((row) => ({
+  // At most eight requested copies occur in an 8×8 window. Check each once;
+  // limiting before this proof can let an unavailable prefix suppress valid ideas.
+  const requested=[...new Map(rows.map(row=>[row.requested_id,row])).values()];
+  const eligibility=await Promise.all(requested.map(async row => {
+    const spare=npcTradeCandidateQuery(ctx,npcId,"npc","",{cardId:row.requested_card_id,excludeId:row.requested_id});
+    return [row.requested_id,Boolean(await first(ctx.db,spare.sql,...spare.args))] as const;
+  }));
+  const eligible=new Map(eligibility);
+  return rows.filter(row=>eligible.get(row.requested_id)).slice(0,3).map((row) => ({
     npc: { id: row.npc_id, name: row.npc_name, label: "NPC collector" },
     give: {
       instance_id: row.offered_id,
@@ -533,7 +553,7 @@ export async function suggestNpcTradeOffers(ctx: Ctx, npcId: string) {
       serial: row.requested_serial,
     },
     decision: "interested" as const,
-    reason: "This collector is interested and has an eligible spare.",
+    reason: "This collector accepts a different subject from the same catalogue with the same rarity, finish and effect.",
     preview_only: true,
     message: "This is an estimate, not a trade. No copies were reserved or transferred.",
   }));
@@ -552,11 +572,146 @@ export async function inspectOpenNpcTrade(ctx: Ctx, tradeId: string) {
   const row = await first<{
     npc_name: string;
     offered_name: string;
+    offered_variant: string;
     offered_serial: string;
     requested_name: string;
+    requested_variant: string;
     requested_serial: string;
   }>(ctx.db, q.sql, ...q.args);
   return row ? { ...publicOffer(offer, false), ...row } : null;
+}
+
+type SearchRow = { id:string;npc_id:string;npc_user_id:string;player_cursor:string;npc_cursor:string;revision:number;pages:number;scan_exhausted:number;expires_at:string;last_result_json:string|null };
+
+async function searchSource(ctx:Ctx) {
+  if (ctx.discordPrincipal) return sha256Hex(JSON.stringify(["discord",ctx.discordPrincipal]));
+  if (ctx.sessionId) return sha256Hex(JSON.stringify(["session",ctx.sessionId]));
+  if (ctx.sessionAssurance === "access" && ctx.accessStatus === "linked" && ctx.accessIdentity)
+    return sha256Hex(JSON.stringify(["access",ctx.config.access.teamDomain,ctx.accessIdentity.subject]));
+  throw new ApiError(403,"npc_trade_search_unavailable","Sign in again before browsing trades.");
+}
+
+async function readSearch(ctx:Ctx,id:string,sourceKey:string) {
+  const user=ctx.user;
+  if (!user || ctx.actor.type!=="user" || ctx.actor.id!==user.id || ctx.actor.representedUserId!==user.id || user.synthetic)
+    throw new ApiError(403,"human_player_required","A signed-in player must browse offers.");
+  const authority=npcTradeAuthority(ctx,"u","m.tenant_id");
+  return first<SearchRow>(ctx.db,`SELECT s.id,s.npc_id,n.user_id AS npc_user_id,s.player_cursor,s.npc_cursor,s.revision,s.pages,s.scan_exhausted,s.expires_at,s.last_result_json
+    FROM fb_npc_trade_searches s JOIN fb_users u ON u.id=s.player_id AND u.disabled_at IS NULL AND u.is_synthetic=0
+    JOIN fb_memberships m ON m.user_id=u.id AND m.tenant_id=s.tenant_id AND m.status='active' AND m.revoked_at IS NULL
+    JOIN fb_npc_collectors n ON n.id=s.npc_id AND n.tenant_id=s.tenant_id AND n.status='active'
+    JOIN fb_bots b ON b.id=n.bot_id AND b.tenant_id=n.tenant_id AND b.status='active'
+    WHERE s.id=? AND s.tenant_id=? AND s.player_id=? AND s.source_key=? AND s.expires_at>strftime('%Y-%m-%dT%H:%M:%fZ','now') AND ${authority.sql}`,
+    id,ctx.tenant.id,user.id,sourceKey,...authority.args);
+}
+
+export async function startNpcTradeSearch(ctx:Ctx,npcId:string,requestKey:string) {
+  const user=ctx.user;
+  if (!user || requestKey.length<8 || requestKey.length>200) throw new ApiError(422,"npc_trade_search_unavailable","Could not start a trade search.");
+  const sourceKey=await searchSource(ctx),id=newId("nps"),now=nowIso(),expires=new Date(Date.now()+5*60_000).toISOString();
+  try {
+    await ctx.db.batch([
+      callerGuard(ctx),
+      ctx.db.prepare(`SELECT CASE WHEN EXISTS (SELECT 1 FROM fb_npc_collectors n JOIN fb_bots b ON b.id=n.bot_id AND b.tenant_id=n.tenant_id AND b.status='active'
+        WHERE n.id=? AND n.tenant_id=? AND n.status='active') AND
+        ((SELECT COUNT(*) FROM fb_npc_trade_searches WHERE tenant_id=? AND player_id=? AND expires_at>strftime('%Y-%m-%dT%H:%M:%fZ','now'))<3
+          OR EXISTS (SELECT 1 FROM fb_npc_trade_searches WHERE tenant_id=? AND player_id=? AND source_key=? AND request_key=?))
+        THEN 1 ELSE json('npc_search_unavailable') END`).bind(npcId,ctx.tenant.id,ctx.tenant.id,user.id,ctx.tenant.id,user.id,sourceKey,requestKey),
+      ctx.db.prepare("INSERT OR IGNORE INTO fb_npc_trade_searches (id,tenant_id,player_id,npc_id,source_key,request_key,created_at,expires_at) VALUES (?,?,?,?,?,?,?,?)")
+        .bind(id,ctx.tenant.id,user.id,npcId,sourceKey,requestKey,now,expires),
+    ]);
+  } catch (error) {
+    if (String(error).includes("malformed JSON")) throw new ApiError(409,"npc_trade_search_unavailable","Trade search is unavailable. Try again later.");
+    throw error;
+  }
+  const row=await first<{id:string;npc_id:string;revision:number}>(ctx.db,"SELECT id,npc_id,revision FROM fb_npc_trade_searches WHERE tenant_id=? AND player_id=? AND source_key=? AND request_key=?",ctx.tenant.id,user.id,sourceKey,requestKey);
+  if (!row || row.npc_id!==npcId || (row.revision!==0 && row.revision!==1) || !(await readSearch(ctx,row.id,sourceKey))) throw new ApiError(409,"npc_trade_search_unavailable","This search has expired or advanced. Start a new search.");
+  return {id:row.id,revision:0};
+}
+
+export async function nextNpcTradeSearchPage(ctx:Ctx,id:string,expectedRevision:number) {
+  const sourceKey=await searchSource(ctx),search=await readSearch(ctx,id,sourceKey);
+  if (!search) throw new ApiError(409,"npc_trade_search_unavailable","This search has expired or changed. Start a new search.");
+  if (search.revision===expectedRevision+1 && search.last_result_json) {
+    let receipt:{revision:number; pairs:[string,string][]; end:"exhausted"|"limit"|null};
+    try {
+      receipt=JSON.parse(search.last_result_json);
+      if (receipt.revision!==expectedRevision || !Array.isArray(receipt.pairs) || receipt.pairs.length>3 ||
+          !receipt.pairs.every(pair=>Array.isArray(pair) && pair.length===2 && pair.every(id=>typeof id==="string" && id.length<=200)) ||
+          ![null,"exhausted","limit"].includes(receipt.end)) throw new Error("invalid receipt");
+      const ideas=await Promise.all(receipt.pairs.map(async ([give,receive])=>{
+        const preview=await previewNpcTrade(ctx,search.npc_id,give,receive);
+        if(preview.decision!=="interested") throw new Error("changed receipt");
+        return preview;
+      }));
+      await ctx.db.batch([
+        callerGuard(ctx),
+        ...ideas.map(idea=>assessmentGuard(ctx,search.npc_id,idea.give.instance_id,idea.receive.instance_id,"interested",undefined,undefined,idea)),
+        ctx.db.prepare(`SELECT CASE WHEN EXISTS (SELECT 1 FROM fb_npc_trade_searches s JOIN fb_npc_collectors n ON n.id=s.npc_id AND n.tenant_id=s.tenant_id AND n.status='active' JOIN fb_bots b ON b.id=n.bot_id AND b.tenant_id=n.tenant_id AND b.status='active' WHERE s.id=? AND s.tenant_id=? AND s.player_id=? AND s.source_key=? AND s.revision=? AND s.last_result_json=? AND s.expires_at>strftime('%Y-%m-%dT%H:%M:%fZ','now')) THEN 1 ELSE json('npc_search_changed') END`).bind(id,ctx.tenant.id,ctx.user!.id,sourceKey,expectedRevision+1,search.last_result_json),
+      ]);
+      return {id,npc_id:search.npc_id,revision:expectedRevision+1,ideas,can_continue:receipt.end===null,end:receipt.end};
+    } catch {
+      throw new ApiError(409,"npc_trade_search_unavailable","This search has expired or changed. Start a new search.");
+    }
+  }
+  if (search.last_result_json) {
+    try { if (JSON.parse(search.last_result_json).end !== null) throw new Error("finished"); }
+    catch { throw new ApiError(409,"npc_trade_search_unavailable","This search has ended. Start a new search."); }
+  }
+  if (search.revision!==expectedRevision || search.pages>=4) throw new ApiError(409,"npc_trade_search_unavailable","This search has expired or changed. Start a new search.");
+  const raw=(ownerId:string,cursor:string)=>all<{id:string}>(ctx.db,`SELECT id FROM fb_card_instances INDEXED BY fb_npc_trade_candidate_idx
+    WHERE tenant_id=? AND user_id=? AND status='owned' AND locked=0 AND id>? ORDER BY id LIMIT 9`,ctx.tenant.id,ownerId,cursor);
+  // Four fixed-size windows per page; every candidate is authorized live.
+  // Never use inventory exhaustion to determine the public page budget.
+  let nextPlayer=search.player_cursor,nextNpc=search.npc_cursor,exhausted=search.scan_exhausted===1;
+  const ideas:Awaited<ReturnType<typeof suggestNpcTradeOffers>>=[];
+  for (let window=0;window<4 && !exhausted;window++) {
+    const [mine,theirs,windowIdeas]=await Promise.all([
+      raw(ctx.user!.id,nextPlayer),raw(search.npc_user_id,nextNpc),
+      suggestNpcTradeOffers(ctx,search.npc_id,nextPlayer,nextNpc),
+    ]);
+    for (const idea of windowIdeas) if (ideas.length<3) ideas.push(idea);
+    exhausted=theirs.length<=8 && mine.length<=8;
+    if (theirs.length>8) nextNpc=theirs[7]!.id;
+    else { nextNpc=""; nextPlayer=mine.length>8 ? mine[7]!.id : ""; }
+  }
+  const end=search.pages+1>=4 ? "limit" as const : null;
+  const receipt=JSON.stringify({revision:expectedRevision,pairs:ideas.map(idea=>[idea.give.instance_id,idea.receive.instance_id]),end});
+  try {
+    await ctx.db.batch([
+      callerGuard(ctx),
+      ...ideas.map(idea=>assessmentGuard(ctx,search.npc_id,idea.give.instance_id,idea.receive.instance_id,"interested",undefined,undefined,idea)),
+      ctx.db.prepare(`UPDATE fb_npc_trade_searches SET player_cursor=?,npc_cursor=?,revision=revision+1,pages=pages+1,scan_exhausted=?,last_result_json=?
+        WHERE id=? AND tenant_id=? AND player_id=? AND source_key=? AND revision=? AND pages<4 AND expires_at>strftime('%Y-%m-%dT%H:%M:%fZ','now')`)
+        .bind(nextPlayer,nextNpc,exhausted ? 1 : 0,receipt,id,ctx.tenant.id,ctx.user!.id,sourceKey,expectedRevision),
+      ctx.db.prepare("SELECT CASE WHEN changes()=1 THEN 1 ELSE json('npc_search_changed') END"),
+    ]);
+  } catch (error) {
+    if (String(error).includes("malformed JSON")) {
+      const latest=await readSearch(ctx,id,sourceKey);
+      if (latest?.revision===expectedRevision+1) return nextNpcTradeSearchPage(ctx,id,expectedRevision);
+      throw new ApiError(409,"npc_trade_search_unavailable","This search changed. Start a new search.");
+    }
+    throw error;
+  }
+  return {id,npc_id:search.npc_id,revision:expectedRevision+1,ideas,can_continue:end===null,end};
+}
+
+export async function stopNpcTradeSearch(ctx:Ctx,id:string) {
+  const sourceKey=await searchSource(ctx),search=await readSearch(ctx,id,sourceKey);
+  if (!search) throw new ApiError(409,"npc_trade_search_unavailable","This search has already closed or expired.");
+  try {
+    await ctx.db.batch([
+      callerGuard(ctx),
+      ctx.db.prepare("DELETE FROM fb_npc_trade_searches WHERE id=? AND tenant_id=? AND player_id=? AND source_key=?")
+        .bind(id,ctx.tenant.id,ctx.user!.id,sourceKey),
+      ctx.db.prepare("SELECT CASE WHEN changes()=1 THEN 1 ELSE json('npc_search_changed') END"),
+    ]);
+  } catch (error) {
+    if (String(error).includes("malformed JSON")) throw new ApiError(409,"npc_trade_search_unavailable","This search has already closed or expired.");
+    throw error;
+  }
+  return {npc_id:search.npc_id};
 }
 
 /** Trusted bounded maintenance. A state transition and both releases are one
@@ -647,6 +802,7 @@ export async function expireNpcTradeOffers(db: Ctx["db"]) {
     if (!current || current.revision <= cursor.revision)
       throw new Error("NPC trade expiry cursor could not be advanced.");
   }
+  await db.prepare("DELETE FROM fb_npc_trade_searches WHERE id IN (SELECT id FROM fb_npc_trade_searches WHERE expires_at<=strftime('%Y-%m-%dT%H:%M:%fZ','now') ORDER BY expires_at LIMIT 50)").run();
   if (failed) throw new Error(`NPC trade expiry could not safely release ${failed} offer(s).`);
   return { expired, schema_installed: true };
 }
