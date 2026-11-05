@@ -13,7 +13,7 @@
     "build": "node scripts/build-production.mjs",
     "preview": "astro preview --host 127.0.0.1 --port 5173",
     "start": "node scripts/dev.mjs",
-    "check": "pnpm test:access-config && node --test tests/scripts/release-gate.test.mjs && pnpm test:acceptance-runner && pnpm check:types && pnpm test",
+    "check": "pnpm test:access-config && node --test tests/scripts/release-gate.test.mjs tests/scripts/routine-release.test.mjs && pnpm test:acceptance-runner && pnpm check:types && pnpm test",
     "check:types": "astro check",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

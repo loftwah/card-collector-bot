@@ -21,7 +21,7 @@ function run(command, args) {
 }
 
 const contentBefore = workingTreeHash();
-run("pnpm", ["exec", "astro", "check"]);
+if (!process.argv.includes("--skip-typecheck")) run("pnpm", ["exec", "astro", "check"]);
 run("pnpm", ["exec", "astro", "build"]);
 
 const server = path.join(ROOT, "dist", "server", "entry.mjs");
