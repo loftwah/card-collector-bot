@@ -237,6 +237,9 @@ async function adjustWalletGuarded(
 ) {
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in first.");
+  if (ctx.actor.type === "agent") {
+    throw new ApiError(403, "strong_auth_required", "Foil adjustments require a human with recent strong authentication. Open Studio and confirm with a passkey, authenticator or Cloudflare Access.");
+  }
   // Re-read authority at the mutation boundary. A session or stale form that
   // loaded before a revocation must not keep the removed capability.
   const live = await first<{
@@ -275,21 +278,7 @@ async function adjustWalletGuarded(
     capabilityRevision: Number(live.capability_revision ?? 1),
   };
   const ownerLike = liveUser.role === "owner" || liveUser.platformAdmin;
-  if (ctx.actor.type === "agent") {
-    if (!ctx.scopes?.includes("economy:grant")) {
-      throw new ApiError(403, "insufficient_scope", "The agent grant does not include economy:grant.");
-    }
-    if (!ownerLike) {
-      const policy = canIssueScopedGrant(liveUser, {
-        targetUserId: input.userId,
-        amount: input.amount,
-      });
-      if (!policy.allowed) throw new ApiError(403, policy.code, policy.message);
-    }
-    if (Math.abs(input.amount) > 500) {
-      throw new ApiError(403, "adjustment_limit", "Agents may adjust at most 500 Foil per command.");
-    }
-  } else if (ownerLike) {
+  if (ownerLike) {
     if (Math.abs(input.amount) > 50000) {
       throw new ApiError(403, "adjustment_limit", "Owner adjustments are limited to 50,000 Foil per command.");
     }
@@ -310,17 +299,7 @@ async function adjustWalletGuarded(
   // A Discord button is not a strong-auth proof; Discord directs humans to Studio.
   let proofSql: string;
   let proofArgs: unknown[];
-  if (ctx.actor.type === "agent" && ctx.agentTokenId) {
-    proofSql = `EXISTS (SELECT 1 FROM fb_agent_tokens tok JOIN fb_agent_grants g ON g.id=tok.grant_id
-      WHERE m.role IN ('owner','economy_admin') AND tok.id=? AND tok.revoked_at IS NULL AND g.agent_id=? AND g.represented_user_id=u.id
-      AND g.tenant_id=m.tenant_id AND g.status='active' AND g.revoked_at IS NULL
-      AND julianday(g.expires_at)>julianday('now')
-      AND json_valid(g.scopes_json) AND json_type(g.scopes_json)='array'
-      AND EXISTS (SELECT 1 FROM json_each(g.scopes_json) WHERE type='text' AND value='economy:grant')
-      AND EXISTS (SELECT 1 FROM json_each(g.scopes_json) WHERE type='text' AND value='economy:write')
-      AND NOT EXISTS (SELECT 1 FROM json_each(g.scopes_json) WHERE type<>'text'))`;
-    proofArgs = [ctx.agentTokenId, ctx.actor.id];
-  } else if (ctx.actor.type === "user" && ctx.actor.id === user.id && ctx.accessIdentity && ctx.accessStatus === "linked" && ctx.sessionAssurance === "access") {
+  if (ctx.actor.type === "user" && ctx.actor.id === user.id && ctx.accessIdentity && ctx.accessStatus === "linked" && ctx.sessionAssurance === "access") {
     proofSql = `? > unixepoch('now') AND EXISTS (SELECT 1 FROM fb_access_identities ai
       WHERE ai.user_id=u.id AND ai.team_domain=? AND ai.subject=? AND ai.revoked_at IS NULL)`;
     proofArgs = [Number(ctx.accessIdentity.payload.exp ?? 0), ctx.config.access.teamDomain, ctx.accessIdentity.subject];
