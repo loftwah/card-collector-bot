@@ -168,6 +168,9 @@ function callback(message: DiscordMessage, ephemeral = false): DiscordCallback {
 
 function errorCallback(error: unknown, _ephemeral = true): DiscordCallback {
   const apiError = error instanceof ApiError ? error : null;
+  if (apiError && ["draw_outcome_unavailable", "unknown_commit_outcome"].includes(apiError.code)) {
+    return callback({content:"This opening may have completed. Check your collection and wallet before opening another capsule.",allowed_mentions:{parse:[]}},true);
+  }
   const nextEligibleAt =
     apiError?.details && typeof apiError.details.next_eligible_at === "string"
       ? apiError.details.next_eligible_at
