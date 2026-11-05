@@ -247,11 +247,13 @@ try {
       Boolean(menuBox && menuBox.height > 100 && menuBox.y + menuBox.height <= 1000),
       menuBox ? `${Math.round(menuBox.height)}px` : "missing",
     );
+    await page.locator(".cabinet-more__menu a").first().focus();
     await page.keyboard.press("Escape");
     check(
       "Escape closes the cabinet menu",
       (await page.locator(".cabinet-more[open]").count()) === 0,
     );
+    check("cabinet menu returns focus on Escape", await page.locator(".cabinet-more__summary").evaluate((summary) => summary === document.activeElement));
 
     await page.getByRole("button", { name: /show .* back/i }).click();
     check(
@@ -574,6 +576,13 @@ try {
     watch(phone);
     await phone.goto("/play");
     await phone.getByRole("heading", { name: /your cabinet/i }).waitFor();
+    const siteMenu = phone.locator(".site-header details");
+    const siteMenuButton = siteMenu.locator("summary");
+    await siteMenuButton.click();
+    await siteMenu.locator("a:visible").first().focus();
+    await phone.keyboard.press("Escape");
+    check("mobile navigation closes on Escape", !(await siteMenu.evaluate((menu) => menu.open)));
+    check("mobile navigation returns focus on Escape", await siteMenuButton.evaluate((button) => button === document.activeElement));
     check(
       "mobile play has no horizontal document overflow",
       await phone.evaluate(
