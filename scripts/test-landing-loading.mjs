@@ -101,6 +101,16 @@ try {
     );
   }
   console.log("PASS failed artwork is visibly and accessibly identified");
+  const retryFrame = errors.first();
+  const retryLink = retryFrame.locator("xpath=..");
+  const failedLabel = await retryLink.getAttribute("aria-label");
+  await retryFrame.locator("img").evaluate((element, dataUrl) => {
+    element.removeAttribute("srcset");
+    element.src = dataUrl;
+  }, `data:image/webp;base64,${image.toString("base64")}`);
+  await failed.waitForFunction(() => document.querySelector(".hero-card-frame")?.getAttribute("data-art-state") === "loaded");
+  assert.equal(await retryLink.getAttribute("aria-label"), failedLabel.replace(/, artwork unavailable$/, ""));
+  console.log("PASS recovered artwork restores its accessible name");
   await failedContext.close();
 
   const touch = await browser.newContext({
