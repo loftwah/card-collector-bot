@@ -29,7 +29,7 @@ test('provisioned front applies queued placement and preserves the legacy defaul
   await composeCard({ ...original, outputPath: old });
   assert.deepEqual(fs.readFileSync(legacy), fs.readFileSync(old));
   assert.notDeepEqual(fs.readFileSync(actual), fs.readFileSync(legacy), 'fixture must reveal a dropped transform');
-  for (const value of ['{broken', JSON.stringify([]), JSON.stringify({ zoom: 2 })]) {
+  for (const value of ['', false, 0, '{broken', JSON.stringify([]), JSON.stringify({ zoom: 2 })]) {
     await assert.rejects(renderProvisionedFront({ payload: { ...payload, composition_json: value }, card, subjectPath, backgroundPath, outputPath: path.join(dir, 'invalid.png') }));
   }
   console.log(`Synthetic compositor evidence: ${dir}`);

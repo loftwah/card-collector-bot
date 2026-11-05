@@ -3,7 +3,9 @@ import { composeCard } from '../../art/compose.mjs';
 // Keep queued placement together with the compositor call. A missing legacy
 // value retains the compositor's default; malformed stored JSON fails the job.
 export function parseQueuedComposition(value) {
-  const composition = value ? JSON.parse(value) : null;
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'string' || value.length === 0) throw new Error('Invalid queued artwork composition');
+  const composition = JSON.parse(value);
   if (composition !== null) {
     if (typeof composition !== 'object' || Array.isArray(composition) ||
         Object.keys(composition).some(key => !['mode', 'zoom', 'offsetX', 'offsetY'].includes(key)) ||
