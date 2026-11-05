@@ -29,6 +29,7 @@ import {
   evidenceSummary,
   validateReleaseEvidence,
 } from "./lib/release-evidence.mjs";
+import { validateTechnicalReceipt, priorVerifiedSource, requireCorrectivePaths, assertRegularArtifactTree } from "./lib/technical-release-receipt.mjs";
 import {
   changedPaths,
   evidenceArtifacts,
@@ -40,6 +41,15 @@ import {
 
 const args = new Set(process.argv.slice(2));
 const checkOnly = args.has("--check");
+const technicalFiles=[...args].filter(arg=>arg.startsWith("--technical-receipt="));
+const technicalDigests=[...args].filter(arg=>arg.startsWith("--technical-receipt-sha256="));
+if(technicalFiles.length!==technicalDigests.length || technicalFiles.length>1) throw new Error("Provide exactly one technical receipt and its pinned SHA-256 together.");
+const technicalFile=technicalFiles[0]?.slice("--technical-receipt=".length);
+const technicalDigest=technicalDigests[0]?.slice("--technical-receipt-sha256=".length);
+if(!technicalFile) {
+  console.error("Legacy acceptance recording is held: its criterion claims are not bound to independently run checks. Supply reviewed technical evidence.");
+  process.exit(2);
+}
 const config = "wrangler.production.jsonc";
 const evidenceDir = path.join(ROOT, ".foilbury", "evidence");
 fs.mkdirSync(evidenceDir, { recursive: true });
@@ -178,19 +188,23 @@ if (source.behind !== 0) {
 const treeHash = sourceTreeHash();
 if (treeHash !== source.tree_hash) throw new Error("Source tree changed during the release check.");
 
-let evidence;
+let evidence,technical=null,bundle;
 try {
-  evidence = validateReleaseEvidence({ treeHash, contentHash: source.content_hash });
+  if(technicalFile) {
+    technical=validateTechnicalReceipt({file:technicalFile,receiptSha256:technicalDigest,source});
+    bundle=technical.artifact;
+  } else {
+    evidence=validateReleaseEvidence({ treeHash, contentHash: source.content_hash });
+    if (!checkOnly) {
+      const status = run("pnpm", ["build"]);
+      if (status !== 0) process.exit(status);
+    }
+    bundle=inspectBundle({ treeHash, contentHash: source.content_hash, sha: source.sha });
+  }
 } catch (error) {
   console.error(`Refusing release: ${error.message}`);
   process.exit(2);
 }
-
-if (!checkOnly) {
-  const status = run("pnpm", ["build"]);
-  if (status !== 0) process.exit(status);
-}
-const bundle = inspectBundle({ treeHash, contentHash: source.content_hash, sha: source.sha });
 const migrations = migrationState(env);
 const previous = deploymentList(env);
 let rollback;
@@ -201,7 +215,7 @@ try {
   process.exit(2);
 }
 
-function previousReleaseSha() {
+function previousReleaseReceipts() {
   const receipts = fs
     .readdirSync(evidenceDir)
     .filter((name) => /^release-receipt-.*\.json$/.test(name))
@@ -216,10 +230,15 @@ function previousReleaseSha() {
     })
     .filter(Boolean)
     .sort((left, right) => Date.parse(right.value.generated_at ?? 0) - Date.parse(left.value.generated_at ?? 0));
-  return receipts[0]?.value?.source_sha ?? null;
+  return receipts.map(entry=>entry.value);
 }
 
-const previousSha = previousReleaseSha();
+const priorReceipts=previousReleaseReceipts();
+let previousSha;
+try {
+  previousSha=technical ? priorVerifiedSource(priorReceipts,rollback.version_id) : priorReceipts[0]?.source_sha ?? null;
+  if(technical) capture("git",["merge-base","--is-ancestor",previousSha,source.sha]);
+} catch(error) { console.error(`Refusing release: ${error.message}`); process.exit(2); }
 const scope = scopeForPaths(
   previousSha
     ? changedPaths({ from: previousSha, capture })
@@ -229,12 +248,12 @@ const scope = scopeForPaths(
 );
 let scopeEvidence;
 try {
-  scopeEvidence = requireScopeEvidence(scope, evidence.criteria);
+  scopeEvidence = technical ? {criteria:["technical-candidate"],files:requireCorrectivePaths(scope.files),product_acceptance:"not_claimed"} : requireScopeEvidence(scope, evidence.criteria);
 } catch (error) {
   console.error(`Refusing release: ${error.message}`);
   process.exit(2);
 }
-const artifacts = evidenceArtifacts(evidence.criteria);
+const artifacts = technical ? [{path:path.resolve(technicalFile),sha256:technicalDigest}] : evidenceArtifacts(evidence.criteria);
 
 if (migrations.remote === null) {
   console.error("Refusing release: production migration state could not be read.");
@@ -258,7 +277,7 @@ const plan = {
   tree_hash: treeHash,
   scope,
   scope_evidence: scopeEvidence,
-  evidence: evidenceSummary(evidence),
+  evidence: technical ? {kind:"technical-candidate",sha256:technicalDigest,product_acceptance:"not_claimed",live_discord:"not_tested"} : evidenceSummary(evidence),
   evidence_artifacts: artifacts,
   bundle,
   migrations,
@@ -273,7 +292,8 @@ const plan = {
     fresh_remote_ref: true,
     source_build_bound: true,
     complete_artifact_digest: true,
-    acceptance_evidence_current: true,
+    acceptance_evidence_current: !technical,
+    technical_evidence_current: Boolean(technical),
     required_checks_passed: true,
     affected_scope_evidence: true,
     local_env_excluded: true,
@@ -293,6 +313,20 @@ console.log(`Release plan written to ${path.relative(ROOT, planFile)}`);
 if (checkOnly) {
   console.log("Release check passed. No deployment or production mutation was performed.");
   process.exit(0);
+}
+
+if(technical) {
+  try {
+    // Never overwrite a pre-existing build. A fresh checkout may adopt the
+    // qualified artifact; an existing build must already be byte-identical.
+    const dest=path.join(ROOT,"dist");
+    try { if(fs.lstatSync(dest).isSymbolicLink()) throw new Error("Deployment artifact destination is a symlink."); }
+    catch(error) { if(error.code!=="ENOENT") throw error; fs.cpSync(technical.dist,dest,{recursive:true,errorOnExist:true,force:false}); }
+    assertRegularArtifactTree(dest);
+    const copy=inspectBundle({treeHash,contentHash:source.content_hash,sha:source.sha});
+    if(copy.artifact.sha256!==bundle.artifact.sha256 || copy.sha256!==bundle.sha256) throw new Error("Deployment artifact differs from the qualified bytes.");
+    validateTechnicalReceipt({file:technicalFile,receiptSha256:technicalDigest,source:sourceState()});
+  } catch(error) { console.error(`Refusing release: ${error.message}`); process.exit(2); }
 }
 
 const deployStatus = run(path.join(ROOT, "node_modules/.bin/wrangler"), [

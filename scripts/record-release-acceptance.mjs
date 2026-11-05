@@ -13,6 +13,11 @@ import { ROOT } from "./lib/local.mjs";
 import { sourceState, workingTreeHash } from "./lib/source-identity.mjs";
 
 const args = new Set(process.argv.slice(2));
+// Held: the legacy recorder can manufacture skipped successes and hard-codes
+// claims not established by its commands. Use the isolated technical supervisor;
+// complete product acceptance remains separate and cannot be self-attested.
+console.error("Legacy acceptance recorder is held; use the isolated technical supervisor. Product acceptance is not claimed.");
+process.exit(2);
 const skipChecks = args.has("--skip-checks");
 const state = sourceState();
 if (state.dirty && !skipChecks) {

@@ -7,10 +7,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { sourceState, sha256File } from './lib/source-identity.mjs';
+import { signTechnicalReceipt, validateTechnicalReceipt, TECHNICAL_IMAGE } from './lib/technical-release-receipt.mjs';
 
 const image = process.argv[2];
-if (!/^sha256:[0-9a-f]{64}$/.test(image ?? '') || process.argv.length !== 3) {
-  console.error('Supply exactly one locally available immutable Docker image ID (sha256:…).'); process.exit(2);
+if (image !== TECHNICAL_IMAGE || process.argv.length !== 3) {
+  console.error('Supply the reviewed local immutable Docker image ID.'); process.exit(2);
 }
 const before=sourceState();
 if (before.dirty) { console.error('A clean source checkout is required.'); process.exit(2); }
@@ -46,12 +47,15 @@ try {
   const inspect=JSON.parse(must('docker',['inspect',name]));
   const c=inspect[0];
   if(c.Image!==image || c.HostConfig.NetworkMode!=='none' || c.Mounts.length!==0 || c.HostConfig.Privileged || c.HostConfig.Binds?.length) throw new Error('Container isolation mismatch.');
+  const allowedEnv=new Set(['PATH','LANG','LC_ALL','PLAYWRIGHT_BROWSERS_PATH']);
+  if((c.Config.Env??[]).some(entry=>!allowedEnv.has(entry.split('=',1)[0]))) throw new Error('Container image has unexpected environment variables.');
   must('docker',['cp',bundle,`${name}:/tmp/source.bundle`]);
   const imageLock=must('docker',['exec',name,'sha256sum','/sandbox/project/pnpm-lock.yaml']).split(/\s+/)[0];
   if(imageLock!==sha256File('pnpm-lock.yaml')) throw new Error('Dependency image lockfile differs from the source.');
   step('checkout', ['sh','-c',`set -eu; test ! -e .git; test ! -e .env; test ! -e .dev.vars; test ! -e .wrangler; test ! -e .foilbury; git init -q; git fetch -q /tmp/source.bundle HEAD; git reset -q --hard FETCH_HEAD; test "$(git rev-parse HEAD)" = '${before.sha}'; test -z "$(git status --porcelain)"; corepack enable pnpm`]);
   step('setup', ['pnpm','setup:local','--skip-sources']);
   step('synthetic-fixtures', ['node','scripts/setup-ci-fixtures.mjs']);
+  step('technical-gate-tests', ['node','--test','tests/scripts/technical-release-receipt.test.mjs']);
   step('check', ['pnpm','check']);
   step('built-worker-test', ['pnpm','test:production-path']);
   step('stop-dev', ['node','scripts/technical-release-stop-dev.mjs']);
@@ -60,16 +64,29 @@ try {
   step('synthetic-auth', ['node','scripts/test-auth-e2e.mjs']);
   step('synthetic-owner-copy', ['node','scripts/technical-release-seed-copy.mjs']);
   for (const [name,cmd] of [
+    ['landing-loading',['node','scripts/test-landing-loading.mjs']],['inspector-component',['node','--test','tests/browser/public-inspector.test.mjs']],
     ['ui',['pnpm','test:ui']],['product',['pnpm','test:product']],['artwork',['pnpm','test:artwork']],
     ['album',['node','scripts/test-album-e2e.mjs']],['privacy',['node','scripts/test-privacy.mjs']],['performance',['pnpm','perf:local']],
   ]) { step('worker-still-owned', ['node','scripts/technical-release-worker-ready.mjs']); step(name,cmd); }
+  step('worker-final-owned', ['node','scripts/technical-release-worker-ready.mjs']);
   const artifact=JSON.parse(must('docker',['exec','--workdir','/sandbox/project',name,'node','scripts/technical-release-inspect.mjs']));
   const after=sourceState();
   if(after.sha!==before.sha || after.dirty || after.tree_hash!==before.tree_hash || after.content_hash!==before.content_hash) throw new Error('Host source changed during qualification.');
-  const out=path.join(process.cwd(),'.foilbury','evidence'); fs.mkdirSync(out,{recursive:true,mode:0o700});
-  const receipt={schema_version:1,kind:'technical-candidate',generated_at:new Date().toISOString(),source:{sha:before.sha,tree_hash:before.tree_hash,content_hash:before.content_hash},artifact,container:{image,network:'none',host_mounts:0},checks,product_acceptance:'not_claimed',live_discord:'not_tested',deployment:'not_performed'};
-  const file=path.join(out,`technical-candidate-${randomUUID()}.json`); fs.writeFileSync(file,`${JSON.stringify(receipt,null,2)}\n`,{mode:0o600,flag:'wx'});
-  console.log(`Technical candidate receipt: ${file}`);
+  const base=path.join(process.cwd(),'.foilbury');
+  const out=path.join(base,'evidence');
+  for(const directory of [base,out]) {
+    try {if(!fs.lstatSync(directory).isDirectory() || fs.lstatSync(directory).isSymbolicLink()) throw new Error('Evidence destination is not a real directory.');}
+    catch(error) {if(error.code!=='ENOENT') throw error; fs.mkdirSync(directory,{mode:0o700});}
+  }
+  const runDir=fs.mkdtempSync(path.join(out,'technical-candidate-'));
+  must('docker',['cp',`${name}:/sandbox/project/dist`,path.join(runDir,'dist')]);
+  const logs=path.join(runDir,'logs'); fs.mkdirSync(logs,{mode:0o700});
+  for(const entry of fs.readdirSync(tmp)) if(entry.endsWith('.log')) fs.copyFileSync(path.join(tmp,entry),path.join(logs,entry),fs.constants.COPYFILE_EXCL);
+  const receipt={schema_version:1,kind:'technical-candidate',generated_at:new Date().toISOString(),source:{sha:before.sha,tree_hash:before.tree_hash,content_hash:before.content_hash},artifact,artifact_directory:'dist',container:{image,network:'none',host_mounts:0},checks,product_acceptance:'not_claimed',live_discord:'not_tested',deployment:'not_performed'};
+  const file=path.join(runDir,'receipt.json'); fs.writeFileSync(file,`${JSON.stringify(signTechnicalReceipt(receipt),null,2)}\n`,{mode:0o600,flag:'wx'});
+  const digest=sha256File(file);
+  validateTechnicalReceipt({file,receiptSha256:digest,source:after});
+  console.log(`Technical candidate receipt: ${file} · sha256 ${digest}`);
   success=true;
 } catch(error) {
   console.error(`Technical qualification incomplete: ${error.message}`); process.exitCode=1;
