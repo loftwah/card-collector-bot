@@ -2,8 +2,8 @@ import { composeCard } from '../../art/compose.mjs';
 
 // Keep queued placement together with the compositor call. A missing legacy
 // value retains the compositor's default; malformed stored JSON fails the job.
-export async function renderQueuedFront({ payload, meta, subjectPath, backgroundPath, markPath, outputPath }) {
-  const composition = payload.composition_json ? JSON.parse(payload.composition_json) : null;
+export function parseQueuedComposition(value) {
+  const composition = value ? JSON.parse(value) : null;
   if (composition !== null) {
     if (typeof composition !== 'object' || Array.isArray(composition) ||
         Object.keys(composition).some(key => !['mode', 'zoom', 'offsetX', 'offsetY'].includes(key)) ||
@@ -13,6 +13,10 @@ export async function renderQueuedFront({ payload, meta, subjectPath, background
       throw new Error('Invalid queued artwork composition');
     }
   }
+  return composition;
+}
+
+export async function renderQueuedFront({ payload, meta, subjectPath, backgroundPath, markPath, outputPath }) {
   return composeCard({
     subjectPath,
     backgroundPath: payload.background_asset_id ? backgroundPath : null,
@@ -24,7 +28,7 @@ export async function renderQueuedFront({ payload, meta, subjectPath, background
     serial: meta?.collections?.[0]?.view_audience === 'public' ? 'PUBLIC SHOWCASE' : 'MEMBER EDITION',
     className: meta?.class?.name ?? '',
     rarity: meta?.rarity?.name ?? '',
-    composition,
+    composition: parseQueuedComposition(payload.composition_json),
     markPath,
     outputPath,
   });
