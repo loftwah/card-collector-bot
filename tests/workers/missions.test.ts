@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { bootstrap, ctxFor, fixturePool, makeInstance, runtime, setBalance, walletBalance } from "./helpers";
 import { claimDailyMission, getDailyMissions, recordDailyInteraction, utcDayKey } from "../../src/server/modules/missions";
 import { recordCollectionExploration } from "../../src/server/modules/achievements";
@@ -123,6 +123,107 @@ describe("daily missions", () => {
       .all<{ event_type: string; count: number }>();
     expect(events.results.find((row) => row.event_type === "card.inspected")?.count).toBe(1);
     expect(events.results.find((row) => row.event_type === "card.favourited")?.count).toBe(1);
+  });
+
+  it("records only a deliberate, live-authorised inspection of an owned copy", async () => {
+    const base = await ctxFor("cabinet", "player@foilbury.local");
+    const fixture = await fixturePool(base);
+    const instance = await makeInstance(base, base.user!.id, fixture);
+    const now = new Date().toISOString();
+    const expires = new Date(Date.now() + 3600_000).toISOString();
+    await runtime.DB.prepare("INSERT INTO fb_sessions (id,token_hash,user_id,tenant_id,csrf_token,created_at,expires_at,last_seen_at) VALUES ('inspect-session','inspect-token',?,?, 'test',?,?,?)")
+      .bind(base.user!.id,base.tenant.id,now,expires,now).run();
+    const player = {...base,sessionId:'inspect-session'};
+    const path = `/api/v1/missions/inspect/${instance}`;
+    expect((await send(player,path,"GET")).status).toBe(404);
+    expect((await send({...player,actor:{...player.actor,type:'agent'}},path,"POST",{})).status).toBe(403);
+    await runtime.DB.prepare("UPDATE fb_card_definitions SET status='draft' WHERE id=?").bind(fixture.cardId).run();
+    expect((await send(player,path,"POST",{})).status).toBe(404);
+    await runtime.DB.prepare("UPDATE fb_card_definitions SET status='published' WHERE id=?").bind(fixture.cardId).run();
+    await runtime.DB.prepare("UPDATE fb_variants SET archived_at=? WHERE id=(SELECT variant_id FROM fb_card_instances WHERE id=?)").bind(now,instance).run();
+    expect((await send(player,path,"POST",{})).status).toBe(404);
+    await runtime.DB.prepare("UPDATE fb_variants SET archived_at=NULL WHERE id=(SELECT variant_id FROM fb_card_instances WHERE id=?)").bind(instance).run();
+    await runtime.DB.prepare("UPDATE fb_artwork_editions SET status='draft' WHERE id=(SELECT v.edition_id FROM fb_variants v JOIN fb_card_instances ci ON ci.variant_id=v.id WHERE ci.id=?)").bind(instance).run();
+    expect((await send(player,path,"POST",{})).status).toBe(404);
+    await runtime.DB.prepare("UPDATE fb_artwork_editions SET status='published' WHERE id=(SELECT v.edition_id FROM fb_variants v JOIN fb_card_instances ci ON ci.variant_id=v.id WHERE ci.id=?)").bind(instance).run();
+    await runtime.DB.prepare("INSERT INTO fb_collections (id,slug,name,description,scope,owner_tenant_id,accent,status,view_audience,created_by,created_at,updated_at) VALUES ('inspect_private','inspect-private','Private','Private','bot',?,'brass','published','private','test',?,?)").bind(base.tenant.id,now,now).run();
+    await runtime.DB.prepare("INSERT INTO fb_collection_cards (collection_id,card_id,tenant_id,sort,added_by,added_at) VALUES ('inspect_private',?,?,0,'test',?)").bind(fixture.cardId,base.tenant.id,now).run();
+    expect((await send(player,path,"POST",{})).status).toBe(404);
+    await runtime.DB.prepare("INSERT INTO fb_collection_viewers (collection_id,user_id,granted_by,created_at) VALUES ('inspect_private',?,?,?)").bind(base.user!.id,base.user!.id,now).run();
+    await runtime.DB.prepare("UPDATE fb_collection_viewers SET revoked_at=? WHERE collection_id='inspect_private' AND user_id=?").bind(now,base.user!.id).run();
+    expect((await send(player,path,"POST",{})).status).toBe(404);
+    await runtime.DB.prepare("UPDATE fb_collection_viewers SET revoked_at=NULL WHERE collection_id='inspect_private' AND user_id=?").bind(base.user!.id).run();
+    await runtime.DB.prepare("UPDATE fb_collections SET view_audience='private' WHERE id='col_test_public'").run();
+    expect((await send(player,path,"POST",{})).status).toBe(404);
+    await runtime.DB.prepare("UPDATE fb_collections SET view_audience='public' WHERE id='col_test_public'").run();
+    expect((await send(player,path,"POST",{})).status).toBe(200);
+    expect((await send(player,path,"POST",{})).status).toBe(200);
+    await runtime.DB.prepare("UPDATE fb_collections SET view_audience='private' WHERE id='col_test_public'").run();
+    expect((await send(player,path,"POST",{})).status).toBe(404);
+    await runtime.DB.prepare("UPDATE fb_collections SET view_audience='public' WHERE id='col_test_public'").run();
+    expect((await getDailyMissions(player)).missions.find(m=>m.key==='inspect')?.progress).toBe(1);
+    const count=async()=>Number((await runtime.DB.prepare("SELECT COUNT(*) AS n FROM fb_domain_events WHERE user_id=? AND event_type='card.inspected'").bind(player.user!.id).first<{n:number}>())?.n);
+    expect(await count()).toBe(1);
+    await runtime.DB.prepare("UPDATE fb_sessions SET revoked_at=? WHERE id='inspect-session'").bind(now).run();
+    expect((await send(player,path,"POST",{})).status).toBe(404);
+    await runtime.DB.prepare("UPDATE fb_sessions SET revoked_at=NULL WHERE id='inspect-session'").run();
+    await runtime.DB.prepare("UPDATE fb_card_instances SET status='traded' WHERE id=?").bind(instance).run();
+    expect((await send(player,path,"POST",{})).status).toBe(404);
+    expect(await count()).toBe(1);
+  });
+
+  it("does not write an inspection for stale authority or another account, and coalesces concurrent retries", async () => {
+    const base = await ctxFor("cabinet", "player@foilbury.local");
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const fixture = await fixturePool(base);
+    const own = await makeInstance(base, base.user!.id, fixture);
+    const other = await makeInstance(base, owner.user!.id, fixture);
+    const now = new Date().toISOString(), expires = new Date(Date.now()+3600_000).toISOString();
+    await runtime.DB.prepare("INSERT INTO fb_sessions (id,token_hash,user_id,tenant_id,csrf_token,created_at,expires_at,last_seen_at) VALUES ('inspect-negative','inspect-negative-token',?,?, 'test',?,?,?)")
+      .bind(base.user!.id,base.tenant.id,now,expires,now).run();
+    const player={...base,sessionId:'inspect-negative'};
+    const path=`/api/v1/missions/inspect/${own}`;
+    const count=async()=>Number((await runtime.DB.prepare("SELECT COUNT(*) AS n FROM fb_domain_events WHERE user_id=? AND event_type='card.inspected'").bind(player.user!.id).first<{n:number}>())?.n);
+    expect((await send(player,`/api/v1/missions/inspect/${other}`,"POST",{})).status).toBe(404);
+    await runtime.DB.prepare("UPDATE fb_users SET disabled_at=? WHERE id=?").bind(now,player.user!.id).run();
+    expect((await send(player,path,"POST",{})).status).toBe(404);
+    await runtime.DB.prepare("UPDATE fb_users SET disabled_at=NULL, is_synthetic=1 WHERE id=?").bind(player.user!.id).run();
+    expect((await send(player,path,"POST",{})).status).toBe(404);
+    await runtime.DB.prepare("UPDATE fb_users SET is_synthetic=0 WHERE id=?").bind(player.user!.id).run();
+    await runtime.DB.prepare("UPDATE fb_sessions SET expires_at=? WHERE id='inspect-negative'").bind('2000-01-01T00:00:00.000Z').run();
+    expect((await send(player,path,"POST",{})).status).toBe(404);
+    await runtime.DB.prepare("UPDATE fb_sessions SET expires_at=? WHERE id='inspect-negative'").bind(expires).run();
+    await runtime.DB.prepare("UPDATE fb_memberships SET status='revoked',revoked_at=? WHERE tenant_id=? AND user_id=?").bind(now,player.tenant.id,player.user!.id).run();
+    expect((await send(player,path,"POST",{})).status).toBe(404);
+    await runtime.DB.prepare("UPDATE fb_memberships SET status='active',revoked_at=NULL WHERE tenant_id=? AND user_id=?").bind(player.tenant.id,player.user!.id).run();
+    await runtime.DB.prepare("UPDATE fb_sessions SET revoked_at=? WHERE id='inspect-negative'").bind(now).run();
+    expect((await send(player,path,"POST",{})).status).toBe(404);
+    expect(await count()).toBe(0);
+    await runtime.DB.prepare("UPDATE fb_sessions SET revoked_at=NULL WHERE id='inspect-negative'").run();
+    // Legacy same-tenant cards without a collection remain eligible.
+    await runtime.DB.prepare("DELETE FROM fb_collection_cards WHERE card_id=?").bind(fixture.cardId).run();
+    const results=await Promise.all([send(player,path,"POST",{}),send(player,path,"POST",{})]);
+    expect(results.map(result=>result.status)).toEqual([200,200]);
+    expect(await count()).toBe(1);
+  });
+
+  it("records a fresh inspection after the server UTC day changes", async () => {
+    const base = await ctxFor("cabinet", "player@foilbury.local");
+    const fixture = await fixturePool(base);
+    const instance = await makeInstance(base, base.user!.id, fixture);
+    const actual = new Date(), now = actual.toISOString(), expires = new Date(actual.getTime()+3600_000).toISOString();
+    await runtime.DB.prepare("INSERT INTO fb_sessions (id,token_hash,user_id,tenant_id,csrf_token,created_at,expires_at,last_seen_at) VALUES ('inspect-midnight','inspect-midnight-token',?,?, 'test',?,?,?)")
+      .bind(base.user!.id,base.tenant.id,now,expires,now).run();
+    const player={...base,sessionId:'inspect-midnight'}, path=`/api/v1/missions/inspect/${instance}`;
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-11-05T23:59:59Z'));
+      expect((await send(player,path,'POST',{})).body).toEqual({recorded:true,day:'2026-11-05'});
+      vi.setSystemTime(new Date('2026-11-06T00:00:01Z'));
+      expect((await send(player,path,'POST',{})).body).toEqual({recorded:true,day:'2026-11-06'});
+      const events=await runtime.DB.prepare("SELECT dedupe_key FROM fb_domain_events WHERE user_id=? AND event_type='card.inspected'").bind(base.user!.id).all<{dedupe_key:string}>();
+      expect(events.results.map(row=>row.dedupe_key).sort()).toEqual([`card.inspected:${base.user!.id}:2026-11-05`,`card.inspected:${base.user!.id}:2026-11-06`]);
+    } finally {vi.useRealTimers();}
   });
 
   it("keeps the day's assignment stable when the balance changes", async () => {
