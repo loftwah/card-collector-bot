@@ -130,12 +130,27 @@ export async function composeCard(input) {
     isCutout && mode === "contain"
       ? artWindow.y + artWindow.height - layerHeight
       : artWindow.y + Math.round((artWindow.height - layerHeight) / 2);
-  const left = clamp(baseLeft + Math.round((offsetX / 100) * artWindow.width), 0, W - layerWidth);
-  const top = clamp(
-    baseTop + Math.round((offsetY / 100) * artWindow.height),
-    0,
-    canvasHeight - layerHeight,
-  );
+  const requestedLeft = baseLeft + Math.round((offsetX / 100) * artWindow.width);
+  const requestedTop = baseTop + Math.round((offsetY / 100) * artWindow.height);
+  // Keep the original positioning for layers that fit. If a zoomed layer is
+  // larger than the canvas, retain its intended centre and crop the overflow.
+  const left = layerWidth > W ? requestedLeft : clamp(requestedLeft, 0, W - layerWidth);
+  const top = layerHeight > canvasHeight ? requestedTop : clamp(requestedTop, 0, canvasHeight - layerHeight);
+  const clippedLeft = Math.max(0, left);
+  const clippedTop = Math.max(0, top);
+  const clippedRight = Math.min(W, left + layerWidth);
+  const clippedBottom = Math.min(canvasHeight, top + layerHeight);
+  if (clippedRight <= clippedLeft || clippedBottom <= clippedTop) {
+    throw new Error("Artwork does not intersect the card art canvas.");
+  }
+  const clippedLayer = layerWidth > W || layerHeight > canvasHeight
+    ? await sharp(layer).extract({
+        left: clippedLeft - left,
+        top: clippedTop - top,
+        width: clippedRight - clippedLeft,
+        height: clippedBottom - clippedTop,
+      }).png().toBuffer()
+    : layer;
 
   const shadow = Buffer.from(
     `<svg width="${W}" height="200" xmlns="http://www.w3.org/2000/svg"><ellipse cx="${W / 2}" cy="100" rx="250" ry="42" fill="#000" opacity=".45" filter="url(#b)"/><defs><filter id="b"><feGaussianBlur stdDeviation="28"/></filter></defs></svg>`,
@@ -151,7 +166,7 @@ export async function composeCard(input) {
   })
     .composite([
       { input: shadow, left: 0, top: Math.max(0, shadowTop) },
-      { input: layer, left, top },
+      { input: clippedLayer, left: clippedLeft, top: clippedTop },
     ])
     .png()
     .toBuffer();
