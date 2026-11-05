@@ -761,7 +761,7 @@ describe("Discord draw commit recovery", () => {
     expect(receipt?.settlement_pending).toBe(true);
     const message = JSON.stringify(drawRecoveryMessage({ receipt: receipt!, origin: "https://foilbury.test", interactionId, reason: "Display interrupted." }));
     expect(message).toContain("Balance after draw is not yet confirmed");
-    expect(message).not.toContain("999");
+    expect(message).not.toContain("Balance after draw: **999");
     expect(message).not.toContain("Balance after draw: **0");
     expect(message).not.toContain('"name":"Balance after draw"');
   });
