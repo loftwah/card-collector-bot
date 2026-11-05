@@ -1602,7 +1602,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
   if (segments.length === 2 && segments[0] === "admin" && segments[1] === "economy" && method === "PATCH") {
     ensureEconomyWrite(ctx);
-    ensureStepUp(ctx);
+    requireRecentStrongAuth(ctx, 30);
     const body = await readJson(
       request,
       z.object({
