@@ -50,14 +50,9 @@ export async function composeCard(input) {
   const subjectMeta = await sharp(subjectPath).metadata();
   const isCutout = Boolean(subjectMeta.hasAlpha);
   const composition = normaliseComposition(input.composition);
-  const squareOpaque = subjectMeta.width === subjectMeta.height && !isCutout;
-  const requestedMode = composition.mode;
-  // Only square opaque artwork may use a medallion; rectangular artwork
-  // remains contained even when an old composition requested fill.
-  const mode = requestedMode === "medallion" && squareOpaque ? "medallion"
-    : requestedMode === "fill" && subjectMeta.width === subjectMeta.height ? "fill"
-    : requestedMode === "contain" ? "contain"
-    : requestedMode ? "contain" : squareOpaque ? "medallion" : "contain";
+  const mode =
+    composition.mode ??
+    (subjectMeta.width === subjectMeta.height && !isCutout ? "medallion" : "contain");
   const zoom = Math.min(1.6, Math.max(0.6, Number(composition.zoom ?? 1)));
   const offsetX = Math.min(20, Math.max(-20, Number(composition.offsetX ?? 0)));
   const offsetY = Math.min(20, Math.max(-20, Number(composition.offsetY ?? 0)));
@@ -135,24 +130,27 @@ export async function composeCard(input) {
     isCutout && mode === "contain"
       ? artWindow.y + artWindow.height - layerHeight
       : artWindow.y + Math.round((artWindow.height - layerHeight) / 2);
-  const left = baseLeft + Math.round((offsetX / 100) * artWindow.width);
-  const top = baseTop + Math.round((offsetY / 100) * artWindow.height);
-  // Zoom can make the layer larger than the canvas. Crop its intersection
-  // with the reserved artwork window before compositing; preserve the same
-  // positioning and offsets instead of squeezing the zoomed image to fit.
-  const clippedLeft = Math.max(artWindow.x, left);
-  const clippedTop = Math.max(artWindow.y, top);
-  const clippedRight = Math.min(artWindow.x + artWindow.width, left + layerWidth);
-  const clippedBottom = Math.min(artWindow.y + artWindow.height, top + layerHeight);
+  const requestedLeft = baseLeft + Math.round((offsetX / 100) * artWindow.width);
+  const requestedTop = baseTop + Math.round((offsetY / 100) * artWindow.height);
+  // Keep the original positioning for layers that fit. If a zoomed layer is
+  // larger than the canvas, retain its intended centre and crop the overflow.
+  const left = layerWidth > W ? requestedLeft : clamp(requestedLeft, 0, W - layerWidth);
+  const top = layerHeight > canvasHeight ? requestedTop : clamp(requestedTop, 0, canvasHeight - layerHeight);
+  const clippedLeft = Math.max(0, left);
+  const clippedTop = Math.max(0, top);
+  const clippedRight = Math.min(W, left + layerWidth);
+  const clippedBottom = Math.min(canvasHeight, top + layerHeight);
   if (clippedRight <= clippedLeft || clippedBottom <= clippedTop) {
-    throw new Error("Artwork does not intersect the card art window.");
+    throw new Error("Artwork does not intersect the card art canvas.");
   }
-  const clippedLayer = await sharp(layer).extract({
-    left: clippedLeft - left,
-    top: clippedTop - top,
-    width: clippedRight - clippedLeft,
-    height: clippedBottom - clippedTop,
-  }).png().toBuffer();
+  const clippedLayer = layerWidth > W || layerHeight > canvasHeight
+    ? await sharp(layer).extract({
+        left: clippedLeft - left,
+        top: clippedTop - top,
+        width: clippedRight - clippedLeft,
+        height: clippedBottom - clippedTop,
+      }).png().toBuffer()
+    : layer;
 
   const shadow = Buffer.from(
     `<svg width="${W}" height="200" xmlns="http://www.w3.org/2000/svg"><ellipse cx="${W / 2}" cy="100" rx="250" ry="42" fill="#000" opacity=".45" filter="url(#b)"/><defs><filter id="b"><feGaussianBlur stdDeviation="28"/></filter></defs></svg>`,
@@ -287,6 +285,10 @@ export async function composeCard(input) {
     await sharp(final).png({ compressionLevel: 9 }).toFile(outputPath);
   }
   return { width: W, height: H, bytes: fs.statSync(outputPath).size, outputPath };
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function normaliseComposition(value) {
