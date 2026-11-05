@@ -55,7 +55,7 @@ export function validateTechnicalReceipt({file,receiptSha256,source,now=new Date
 const CORRECTIVE_PATHS=new Set([
   'src/components/LogoutButton.tsx','src/components/SiteHeader.astro','src/components/PublicVariantViewer.tsx','src/components/player/CardInspector.tsx','src/layouts/PlayerLayout.astro','src/pages/index.astro','src/styles/global.css',
   'package.json','pnpm-lock.yaml','docs/SKILLS.md','docs/pending/TECHNICAL_RELEASE_PROTOTYPE.md',
-  'tests/workers/observability.test.ts','scripts/test-landing-loading.mjs','tests/browser/public-inspector.test.mjs','tests/scripts/technical-release-receipt.test.mjs','scripts/test-album-e2e.mjs',
+  'tests/workers/observability.test.ts','scripts/test-landing-loading.mjs','scripts/test-product-qa.mjs','tests/browser/public-inspector.test.mjs','tests/scripts/technical-release-receipt.test.mjs','scripts/test-album-e2e.mjs',
   'scripts/deploy-production.mjs','scripts/record-release-acceptance.mjs','scripts/lib/technical-release-receipt.mjs',
   'scripts/technical-release-inspect.mjs','scripts/technical-release-process.mjs','scripts/technical-release-seed-copy.mjs',
   'scripts/technical-release-stop-dev.mjs','scripts/technical-release-supervisor.mjs','scripts/technical-release-worker-ready.mjs',
