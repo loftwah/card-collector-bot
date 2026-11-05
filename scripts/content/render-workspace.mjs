@@ -11,6 +11,5 @@ export function createRenderWorkspace(root) {
     front: path.join(directory, 'front.webp'),
     back: path.join(directory, 'back.webp'),
     mark: extension => path.join(directory, `mark.${extension === 'svg' ? 'svg' : 'png'}`),
-    cleanup() { fs.rmSync(directory, { recursive: true, force: true }); },
   };
 }

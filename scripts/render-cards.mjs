@@ -142,7 +142,7 @@ while (true) {
     );
     log(`  failed ${entry.card.name} — ${entry.variant.name}: ${message}`);
   } finally {
-    if (workspace) { try { workspace.cleanup(); } catch (error) { log(`  temporary render cleanup failed: ${error.message}`); } }
+    if (workspace) console.error(`Render scratch retained: ${workspace.directory}`);
   }
 }
 

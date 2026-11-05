@@ -7,7 +7,7 @@ import sharp from 'sharp';
 import { createRenderWorkspace } from '../../scripts/content/render-workspace.mjs';
 import { renderProvisionedFront } from '../../scripts/content/render-provisioned-front.mjs';
 
-test('overlapping attempts use isolated files and one cleanup cannot remove the other', async () => {
+test('overlapping attempts retain isolated files without touching older evidence', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'foilbury-render-concurrency-'));
   const stale = path.join(root, 'same-variant-background.png'); fs.writeFileSync(stale, 'old attempt evidence');
   const a = createRenderWorkspace(root), b = createRenderWorkspace(root);
@@ -22,11 +22,10 @@ test('overlapping attempts use isolated files and one cleanup cannot remove the 
   await Promise.all([a,b].map(workspace=>renderProvisionedFront({payload,card,subjectPath:workspace.subject,backgroundPath:workspace.background,outputPath:workspace.front})));
   const first=fs.readFileSync(a.front), second=fs.readFileSync(b.front);
   assert.notDeepEqual(first,second,'distinct backgrounds must produce distinct outputs');
-  a.cleanup();
-  assert.equal(fs.existsSync(a.directory),false);
+  assert.deepEqual(fs.readFileSync(a.front),first);
   assert.deepEqual(fs.readFileSync(b.front),second);
   assert.equal(fs.readFileSync(stale,'utf8'),'old attempt evidence');
-  b.cleanup();
-  assert.equal(fs.existsSync(b.directory),false);
+  assert.ok(fs.existsSync(b.directory));
+  assert.equal('cleanup' in a, false, 'the helper must not delete by a replaceable pathname');
   console.log(`Synthetic workspace evidence: ${root}`);
 });

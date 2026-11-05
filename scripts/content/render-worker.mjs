@@ -87,7 +87,6 @@ while (true) {
       const backPath = workspace.back;
       await composeCardBack({ backPath: backSource, material: payload.material_key, effect: payload.effect_key ?? "none", outputPath: backPath });
       backBytes = fs.readFileSync(backPath);
-      fs.rmSync(backPath, { force: true });
     }
     const form = new FormData();
     form.append("file", new Blob([fs.readFileSync(outputPath)], { type: "image/webp" }), `${payload.variant_id}.webp`);
@@ -102,7 +101,7 @@ while (true) {
     await apiJson(`/api/v1/admin/jobs/${job.id}/fail`, { method: "POST", body: { message, attempt } }).catch(() => undefined);
     log(`failed ${payload.variant_id}: ${message}`);
   } finally {
-    if (workspace) { try { workspace.cleanup(); } catch (error) { log(`temporary render cleanup failed: ${error.message}`); } }
+    if (workspace) console.error(`Render scratch retained: ${workspace.directory}`);
   }
 }
 const result = { worker, rendered, failed, elapsed_ms: Date.now() - started };

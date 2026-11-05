@@ -308,7 +308,6 @@ async function renderQueue(cards, generated) {
           outputPath: backPath,
         });
         backBytes = fs.readFileSync(backPath);
-        fs.rmSync(backPath, { force: true });
       }
       const form = new FormData();
       form.append("file", new Blob([fs.readFileSync(outputPath)], { type: "image/webp" }), `${payload.variant_id}.webp`);
@@ -338,7 +337,7 @@ async function renderQueue(cards, generated) {
       }).catch(() => undefined);
       log(`  failed ${entry.card.name} — ${entry.variant.name}: ${message}`);
     } finally {
-      if (workspace) { try { workspace.cleanup(); } catch (error) { log(`  temporary render cleanup failed: ${error.message}`); } }
+      if (workspace) console.error(`Render scratch retained: ${workspace.directory}`);
     }
   }
   return { rendered, failed };

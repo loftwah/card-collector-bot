@@ -20,7 +20,8 @@ test('overlapping canonical jobs cannot exchange source or output files', {timeo
   fs.writeFileSync(loader,`export async function resolve(specifier,context,next){const r=await next(specifier,context);if(r.url.endsWith('/scripts/lib/api.mjs'))return {url:${JSON.stringify(pathToFileURL(api).href)},shortCircuit:true};return r}`);
   fs.writeFileSync(bootstrap,`import fs from 'node:fs/promises';globalThis.fetch=async url=>{const file=String(url).includes('/subject/')?process.env.FIXTURE_SUBJECT:process.env.FIXTURE_BACKGROUND;await new Promise(r=>setTimeout(r,100));return new Response(await fs.readFile(file),{status:200})}`);
   const run=name=>new Promise((resolve,reject)=>{const child=spawn(process.execPath,['--no-warnings','--import',bootstrap,'--experimental-loader',loader,'scripts/render-cards.mjs','--limit=1','--json'],{cwd:process.cwd(),env:{PATH:process.env.PATH,FIXTURE_RESULT:path.join(dir,`${name}-result.webp`),FIXTURE_SUBJECT:path.join(dir,'subject.png'),FIXTURE_BACKGROUND:path.join(dir,`${name}.png`)}});let output='';child.stdout.on('data',x=>output+=x);child.stderr.on('data',x=>output+=x);child.on('error',reject);child.on('exit',code=>code===0?resolve(output):reject(Error(`fixture ${name} exited ${code}: ${output}`)))});
-  await Promise.all([run('a'),run('b')]);
+  const logs=await Promise.all([run('a'),run('b')]);
+  assert.ok(logs.every(log=>log.includes('Render scratch retained:')), 'JSON mode must report retained scratch on stderr');
   const a=await sharp(path.join(dir,'a-result.webp')).raw().toBuffer(), b=await sharp(path.join(dir,'b-result.webp')).raw().toBuffer();
   assert.notDeepEqual(a,b,'the two outputs must retain their different source backgrounds');
   for (const [name,actual] of [['a',a],['b',b]]) {
