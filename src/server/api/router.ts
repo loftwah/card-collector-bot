@@ -189,6 +189,7 @@ import {
 import {
   claimDailyMission,
   getDailyMissions,
+  recordOwnedInspection,
 } from "../modules/missions";
 import {
   compareNpc,
@@ -927,6 +928,10 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
 
   // Daily missions: trusted committed events, one claim per mission per UTC day.
+  if (segments[0] === "missions" && segments[1] === "inspect" && segments.length === 3 && segments[2] && method === "POST") {
+    playerWrite(ctx);
+    return json(await recordOwnedInspection(ctx, segments[2]));
+  }
   if (segments[0] === "missions" && segments[1] === "daily" && segments.length === 2 && method === "GET") {
     playerWrite(ctx);
     requireScope(ctx, "missions:read");

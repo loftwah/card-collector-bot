@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Box, RotateCcw, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/client";
 
 interface Props {
+  inspectionInstanceId?: string;
   frontUrl: string | null;
   backUrl: string | null;
   name: string;
@@ -37,12 +39,16 @@ export default function CardInspector({
   initialEnabled = false,
   initialFlipped = false,
   framed = false,
+  inspectionInstanceId,
 }: Props) {
+  const [hydrated, setHydrated] = useState(false);
   const [enabled, setEnabled] = useState(initialEnabled);
   const [flipped, setFlipped] = useState(initialFlipped);
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
   const [reduced, setReduced] = useState<boolean | null>(null);
   const [active, setActive] = useState(true);
+  const [inspection, setInspection] = useState<"idle" | "saving" | "saved" | "failed">("idle");
+  const inspectionInFlight = useRef(false);
   const shell = useRef<HTMLDivElement>(null);
   const modeButton = useRef<HTMLButtonElement>(null);
   const frame = useRef<number | null>(null);
@@ -52,9 +58,11 @@ export default function CardInspector({
   const front = frontUrl ?? fallbackUrl;
   const back = backUrl ?? fallbackUrl;
 
+  useEffect(() => { setHydrated(true); }, []);
+
   useEffect(() => {
-    if (initialEnabled) modeButton.current?.focus({ preventScroll: true });
-  }, []);
+    if (hydrated && initialEnabled) modeButton.current?.focus({ preventScroll: true });
+  }, [hydrated, initialEnabled]);
 
   useEffect(() => {
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -146,6 +154,27 @@ export default function CardInspector({
     dragging.current = false;
   }
 
+  async function recordInspection() {
+    if (!inspectionInstanceId || inspectionInFlight.current) return;
+    inspectionInFlight.current = true;
+    setInspection("saving");
+    try {
+      const result = await api<{ recorded?: boolean; day?: string }>(`/api/v1/missions/inspect/${encodeURIComponent(inspectionInstanceId)}`, { method: "POST", body: {} });
+      if (result?.recorded !== true || typeof result.day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(result.day)) throw new Error("Inspection not confirmed");
+      setInspection("saved");
+    } catch {
+      setInspection("failed");
+    } finally {
+      inspectionInFlight.current = false;
+    }
+  }
+
+  function flipCard() {
+    const showBack = !flipped;
+    setFlipped(showBack);
+    if (showBack) void recordInspection();
+  }
+
   function onKeyDown(event: React.KeyboardEvent) {
     if (event.key === "ArrowLeft") {
       event.preventDefault();
@@ -161,7 +190,7 @@ export default function CardInspector({
       setTilt((current) => ({ ...current, x: clamp(current.x + 4, -18, 18) }));
     } else if (event.key.toLowerCase() === "f") {
       event.preventDefault();
-      setFlipped((value) => !value);
+      flipCard();
     } else if (event.key === "Escape") {
       setTilt({ x: 0, y: 0 });
       setFlipped(false);
@@ -228,7 +257,8 @@ export default function CardInspector({
         <button
           type="button"
           className="btn btn-secondary btn-sm"
-          onClick={() => setFlipped((value) => !value)}
+          onClick={flipCard}
+          disabled={!hydrated}
           aria-pressed={flipped}
         >
           <RotateCcw size={14} /> {flipped ? "View front" : "View back"}
@@ -237,6 +267,7 @@ export default function CardInspector({
           type="button"
           className={cn("btn btn-sm", enabled ? "btn-primary" : "btn-secondary")}
           ref={modeButton}
+          disabled={!hydrated}
           onClick={() => {
             setEnabled((value) => {
               const next = !value;
@@ -268,6 +299,9 @@ export default function CardInspector({
             ? "Drag or use arrow keys · F flips · Escape resets"
             : `Flat view · ${collection ?? "Cabinet"}${serial ? ` · ${serial}` : ""}`}
       </p>
+      {inspectionInstanceId ? <div className="mt-2 min-h-5 text-xs text-[var(--muted)]" role="status" aria-live="polite">
+        {inspection === "saving" ? "Recording inspection…" : inspection === "saved" ? "Inspection recorded for today’s missions." : inspection === "failed" ? <span>Couldn’t record this inspection. <button type="button" className="underline underline-offset-4" onClick={() => void recordInspection()}>Retry</button></span> : null}
+      </div> : null}
       <p className="sr-only" aria-live="polite">
         {flipped ? "Showing card back" : "Showing card front"}.
         {canTilt
