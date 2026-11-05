@@ -89,6 +89,7 @@ const nextMove = cabinetNextStep({
 ---
 
 <PlayerLayout title="Your cabinet · Foilbury">
+  <div class="cabinet-home">
   <section class="grid gap-6 border-b border-[var(--line)] pb-7 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-end">
     <div>
       <p class="studio-kicker">Private cabinet · {ctx.tenant.name}</p>
@@ -110,7 +111,7 @@ const nextMove = cabinetNextStep({
       </div>
     </div>
     <div class="action-card">
-      <div class="flex items-start justify-between gap-4">
+      <div class="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p class="studio-stat__label">Foil balance</p>
           <p class="display-sm mt-0.5 text-4xl text-[var(--signal)]" data-foil-balance>
@@ -305,7 +306,7 @@ const nextMove = cabinetNextStep({
             <p class="panel-title mt-0.5">Your shortcuts</p>
           </div>
         </div>
-        <div class="panel-body grid grid-cols-2 gap-2">
+        <div class="cabinet-home__shortcuts panel-body grid gap-2">
           <a class="card-toolbar__button justify-start" href="/play/missions">
             Daily missions
           </a>
@@ -396,4 +397,5 @@ const nextMove = cabinetNextStep({
     </a>
     .
   </p>
+  </div>
 </PlayerLayout>
