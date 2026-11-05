@@ -1509,7 +1509,7 @@ html[data-motion="reduced"] .draw-odds-placeholder .skeleton { animation: none; 
   }
 
   .card-grid {
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 140px), 1fr));
     gap: 0.9rem;
   }
 }
@@ -2552,4 +2552,70 @@ html[data-motion="reduced"] .layered-card__effect {
 .cabinet-home .kpi-grid,
 .cabinet-home__shortcuts {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
+}
+
+/* Narrow, magnified layouts: allow text and form controls to use their available track. */
+.signin-page .grid > *,
+.journal-list .grid > *,
+.collection-browser form > *,
+.member-collection .grid > * {
+  min-width: 0;
+}
+
+.signin-page,
+.showcase-intro h1,
+.journal-intro h1,
+.journal-list,
+.member-collection {
+  overflow-wrap: anywhere;
+}
+
+.signin-page .input,
+.collection-browser .input,
+.collection-browser .select {
+  min-width: 0;
+}
+
+.signin-page button,
+.signin-page .btn,
+.journal-list .btn {
+  max-width: 100%;
+  height: auto;
+  min-height: 44px;
+  white-space: normal;
+}
+
+.signin-page,
+.showcase-intro .container,
+.journal-intro .container {
+  container-type: inline-size;
+}
+
+@container (max-width: 14rem) {
+  .signin-panel { padding: 0.875rem; }
+  .signin-panel__heading img, .signin-panel svg { display: none; }
+  .signin-panel a[href="/admin"] { padding: 0.5rem; }
+  .signin-page h1 { font-size: 2rem; }
+  .showcase-intro h1, .journal-intro h1 { font-size: 2rem; }
+}
+
+.member-collection .share-panel__preview > :first-child {
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 5 / 7;
+}
+
+.member-collection .share-panel button {
+  max-width: 100%;
+  height: auto;
+  min-height: 44px;
+  white-space: normal;
+}
+
+.member-collection { container-type: inline-size; }
+@container (max-width: 14rem) {
+  .member-collection__details { padding: 0.75rem; }
+  .member-collection__stats { grid-template-columns: repeat(auto-fit, minmax(min(100%, 4.5rem), 1fr)); }
+  .member-collection .share-panel { padding: 0.75rem; }
+  .member-collection .share-panel__head { flex-wrap: wrap; }
 }
