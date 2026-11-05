@@ -101,7 +101,7 @@ try {
     );
   }
   console.log("PASS failed artwork is visibly and accessibly identified");
-  const retryFrame = errors.first();
+  const retryFrame = failed.locator(cardSelector).first();
   const retryLink = retryFrame.locator("xpath=..");
   const failedLabel = await retryLink.getAttribute("aria-label");
   await retryFrame.locator("img").evaluate((element, dataUrl) => {
