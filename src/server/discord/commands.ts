@@ -168,6 +168,9 @@ function callback(message: DiscordMessage, ephemeral = false): DiscordCallback {
 
 function errorCallback(error: unknown, _ephemeral = true): DiscordCallback {
   const apiError = error instanceof ApiError ? error : null;
+  if (apiError?.code === "discord_channel_policy_invalid") {
+    return callback({content: "This server's channel policy needs repair by an administrator. If you were opening a capsule, check your collection before trying again.", allowed_mentions:{parse:[]}}, true);
+  }
   const nextEligibleAt =
     apiError?.details && typeof apiError.details.next_eligible_at === "string"
       ? apiError.details.next_eligible_at

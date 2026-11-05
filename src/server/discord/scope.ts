@@ -11,6 +11,7 @@ import {
   type Audience,
 } from "../modules/visibility";
 import { channelAudienceFor } from "./context";
+import { assertChannelAllowed, parseChannelPolicy } from "./channel-policy";
 import type { DiscordInstallation } from "./types";
 
 export interface DiscordScopeCollection {
@@ -82,6 +83,10 @@ export async function resolveDiscordScope(
   channelId: string | null | undefined,
 ): Promise<DiscordScope> {
   const channel = channelId ?? null;
+  const { allowedChannels } = parseChannelPolicy(installation);
+  // Headless previews may omit a Discord channel; they then use public audience.
+  // A supplied destination must be allowed by the installation.
+  if (channel !== null) assertChannelAllowed(allowedChannels, channel);
   const channelAudience = channelAudienceFor(installation, channel);
   const allowlist = parseAllowlist(installation.collection_allowlist_json);
   const bot = installation.bot_id

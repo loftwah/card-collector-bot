@@ -281,7 +281,66 @@ describe("Discord configured-server scope", () => {
     await runtime.DB.prepare("UPDATE fb_discord_installations SET channel_allowlist_json='[]', channel_audience_json=? WHERE id='dci_scope'").bind(JSON.stringify({[CHANNEL_ID]:'members'})).run();
     await assertPublic("1566700752385081356");
     await runtime.DB.prepare("UPDATE fb_discord_installations SET channel_audience_json='{broken' WHERE id='dci_scope'").run();
-    await assertPublic();
+    for (const response of [await invokeCard(), await invokeControl("front"), await send(interaction(command("profile")))]) {
+      expect(response.data?.flags).toBe(64);
+      expect(JSON.stringify(response.data)).not.toContain("Test One");
+      expect(JSON.stringify(response.data)).not.toContain("attachment://");
+    }
+  });
+
+  it.each([
+    ["object list", "{}", "{}"],
+    ["mixed list", `["${CHANNEL_ID}",42]`, "{}"],
+    ["bad channel ID", '["not-a-snowflake"]', "{}"],
+    ["malformed list", "[", "{}"],
+    ["array audience", "[]", "[]"],
+    ["bad audience", "[]", `{"${CHANNEL_ID}":"team"}`],
+    ["malformed audience", "[]", "{"],
+    ["duplicate members-public", "[]", `{"${CHANNEL_ID}":"members","${CHANNEL_ID}":"public"}`],
+    ["duplicate public-members", "[]", `{"${CHANNEL_ID}":"public","${CHANNEL_ID}":"members"}`],
+    ["duplicate escaped key", "[]", `{"${CHANNEL_ID}":"public","\\u0031${CHANNEL_ID.slice(1)}":"members"}`],
+  ])("signed interactions fail closed for %s", async (_label, channels, audiences) => {
+    const player=await install();
+    await fixturePool(player);
+    await runtime.DB.prepare("UPDATE fb_discord_installations SET channel_allowlist_json=?,channel_audience_json=? WHERE id='dci_scope'").bind(channels,audiences).run();
+    const before=await draws();
+    for (const body of [interaction(command("card",[{name:"query",type:3,value:"Test One"}])),interaction(command("packs")),interaction(command("open",[{name:"pool",type:3,value:"test-pool"}]))]) {
+      const response=await send(body);
+      expect(response.data?.flags).toBe(64);
+      expect(JSON.stringify(response.data)).not.toMatch(/Test One|attachment:\/\/|nothing (?:was )?charged/i);
+      expect(JSON.stringify(response.data)).toContain("channel policy needs repair");
+    }
+    expect(await draws()).toBe(before);
+  });
+  it("rejects a duplicate decoded key consistently with SQLite JSON", async () => {
+    const player=await install();
+    const duplicate=`{"${CHANNEL_ID}":"public","\\u0031${CHANNEL_ID.slice(1)}":"members"}`;
+    const sqlite=await runtime.DB.prepare("SELECT key FROM json_each(?)").bind(duplicate).all<{key:string}>();
+    expect(sqlite.results.map(row=>row.key)).toEqual([CHANNEL_ID,CHANNEL_ID]);
+    const row=await installation();
+    await expect(resolveDiscordScope(player,{...row,channel_audience_json:duplicate},CHANNEL_ID)).rejects.toMatchObject({code:"discord_channel_policy_invalid"});
+  });
+  it("keeps a valid channel-less scoped HTTP preview public", async () => {
+    const player=await install();
+    await fixturePool(player);
+    const row=await installation();
+    const scope=await resolveDiscordScope(player,row,null);
+    expect(scope.channelAudience).toBe("public");
+    await expect(resolveDiscordScope(player,row,"1566700752385081356")).rejects.toMatchObject({code:"discord_channel_not_enabled"});
+  });
+  it("rejects invalid policy on the scoped HTTP preview too", async () => {
+    const player=await install();
+    await fixturePool(player);
+    await runtime.DB.prepare("UPDATE fb_discord_installations SET channel_allowlist_json='{}' WHERE id='dci_scope'").run();
+    await expect(routeApi(new Request(`https://foilbury.test/api/v1/pools/test-pool?installation=dci_scope&channelId=${CHANNEL_ID}`),player,"pools/test-pool")).rejects.toMatchObject({code:"discord_channel_policy_invalid"});
+  });
+  it.each(["public", "members", "private"])("accepts a valid %s channel policy", async audience => {
+    const player=await install();
+    await fixturePool(player);
+    await setAudience(audience);
+    const response=await send(interaction(command("card",[{name:"query",type:3,value:"Test One"}])));
+    expect(response.data?.flags).toBe(64);
+    expect(JSON.stringify(response.data)).toContain("Test One");
   });
 
   it("excludes AI-assisted artwork when the Bot preference is off and includes it when on", async () => {

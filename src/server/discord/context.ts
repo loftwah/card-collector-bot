@@ -4,6 +4,7 @@ import { first, nowIso } from "../db";
 import { newId } from "../ids";
 import { addMembership, ensureWallet } from "../modules/identity";
 import { creditWallet } from "../modules/wallet";
+import { assertChannelAllowed, parseChannelPolicy } from "./channel-policy";
 import type {
   DiscordEnv,
   DiscordIdentity,
@@ -32,17 +33,8 @@ export function channelAudienceFor(
   installation: DiscordInstallation,
   channelId: string | undefined | null,
 ): "public" | "members" | "private" {
-  if (!channelId) return "public";
-  try {
-    const parsed = JSON.parse(installation.channel_audience_json ?? "{}") as unknown;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      const value = (parsed as Record<string, unknown>)[channelId];
-      if (value === "public" || value === "members" || value === "private") return value;
-    }
-  } catch {
-    // A malformed policy is treated as public-only, never as a permissive one.
-  }
-  return "public";
+  const { audiences } = parseChannelPolicy(installation);
+  return channelId ? audiences.get(channelId) ?? "public" : "public";
 }
 
 function isSnowflake(value: string | undefined | null): value is string {
@@ -96,24 +88,8 @@ export async function resolveInstallation(
       "Discord gameplay is paused for this installation. Nothing was charged.",
     );
   }
-  let allowedChannels: string[] = [];
-  try {
-    const parsed = JSON.parse(installation.channel_allowlist_json) as unknown;
-    if (Array.isArray(parsed))
-      allowedChannels = parsed.filter((value): value is string => typeof value === "string");
-  } catch {
-    allowedChannels = [];
-  }
-  if (
-    allowedChannels.length > 0 &&
-    (!interaction.channel_id || !allowedChannels.includes(interaction.channel_id))
-  ) {
-    throw new ApiError(
-      403,
-      "discord_channel_not_enabled",
-      "Foilbury is not enabled in this channel. Try the configured play channel.",
-    );
-  }
+  const { allowedChannels } = parseChannelPolicy(installation);
+  assertChannelAllowed(allowedChannels, interaction.channel_id);
   const tenant = await first<Tenant>(
     env.DB,
     "SELECT id, slug, name FROM fb_tenants WHERE id = ?",
