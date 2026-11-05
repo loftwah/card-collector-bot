@@ -22,6 +22,7 @@ import { generateCollectionArt } from "../../art/collection-art.mjs";
 import { composeCardBack } from "../../art/compose.mjs";
 import { renderProvisionedFront } from "./render-provisioned-front.mjs";
 import { requireQueuedBackground } from "./render-queued-front.mjs";
+import { createRenderWorkspace } from "./render-workspace.mjs";
 import { apiForm, apiJson, ensureServer, BASE_URL, agentToken, accessHeaders } from "../lib/api.mjs";
 
 const args = new Set(process.argv.slice(2));
@@ -276,8 +277,10 @@ async function renderQueue(cards, generated) {
       failed += 1;
       continue;
     }
+    let workspace;
     try {
       requireQueuedBackground(payload);
+      workspace = createRenderWorkspace(tmpDir);
       const subject = await fetch(`${BASE_URL}/api/v1/admin/assets/${payload.subject_asset_id}/bytes`, {
         headers: { authorization: `Bearer ${agentToken()}`, ...accessHeaders() },
       });
@@ -288,16 +291,16 @@ async function renderQueue(cards, generated) {
           })
         : null;
       if (background && !background.ok) throw new Error(`Background asset fetch failed (${background.status}).`);
-      const subjectPath = path.join(tmpDir, `${payload.variant_id}-subject.png`);
-      const backgroundPath = path.join(tmpDir, `${payload.variant_id}-background.png`);
+      const subjectPath = workspace.subject;
+      const backgroundPath = workspace.background;
       fs.writeFileSync(subjectPath, Buffer.from(await subject.arrayBuffer()));
       if (background) fs.writeFileSync(backgroundPath, Buffer.from(await background.arrayBuffer()));
-      const outputPath = path.join(tmpDir, `${payload.variant_id}.webp`);
+      const outputPath = workspace.front;
       await renderProvisionedFront({ payload, card: entry.card, subjectPath, backgroundPath, outputPath });
       const backSource = generated.get(entry.card.slug)?.back;
       let backBytes;
       if (backSource && fs.existsSync(backSource)) {
-        const backPath = path.join(tmpDir, `${payload.variant_id}-back.webp`);
+        const backPath = workspace.back;
         await composeCardBack({
           backPath: backSource,
           material: payload.material_key,
@@ -326,9 +329,6 @@ async function renderQueue(cards, generated) {
       }
       rendered += 1;
       if (rendered % 20 === 0) log(`  rendered ${rendered}…`);
-      fs.rmSync(subjectPath, { force: true });
-      fs.rmSync(backgroundPath, { force: true });
-      fs.rmSync(outputPath, { force: true });
     } catch (error) {
       failed += 1;
       const message = error instanceof Error ? error.message : String(error);
@@ -337,6 +337,8 @@ async function renderQueue(cards, generated) {
         body: { message, attempt },
       }).catch(() => undefined);
       log(`  failed ${entry.card.name} — ${entry.variant.name}: ${message}`);
+    } finally {
+      if (workspace) { try { workspace.cleanup(); } catch (error) { log(`  temporary render cleanup failed: ${error.message}`); } }
     }
   }
   return { rendered, failed };

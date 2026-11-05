@@ -7,7 +7,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { composeCardBack } from "../../art/compose.mjs";
-import { renderQueuedFront } from "./render-queued-front.mjs";
+import { renderQueuedFront, requireQueuedBackground } from "./render-queued-front.mjs";
+import { createRenderWorkspace } from "./render-workspace.mjs";
 import { apiForm, apiJson, BASE_URL, agentToken, accessHeaders } from "../lib/api.mjs";
 
 const root = process.cwd();
@@ -58,19 +59,22 @@ while (true) {
   if (!claimed.job) continue;
   const payload = claimed.job.payload;
   const attempt = claimed.job.attempts;
+  let workspace;
   try {
-    const subjectPath = path.join(tmpDir, `${payload.variant_id}-subject-${worker}.png`);
-    const backgroundPath = path.join(tmpDir, `${payload.variant_id}-background-${worker}.png`);
+    requireQueuedBackground(payload);
+    workspace = createRenderWorkspace(tmpDir);
+    const subjectPath = workspace.subject;
+    const backgroundPath = workspace.background;
     fs.writeFileSync(subjectPath, await fetchBytes(`/api/v1/admin/assets/${payload.subject_asset_id}/bytes`));
     if (payload.background_asset_id) fs.writeFileSync(backgroundPath, await fetchBytes(`/api/v1/admin/assets/${payload.background_asset_id}/bytes`));
-    const outputPath = path.join(tmpDir, `${payload.variant_id}-${worker}.webp`);
+    const outputPath = workspace.front;
     const meta = cardMeta.get(payload.card_id);
     let markPath = "";
     const logoUrl = meta?.collections?.[0]?.logo_url;
     if (logoUrl) {
       try {
         const ext = logoUrl.endsWith(".svg") ? "svg" : "png";
-        markPath = path.join(tmpDir, `${payload.variant_id}-mark-${worker}.${ext}`);
+        markPath = workspace.mark(ext);
         fs.writeFileSync(markPath, await fetchBytes(logoUrl));
       } catch {
         markPath = "";
@@ -80,7 +84,7 @@ while (true) {
     const backSource = backBySlug.get(payload.card_slug) ?? backByName.get(payload.card_name);
     let backBytes;
     if (backSource) {
-      const backPath = path.join(tmpDir, `${payload.variant_id}-back-${worker}.webp`);
+      const backPath = workspace.back;
       await composeCardBack({ backPath: backSource, material: payload.material_key, effect: payload.effect_key ?? "none", outputPath: backPath });
       backBytes = fs.readFileSync(backPath);
       fs.rmSync(backPath, { force: true });
@@ -91,13 +95,14 @@ while (true) {
     form.append("attempt", String(attempt));
     await apiForm(`/api/v1/admin/jobs/${job.id}/complete`, form);
     rendered += 1;
-    for (const temp of [subjectPath, backgroundPath, outputPath]) fs.rmSync(temp, { force: true });
     if (rendered % 10 === 0) log(`rendered ${rendered} (${((Date.now() - started) / 1000).toFixed(0)}s)`);
   } catch (error) {
     failed += 1;
     const message = error instanceof Error ? error.message : String(error);
     await apiJson(`/api/v1/admin/jobs/${job.id}/fail`, { method: "POST", body: { message, attempt } }).catch(() => undefined);
     log(`failed ${payload.variant_id}: ${message}`);
+  } finally {
+    if (workspace) { try { workspace.cleanup(); } catch (error) { log(`temporary render cleanup failed: ${error.message}`); } }
   }
 }
 const result = { worker, rendered, failed, elapsed_ms: Date.now() - started };

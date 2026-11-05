@@ -4,6 +4,7 @@ import path from "node:path";
 import sharp from "sharp";
 import { composeCard } from "../art/compose.mjs";
 import { requireQueuedBackground } from "./content/render-queued-front.mjs";
+import { createRenderWorkspace } from "./content/render-workspace.mjs";
 import { apiForm, apiJson, ensureServer, BASE_URL, agentToken } from "./lib/api.mjs";
 
 const args = new Set(process.argv.slice(2));
@@ -57,8 +58,10 @@ while (true) {
     failed++;
     continue;
   }
+  let workspace;
   try {
     requireQueuedBackground(payload);
+    workspace = createRenderWorkspace(tmpDir);
     const subject = await fetch(
       `${BASE_URL}/api/v1/admin/assets/${payload.subject_asset_id}/bytes`,
       {
@@ -73,8 +76,8 @@ while (true) {
       : null;
     if (background && !background.ok)
       throw new Error(`Background asset fetch failed (${background.status}).`);
-    const subjectPath = path.join(tmpDir, `${payload.variant_id}-subject.png`);
-    const backgroundPath = path.join(tmpDir, `${payload.variant_id}-background.png`);
+    const subjectPath = workspace.subject;
+    const backgroundPath = workspace.background;
     fs.writeFileSync(subjectPath, Buffer.from(await subject.arrayBuffer()));
     if (background) fs.writeFileSync(backgroundPath, Buffer.from(await background.arrayBuffer()));
     let markPath = "";
@@ -84,14 +87,11 @@ while (true) {
         headers: { authorization: `Bearer ${agentToken()}` },
       });
       if (logo.ok) {
-        markPath = path.join(
-          tmpDir,
-          `${payload.variant_id}-mark.${logoUrl.endsWith(".svg") ? "svg" : "png"}`,
-        );
+        markPath = workspace.mark(logoUrl.endsWith(".svg") ? "svg" : "png");
         fs.writeFileSync(markPath, Buffer.from(await logo.arrayBuffer()));
       }
     }
-    const outputPath = path.join(tmpDir, `${payload.variant_id}.webp`);
+    const outputPath = workspace.front;
     // A multi-print edition is named "Subject — Print title". The face keeps
     // the subject name and uses the print title as its subtitle, so two prints
     // of the same subject are distinguishable without renaming the subject.
@@ -131,10 +131,6 @@ while (true) {
     if (completed?.back?.assetId) await uploadDerivatives(completed.back.assetId, outputPath);
     rendered++;
     log(`  rendered ${entry.card.name} — ${entry.variant.name}`);
-    fs.rmSync(subjectPath, { force: true });
-    fs.rmSync(backgroundPath, { force: true });
-    if (markPath) fs.rmSync(markPath, { force: true });
-    fs.rmSync(outputPath, { force: true });
   } catch (error) {
     failed++;
     const message = error instanceof Error ? error.message : String(error);
@@ -145,6 +141,8 @@ while (true) {
       () => undefined,
     );
     log(`  failed ${entry.card.name} — ${entry.variant.name}: ${message}`);
+  } finally {
+    if (workspace) { try { workspace.cleanup(); } catch (error) { log(`  temporary render cleanup failed: ${error.message}`); } }
   }
 }
 
