@@ -1,5 +1,12 @@
 import { composeCard } from '../../art/compose.mjs';
 
+// A pathname from a prior attempt is not evidence that this job has a source.
+export function requireQueuedBackground(payload) {
+  if (typeof payload.background_asset_id !== 'string' || !payload.background_asset_id.trim()) {
+    throw new Error('A card needs a background layer; no background asset was supplied for this job.');
+  }
+}
+
 // Keep queued placement together with the compositor call. A missing legacy
 // value retains the compositor's default; malformed stored JSON fails the job.
 export function parseQueuedComposition(value) {

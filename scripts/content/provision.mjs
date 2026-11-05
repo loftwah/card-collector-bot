@@ -21,6 +21,7 @@ import sharp from "sharp";
 import { generateCollectionArt } from "../../art/collection-art.mjs";
 import { composeCardBack } from "../../art/compose.mjs";
 import { renderProvisionedFront } from "./render-provisioned-front.mjs";
+import { requireQueuedBackground } from "./render-queued-front.mjs";
 import { apiForm, apiJson, ensureServer, BASE_URL, agentToken, accessHeaders } from "../lib/api.mjs";
 
 const args = new Set(process.argv.slice(2));
@@ -276,6 +277,7 @@ async function renderQueue(cards, generated) {
       continue;
     }
     try {
+      requireQueuedBackground(payload);
       const subject = await fetch(`${BASE_URL}/api/v1/admin/assets/${payload.subject_asset_id}/bytes`, {
         headers: { authorization: `Bearer ${agentToken()}`, ...accessHeaders() },
       });

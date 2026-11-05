@@ -1,9 +1,10 @@
 import { composeCard } from '../../art/compose.mjs';
-import { parseQueuedComposition } from './render-queued-front.mjs';
+import { parseQueuedComposition, requireQueuedBackground } from './render-queued-front.mjs';
 
 // The queued snapshot is authoritative for this attempt; never substitute a
 // later catalogue read for the edition placement captured when it was queued.
 export async function renderProvisionedFront({ payload, card, subjectPath, backgroundPath, outputPath }) {
+  requireQueuedBackground(payload);
   return composeCard({
     subjectPath,
     backgroundPath,

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 import { composeCard } from "../art/compose.mjs";
+import { requireQueuedBackground } from "./content/render-queued-front.mjs";
 import { apiForm, apiJson, ensureServer, BASE_URL, agentToken } from "./lib/api.mjs";
 
 const args = new Set(process.argv.slice(2));
@@ -57,6 +58,7 @@ while (true) {
     continue;
   }
   try {
+    requireQueuedBackground(payload);
     const subject = await fetch(
       `${BASE_URL}/api/v1/admin/assets/${payload.subject_asset_id}/bytes`,
       {
