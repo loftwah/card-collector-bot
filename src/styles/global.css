@@ -2593,7 +2593,7 @@ html[data-motion="reduced"] .layered-card__effect {
 
 @container (max-width: 14rem) {
   .signin-panel { padding: 0.875rem; }
-  .signin-panel__heading img, .signin-panel svg { display: none; }
+  .signin-panel__heading img, .signin-panel .signin-action-icon { display: none; }
   .signin-panel a[href="/admin"] { padding: 0.5rem; }
   .signin-page h1 { font-size: 2rem; }
   .showcase-intro h1, .journal-intro h1 { font-size: 2rem; }

@@ -26,6 +26,16 @@ try {
       // Reintroduce the reported unbreakable heading to prove the fixture catches overflow.
       const heading=p.getByRole('heading',{name:/the public showcase/i});await heading.evaluate(el=>{el.style.whiteSpace='nowrap'});assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),'negative control must overflow');await heading.evaluate(el=>{el.style.whiteSpace=''})}
     if(route==='/login') {await p.locator('body').focus();let found=false;for(let i=0;i<45;i++){await p.keyboard.press('Tab');if(await p.locator('a[href="/admin"]').first().evaluate(el=>document.activeElement===el)){found=true;break}}assert.ok(found,'admin link must be keyboard reachable')}
+    if(route==='/login' && js) {
+      let release, finished; const held=new Promise(resolve=>{release=resolve}); const done=new Promise(resolve=>{finished=resolve});
+      await p.route('**/api/v1/auth/magic-link',async route=>{await held;try {await route.abort()} finally {finished()}});
+      await p.locator('input[type=email]').first().fill('fixture@example.invalid');
+      await p.getByRole('button',{name:/email me a sign-in link/i}).click();
+      const busy=p.getByRole('button',{name:/sending/i});await busy.waitFor();
+      assert.equal(await busy.locator('svg').isVisible(),true,'busy spinner must remain visible at zoom');
+      assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'busy state overflows');
+      release();await done;await p.unroute('**/api/v1/auth/magic-link');
+    }
     if(js){const axe=await new AxeBuilder({page:p}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze();assert.deepEqual(axe.violations.filter(x=>['serious','critical'].includes(x.impact)).map(x=>x.id),[],`${route} axe`)}
     for(const selector of route==='/login'?['input[type=email]','a[href="/admin"]']:route==='/cabinet'?['input[name=search]','button[type=submit]']:['a[href="/admin/editorial"]']) {
      const control=p.locator(selector).first();if(await control.isVisible()){await control.focus();const rect=await control.boundingBox();assert.ok(rect && rect.x>=-1 && rect.x+rect.width<=321,`${route} ${selector} escapes viewport`);assert.equal(await control.evaluate(el=>document.activeElement===el),true)}

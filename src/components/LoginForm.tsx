@@ -101,7 +101,7 @@ export default function LoginForm({
         <a className="btn btn-primary w-full" href={`/auth/discord/start?next=${encodeURIComponent(destination)}`}>
           <span className="grid h-5 w-5 place-items-center rounded-full bg-white/10 text-[0.7rem] font-bold">D</span>
           Continue with Discord
-          <ArrowRight size={16} />
+          <ArrowRight size={16} className="signin-action-icon" aria-hidden="true" />
         </a>
       ) : null}
 
@@ -110,7 +110,7 @@ export default function LoginForm({
           <Input type="email" autoComplete="email" inputMode="email" placeholder="you@example.com" value={email} onChange={(event) => setEmail(event.target.value)} required />
         </Field>
         <Button type="submit" variant="secondary" className="w-full" disabled={Boolean(busy) || !email}>
-          {busy === "email" ? <><Loader2 className="animate-spin" size={16} /> Sending…</> : <><Mail size={16} /> Email me a sign-in link</>}
+          {busy === "email" ? <><Loader2 className="animate-spin" size={16} /> Sending…</> : <><Mail size={16} className="signin-action-icon" aria-hidden="true" /> Email me a sign-in link</>}
         </Button>
       </form>
 
@@ -121,15 +121,15 @@ export default function LoginForm({
       </div>
 
       <Button type="button" variant="secondary" className="w-full" onClick={passkey} disabled={Boolean(busy)}>
-        {busy === "passkey" ? <><Loader2 className="animate-spin" size={16} /> Waiting for your passkey…</> : <><Fingerprint size={16} /> Sign in with a passkey</>}
+        {busy === "passkey" ? <><Loader2 className="animate-spin" size={16} /> Waiting for your passkey…</> : <><Fingerprint size={16} className="signin-action-icon" aria-hidden="true" /> Sign in with a passkey</>}
       </Button>
       <p className="text-center text-xs leading-relaxed text-[var(--muted)]">
         Discord and email sign-in resolve your existing Foilbury identity. A passkey is optional until you create or administer a Bot.
       </p>
 
       <a className="mt-1 flex items-center justify-between gap-3 border border-[var(--line)] px-4 py-3 text-sm no-underline hover:border-[var(--brass)]" href="/admin">
-        <span className="flex items-center gap-2"><ShieldCheck size={16} className="text-[var(--green)]" /> Administrator? Continue with Cloudflare Access</span>
-        <ArrowRight size={15} />
+        <span className="flex items-center gap-2"><ShieldCheck size={16} className="signin-action-icon text-[var(--green)]" aria-hidden="true" /> Administrator? Continue with Cloudflare Access</span>
+        <ArrowRight size={15} className="signin-action-icon" aria-hidden="true" />
       </a>
 
       <details className="mt-1 border-t border-[var(--line)] pt-3">
@@ -138,7 +138,7 @@ export default function LoginForm({
           <p className="text-xs leading-relaxed text-[var(--muted)]">Retained only for the existing bootstrap owner while the replacement access and recovery paths are verified. It is not the normal sign-in journey.</p>
           <Field label="Email"><Input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} /></Field>
           <Field label="Password"><Input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></Field>
-          <Button type="submit" variant="ghost" size="sm" disabled={busy === "password"}>{busy === "password" ? <><Loader2 className="animate-spin" size={14} /> Opening…</> : <><KeyRound size={14} /> Use legacy password</>}</Button>
+          <Button type="submit" variant="ghost" size="sm" disabled={busy === "password"}>{busy === "password" ? <><Loader2 className="animate-spin" size={14} /> Opening…</> : <><KeyRound size={14} className="signin-action-icon" aria-hidden="true" /> Use legacy password</>}</Button>
         </form>
       </details>
 
