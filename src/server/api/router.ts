@@ -490,7 +490,13 @@ async function installationScopeFor(
 }
 
 export async function routeApi(request: Request, ctx: Ctx, path: string): Promise<Response> {
-  const segments = path.split("/").filter(Boolean);
+  // Preserve one optional leading/trailing slash, but do not turn empty
+  // interior segments into a different, valid operation.
+  const normalizedPath = path.replace(/^\//, "").replace(/\/$/, "");
+  if (normalizedPath.split("/").some((segment) => segment === "")) {
+    throw new ApiError(404, "not_found", "No matching API route.");
+  }
+  const segments = normalizedPath.split("/");
   const isStudio = segments[0] === "studio";
   if (isStudio) segments[0] = "admin";
   const method = request.method.toUpperCase();
@@ -529,7 +535,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     });
     return json({ items: cards.map(publicCard), release: await activeRelease(ctx) });
   }
-  if (segments[0] === "cards" && segments[1] && method === "GET") {
+  if (segments.length === 2 && segments[0] === "cards" && segments[1] && method === "GET") {
     const card = await getCard(ctx, segments[1]);
     if (card.status !== "published")
       throw new ApiError(404, "card_not_found", "That card is not published.");
@@ -598,12 +604,12 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
 
   // Player and agent-authenticated collection workflows
-  if (segments[0] === "me" && segments[1] === "preferences" && method === "GET") {
+  if (segments.length === 2 && segments[0] === "me" && segments[1] === "preferences" && method === "GET") {
     playerWrite(ctx);
     requireScope(ctx, "profile:read");
     return json(await getPreferences(ctx));
   }
-  if (segments[0] === "me" && segments[1] === "preferences" && method === "PATCH") {
+  if (segments.length === 2 && segments[0] === "me" && segments[1] === "preferences" && method === "PATCH") {
     playerWrite(ctx);
     requireScope(ctx, "profile:write");
     const body = await readJson(
@@ -713,14 +719,14 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       }),
     );
   }
-  if (segments[0] === "rewards" && segments[1] === "claim" && method === "POST") {
+  if (segments.length === 2 && segments[0] === "rewards" && segments[1] === "claim" && method === "POST") {
     playerWrite(ctx);
     requireScope(ctx, "reward:claim");
     const body = await readJson(request, z.object({}));
     const idempotency = await idempotencyInput(request, body);
     return json(await claimDailyReward(ctx, idempotency));
   }
-  if (segments[0] === "draws" && method === "POST") {
+  if (segments.length === 1 && segments[0] === "draws" && method === "POST") {
     playerWrite(ctx);
     requireScope(ctx, "draw:execute");
     const body = await readJson(
@@ -813,6 +819,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await getTrade(ctx, segments[1]));
   }
   if (
+    segments.length === 3 &&
     segments[0] === "trades" &&
     segments[1] &&
     ["accept", "decline", "cancel"].includes(segments[2] ?? "") &&
@@ -825,7 +832,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     if (action === "decline") return json(await declineTrade(ctx, segments[1]));
     return json(await cancelTrade(ctx, segments[1]));
   }
-  if (segments[0] === "trades" && segments[1] === "expire" && method === "POST") {
+  if (segments.length === 2 && segments[0] === "trades" && segments[1] === "expire" && method === "POST") {
     ensureOps(ctx);
     return json(await expireTrades(ctx));
   }
@@ -860,6 +867,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await joinMainAlbum(ctx));
   }
   if (
+    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "members" &&
     segments[2] &&
@@ -1105,6 +1113,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ card }, 201);
   }
   if (
+    segments.length === 3 &&
     segments[0] === "admin" &&
     segments[1] === "cards" &&
     segments[2] === "bulk" &&
@@ -1134,6 +1143,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     }
   }
   if (
+    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "cards" &&
     segments[2] &&
@@ -1344,7 +1354,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       }),
     });
   }
-  if (segments[0] === "admin" && segments[1] === "recipes" && method === "GET") {
+  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "recipes" && method === "GET") {
     ensureContentRead(ctx);
     return json({
       items: await all(
@@ -1355,6 +1365,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     });
   }
   if (
+    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "cards" &&
     segments[2] &&
@@ -1369,11 +1380,11 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json({ card: await setCardStatus(ctx, segments[2], body.status) });
   }
-  if (segments[0] === "admin" && segments[1] === "tenant" && method === "GET") {
+  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "tenant" && method === "GET") {
     ensureContentRead(ctx);
     return json(await getTenantPublication(ctx));
   }
-  if (segments[0] === "admin" && segments[1] === "tenant" && method === "PATCH") {
+  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "tenant" && method === "PATCH") {
     ensureContentWrite(ctx);
     const body = await readJson(
       request,
@@ -1384,11 +1395,11 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json(await updateTenantPublication(ctx, body));
   }
-  if (segments[0] === "admin" && segments[1] === "taxonomy" && method === "GET") {
+  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "taxonomy" && method === "GET") {
     ensureContentRead(ctx);
     return json(await getTaxonomy(ctx));
   }
-  if (segments[0] === "admin" && segments[1] === "taxonomy" && method === "POST") {
+  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "taxonomy" && method === "POST") {
     ensureContentWrite(ctx);
     const body = await readJson(
       request,
@@ -1404,6 +1415,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await createTaxonomyItem(ctx, body.kind as TaxonomyKind, body), 201);
   }
   if (
+    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "taxonomy" &&
     segments[2] &&
@@ -1442,6 +1454,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ set: await createSet(ctx, body) }, 201);
   }
   if (
+    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "sets" &&
     segments[2] &&
@@ -1453,6 +1466,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ set: await replaceSetMembership(ctx, segments[2], body.cardIds) });
   }
   if (
+    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "sets" &&
     segments[2] &&
@@ -1463,6 +1477,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ set: await publishSet(ctx, segments[2]) });
   }
   if (
+    segments.length === 3 &&
     segments[0] === "admin" &&
     segments[1] === "catalogue" &&
     segments[2] === "publish" &&
@@ -1474,6 +1489,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await publishCatalogue(ctx));
   }
   if (
+    segments.length === 3 &&
     segments[0] === "admin" &&
     segments[1] === "catalogue" &&
     segments[2] === "status" &&
@@ -1551,6 +1567,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ pool: await updatePool(ctx, segments[2], body) });
   }
   if (
+    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "pools" &&
     segments[2] &&
@@ -1561,6 +1578,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ pool: await publishPool(ctx, segments[2]) });
   }
   if (
+    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "pools" &&
     segments[2] &&
@@ -1573,11 +1591,11 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
 
   // Economy and wallet administration
-  if (segments[0] === "admin" && segments[1] === "economy" && method === "GET") {
+  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "economy" && method === "GET") {
     ensureEconomyRead(ctx);
     return json(await getEconomy(ctx));
   }
-  if (segments[0] === "admin" && segments[1] === "economy" && method === "PATCH") {
+  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "economy" && method === "PATCH") {
     ensureEconomyWrite(ctx);
     ensureStepUp(ctx);
     const body = await readJson(
@@ -1601,6 +1619,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await updateEconomy(ctx, body));
   }
   if (
+    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "wallets" &&
     segments[2] &&
@@ -1639,17 +1658,17 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     ensureEconomyRead(ctx);
     return json(await getWalletSummary(ctx.db, ctx.tenant.id, segments[2], 100));
   }
-  if (segments[0] === "admin" && segments[1] === "audit" && method === "GET") {
+  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "audit" && method === "GET") {
     ensureEconomyRead(ctx);
     return json({ items: await listAudit(ctx, Number(url.searchParams.get("limit") ?? 100)) });
   }
 
   // Agents and members
-  if (segments[0] === "admin" && segments[1] === "agents" && method === "GET") {
+  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "agents" && method === "GET") {
     ensureOwner(ctx);
     return json({ items: await listAgentGrants(ctx) });
   }
-  if (segments[0] === "admin" && segments[1] === "agents" && method === "POST") {
+  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "agents" && method === "POST") {
     ensureOwner(ctx);
     const body = await readJson(
       request,
@@ -1663,6 +1682,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await createAgentGrant(ctx, body), 201);
   }
   if (
+    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "agents" &&
     segments[2] &&
@@ -1673,7 +1693,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     await revokeAgentGrant(ctx, segments[2]);
     return json({ ok: true });
   }
-  if (segments[0] === "admin" && segments[1] === "members" && method === "GET") {
+  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "members" && method === "GET") {
     ensureOps(ctx);
     return json({ items: await listMembers(ctx) });
   }
@@ -1755,6 +1775,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ asset }, 201);
   }
   if (
+    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "variants" &&
     segments[2] &&
@@ -1786,6 +1807,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
   }
   if (
+    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "assets" &&
     segments[2] &&
@@ -1812,6 +1834,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
   }
   if (
+    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "assets" &&
     segments[2] &&
@@ -1831,6 +1854,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     });
   }
   if (
+    segments.length === 3 &&
     segments[0] === "admin" &&
     segments[1] === "imports" &&
     segments[2] === "preview" &&
@@ -1863,6 +1887,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await commitImport(ctx, body));
   }
   if (
+    segments.length === 3 &&
     segments[0] === "admin" &&
     segments[1] === "renders" &&
     segments[2] === "queue" &&
@@ -1875,11 +1900,12 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     }));
     return json(await createRenderJobs(ctx, { force: Boolean(body?.force) }));
   }
-  if (segments[0] === "admin" && segments[1] === "jobs" && method === "GET") {
+  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "jobs" && method === "GET") {
     ensureOps(ctx);
     return json({ items: await listRenderJobs(ctx, url.searchParams.get("status") ?? undefined) });
   }
   if (
+    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "jobs" &&
     segments[2] &&
@@ -1893,6 +1919,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     });
   }
   if (
+    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "jobs" &&
     segments[2] &&
@@ -1921,6 +1948,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
   }
   if (
+    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "jobs" &&
     segments[2] &&
@@ -1939,6 +1967,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await failRenderJob(ctx, segments[2], body.message, body.attempt));
   }
   if (
+    segments.length === 3 &&
     segments[0] === "admin" &&
     segments[1] === "generation" &&
     segments[2] === "plan" &&
@@ -1978,6 +2007,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await getGenerationJob(ctx, segments[3]));
   }
   if (
+    segments.length === 5 &&
     segments[0] === "admin" &&
     segments[1] === "generation" &&
     segments[2] === "jobs" &&
@@ -1989,6 +2019,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await submitGeneration(ctx, segments[3]));
   }
   if (
+    segments.length === 5 &&
     segments[0] === "admin" &&
     segments[1] === "generation" &&
     segments[2] === "jobs" &&
@@ -2001,6 +2032,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await reviewGeneration(ctx, segments[3], body.decision));
   }
   if (
+    segments.length === 5 &&
     segments[0] === "admin" &&
     segments[1] === "generation" &&
     segments[2] === "jobs" &&
@@ -2013,11 +2045,11 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
 
   // Topics and operations
-  if (segments[0] === "admin" && segments[1] === "topics" && method === "GET") {
+  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "topics" && method === "GET") {
     ensureContentRead(ctx);
     return json({ items: await listTopicPolicies(ctx) });
   }
-  if (segments[0] === "admin" && segments[1] === "topics" && method === "POST") {
+  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "topics" && method === "POST") {
     ensureContentWrite(ctx);
     const body = await readJson(
       request,
@@ -2029,13 +2061,14 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json({ policy: await createTopicPolicy(ctx, body) }, 201);
   }
-  if (segments[0] === "admin" && segments[1] === "topics" && segments[2] && method === "PATCH") {
+  if (segments.length === 3 && segments[0] === "admin" && segments[1] === "topics" && segments[2] && method === "PATCH") {
     ensureContentWrite(ctx);
     const body = await readJson(request, z.object({ active: z.boolean() }));
     await setTopicPolicyActive(ctx, segments[2], body.active);
     return json({ ok: true });
   }
   if (
+    segments.length === 3 &&
     segments[0] === "admin" &&
     segments[1] === "backup" &&
     segments[2] === "manifest" &&
@@ -2045,6 +2078,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await backupManifest(ctx));
   }
   if (
+    segments.length === 3 &&
     segments[0] === "admin" &&
     segments[1] === "outbox" &&
     segments[2] === "process" &&
@@ -2054,6 +2088,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await processOutbox(ctx));
   }
   if (
+    segments.length === 2 &&
     (segments[0] === "ops" || segments[0] === "admin") &&
     segments[1] === "status" &&
     method === "GET"
@@ -2080,7 +2115,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     const result = await createBot(ctx, body);
     return json(result, result.created ? 201 : 200);
   }
-  if (segments[0] === "invitations" && segments[1] === "accept" && method === "POST") {
+  if (segments.length === 2 && segments[0] === "invitations" && segments[1] === "accept" && method === "POST") {
     const body = await readJson(request, z.object({ token: z.string().min(20).max(300) }));
     return json(await acceptBotInvitation(ctx, body.token));
   }
@@ -2149,6 +2184,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ bot: { ...bot, ai_art_enabled: body.aiArtEnabled ? 1 : 0 }, aiArtEnabled: body.aiArtEnabled });
   }
   if (
+    segments.length === 3 &&
     segments[0] === "admin" &&
     segments[1] === "bot" &&
     segments[2] === "invitations" &&
@@ -2269,6 +2305,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     });
   }
   if (
+    segments.length === 5 &&
     segments[0] === "admin" &&
     segments[1] === "bot" &&
     segments[2] === "admins" &&
@@ -2368,6 +2405,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ collection: await updateCollection(ctx, segments[2], body) });
   }
   if (
+    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "collections" &&
     segments[2] &&
@@ -2380,6 +2418,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await addCollectionCards(ctx, segments[2], body.cardIds));
   }
   if (
+    segments.length === 5 &&
     segments[0] === "admin" &&
     segments[1] === "collections" &&
     segments[2] &&
@@ -2393,6 +2432,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ ok: true });
   }
   if (
+    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "collections" &&
     segments[2] &&
@@ -2406,6 +2446,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ ok: true });
   }
   if (
+    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "collections" &&
     segments[2] &&
@@ -2416,6 +2457,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ items: await listCollectionViewers(ctx, segments[2]) });
   }
   if (
+    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "collections" &&
     segments[2] &&
@@ -2428,6 +2470,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await setCollectionViewers(ctx, segments[2], body.userIds));
   }
   if (
+    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "collections" &&
     segments[2] &&
@@ -2449,6 +2492,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ items: await listAchievements(ctx, ctx.user?.id) });
   }
   if (
+    segments.length === 3 &&
     segments[0] === "admin" &&
     segments[1] === "achievements" &&
     segments[2] === "backfill" &&
@@ -2494,6 +2538,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ items: await listAdminGiftCampaigns(ctx) });
   }
   if (
+    segments.length === 3 &&
     segments[0] === "admin" &&
     segments[1] === "gifts" &&
     segments[2] === "preview" &&
@@ -2523,6 +2568,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
   }
   if (
+    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "gifts" &&
     segments[2] &&
@@ -2535,7 +2581,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
 
   // Platform Administration. Access admission is never treated as a role.
-  if (segments[0] === "platform" && segments[1] === "overview" && method === "GET") {
+  if (segments.length === 2 && segments[0] === "platform" && segments[1] === "overview" && method === "GET") {
     requireSuperAdmin(ctx);
     const counts = await first<Record<string, number>>(
       ctx.db,
@@ -2582,7 +2628,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json({ counts, bots, installations, access, admins, audit, current_user: ctx.user });
   }
-  if (segments[0] === "platform" && segments[1] === "accounts" && method === "GET") {
+  if (segments.length === 2 && segments[0] === "platform" && segments[1] === "accounts" && method === "GET") {
     requireSuperAdmin(ctx);
     const accounts = await all<Record<string, unknown>>(
       ctx.db,
@@ -2595,7 +2641,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json({ items: accounts });
   }
-  if (segments[0] === "platform" && segments[1] === "people" && method === "GET") {
+  if (segments.length === 2 && segments[0] === "platform" && segments[1] === "people" && method === "GET") {
     requireSuperAdmin(ctx);
     return json({
       items: await listPlatformPeople(ctx, {
@@ -2639,6 +2685,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await assignPlatformRole(ctx, body), 201);
   }
   if (
+    segments.length === 4 &&
     segments[0] === "platform" &&
     segments[1] === "roles" &&
     segments[2] &&
@@ -2657,6 +2704,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await revokePlatformRole(ctx, segments[2], body.role, body.reason));
   }
   if (
+    segments.length === 3 &&
     segments[0] === "platform" &&
     segments[1] === "installations" &&
     segments[2] &&
@@ -2731,6 +2779,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ ok: true });
   }
   if (
+    segments.length === 4 &&
     segments[0] === "platform" &&
     segments[1] === "bots" &&
     segments[2] &&

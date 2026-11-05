@@ -7,7 +7,7 @@ import { Button } from "../ui/button";
 import { Field, Input, Select } from "../ui/input";
 
 interface Member {
-  user_id: string;
+  id: string;
   display_name: string;
   email: string;
   role: string;
@@ -143,7 +143,7 @@ export default function StudioWallet({
           <Field label="Recipient" hint="The selected Bot's members only.">
             <Select value={target} onChange={(event) => setTarget(event.target.value)}>
               {members.map((member) => (
-                <option key={member.user_id} value={member.user_id}>
+                <option key={member.id} value={member.id}>
                   {member.display_name} · {member.email}
                 </option>
               ))}
