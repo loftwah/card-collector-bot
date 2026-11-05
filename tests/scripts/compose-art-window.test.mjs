@@ -42,3 +42,31 @@ test('tall, wide and medallion artwork remain renderable at zoom bounds',async()
   const meta=await sharp(output).metadata();assert.equal(meta.width,750);assert.equal(meta.height,1050);
  }
 });
+
+test('oversized artwork preserves the direction of horizontal offsets',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'foilbury-art-offset-'));
+ const bg=path.join(root,'bg.png');fs.writeFileSync(bg,await sharp({create:{width:48,height:48,channels:3,background:'#202020'}}).png().toBuffer());
+ const w=64,h=64,pixels=Buffer.alloc(w*h*3);
+ for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=(y*w+x)*3;pixels[i]=x<w/2?255:0;pixels[i+1]=x<w/2?0:255;}
+ const subject=path.join(root,'subject.png');fs.writeFileSync(subject,await sharp(pixels,{raw:{width:w,height:h,channels:3}}).png().toBuffer());
+ // Independently resize the pattern, then compare landmarks from the
+ // compositor against the corresponding pixels in a reference crop.
+ const source=await sharp(subject).png().toBuffer();
+ const ref=await sharp(source).resize({width:828,height:907,fit:'inside',withoutEnlargement:false}).ensureAlpha().raw().toBuffer({resolveWithObject:true});
+ assert.ok(ref.info.width>750 && ref.info.height>800);
+ for(const offsetX of [-20,20]){
+  const output=path.join(root,`${offsetX}.png`);
+  await composeCard({subjectPath:subject,backgroundPath:bg,outputPath:output,composition:{mode:'contain',zoom:1.2,offsetX}});
+  const raw=await sharp(output).ensureAlpha().raw().toBuffer();
+  const left=30+Math.round((690-ref.info.width)/2)+Math.round(offsetX/100*690);
+  const top=34+Math.round((756-ref.info.height)/2);
+  for(const x of [120,250,375,500,630]){
+   const referenceX=x-left,referenceY=400-top;
+   assert.ok(referenceX>=0&&referenceX<ref.info.width&&referenceY>=0&&referenceY<ref.info.height);
+   const ri=(referenceY*ref.info.width+referenceX)*4,oi=(400*750+x)*4;
+   const expected=ref.data[ri]>ref.data[ri+1]?'red':'green';
+   const actual=raw[oi]>raw[oi+1]?'red':'green';
+   assert.equal(actual,expected,`offset ${offsetX}, x=${x} should match reference crop`);
+  }
+ }
+});
