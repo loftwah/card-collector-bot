@@ -1256,6 +1256,7 @@ a:hover > .card-face,
 }
 
 .cabinet-nav-wrap {
+  container-type: inline-size;
   display: flex;
   align-items: stretch;
   border-top: 1px solid var(--line);
@@ -1266,9 +1267,8 @@ a:hover > .card-face,
   flex: 1 1 auto;
   min-width: 0;
   align-items: stretch;
+  flex-wrap: wrap;
   gap: 0.15rem;
-  overflow-x: auto;
-  scrollbar-width: thin;
 }
 
 .cabinet-link {
@@ -1289,6 +1289,25 @@ a:hover > .card-face,
   white-space: nowrap;
 }
 
+.cabinet-link__short {
+  display: none;
+}
+
+@media (max-width: 480px) {
+  .cabinet-link {
+    min-height: 44px;
+    padding: 0.55rem 0.3rem;
+    font-size: 0.58rem;
+    letter-spacing: 0.05em;
+  }
+  .cabinet-link__full {
+    display: none;
+  }
+  .cabinet-link__short {
+    display: inline;
+  }
+}
+
 .cabinet-link::-webkit-details-marker {
   display: none;
 }
@@ -1307,6 +1326,7 @@ a:hover > .card-face,
 .cabinet-more {
   position: relative;
   flex: none;
+  margin-left: auto;
   border-left: 1px solid var(--line);
 }
 
@@ -1316,7 +1336,7 @@ a:hover > .card-face,
   right: 0;
   top: calc(100% - 1px);
   display: grid;
-  min-width: 15rem;
+  width: min(15rem, 100cqw);
   padding: 0.35rem;
   border: 1px solid var(--line-strong);
   border-radius: 3px;

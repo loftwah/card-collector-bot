@@ -9,10 +9,10 @@ interface Props {
 const { title, description } = Astro.props;
 const path = Astro.url.pathname;
 const primary = [
-  { href: "/play", label: "Overview" },
+  { href: "/play", label: "Overview", shortLabel: "Home" },
   { href: "/play/collections", label: "Worlds" },
-  { href: "/play/collection", label: "My cards" },
-  { href: "/play/draw", label: "Draw room" },
+  { href: "/play/collection", label: "My cards", shortLabel: "Cards" },
+  { href: "/play/draw", label: "Draw room", shortLabel: "Draw" },
   { href: "/play/rewards", label: "Rewards" },
 ];
 const more = [
@@ -62,33 +62,35 @@ const moreActive = more.some((link) => isActive(link.href));
           {primary.map((link) => (
             <a
               href={link.href}
+              aria-label={link.shortLabel === "Home" ? "Home, overview" : link.label}
               aria-current={isActive(link.href) ? "page" : undefined}
               class:list={["cabinet-link", isActive(link.href) && "is-active"]}
             >
-              {link.label}
+              <span class:list={[link.shortLabel && "cabinet-link__full"]}>{link.label}</span>
+              {link.shortLabel ? <span class="cabinet-link__short" aria-hidden="true">{link.shortLabel}</span> : null}
             </a>
           ))}
+          <details class="cabinet-more">
+            <summary
+              class:list={["cabinet-link cabinet-more__summary", moreActive && "is-active"]}
+              aria-label="More cabinet sections"
+            >
+              More
+              <span aria-hidden="true">▾</span>
+            </summary>
+            <div class="cabinet-more__menu">
+              {more.map((link) => (
+                <a
+                  href={link.href}
+                  aria-current={isActive(link.href) ? "page" : undefined}
+                  class:list={["cabinet-more__link", isActive(link.href) && "is-active"]}
+                >
+                  {link.label}
+                </a>
+              ))}
+            </div>
+          </details>
         </nav>
-        <details class="cabinet-more">
-          <summary
-            class:list={["cabinet-link cabinet-more__summary", moreActive && "is-active"]}
-            aria-label="More cabinet sections"
-          >
-            More
-            <span aria-hidden="true">▾</span>
-          </summary>
-          <div class="cabinet-more__menu">
-            {more.map((link) => (
-              <a
-                href={link.href}
-                aria-current={isActive(link.href) ? "page" : undefined}
-                class:list={["cabinet-more__link", isActive(link.href) && "is-active"]}
-              >
-                {link.label}
-              </a>
-            ))}
-          </div>
-        </details>
       </div>
     </div>
   </section>
