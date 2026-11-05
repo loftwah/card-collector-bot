@@ -28,7 +28,8 @@ export function csrfToken(): string {
  */
 export function apiPath(path: string): string {
   if (typeof window === "undefined") return path;
-  if (!(window as unknown as { __FOILBURY_STUDIO__?: boolean }).__FOILBURY_STUDIO__) return path;
+  const isStudio = window.location.pathname === "/studio" || window.location.pathname.startsWith("/studio/");
+  if (!isStudio && !(window as unknown as { __FOILBURY_STUDIO__?: boolean }).__FOILBURY_STUDIO__) return path;
   return path.startsWith("/api/v1/admin/")
     ? path.replace("/api/v1/admin/", "/api/v1/studio/")
     : path;

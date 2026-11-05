@@ -202,7 +202,13 @@ describe("Discord configured-server scope", () => {
     expect(denied.data?.flags).toBe(64);
     expect(JSON.stringify(denied.data)).toMatch(/not enabled for this channel|no eligible|cannot/i);
     expect(await draws()).toBe(0);
+    const publicPacks = await send(interaction(command("packs")));
+    expect(JSON.stringify(publicPacks.data)).not.toContain("Test One");
     await setAudience("members");
+    const memberPacks = await send(interaction(command("packs")));
+    expect(JSON.stringify(memberPacks.data)).toContain("test-pool");
+    const packsButton = await send(interaction({ custom_id: "foilbury:packs", component_type: 2 }, { type: 3 }));
+    expect(JSON.stringify(packsButton.data)).toContain("test-pool");
     const allowed = await send(
       interaction(command("open", [{ name: "pool", type: 3, value: "test-pool" }]), {
         id: "scope-members-allowed",
@@ -211,6 +217,15 @@ describe("Discord configured-server scope", () => {
     expect(allowed.data?.flags).toBe(64);
     expect(JSON.stringify(allowed.data)).toContain("Test One");
     expect(await draws()).toBe(1);
+    const memberCollection = await send(interaction(command("collection")));
+    expect(JSON.stringify(memberCollection.data)).toContain("Test One");
+    const collectionButton = await send(interaction({ custom_id: "foilbury:collection", component_type: 2 }, { type: 3 }));
+    expect(JSON.stringify(collectionButton.data)).toContain("Test One");
+    await setAudience("public");
+    const publicCollection = await send(interaction(command("collection")));
+    expect(JSON.stringify(publicCollection.data)).not.toContain("Test One");
+    const publicButton = await send(interaction({ custom_id: "foilbury:collection", component_type: 2 }, { type: 3 }));
+    expect(JSON.stringify(publicButton.data)).not.toContain("Test One");
   });
 
   it("excludes AI-assisted artwork when the Bot preference is off and includes it when on", async () => {

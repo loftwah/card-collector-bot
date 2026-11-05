@@ -2436,21 +2436,21 @@ export async function runCommand(
     case "missions":
       return missionsView(ctx);
     case "collection":
-      return collection(ctx, installation);
+      return collection(ctx, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
     case "card": {
       const query = typeof values.query === "string" ? values.query.trim() : "";
       if (!query)
         throw new ApiError(422, "card_query_required", "Provide a card name, slug or ID.");
-      return card(ctx, query, installation);
+      return card(ctx, query, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
     }
     case "packs":
-      return packs(ctx, installation);
+      return packs(ctx, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
     case "achievements":
-      return achievements(ctx, installation);
+      return achievements(ctx, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
     case "tour":
       return tour(ctx, installation, "welcome", interaction.channel_id);
     case "profile":
-      return profile(ctx, installation);
+      return profile(ctx, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
     case "npc":
       return npcView(ctx, typeof values.name === "string" ? values.name : "");
     case "help":
@@ -2629,22 +2629,22 @@ export async function runComponent(
     }
     return redeliverReceipt(ctx, interaction, originalInteractionId);
   }
-  if (customId === "foilbury:collection") return collection(ctx, installation);
+  if (customId === "foilbury:collection") return collection(ctx, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
   if (customId === "foilbury:daily") return daily(ctx, interaction);
   if (customId.startsWith("foilbury:mission:claim:")) {
     const key = customId.slice("foilbury:mission:claim:".length);
     const claimed = await claimDailyMission(ctx, key, `discord:${interaction.id}:mission:${key}`);
     return missionsView(ctx, `+${claimed.amount} Foil credited. Balance ${claimed.balance_after}.`);
   }
-  if (customId === "foilbury:packs") return packs(ctx, installation);
+  if (customId === "foilbury:packs") return packs(ctx, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
   if (customId === "foilbury:help") return help(ctx);
   if (customId.startsWith("foilbury:card:")) {
     const [, , cardId, variantId, action] = customId.split(":");
     if (!cardId)
       throw new ApiError(422, "card_component_invalid", "That card control is incomplete.");
     if (action === "front" || action === "back")
-      return cardFace(ctx, cardId, variantId ?? null, action, installation);
-    if (action === "details") return cardDetails(ctx, cardId, installation);
+      return cardFace(ctx, cardId, variantId ?? null, action, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
+    if (action === "details") return cardDetails(ctx, cardId, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
     throw new ApiError(404, "card_component_unknown", "That card control is not recognised.");
   }
   if (customId.startsWith("foilbury:confirm:")) {
