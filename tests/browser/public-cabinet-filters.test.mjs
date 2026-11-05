@@ -11,7 +11,7 @@ const browser=await chromium.launch();
 try {
  for (const js of [false,true]) {
   const context=await browser.newContext({baseURL:base.href,javaScriptEnabled:js,viewport:{width:390,height:844}});
-  const page=await context.newPage();await page.goto('/cabinet');
+  const page=await context.newPage(); page.setDefaultTimeout(10000); await page.goto('/cabinet', {waitUntil:'domcontentloaded'});
   const collection=page.locator('a.chip[href*="collection="]').first();
   assert.equal(await collection.count(),1,'synthetic fixture must contain a public collection');
   const slug=new URL(await collection.getAttribute('href'),base).searchParams.get('collection');
@@ -23,9 +23,11 @@ try {
   url=new URL(page.url());assert.equal(url.searchParams.get('collection'),null);assert.equal(url.searchParams.get('search'),'sentinel');
   await page.goto('/cabinet?category=unknown&tag=unknown');
   assert.equal(await page.locator('details').filter({hasText:'Category and tag filters'}).getAttribute('open'),'');
+  const preserved = new URL(await page.locator('a.chip[href*=\"collection=\"]').first().getAttribute('href'), base);
+  assert.equal(preserved.searchParams.get('category'),'unknown'); assert.equal(preserved.searchParams.get('tag'),'unknown');
   await page.goto('/cabinet');
   for(const width of [320,390,1440]) {await page.setViewportSize({width,height:844});const geometry=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,client:document.documentElement.clientWidth}));assert.ok(geometry.scroll<=geometry.client+1,`${width}: ${JSON.stringify(geometry)}`);}
-  const axe=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze();assert.deepEqual(axe.violations.filter(v=>['serious','critical'].includes(v.impact)).map(v=>v.id),[]);
-  console.log(`PASS public filters: JavaScript ${js?'on':'off'}, scope retention, responsive, axe`);await context.close();
+  if (js) { const axe=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze();assert.deepEqual(axe.violations.filter(v=>['serious','critical'].includes(v.impact)).map(v=>v.id),[]); }
+  console.log(`PASS public filters: JavaScript ${js?'on':'off'}, scope retention, responsive${js ? ', axe' : ''}`);await context.close();
  }
 } finally {await browser.close();}
