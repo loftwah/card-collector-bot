@@ -479,8 +479,9 @@ export async function listMyGiftReceipts(ctx: Ctx) {
     `SELECT a.id, a.campaign_id, a.kind, a.amount, a.status, a.receipt_json, a.created_at, a.delivered_at,
             c.message, c.reason, c.kind AS campaign_kind
        FROM fb_gift_awards a JOIN fb_gift_campaigns c ON c.id = a.campaign_id
-      WHERE a.user_id = ? AND a.status = 'delivered'
+      WHERE a.tenant_id = ? AND a.user_id = ? AND a.status = 'delivered'
       ORDER BY a.delivered_at DESC LIMIT 50`,
+    ctx.tenant.id,
     user.id,
   );
   return rows.map((row) => {
