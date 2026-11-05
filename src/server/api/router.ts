@@ -62,6 +62,7 @@ import type { DiscordInstallation } from "../discord/types";
 import {
   claimDailyReward,
   adjustWallet,
+  listGrantRecipients,
   createShareLink,
   getEconomy,
   getLedger,
@@ -1591,6 +1592,10 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
 
   // Economy and wallet administration
+  if (isStudio && segments.length === 2 && segments[1] === "wallet-recipients" && method === "GET") {
+    ensureEconomyWrite(ctx);
+    return json({ items: await listGrantRecipients(ctx) });
+  }
   if (segments.length === 2 && segments[0] === "admin" && segments[1] === "economy" && method === "GET") {
     ensureEconomyRead(ctx);
     return json(await getEconomy(ctx));

@@ -8,7 +8,7 @@ import {
 import { all, first, nowIso } from "../db";
 import { newId, token } from "../ids";
 import { auditStatement, findIdempotent, idempotencyStatement, type IdempotencyInput } from "../http";
-import { getWalletSummary, correctWallet } from "./wallet";
+import { getWalletSummary } from "./wallet";
 import { nextDailyEligibleAt } from "./daily-time";
 import { listCollections } from "./collections";
 
@@ -190,7 +190,43 @@ export async function claimDailyReward(ctx: Ctx, idempotency: IdempotencyInput) 
   };
 }
 
+/** Minimal, Bot-scoped recipient choices for the signed-in Studio grant form. */
+export async function listGrantRecipients(ctx: Ctx) {
+  const user = ctx.user;
+  if (!user || ctx.actor.type !== "user" || !ctx.sessionId)
+    throw new ApiError(403, "grant_recipients_unavailable", "Sign in to Studio to choose a recipient.");
+  return all<{ id: string; display_name: string }>(ctx.db, `
+    SELECT target.id, target.display_name
+    FROM fb_users actor JOIN fb_memberships am ON am.user_id=actor.id AND am.tenant_id=?
+    JOIN fb_sessions session ON session.user_id=actor.id AND session.tenant_id=am.tenant_id AND session.id=?
+    JOIN fb_memberships tm ON tm.tenant_id=am.tenant_id
+    JOIN fb_users target ON target.id=tm.user_id
+    JOIN fb_wallets w ON w.tenant_id=tm.tenant_id AND w.user_id=target.id
+    WHERE actor.id=? AND actor.disabled_at IS NULL AND actor.is_synthetic=0
+      AND am.status='active' AND am.revoked_at IS NULL
+      AND session.revoked_at IS NULL AND julianday(session.expires_at)>julianday('now')
+      AND (am.role='owner' OR (actor.platform_admin=1 AND EXISTS (SELECT 1 FROM fb_platform_admins pa WHERE pa.user_id=actor.id AND pa.status='active' AND pa.revoked_at IS NULL)) OR EXISTS (
+        SELECT 1 FROM json_each(CASE WHEN json_valid(am.capabilities_json) THEN am.capabilities_json ELSE '[]' END) cap
+        WHERE json_type(CASE WHEN json_valid(am.capabilities_json) THEN am.capabilities_json ELSE '[]' END)='array'
+          AND cap.type='text' AND cap.value='grants'))
+      AND tm.status='active' AND tm.revoked_at IS NULL AND target.disabled_at IS NULL AND target.is_synthetic=0
+      AND (target.id<>actor.id OR am.role='owner' OR (actor.platform_admin=1 AND EXISTS (SELECT 1 FROM fb_platform_admins pa WHERE pa.user_id=actor.id AND pa.status='active' AND pa.revoked_at IS NULL)) OR am.self_grants_enabled=1)
+    ORDER BY target.display_name, target.id`,ctx.tenant.id,ctx.sessionId,user.id);
+}
+
 export async function adjustWallet(
+  ctx: Ctx,
+  input: { userId: string; amount: number; reason: string; idempotency: IdempotencyInput },
+) {
+  try {
+    return await adjustWalletGuarded(ctx, input);
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(503,"grant_outcome_unavailable","The grant outcome could not be confirmed. Retry the same grant or check the ledger.");
+  }
+}
+
+async function adjustWalletGuarded(
   ctx: Ctx,
   input: {
     userId: string;
@@ -201,6 +237,9 @@ export async function adjustWallet(
 ) {
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in first.");
+  if (ctx.actor.type === "agent") {
+    throw new ApiError(403, "strong_auth_required", "Foil adjustments require a human with recent strong authentication. Open Studio and confirm with a passkey, authenticator or Cloudflare Access.");
+  }
   // Re-read authority at the mutation boundary. A session or stale form that
   // loaded before a revocation must not keep the removed capability.
   const live = await first<{
@@ -210,14 +249,15 @@ export async function adjustWallet(
     grant_limit: number;
     capability_revision: number;
     status: string;
+    revoked_at: string | null;
   }>(
     ctx.db,
-    `SELECT role, capabilities_json, self_grants_enabled, grant_limit, capability_revision, status
+    `SELECT role, capabilities_json, self_grants_enabled, grant_limit, capability_revision, status, revoked_at
        FROM fb_memberships WHERE tenant_id = ? AND user_id = ?`,
     ctx.tenant.id,
     user.id,
   );
-  if (!live || live.status !== "active") {
+  if (!live || live.status !== "active" || live.revoked_at) {
     throw new ApiError(403, "membership_revoked", "This membership is no longer active.");
   }
   let liveCapabilities: string[] = [];
@@ -238,21 +278,7 @@ export async function adjustWallet(
     capabilityRevision: Number(live.capability_revision ?? 1),
   };
   const ownerLike = liveUser.role === "owner" || liveUser.platformAdmin;
-  if (ctx.actor.type === "agent") {
-    if (!ctx.scopes?.includes("economy:grant")) {
-      throw new ApiError(403, "insufficient_scope", "The agent grant does not include economy:grant.");
-    }
-    if (!ownerLike) {
-      const policy = canIssueScopedGrant(liveUser, {
-        targetUserId: input.userId,
-        amount: input.amount,
-      });
-      if (!policy.allowed) throw new ApiError(403, policy.code, policy.message);
-    }
-    if (Math.abs(input.amount) > 500) {
-      throw new ApiError(403, "adjustment_limit", "Agents may adjust at most 500 Foil per command.");
-    }
-  } else if (ownerLike) {
+  if (ownerLike) {
     if (Math.abs(input.amount) > 50000) {
       throw new ApiError(403, "adjustment_limit", "Owner adjustments are limited to 50,000 Foil per command.");
     }
@@ -269,42 +295,104 @@ export async function adjustWallet(
   if (!input.reason.trim() || input.reason.trim().length < 3) {
     throw new ApiError(422, "reason_required", "Record a reason for this adjustment.");
   }
-  const replay = await findIdempotent(ctx, "economy.adjust", input.idempotency);
-  if (replay) return { ...(replay.response as object), replayed: true };
-  const member = await first<{ user_id: string }>(
-    ctx.db,
-    "SELECT user_id FROM fb_memberships WHERE tenant_id = ? AND user_id = ?",
-    ctx.tenant.id,
-    input.userId,
-  );
-  if (!member) throw new ApiError(404, "member_not_found", "That user is not a member of this tenant.");
-  const result = await correctWallet(ctx.db, {
-    tenantId: ctx.tenant.id,
-    userId: input.userId,
-    amount: input.amount,
-    description: input.reason.trim(),
-    idempotencyKey: `adjust:${input.idempotency.key}`,
-    referenceType: "admin_adjustment",
-    metadata: { reason: input.reason.trim(), actor: ctx.actor.id },
-    actorType: ctx.actor.type,
-    actorId: ctx.actor.id,
-  });
-  const response = {
-    user_id: input.userId,
-    amount: input.amount,
-    balance_after: result.balance,
-    ledger_id: result.ledgerId,
-    reason: input.reason.trim(),
+  // Bind the same live actor policy and exact credential to the balance write.
+  // A Discord button is not a strong-auth proof; Discord directs humans to Studio.
+  let proofSql: string;
+  let proofArgs: unknown[];
+  if (ctx.actor.type === "user" && ctx.actor.id === user.id && ctx.accessIdentity && ctx.accessStatus === "linked" && ctx.sessionAssurance === "access") {
+    proofSql = `? > unixepoch('now') AND EXISTS (SELECT 1 FROM fb_access_identities ai
+      WHERE ai.user_id=u.id AND ai.team_domain=? AND ai.subject=? AND ai.revoked_at IS NULL)`;
+    proofArgs = [Number(ctx.accessIdentity.payload.exp ?? 0), ctx.config.access.teamDomain, ctx.accessIdentity.subject];
+  } else if (ctx.actor.type === "user" && ctx.actor.id === user.id && ctx.sessionId) {
+    proofSql = `EXISTS (SELECT 1 FROM fb_sessions sess WHERE sess.id=? AND sess.user_id=u.id
+      AND sess.tenant_id=m.tenant_id AND sess.revoked_at IS NULL AND julianday(sess.expires_at)>julianday('now')
+      AND sess.assurance IN ('passkey','mfa') AND julianday(sess.auth_time)<=julianday('now')
+      AND julianday(sess.auth_time)>=julianday('now','-30 minutes'))`;
+    proofArgs = [ctx.sessionId];
+  } else {
+    throw new ApiError(403, "strong_auth_required", "Foil grants need recent strong authentication. Open Studio and confirm with a passkey, authenticator or Cloudflare Access.");
+  }
+  const authoritySql = `EXISTS (SELECT 1 FROM fb_users u JOIN fb_memberships m ON m.user_id=u.id
+    WHERE u.id=? AND m.tenant_id=? AND u.disabled_at IS NULL AND u.is_synthetic=0 AND u.platform_admin=?
+      AND m.status='active' AND m.revoked_at IS NULL AND m.role=?
+      AND (u.platform_admin=0 OR m.role='owner' OR EXISTS (SELECT 1 FROM fb_platform_admins pa WHERE pa.user_id=u.id AND pa.status='active' AND pa.revoked_at IS NULL))
+      AND COALESCE(m.capabilities_json,'[]')=? AND m.self_grants_enabled=? AND m.grant_limit=? AND m.capability_revision=?
+      AND (${proofSql}))`;
+  const authorityArgs: unknown[] = [user.id,ctx.tenant.id,user.platformAdmin?1:0,live.role,live.capabilities_json ?? '[]',live.self_grants_enabled,live.grant_limit,live.capability_revision,...proofArgs];
+  const targetSql = `EXISTS (SELECT 1 FROM fb_memberships tm JOIN fb_users tu ON tu.id=tm.user_id
+    WHERE tm.tenant_id=? AND tm.user_id=? AND tm.status='active' AND tm.revoked_at IS NULL
+      AND tu.disabled_at IS NULL AND tu.is_synthetic=0)`;
+  const targetArgs = [ctx.tenant.id,input.userId];
+  const isCurrent = async () => Boolean(await first<{ok:number}>(ctx.db,
+    `SELECT 1 AS ok WHERE ${authoritySql} AND ${targetSql}`,...authorityArgs,...targetArgs));
+  if (!await isCurrent()) throw new ApiError(409,"grant_authority_changed","The grant outcome cannot be confirmed with current access. Check the ledger with an authorised administrator.");
+  const readReceipt = async () => {
+    try {
+    const row = await first<{ request_digest: string; response_json: string; status: string }>(ctx.db,
+      `SELECT request_digest,response_json,status FROM fb_idempotency_keys
+       WHERE tenant_id=? AND actor_type=? AND actor_id=? AND operation='economy.adjust' AND idempotency_key=?
+         AND ${authoritySql} AND ${targetSql}`,
+      ctx.tenant.id,ctx.actor.type,ctx.actor.id,input.idempotency.key,...authorityArgs,...targetArgs);
+    if (!row) return null;
+    if (row.request_digest !== input.idempotency.digest) throw new ApiError(409,"idempotency_conflict","This idempotency key was already used with a different request.");
+    if (row.status !== 'completed') throw new ApiError(503,"grant_outcome_unavailable","The grant outcome could not be confirmed. Check the ledger before trying again.");
+    const receipt=JSON.parse(row.response_json) as Record<string,unknown>;
+    if (receipt.user_id !== input.userId || receipt.amount !== input.amount || receipt.reason !== input.reason.trim())
+      throw new ApiError(409,"idempotency_conflict","This idempotency key was already used with a different grant.");
+    return receipt;
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      throw new ApiError(503,"grant_outcome_unavailable","The grant outcome could not be confirmed. Retry the same grant or check the ledger.");
+    }
   };
-  await ctx.db.batch([
-    idempotencyStatement(ctx, "economy.adjust", input.idempotency, response),
-    auditStatement(ctx, "wallet.adjusted", "wallet", input.userId, {
-      amount: input.amount,
-      reason: input.reason.trim(),
-      ledger_id: result.ledgerId,
-    }),
-  ]);
-  return { ...response, replayed: false };
+  const replay = await readReceipt();
+  if (replay) return { ...replay, replayed: true };
+  const now=nowIso(), ledgerId=newId("led"), idemKey=`adjust:${input.idempotency.key}`;
+  try {
+    await ctx.db.batch([
+      ctx.db.prepare(`INSERT INTO fb_idempotency_keys
+        (tenant_id,actor_type,actor_id,operation,idempotency_key,request_digest,status,response_json,created_at)
+        VALUES (?,?,?,'economy.adjust',?,?,'in_progress','{}',?)`)
+        .bind(ctx.tenant.id,ctx.actor.type,ctx.actor.id,input.idempotency.key,input.idempotency.digest,now),
+      ctx.db.prepare(`UPDATE fb_wallets SET balance=balance+?,updated_at=? WHERE tenant_id=? AND user_id=?
+        AND balance+?>=0 AND ${authoritySql} AND ${targetSql}`)
+        .bind(input.amount,now,ctx.tenant.id,input.userId,input.amount,...authorityArgs,...targetArgs),
+      ctx.db.prepare(`SELECT CASE WHEN changes()=1 THEN 1 ELSE json('grant_authority_changed') END`),
+      ctx.db.prepare(`INSERT INTO fb_ledger_entries
+        (id,tenant_id,user_id,kind,amount,balance_after,reference_type,reference_id,description,idempotency_key,metadata_json,actor_type,actor_id,created_at)
+        SELECT ?,?,?,'correction',?,balance,'admin_adjustment',NULL,?,?,?,?,?,? FROM fb_wallets WHERE tenant_id=? AND user_id=?`)
+        .bind(ledgerId,ctx.tenant.id,input.userId,input.amount,input.reason.trim(),idemKey,JSON.stringify({reason:input.reason.trim(),actor:ctx.actor.id}),ctx.actor.type,ctx.actor.id,now,ctx.tenant.id,input.userId),
+      ctx.db.prepare(`SELECT CASE WHEN changes()=1 THEN 1 ELSE json('grant_ledger_missing') END`),
+      ctx.db.prepare(`UPDATE fb_idempotency_keys SET status='completed',response_json=(SELECT json_object(
+        'user_id',?,'amount',?,'balance_after',balance,'ledger_id',?,'reason',?) FROM fb_wallets WHERE tenant_id=? AND user_id=?)
+        WHERE tenant_id=? AND actor_type=? AND actor_id=? AND operation='economy.adjust' AND idempotency_key=? AND request_digest=?`)
+        .bind(input.userId,input.amount,ledgerId,input.reason.trim(),ctx.tenant.id,input.userId,ctx.tenant.id,ctx.actor.type,ctx.actor.id,input.idempotency.key,input.idempotency.digest),
+      ctx.db.prepare(`SELECT CASE WHEN changes()=1 THEN 1 ELSE json('grant_receipt_missing') END`),
+      auditStatement(ctx,"wallet.adjusted","wallet",input.userId,{amount:input.amount,reason:input.reason.trim(),ledger_id:ledgerId}),
+      ctx.db.prepare(`SELECT CASE WHEN changes()=1 THEN 1 ELSE json('grant_audit_missing') END`),
+    ]);
+  } catch (error) {
+    // A batch may have committed even when its response was lost.
+    const reconciled = await readReceipt();
+    if (reconciled) return { ...reconciled, replayed:true };
+    if (String(error).includes('UNIQUE')) {
+      if (!await isCurrent()) throw new ApiError(409,"grant_authority_changed","The grant could not be confirmed. Refresh Studio and check access and recipient eligibility.");
+      const prior=await readReceipt();
+      if (prior) return { ...prior, replayed:true };
+      throw new ApiError(409,"idempotency_conflict","This idempotency key was already used for another grant.");
+    }
+    if (String(error).includes('malformed JSON')) {
+      const insufficient = input.amount < 0 && await first<{ok:number}>(ctx.db,
+        `SELECT 1 AS ok FROM fb_wallets WHERE tenant_id=? AND user_id=? AND balance+?<0 AND ${authoritySql} AND ${targetSql}`,
+        ctx.tenant.id,input.userId,input.amount,...authorityArgs,...targetArgs);
+      if (insufficient) throw new ApiError(409,"insufficient_funds","The correction would make this wallet negative.");
+      throw new ApiError(409,"grant_authority_changed","The grant outcome cannot be confirmed with current access. Check the ledger with an authorised administrator.");
+    }
+    throw new ApiError(503,"grant_outcome_unavailable","The grant outcome could not be confirmed. Retry the same grant or check the ledger.");
+  }
+  const result=await readReceipt();
+  if (!result) throw new ApiError(503,"grant_outcome_unavailable","The grant outcome could not be confirmed. Check the ledger before trying again.");
+  return { ...result, replayed:false };
 }
 
 export async function getLedger(ctx: Ctx, userId: string, limit = 100) {

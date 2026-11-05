@@ -4,7 +4,7 @@ import { auditStatement } from "../http";
 import { newId, sha256Hex } from "../ids";
 import { getInventory } from "../modules/collection";
 import { displayFinish, printTitle as editionPrintTitle } from "../../lib/utils";
-import { adjustWallet, claimDailyReward, getEconomy } from "../modules/economy";
+import { claimDailyReward, getEconomy } from "../modules/economy";
 import { getWalletSummary } from "../modules/wallet";
 import { getCard, listCards } from "../modules/catalogue";
 import {
@@ -98,11 +98,6 @@ interface DailyReceipt {
   replayed: boolean;
 }
 
-interface GrantReceipt {
-  amount: number;
-  balance_after: number;
-  replayed: boolean;
-}
 
 const RARITY_COLORS: Record<string, number> = {
   common: 0x8a8f98,
@@ -1332,50 +1327,20 @@ async function adminToggle(
   );
 }
 
+function studioGrantRequired(ctx: Ctx): DiscordCallback {
+  return callback({
+    embeds: [{ title: "Continue in Studio", description: "Foil grants need recent strong authentication. Confirm with a passkey, authenticator or Cloudflare Access, then grant in Studio.", color: 0x6b7280 }],
+    components: components([[{type:2,style:5,label:"Open Studio",url:new URL("/studio/economy",ctx.config.publicOrigin).href},
+      {type:2,style:5,label:"Account security",url:new URL("/account/security",ctx.config.publicOrigin).href}]])
+  },true);
+}
+
 async function adminGrant(
   ctx: Ctx,
-  interaction: DiscordInteraction,
-  values: Record<string, string | number | boolean>,
+  _interaction: DiscordInteraction,
+  _values: Record<string, string | number | boolean>,
 ): Promise<DiscordCallback> {
-  requireBotAdmin(ctx.user!);
-  if (ctx.user!.role !== "owner" && ctx.user!.role !== "economy_admin") {
-    throw new ApiError(
-      403,
-      "insufficient_role",
-      "Only this Bot's Owner or Economy Admin can grant Foil.",
-    );
-  }
-  const rawUser = typeof values.user === "string" ? values.user.trim() : "";
-  const discordUserId =
-    rawUser.match(/^<@!?(\d{15,22})>$/)?.[1] ?? rawUser.match(/^\d{15,22}$/)?.[0];
-  if (!discordUserId)
-    throw new ApiError(422, "discord_user_invalid", "Use a Discord user ID or mention.");
-  const amount = typeof values.amount === "number" ? values.amount : Number(values.amount);
-  if (!Number.isInteger(amount) || amount <= 0)
-    throw new ApiError(422, "amount_invalid", "Amount must be a positive integer.");
-  const reason = typeof values.reason === "string" ? values.reason.trim() : "";
-  if (reason.length < 3)
-    throw new ApiError(422, "reason_required", "Record a short reason for the grant.");
-  const target = await first<{ user_id: string }>(
-    ctx.db,
-    "SELECT user_id FROM fb_discord_identities WHERE tenant_id = ? AND discord_user_id = ? AND revoked_at IS NULL",
-    ctx.tenant.id,
-    discordUserId,
-  );
-  if (!target)
-    throw new ApiError(
-      404,
-      "player_not_linked",
-      "That Discord user has not played this Bot yet, so there is no inventory to credit.",
-    );
-  return createConfirmation(
-    ctx,
-    interaction,
-    "wallet.grant",
-    { targetUserId: target.user_id, amount, reason },
-    "Confirm admin grant",
-    `Grant **${amount} Foil** to <@${discordUserId}> with reason: ${truncate(reason, 200)}. This is an audited admin grant, not a random drop.`,
-  );
+  return studioGrantRequired(ctx);
 }
 
 const TOUR_STAGES = [
@@ -2560,37 +2525,7 @@ async function executeConfirmation(
   }
 
   if (row.action === "wallet.grant") {
-    const targetUserId = typeof payload.targetUserId === "string" ? payload.targetUserId : "";
-    const amount = typeof payload.amount === "number" ? payload.amount : Number(payload.amount);
-    const reason = typeof payload.reason === "string" ? payload.reason : "Discord admin grant";
-    if (!targetUserId || !Number.isInteger(amount) || amount <= 0)
-      throw new ApiError(422, "grant_invalid", "The recorded grant is invalid.");
-    const digest = await sha256Hex(
-      `discord-grant:${confirmationId}:${targetUserId}:${amount}:${reason}`,
-    );
-    const result = (await adjustWallet(ctx, {
-      userId: targetUserId,
-      amount,
-      reason,
-      idempotency: { key: `discord:grant:${confirmationId}`, digest },
-    })) as unknown as GrantReceipt;
-    await ctx.db
-      .prepare("UPDATE fb_discord_confirmations SET used_at = ? WHERE id = ? AND used_at IS NULL")
-      .bind(nowIso(), confirmationId)
-      .run();
-    return callback(
-      {
-        embeds: [
-          {
-            title: "Admin grant recorded",
-            description: `Credited **${amount} Foil** to <@${discordUserId}>.\nBalance after: **${result.balance_after}**.\nReason: ${truncate(reason, 300)}`,
-            color: 0x3f9d5a,
-            footer: { text: "Audited admin grant, separate from random draws" },
-          },
-        ],
-      },
-      true,
-    );
+    return studioGrantRequired(ctx);
   }
 
   throw new ApiError(
