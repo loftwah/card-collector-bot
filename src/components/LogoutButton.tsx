@@ -14,8 +14,14 @@ export default function LogoutButton() {
     }
   }
   return (
-    <button type="button" className="btn btn-ghost btn-sm" onClick={logout} disabled={busy}>
-      {busy ? "Signing out…" : "Sign out"}
+    <button
+      type="button"
+      className="btn btn-ghost btn-sm"
+      onClick={logout}
+      disabled={busy}
+      aria-label={busy ? "Signing out" : undefined}
+    >
+      {busy ? "Leaving…" : "Sign out"}
     </button>
   );
 }

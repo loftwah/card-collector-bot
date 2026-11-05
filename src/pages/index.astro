@@ -3,7 +3,6 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 import { pageContext, publicStats, pickVariant } from "../server/page";
 import { listCards, listSets } from "../server/modules/catalogue";
 import { listPublicCollections } from "../server/modules/collections";
-import { formatDual } from "../lib/utils";
 
 const ctx = await pageContext(Astro.request);
 const session = Astro.locals.foilbury;
@@ -21,22 +20,19 @@ const heroSpecs = [
     slug: "loftwah",
     material: "gold",
     effect: "holographic",
-    label: "Gold · Holographic",
-    className: "w-[40%] -rotate-[5deg] translate-y-8 sm:w-[32%]",
+    className: "w-[29%] -rotate-[5deg] translate-y-8",
   },
   {
     slug: "tux",
     material: "silver",
     effect: undefined,
-    label: "Silver",
-    className: "w-[52%] z-10 sm:w-[44%]",
+    className: "w-[42%] z-10",
   },
   {
     slug: "gabe",
     material: "gold",
     effect: undefined,
-    label: "Gold",
-    className: "w-[40%] rotate-[6deg] translate-y-12 sm:w-[32%]",
+    className: "w-[29%] rotate-[6deg] translate-y-12",
   },
 ];
 const heroCards = heroSpecs
@@ -50,7 +46,6 @@ const heroCards = heroSpecs
   .filter(Boolean) as Array<{
   slug: string;
   material: string;
-  label: string;
   className: string;
   card: (typeof allCards)[number];
   variant: NonNullable<ReturnType<typeof pickVariant>>;
@@ -60,7 +55,6 @@ const featured = allCards
     card.editions.some((edition) => edition.variants.some((variant) => variant.render_url)),
   )
   .slice(0, 10);
-const release = stats.release;
 const primaryHref = user ? "/play" : "/login?next=%2Fplay";
 const collectionTone = ["#e0492f", "#0e5b53", "#4a1e4d", "#b8791f"];
 ---
@@ -85,24 +79,18 @@ const collectionTone = ["#e0492f", "#0e5b53", "#4a1e4d", "#b8791f"];
       },
     })}
   />
-  <section class="relative overflow-hidden border-b border-[var(--line)]">
+  <section class="landing landing-hero relative overflow-hidden border-b border-[var(--line)]">
     <div class="pointer-events-none absolute inset-0 hero-wash" aria-hidden="true"></div>
-    <div class="container relative grid min-h-[78vh] items-center gap-12 py-16 lg:grid-cols-[1.1fr_0.9fr] lg:py-24">
+    <div class="container relative grid items-center gap-6 py-10 lg:min-h-[78vh] lg:grid-cols-[1.1fr_0.9fr] lg:gap-x-12 lg:gap-y-0 lg:py-20">
       <div class="relative z-10">
-        <div class="flex flex-wrap items-center gap-2">
-          <span class="badge badge-live">Free to play</span>
-          <span class="badge">No purchase</span>
-          <span class="badge">Original worlds</span>
-        </div>
-        <h1 class="display mt-7 max-w-[11ch] text-[clamp(3.8rem,9vw,8.4rem)]">
+        <h1 class="display max-w-[13ch] text-[clamp(2.8rem,9vw,6rem)]">
           Characters worth keeping.
         </h1>
-        <p class="mt-7 max-w-xl text-lg leading-relaxed text-[var(--muted)]">
-          A small, art-directed collection game for the identities that stay with you. Earn Foil,
-          see the odds before you open, and keep a real copy with its own serial, finish and
-          history.
+        <p class="mt-5 max-w-xl text-base leading-relaxed text-[var(--muted)] md:text-lg">
+          A free album for the characters you love. Open capsules, discover their cards and make a
+          collection that's yours.
         </p>
-        <div class="mt-8 flex flex-wrap gap-3">
+        <div class="mt-6 flex flex-wrap gap-3">
           <a class="btn btn-primary" href={primaryHref}>
             {user ? "Open my album" : "Start collecting"}
           </a>
@@ -110,31 +98,17 @@ const collectionTone = ["#e0492f", "#0e5b53", "#4a1e4d", "#b8791f"];
             See the public showcase
           </a>
         </div>
-        <div class="mt-10 flex flex-wrap items-center gap-x-8 gap-y-3 border-t border-[var(--line)] pt-5 text-sm">
-          <span>
-            <strong class="font-display text-2xl">{stats.cards}</strong>{" "}
-            <span class="text-[var(--muted)]">public cards</span>
-          </span>
-          <span>
-            <strong class="font-display text-2xl">{stats.variants}</strong>{" "}
-            <span class="text-[var(--muted)]">public finishes</span>
-          </span>
-          <span>
-            <strong class="font-display text-2xl">{stats.sets}</strong>{" "}
-            <span class="text-[var(--muted)]">releases</span>
-          </span>
-          <span class="text-[var(--muted)]">
-            Public showcase · updated {release ? formatDual(release.published_at) : "soon"}
-          </span>
-        </div>
       </div>
 
       <div
-        class="relative flex min-h-[430px] items-center justify-center lg:min-h-[640px]"
+        class:list={[
+          "relative flex flex-col items-center justify-center",
+          heroCards.length ? "min-h-[245px] lg:min-h-[540px]" : "hidden",
+        ]}
         aria-label="Selected cards from the public showcase"
       >
         <div class="hero-orbit" aria-hidden="true"></div>
-        <div class="flex w-full items-center justify-center">
+        <div class="flex w-[94%] items-center justify-center">
           {heroCards.map((entry, index) => (
             <a
               href={`/cabinet/${entry.card.slug}`}
@@ -143,24 +117,34 @@ const collectionTone = ["#e0492f", "#0e5b53", "#4a1e4d", "#b8791f"];
                 entry.className,
               ]}
               style={`--tilt:${index === 0 ? "-5deg" : index === 2 ? "6deg" : "0deg"}`}
-              aria-label={`${entry.card.name}, ${entry.label}`}
+              aria-label={`${entry.card.name} card`}
             >
               <div class="card-face rounded-[7px]">
                 <img
                   src={entry.variant.render_url!}
-                  alt={`${entry.card.name} card in ${entry.label} finish`}
+                  alt=""
                   loading="eager"
                   width="750"
                   height="1050"
                 />
               </div>
-              <p class="mt-3 text-center font-mono text-[0.55rem] uppercase tracking-[0.12em] text-[var(--muted)]">
-                {entry.card.name} · {entry.label}
-              </p>
             </a>
           ))}
         </div>
-        <div class="absolute bottom-1 right-0 max-w-[14rem] border-l border-[var(--brass)] pl-4 text-right">
+        <p
+          class="mt-6 flex w-[94%] justify-center text-center text-sm font-semibold text-[var(--ink)]"
+          aria-hidden="true"
+        >
+          {heroCards.map((entry) => (
+            <span
+              class="min-w-0 break-words"
+              style={`width:${entry.slug === "tux" ? "42%" : "29%"}`}
+            >
+              {entry.card.name}
+            </span>
+          ))}
+        </p>
+        <div class="absolute bottom-1 right-0 hidden max-w-[14rem] border-l border-[var(--brass)] pl-4 text-right lg:block">
           <p class="font-mono text-[0.58rem] uppercase tracking-[0.14em] text-[var(--brass)]">
             Public showcase
           </p>
@@ -169,21 +153,25 @@ const collectionTone = ["#e0492f", "#0e5b53", "#4a1e4d", "#b8791f"];
           </p>
         </div>
       </div>
+      <div class="border-t border-[var(--line)] pt-4 text-sm text-[var(--muted)] lg:col-span-2">
+        {stats.cards > 0
+          ? `${stats.cards} public ${stats.cards === 1 ? "card" : "cards"} to explore`
+          : "No public cards are available yet."}
+      </div>
     </div>
   </section>
 
-  <section id="showcase" class="border-b border-[var(--line)] bg-[var(--paper-2)]/45">
+  <section id="showcase" class="landing border-b border-[var(--line)] bg-[var(--paper-2)]/45">
     <div class="container py-16 md:py-24">
       <div class="grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-end">
         <div>
           <p class="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-[var(--coral)]">
             The public showcase
           </p>
-          <h2 class="display-sm mt-3 text-4xl md:text-6xl">Four worlds with a front door.</h2>
+          <h2 class="display-sm mt-3 text-4xl md:text-6xl">Explore the public collection.</h2>
           <p class="mt-5 max-w-md text-[var(--muted)]">
-            Bubbles, Fighter, Protocol 11 and the shared cast are Loftwah's own projects. Their
-            public cards are reviewed for viewing without a sign-in. Everything else lives behind
-            membership.
+            Browse cards from Loftwah's own worlds. This showcase is available without signing in;
+            member collections stay private.
           </p>
           <a class="btn btn-secondary mt-6" href="/cabinet">
             Browse every public card
@@ -241,17 +229,16 @@ const collectionTone = ["#e0492f", "#0e5b53", "#4a1e4d", "#b8791f"];
     </div>
   </section>
 
-  <section class="container py-16 md:py-24">
+  <section class="landing container py-16 md:py-24">
     <div class="flex flex-wrap items-end justify-between gap-5">
       <div>
         <h2 class="display-sm text-4xl md:text-6xl">A small collection, properly made.</h2>
         <p class="mt-3 max-w-xl text-[var(--muted)]">
-          Every public card has a designed front, a readable back and four collectible finishes. The
-          art leads; the interface gets out of the way.
+          Browse the cards in the public showcase and discover their artwork and available finishes.
         </p>
       </div>
       <a class="btn btn-secondary btn-sm" href="/cabinet">
-        See all {allCards.length} public cards
+        Browse public cards
       </a>
     </div>
     <div class="card-grid mt-9">
@@ -292,14 +279,13 @@ const collectionTone = ["#e0492f", "#0e5b53", "#4a1e4d", "#b8791f"];
     </div>
   </section>
 
-  <section class="border-y border-[var(--line)] bg-[var(--paper-2)]/55">
+  <section class="landing border-y border-[var(--line)] bg-[var(--paper-2)]/55">
     <div class="container grid gap-10 py-16 md:grid-cols-[0.95fr_1.05fr] md:py-24">
       <div>
         <h2 class="display-sm text-4xl md:text-6xl">The members' album.</h2>
         <p class="mt-5 max-w-lg text-[var(--muted)]">
-          Sign in with Discord or a one-use email link. Your album holds the collections you are
-          entitled to, with full profiles, spoiler controls, duplicates, provenance and front/back
-          inspection.
+          Sign in with Discord or a one-use email link to explore the collections available to you,
+          inspect your cards and follow your progress.
         </p>
         <ul class="mt-6 grid gap-3 text-sm">
           <li class="flex gap-3">
@@ -308,7 +294,7 @@ const collectionTone = ["#e0492f", "#0e5b53", "#4a1e4d", "#b8791f"];
           </li>
           <li class="flex gap-3">
             <span class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--saffron)]"></span>
-            <span>Exact odds on every capsule, before you open it.</span>
+            <span>See available odds and the cost before opening a capsule.</span>
           </li>
           <li class="flex gap-3">
             <span class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--teal)]"></span>
@@ -328,20 +314,14 @@ const collectionTone = ["#e0492f", "#0e5b53", "#4a1e4d", "#b8791f"];
         {[
           [
             "Open a capsule",
-            "Pick a collection, see the live odds and the price, then open one card. A lost connection never loses the result.",
+            "Pick an available collection, check its odds and cost, then open a card. If the result is uncertain, check your album before trying again.",
           ],
           [
             "Inspect the object",
-            "Front, back and an on-demand 3D view. Reduced motion gets a clean static inspection instead.",
+            "Explore available card fronts and backs, with an optional 3D view.",
           ],
-          [
-            "Keep the story",
-            "Every card carries a reviewed profile, source boundary and collection context. No invented quotes or stats.",
-          ],
-          [
-            "Let duplicates travel",
-            "Trade or recycle extras. Your ledger, serials and history stay authoritative.",
-          ],
+          ["Keep the story", "Explore the details and collection context available for each card."],
+          ["Let duplicates travel", "Trade or recycle extra cards where available."],
         ].map(([title, body]) => (
           <article class="surface-flat p-5">
             <h3 class="display-sm text-2xl">{title}</h3>
@@ -352,13 +332,12 @@ const collectionTone = ["#e0492f", "#0e5b53", "#4a1e4d", "#b8791f"];
     </div>
   </section>
 
-  <section class="container py-16 md:py-24">
+  <section class="landing container py-16 md:py-24">
     <div class="grid gap-8 md:grid-cols-[0.8fr_1.2fr] md:items-start">
       <div>
         <h2 class="display-sm text-4xl md:text-5xl">Collect a room, not a spreadsheet.</h2>
         <p class="mt-4 max-w-md text-[var(--muted)]">
-          Releases are curated checklists with a completion reward. A later version never takes back
-          a reward you already earned.
+          Explore release checklists and work towards the rewards available for each one.
         </p>
         <a class="btn btn-secondary mt-6" href={primaryHref}>
           Open the album
@@ -386,18 +365,18 @@ const collectionTone = ["#e0492f", "#0e5b53", "#4a1e4d", "#b8791f"];
           </article>
         ))}
         {publishedSets.length === 0 ? (
-          <p class="text-sm text-[var(--muted)]">The next release is being prepared.</p>
+          <p class="text-sm text-[var(--muted)]">No public releases to show yet.</p>
         ) : null}
       </div>
     </div>
   </section>
 
-  <section class="border-t border-[var(--line)]">
+  <section class="landing border-t border-[var(--line)]">
     <div class="container flex flex-wrap items-center justify-between gap-6 py-10">
       <div>
-        <p class="font-display text-3xl">Built for collectors, not for checkout.</p>
+        <p class="font-display text-3xl">Made for collecting.</p>
         <p class="mt-1 text-sm text-[var(--muted)]">
-          Free play · no payments · no marketplace · no cash-out · no investment language.
+          Free play · no payments · no marketplace · no cash-out.
         </p>
       </div>
       <div class="flex flex-wrap gap-2">
