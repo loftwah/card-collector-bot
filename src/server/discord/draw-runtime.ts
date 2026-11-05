@@ -35,7 +35,7 @@ import {
   type DiscordDrawRequest,
 } from "../effect/discord-draw-workflow";
 import { findIdempotent } from "../http";
-import { executeDraw } from "../modules/pools";
+import { executeDraw, readDiscordDrawState } from "../modules/pools";
 import { errorCallback, prepareDiscordDraw, presentDiscordDraw } from "./commands";
 import { poolScopeFromDiscord, resolveDiscordScope } from "./scope";
 import {
@@ -45,7 +45,7 @@ import {
   resolveInstallation,
 } from "./context";
 import type { DrawReceipt } from "./draw-types";
-import { deliverDeferred, EPHEMERAL_FLAG } from "./delivery";
+import { deliverDeferred } from "./delivery";
 import {
   abandonInteraction,
   recordInteractionFinish,
@@ -53,14 +53,12 @@ import {
 } from "./interactions";
 import {
   drawReceiptFromResult,
-  drawRecoveryMessage,
-  markDeliveryVisibility,
   persistInteractionReceipt,
   readInteractionReceipt,
   recoverDrawReceipt,
 } from "./receipts";
 import { redactDiscordText } from "./redaction";
-import type { DiscordCallback, DiscordEnv, DiscordInteraction } from "./types";
+import type { DiscordEnv, DiscordInteraction } from "./types";
 
 const KNOWN_COMMIT_FAILURES = new Set([
   "authentication_required",
@@ -70,6 +68,7 @@ const KNOWN_COMMIT_FAILURES = new Set([
   "stale_scope",
   "empty_pool",
   "insufficient_funds",
+  "draw_terminal_insufficient_funds",
   "idempotency_conflict",
   "draw_conflict",
   "pool_changed",
@@ -171,7 +170,6 @@ function provideServices(
   program: ReturnType<typeof runDiscordDrawWorkflow>,
   env: DiscordEnv,
   interaction: DiscordInteraction,
-  publicOrigin: string,
 ) {
   const identity: DiscordDrawIdentity["Service"] = {
     resolve: (request) =>
@@ -261,8 +259,18 @@ function provideServices(
     reconcile: ({ principal, plan, interaction }) =>
       Effect.tryPromise({
         try: async () => {
+          if (principal.ctx.discordPrincipal) {
+            const currentScope=await resolveDiscordScope(principal.ctx,principal.installation,plan.scope.channelId);
+            if(currentScope.emptyReason) throw new ApiError(503,'draw_outcome_unavailable','This opening may have completed. Check your collection before opening another capsule.');
+            const state=await readDiscordDrawState(principal.ctx,plan.idempotency,poolScopeFromDiscord(currentScope));
+            if(state==='absent') return null;
+            throw new ApiError(503,'draw_outcome_unavailable','This opening may have completed. Check your collection before opening another capsule.');
+          }
           const replay = await findIdempotent(principal.ctx, "draw.execute", plan.idempotency);
           if (!replay) return null;
+          // The stored distribution can include cards the player no longer
+          // has authority to see. Until an authorized receipt reader is wired
+          // here, preserve the uncertain outcome rather than redisclosing it.
           const response = replay.response as DrawReceipt;
           // The idempotency row is the transaction-time receipt and may not
           // include settled rewards or balance. Normalise from the durable draw,
@@ -348,7 +356,7 @@ function provideServices(
   const interactions: DiscordDrawInteractions["Service"] = {
     begin: (current) =>
       Effect.promise(() => recordInteractionStart(env, current)).pipe(
-        Effect.as({ interactionId: current.id }),
+        Effect.map((attemptId) => ({ interactionId: current.id, attemptId })),
       ),
     finish: (session, outcome) =>
       Effect.promise(async () => {
@@ -357,28 +365,27 @@ function provideServices(
           session.interactionId,
           outcome.status,
           outcome.errorCode,
+          session.attemptId,
+          outcome.visibility,
         );
-        if (outcome.visibility) {
-          await markDeliveryVisibility(env.DB, session.interactionId, outcome.visibility);
-        }
       }),
-    abandon: (session) => Effect.promise(() => abandonInteraction(env, session.interactionId)),
+    abandon: (session) => Effect.promise(() => abandonInteraction(env, session.interactionId, session.attemptId)),
   };
 
   const replies: DiscordDrawReplies["Service"] = {
     failure: (failure) => {
       const shape = discordDrawErrorShape(failure);
+      if (shape.code !== "discord_channel_policy_invalid" && shape.code !== "draw_terminal_insufficient_funds") return {type:4,data:{
+        content:shape.code === "empty_pool_uncertain" ? "No eligible cards are available in this capsule. An earlier attempt may have completed; check your receipt or collection before trying again." : "This request could not be completed. An earlier attempt may have completed; check your receipt or collection before opening another capsule.", flags:64,allowed_mentions:{parse:[]},
+        components:[{type:1,components:[{type:2,style:2,label:"Check receipt",custom_id:`foilbury:redeliver:${interaction.id}`.slice(0,100)}]}],
+      }};
       return errorCallback(new ApiError(shape.status, shape.code, shape.message, shape.details));
     },
-    recovery: ({ receipt, interactionId, reason }) =>
-      privateRecoveryCallback(
-        drawRecoveryMessage({
-          receipt,
-          origin: publicOrigin,
-          interactionId,
-          reason,
-        }),
-      ),
+    recovery: ({interactionId}) => ({type:4, data:{
+      content:"Your opening completed. You can request the receipt again or check your collection; no second opening is needed.",
+      flags:64, allowed_mentions:{parse:[]},
+      components:[{type:1,components:[{type:2,style:2,label:"Re-send receipt",custom_id:`foilbury:redeliver:${interactionId}`.slice(0,100)}]}],
+    }}),
   };
 
   return program.pipe(
@@ -396,16 +403,6 @@ function provideServices(
     }),
     Effect.provideService(DiscordDrawPolicy, defaultDiscordDrawPolicy),
   );
-}
-
-function privateRecoveryCallback(message: ReturnType<typeof drawRecoveryMessage>): DiscordCallback {
-  return {
-    type: 4,
-    data: {
-      ...message,
-      flags: EPHEMERAL_FLAG,
-    },
-  };
 }
 
 function typedFailureFromCause(cause: Cause.Cause<unknown>): DiscordDrawFailure | null {
@@ -426,13 +423,10 @@ export async function runDiscordDrawForInteraction(input: {
   publicOrigin?: string;
 }): Promise<DiscordDrawOutcome> {
   const { env, interaction, applicationId } = input;
-  const publicOrigin =
-    input.publicOrigin ?? env.FOILBURY_PUBLIC_ORIGIN ?? "https://foilbury.loftwah.com";
   const program = provideServices(
     runDiscordDrawWorkflow(requestFrom(interaction, applicationId, requestedPoolFor(interaction))),
     env,
     interaction,
-    publicOrigin,
   );
   const exit = await Effect.runPromiseExit(program);
   if (Exit.isSuccess(exit)) return exit.value;
@@ -456,8 +450,8 @@ export async function runDiscordDrawForInteraction(input: {
     delivered: false,
     visibility: "private" as const,
   }));
-  await recordInteractionStart(env, interaction);
-  await recordInteractionFinish(env, interaction.id, "failed", "internal_error");
+  const fallbackAttempt=await recordInteractionStart(env, interaction);
+  await recordInteractionFinish(env, interaction.id, "failed", "internal_error",fallbackAttempt,outcome.visibility);
   return {
     status: "failed",
     delivered: outcome.delivered,

@@ -5,6 +5,9 @@ import { auditStatement, findIdempotent, idempotencyStatement, type IdempotencyI
 import { getWallet } from "./wallet";
 import { cardVisibilitySql, audienceRank, viewerAccess } from "./visibility";
 import { botAllowsAiArt, isAiArtOrigin } from "./bots";
+import { DRAW_EPOCH_TRIGGER_CHECK, DRAW_EPOCH_TRIGGER_DATA, type DrawScopeEpoch } from "./draw-scope-epoch";
+import { liveViewerContext } from "./live-viewer";
+import { DRAW_TERMINAL_TRIGGER_CHECK, DRAW_TERMINAL_TRIGGER_DATA } from "./draw-terminal-retention";
 
 export interface PoolRow {
   id: string;
@@ -36,12 +39,55 @@ export interface EligibleEntry {
 }
 
 export interface PoolScope {
+  drawEpoch?: DrawScopeEpoch | null;
+  drawInstallation?: { id: string; botId: string | null; allowlist: string; audience: string | null; collections: string | null; revision: number; channelKey: string | null };
   collectionIds: string[];
   audience: "public" | "members" | "private";
   digest: string;
   /** Discord scope: a card with no collection is not eligible. */
   requireFiled: boolean;
   aiArtEnabled: boolean;
+}
+
+/** Only the exact, versioned terminal marker proves a same-key request failed.
+ * Historical completed receipts are returned solely via authorized redelivery. */
+export async function readDiscordDrawState(ctx: Ctx, input: IdempotencyInput, scope?: PoolScope): Promise<'absent'|'completed'> {
+  const row=await first<{request_digest:string;status:string;response_json:string}>(ctx.db,
+    `SELECT request_digest,status,response_json FROM fb_idempotency_keys WHERE tenant_id=? AND actor_type=? AND actor_id=? AND operation='draw.execute' AND idempotency_key=?`,
+    ctx.tenant.id,ctx.actor.type,ctx.actor.id,input.key);
+  if(!row) return 'absent';
+  if(row.request_digest!==input.digest) throw new ApiError(409,'idempotency_conflict','This opening key belongs to a different request.');
+  if(row.status==='completed') return 'completed';
+  if(row.status==='failed') {
+    let value:unknown;
+    try { value=JSON.parse(row.response_json); } catch { /* fail closed */ }
+    if(value && typeof value==='object' && !Array.isArray(value)) {
+      const v=value as Record<string,unknown>;
+      if(Object.keys(v).sort().join(',')==='code,epoch,kind,version' && v.kind==='draw_terminal_failure' && v.version===2 && v.code==='insufficient_funds') {
+        const p=ctx.discordPrincipal,e=scope?.drawEpoch,i=scope?.drawInstallation,u=ctx.user;
+        const recorded=v.epoch;
+        const sameEpoch=recorded && typeof recorded==='object' && !Array.isArray(recorded) && Object.keys(recorded).sort().join(',')==='global,tenant,user' &&
+          (recorded as Record<string,unknown>).global===e?.global && (recorded as Record<string,unknown>).tenant===e?.tenant && (recorded as Record<string,unknown>).user===e?.user;
+        const canonical=e && JSON.stringify({kind:'draw_terminal_failure',version:2,code:'insufficient_funds',epoch:{global:e.global,tenant:e.tenant,user:e.user}});
+        if(p&&e&&i&&u&&sameEpoch&&row.response_json===canonical&&e.userId===u.id&&ctx.actor.type==='user'&&ctx.actor.id===u.id&&ctx.actor.representedUserId===u.id){
+          const authorised=await first<{ok:number}>(ctx.db,`SELECT EXISTS (SELECT 1 FROM fb_draw_scope_global_epoch g
+            JOIN fb_discord_identities d ON d.tenant_id=? AND d.user_id=? AND d.discord_user_id=? AND d.revoked_at IS NULL
+            JOIN fb_users u ON u.id=d.user_id AND u.disabled_at IS NULL AND u.is_synthetic=0
+            JOIN fb_memberships m ON m.tenant_id=d.tenant_id AND m.user_id=d.user_id AND m.status='active' AND m.revoked_at IS NULL
+            JOIN fb_discord_installations i ON i.tenant_id=d.tenant_id AND i.id=? AND i.application_id=? AND i.guild_id=? AND i.active=1 AND i.revoked_at IS NULL AND i.game_enabled=1
+              AND i.bot_id IS ? AND i.channel_allowlist_json IS ? AND i.channel_audience_json IS ? AND i.collection_allowlist_json IS ? AND i.configuration_revision IS ? AND i.channel_key IS ?
+            WHERE g.id=1 AND g.revision=? AND COALESCE((SELECT revision FROM fb_draw_scope_tenant_epochs WHERE tenant_id=?),0)=?
+              AND COALESCE((SELECT revision FROM fb_draw_scope_user_epochs WHERE user_id=?),0)=? AND ${DRAW_EPOCH_TRIGGER_CHECK}
+              AND ${DRAW_TERMINAL_TRIGGER_CHECK}
+              AND EXISTS (SELECT 1 FROM fb_idempotency_keys k WHERE k.tenant_id=? AND k.actor_type=? AND k.actor_id=? AND k.operation='draw.execute' AND k.idempotency_key=? AND k.request_digest=? AND k.status='failed' AND k.response_json=?)) AS ok`,
+            ctx.tenant.id,u.id,p.discordUserId,i.id,p.applicationId,p.guildId,i.botId,i.allowlist,i.audience,i.collections,i.revision,i.channelKey,e.global,ctx.tenant.id,e.tenant,u.id,e.user,DRAW_EPOCH_TRIGGER_DATA,DRAW_TERMINAL_TRIGGER_DATA,
+            ctx.tenant.id,ctx.actor.type,ctx.actor.id,input.key,input.digest,row.response_json);
+          if(authorised?.ok) throw new ApiError(409,'draw_terminal_insufficient_funds','This opening was not made because your balance was insufficient.');
+        }
+      }
+    }
+  }
+  throw new ApiError(503,'draw_outcome_unavailable','This opening may have completed. Check your collection before opening another capsule.');
 }
 
 export interface PoolPreview {
@@ -117,6 +163,11 @@ export async function getPoolPreview(
   channelKey?: string,
   options?: { includeDraft?: boolean; scope?: PoolScope },
 ): Promise<PoolPreview> {
+  if (ctx.discordPrincipal) {
+    const live = ctx.user && await liveViewerContext(ctx,ctx.user.id);
+    if (!live) throw new ApiError(403,"discord_access_changed","Your access changed. Ask the Bot Owner for help.");
+    ctx=live;
+  }
   const pool = await first<PoolRow>(
     ctx.db,
     `SELECT * FROM fb_pools WHERE tenant_id = ? AND (id = ? OR slug = ?) ${options?.includeDraft ? "" : "AND status = 'active'"}`,
@@ -375,7 +426,12 @@ export async function executeDraw(
 ) {
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in to draw.");
-  const replay = await findIdempotent(ctx, "draw.execute", input.idempotency);
+  if (ctx.discordPrincipal && (!input.scope?.drawEpoch || !input.scope.drawInstallation || input.scope.drawEpoch.userId !== user.id || (input.channelKey??null)!==input.scope.drawInstallation.channelKey)) {
+    throw new ApiError(409, "draw_scope_unavailable", "The capsule cannot be opened right now. Please check your collection and try again.");
+  }
+  const discordState=ctx.discordPrincipal ? await readDiscordDrawState(ctx,input.idempotency,input.scope) : null;
+  if(discordState==='completed') throw new ApiError(503, "draw_outcome_unavailable", "This opening may have completed. Check your collection before opening another capsule.");
+  const replay = ctx.discordPrincipal ? null : await findIdempotent(ctx, "draw.execute", input.idempotency);
   if (replay) {
     // The stored receipt is the transaction-time record. The current balance
     // may have moved since then (another tab, mission or grant), so expose it
@@ -416,6 +472,31 @@ export async function executeDraw(
   }
   const wallet = await getWallet(ctx.db, ctx.tenant.id, user.id);
   if (wallet.balance < preview.price) {
+    // Experimental terminal writers must not run in production until every
+    // active and rollback Worker has a compatible reader and retention fence.
+    if (ctx.discordPrincipal && ctx.config.environment !== 'production' && input.scope?.drawEpoch && input.scope.drawInstallation) {
+      const epoch=input.scope.drawEpoch, installation=input.scope.drawInstallation, principal=ctx.discordPrincipal;
+      if(ctx.actor.type!=='user' || ctx.actor.id!==user.id || ctx.actor.representedUserId!==user.id)
+        throw new ApiError(403,'draw_authority_required','Your access changed.');
+      await ctx.db.batch([ctx.db.prepare(`INSERT OR IGNORE INTO fb_idempotency_keys
+        (tenant_id,actor_type,actor_id,operation,idempotency_key,request_digest,status,response_json,created_at)
+        SELECT ?,?,?,'draw.execute',?,?,'failed',?,? FROM fb_wallets w
+        JOIN fb_discord_identities d ON d.tenant_id=w.tenant_id AND d.user_id=w.user_id AND d.discord_user_id=? AND d.revoked_at IS NULL
+        JOIN fb_users u ON u.id=w.user_id AND u.disabled_at IS NULL AND u.is_synthetic=0
+        JOIN fb_memberships m ON m.tenant_id=w.tenant_id AND m.user_id=w.user_id AND m.status='active' AND m.revoked_at IS NULL
+        JOIN fb_discord_installations i ON i.tenant_id=w.tenant_id AND i.id=? AND i.application_id=? AND i.guild_id=? AND i.active=1 AND i.revoked_at IS NULL AND i.game_enabled=1
+          AND i.bot_id IS ? AND i.channel_allowlist_json IS ? AND i.channel_audience_json IS ? AND i.collection_allowlist_json IS ? AND i.configuration_revision IS ? AND i.channel_key IS ?
+        JOIN fb_draw_scope_global_epoch g ON g.id=1 AND g.revision=?
+        WHERE w.tenant_id=? AND w.user_id=? AND w.balance<?
+          AND COALESCE((SELECT revision FROM fb_draw_scope_tenant_epochs WHERE tenant_id=?),0)=?
+          AND COALESCE((SELECT revision FROM fb_draw_scope_user_epochs WHERE user_id=?),0)=? AND ${DRAW_EPOCH_TRIGGER_CHECK} AND ${DRAW_TERMINAL_TRIGGER_CHECK}`)
+        .bind(ctx.tenant.id,ctx.actor.type,ctx.actor.id,input.idempotency.key,input.idempotency.digest,JSON.stringify({kind:'draw_terminal_failure',version:2,code:'insufficient_funds',epoch:{global:epoch.global,tenant:epoch.tenant,user:epoch.user}}),nowIso(),
+          principal.discordUserId,installation.id,principal.applicationId,principal.guildId,installation.botId,installation.allowlist,installation.audience,installation.collections,installation.revision,installation.channelKey,
+          epoch.global,ctx.tenant.id,user.id,preview.price,ctx.tenant.id,epoch.tenant,user.id,epoch.user,DRAW_EPOCH_TRIGGER_DATA,DRAW_TERMINAL_TRIGGER_DATA)]);
+      await readDiscordDrawState(ctx,input.idempotency,input.scope);
+      throw new ApiError(503,'draw_outcome_unavailable','This opening may have completed. Check your collection before opening another capsule.');
+    }
+    if (ctx.discordPrincipal) throw new ApiError(503,'draw_outcome_unavailable','This opening may have completed. Check your collection before opening another capsule.');
     throw new ApiError(409, "insufficient_funds", `You need ${preview.price} ${wallet.currency_symbol} for this draw.`, {
       balance: wallet.balance,
       price: preview.price,
@@ -481,6 +562,24 @@ export async function executeDraw(
   };
 
   const statements = [
+    ...(ctx.discordPrincipal && input.scope?.drawEpoch && input.scope.drawInstallation ? [
+      ctx.db.prepare(`SELECT CASE WHEN EXISTS (
+        SELECT 1 FROM fb_draw_scope_global_epoch g
+        JOIN fb_discord_identities d ON d.tenant_id=? AND d.user_id=? AND d.discord_user_id=? AND d.revoked_at IS NULL
+        JOIN fb_users u ON u.id=d.user_id AND u.disabled_at IS NULL AND u.is_synthetic=0
+        JOIN fb_memberships m ON m.tenant_id=d.tenant_id AND m.user_id=d.user_id AND m.status='active' AND m.revoked_at IS NULL
+        JOIN fb_discord_installations i ON i.tenant_id=d.tenant_id AND i.id=? AND i.application_id=? AND i.guild_id=? AND i.active=1 AND i.revoked_at IS NULL AND i.game_enabled=1
+          AND i.bot_id IS ? AND i.channel_allowlist_json IS ? AND i.channel_audience_json IS ? AND i.collection_allowlist_json IS ? AND i.configuration_revision IS ? AND i.channel_key IS ?
+        WHERE g.id=1 AND g.revision=?
+          AND COALESCE((SELECT revision FROM fb_draw_scope_tenant_epochs WHERE tenant_id=?),0)=?
+          AND COALESCE((SELECT revision FROM fb_draw_scope_user_epochs WHERE user_id=?),0)=?
+          AND ${DRAW_EPOCH_TRIGGER_CHECK}
+      ) THEN 1 ELSE json('draw_epoch_changed') END`).bind(
+        ctx.tenant.id,user.id,ctx.discordPrincipal.discordUserId,input.scope.drawInstallation.id,ctx.discordPrincipal.applicationId,ctx.discordPrincipal.guildId,
+        input.scope.drawInstallation.botId,input.scope.drawInstallation.allowlist,input.scope.drawInstallation.audience,input.scope.drawInstallation.collections,input.scope.drawInstallation.revision,input.scope.drawInstallation.channelKey,
+        input.scope.drawEpoch.global,ctx.tenant.id,input.scope.drawEpoch.tenant,user.id,input.scope.drawEpoch.user,DRAW_EPOCH_TRIGGER_DATA,
+      ),
+    ] : []),
     idempotencyStatement(ctx, "draw.execute", input.idempotency, receipt),
     ctx.db
       .prepare(
@@ -526,12 +625,17 @@ export async function executeDraw(
     await ctx.db.batch(statements);
   } catch (error) {
     const message = String(error);
+    if (message.includes("draw_epoch_changed") || message.includes("malformed JSON")) {
+      throw new ApiError(409, "draw_scope_changed", "Access or capsule availability may have changed. Check your collection and review the capsule again.");
+    }
     if (message.includes("UNIQUE") && message.includes("fb_idempotency_keys")) {
+      if (ctx.discordPrincipal) { await readDiscordDrawState(ctx,input.idempotency,input.scope); throw new ApiError(503,'draw_outcome_unavailable','This opening may have completed. Check your collection before opening another capsule.'); }
       const existing = await findIdempotent(ctx, "draw.execute", input.idempotency);
       if (existing) return { ...(existing.response as object), replayed: true };
       throw new ApiError(409, "draw_conflict", "This draw request collided with another request. Reload your collection.");
     }
     if (message.includes("insufficient_funds")) {
+      if (ctx.discordPrincipal) throw new ApiError(409, "draw_outcome_unavailable", "Check your wallet and collection before opening another capsule; an earlier attempt may have completed.");
       throw new ApiError(409, "insufficient_funds", "Your balance changed before the draw. You were not charged.");
     }
     if (message.includes("stale_pool_revision")) {

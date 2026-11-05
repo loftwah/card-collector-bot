@@ -7,14 +7,11 @@ import {
   resolveInstallation,
 } from "./context";
 import {
-  drawRecoveryMessage,
-  markDeliveryVisibility,
   readInteractionReceipt,
 } from "./receipts";
 import {
   deliverDeferred,
   isPrivateCallback,
-  safeRecoveryReason,
   type DeliveryOutcome,
 } from "./delivery";
 import {
@@ -71,6 +68,7 @@ async function processDeferred(
   applicationId: string,
 ): Promise<void> {
   let finished = false;
+  let attemptId: string | null = null;
   const finish = async (
     status: "completed" | "failed",
     errorCode?: string,
@@ -78,8 +76,7 @@ async function processDeferred(
   ): Promise<void> => {
     if (finished) return;
     finished = true;
-    await recordInteractionFinish(env, interaction.id, status, errorCode);
-    if (visibility) await markDeliveryVisibility(env.DB, interaction.id, visibility);
+    await recordInteractionFinish(env, interaction.id, status, errorCode, attemptId, visibility);
   };
 
   // The draw lifecycle is an Effect service. It owns identity, consent,
@@ -89,6 +86,8 @@ async function processDeferred(
     await runDiscordDrawForInteraction({ env, interaction, applicationId });
     return;
   }
+
+  attemptId = await recordInteractionStart(env, interaction);
 
   try {
     const guildId = interaction.guild_id;
@@ -113,7 +112,6 @@ async function processDeferred(
     const discordUser = interactionUser(interaction);
     const player = await ensureDiscordPlayer(env, resolved.tenant, discordUser);
     const ctx = buildDiscordContext(env, resolved.tenant, player.user, interaction);
-    await recordInteractionStart(env, interaction);
     const callback =
       interaction.type === 2
         ? await runCommand(ctx, interaction, resolved.installation)
@@ -150,15 +148,7 @@ async function processDeferred(
     // receipt and tell the truth; never offer a second paid draw as "retry".
     const receipt = await readInteractionReceipt(env.DB, interaction.id);
     const recovery = receipt
-      ? {
-          type: 4 as const,
-          data: drawRecoveryMessage({
-            receipt,
-            origin: env.FOILBURY_PUBLIC_ORIGIN ?? "https://foilbury.loftwah.com",
-            interactionId: interaction.id,
-            reason: safeRecoveryReason(error),
-          }),
-        }
+      ? {type:4 as const,data:{content:"Your opening completed. You can request the receipt again or check your collection; no second opening is needed.",flags:64,allowed_mentions:{parse:[]},components:[{type:1 as const,components:[{type:2 as const,style:2 as const,label:"Re-send receipt",custom_id:`foilbury:redeliver:${interaction.id}`.slice(0,100)}]}]}}
       : errorCallback(api);
     const outcome = await deliverDeferred(env, interaction, recovery);
     await finish(
@@ -254,6 +244,7 @@ export async function handleDiscordInteraction(
     return jsonResponse({ type: 5, data: { flags: EPHEMERAL_FLAG } });
   }
 
+  const attemptId = await recordInteractionStart(env, interaction);
   try {
     const guildId = interaction.guild_id;
     if (!guildId) {
@@ -273,24 +264,18 @@ export async function handleDiscordInteraction(
     const discordUser = interactionUser(interaction);
     const player = await ensureDiscordPlayer(env, resolved.tenant, discordUser);
     const ctx = buildDiscordContext(env, resolved.tenant, player.user, interaction);
-    await recordInteractionStart(env, interaction);
     let callback: DiscordCallback;
     if (interaction.type === 2) {
       callback = await runCommand(ctx, interaction, resolved.installation);
     } else {
       callback = await runComponent(ctx, interaction, resolved.installation);
     }
-    await recordInteractionFinish(env, interaction.id, "completed");
-    await markDeliveryVisibility(
-      env.DB,
-      interaction.id,
-      isPrivateCallback(callback) ? "private" : "public",
-    );
+    await recordInteractionFinish(env, interaction.id, "completed",undefined,attemptId,isPrivateCallback(callback) ? "private" : "public");
     return jsonResponse(callback);
   } catch (error) {
     const api = error instanceof ApiError ? error : null;
     if (api) {
-      await recordInteractionFinish(env, interaction.id, "failed", api.code);
+      await recordInteractionFinish(env, interaction.id, "failed", api.code,attemptId);
     } else {
       console.error(
         JSON.stringify({
@@ -302,7 +287,7 @@ export async function handleDiscordInteraction(
           ),
         }),
       );
-      await recordInteractionFinish(env, interaction.id, "failed", "internal_error");
+      await recordInteractionFinish(env, interaction.id, "failed", "internal_error",attemptId);
     }
     return jsonResponse(
       errorCallback(

@@ -3,13 +3,14 @@ import {
   expireStaleDiscordInteractions,
   handleDiscordInteraction,
 } from "../../src/server/discord/handler";
-import { drawIdempotencyKey, recoverDrawReceipt } from "../../src/server/discord/receipts";
+import { drawIdempotencyKey, markDeliveryVisibility, recoverDrawReceipt } from "../../src/server/discord/receipts";
 import { signDiscordRequest } from "../../src/server/discord/signature";
 import type { DiscordEnv } from "../../src/server/discord/types";
 import { sha256Hex } from "../../src/server/ids";
 import { executeDraw, getPoolPreview } from "../../src/server/modules/pools";
-import { bootstrap, ctxFor, fixturePool, runtime } from "./helpers";
+import { bootstrap, ctxFor, fixturePool, runtime, setBalance } from "./helpers";
 import { DiscordTransport } from "./discord-transport";
+import { recordInteractionFinish, recordInteractionStart, reconcileTimedOutDraws } from "../../src/server/discord/interactions";
 
 const APPLICATION_ID = "1566702936615026769";
 const GUILD_ID = "997734945206313041";
@@ -392,9 +393,9 @@ describe("Discord draw commit recovery", () => {
     const draw = await committedDraw(interactionId);
     const original = transport.original("test-interaction-token")!;
     const payload = JSON.stringify(original.payload);
-    expect(payload).toContain("Draw completed — display interrupted");
-    expect(payload).toContain("did");
-    expect(payload).toContain(draw.serial);
+    expect(payload).toContain("Your opening completed");
+    expect(payload).toContain("Re-send receipt");
+    expect(payload).not.toContain(draw.serial);
     expect(payload).not.toContain("nothing changed");
 
     const record = await runtime.DB.prepare(
@@ -461,9 +462,9 @@ describe("Discord draw commit recovery", () => {
     expect(errors.join("\n")).toContain("Injected settlement read-back failure");
     const original = JSON.stringify(transport.original("test-interaction-token")!.payload);
     expect(original).toContain("Test One");
-    expect(original).toContain("Reward credited");
-    expect(original).toContain("Settled balance");
-    expect(original).toContain("430");
+    expect(original).not.toContain("Reward credited");
+    expect(original).not.toContain("Settled balance");
+    expect(original).toContain("Open your wallet");
     expect(original).not.toContain("nothing changed");
 
     const draw = await committedDraw(interactionId);
@@ -482,7 +483,8 @@ describe("Discord draw commit recovery", () => {
     await redeliver(interactionId, redelivery);
     const resent = JSON.stringify(redelivery.original("redeliver-token")!.payload);
     expect(resent).toContain(draw.serial);
-    expect(resent).toContain("Settled rewards");
+    expect(resent).not.toContain("Settled rewards");
+    expect(resent).toContain("Check your wallet");
     await committedDraw(interactionId);
     await assertRewardSettledOnce();
 
@@ -622,6 +624,13 @@ describe("Discord draw commit recovery", () => {
     expect(record?.error_code).toBe("delivery_failed");
     expect(record?.receipt_json).toBeNull();
 
+    await runtime.DB.prepare("UPDATE fb_discord_installations SET game_enabled=0 WHERE id='dci_test'").run();
+    const retry=new DiscordTransport();
+    await deliverDeferred(interaction(command("open",[{name:"pool",type:3,value:"test-pool"}]),{id:interactionId,token:"lost-delivery-retry"}),runtime.DB,retry);
+    const afterRetry=await runtime.DB.prepare("SELECT status,error_code,receipt_json FROM fb_discord_interactions WHERE interaction_id=?").bind(interactionId).first<{status:string;error_code:string|null;receipt_json:string|null}>();
+    expect(afterRetry).toEqual(record);
+    await runtime.DB.prepare("UPDATE fb_discord_installations SET game_enabled=1 WHERE id='dci_test'").run();
+
     const redelivery = new DiscordTransport();
     await redeliver(interactionId, redelivery);
     const resent = JSON.stringify(redelivery.original("redeliver-token")!.payload);
@@ -677,6 +686,7 @@ describe("Discord draw commit recovery", () => {
     )
       .bind(old, interactionId)
       .run();
+    await runtime.DB.prepare("UPDATE fb_discord_interaction_attempts SET status='processing',error_code=NULL,delivery_visibility=NULL,finished_at=NULL,started_at=? WHERE attempt_id=(SELECT current_attempt_id FROM fb_discord_interactions WHERE interaction_id=?)").bind(old,interactionId).run();
     const changed = await expireStaleDiscordInteractions(runtime.DB, 10);
     expect(changed).toBeGreaterThanOrEqual(1);
     const expired = await runtime.DB.prepare(
@@ -684,7 +694,7 @@ describe("Discord draw commit recovery", () => {
     )
       .bind(interactionId)
       .first<{ status: string; error_code: string | null }>();
-    expect(expired?.status).toBe("failed");
+    expect(expired?.status).toBe("completed");
     expect(expired?.error_code).toBe("delivery_timeout");
 
     const redelivery = new DiscordTransport();
@@ -700,5 +710,373 @@ describe("Discord draw commit recovery", () => {
     expect(replay.instance_id).toBe(draw.instance_id);
     await committedDraw(interactionId);
     await assertRewardSettledOnce();
+  });
+  it("keeps deferred reconciliation neutral after commit and immediate access loss", async () => {
+    const player=await ctxFor("cabinet","player@foilbury.local");
+    await fixturePool(player);
+    const tracked=faultDatabase([]);
+    let injected=false;
+    const db=new Proxy(tracked.db,{get(target,key){
+      if(key==='batch') return async (statements:D1PreparedStatement[]) => {
+        const result=await target.batch(statements);
+        if(tracked.committed() && !injected){
+          injected=true;
+          await runtime.DB.prepare("UPDATE fb_collections SET status='draft' WHERE id='col_test_public'").run();
+          throw new Error('lost commit acknowledgement');
+        }
+        return result;
+      };
+      const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
+    }});
+    const transport=new DiscordTransport();
+    const interactionId='reconcile-revoked-after-commit';
+    await deliverDeferred(interaction(command('open',[{name:'pool',type:3,value:'test-pool'}]),{id:interactionId}),db,transport);
+    expect(injected).toBe(true);
+    const draw=await committedDraw(interactionId);
+    const payload=JSON.stringify(transport.original('test-interaction-token')!.payload);
+    expect(payload).not.toContain('Test One');
+    expect(payload).not.toContain(draw.serial);
+    expect(payload).toMatch(/may have completed/i);
+    expect(payload).toContain('Check receipt');
+    const status=await runtime.DB.prepare("SELECT status,error_code FROM fb_discord_interactions WHERE interaction_id=?").bind(interactionId).first<{status:string;error_code:string|null}>();
+    expect(status).toEqual({status:'completed',error_code:'unknown_commit_outcome'});
+    const denied=new DiscordTransport();
+    await redeliver(interactionId,denied,'denied-token');
+    const deniedPayload=JSON.stringify(denied.original('denied-token')!.payload);
+    expect(deniedPayload).not.toContain('Test One');
+    expect(deniedPayload).not.toContain(draw.serial);
+    await runtime.DB.prepare("UPDATE fb_collections SET status='published' WHERE id='col_test_public'").run();
+    const restored=new DiscordTransport();
+    await redeliver(interactionId,restored,'restored-token');
+    const restoredPayload=JSON.stringify(restored.original('restored-token')!.payload);
+    expect(restoredPayload).toContain(draw.serial);
+    expect((await runtime.DB.prepare("SELECT COUNT(*) AS n FROM fb_draws WHERE idempotency_key=?").bind(drawIdempotencyKey(interactionId)).first<{n:number}>())!.n).toBe(1);
+  });
+  it.each([
+    ["identity revoked", "UPDATE fb_discord_identities SET revoked_at='2026-01-01' WHERE discord_user_id='707281352818425929'"],
+    ["installation disabled", "UPDATE fb_discord_installations SET game_enabled=0 WHERE id='dci_test'"],
+    ["collection disabled", "UPDATE fb_bot_collections SET enabled=0 WHERE collection_id='col_test_public'"],
+    ["pool emptied", "UPDATE fb_pool_entries SET enabled=0 WHERE id='poe_test'"],
+  ])("keeps same-key retry neutral after %s", async (_label,mutation) => {
+    const player=await ctxFor("cabinet","player@foilbury.local");
+    await fixturePool(player);
+    const interactionId=`early-${_label.replaceAll(' ','-')}`;
+    const original=interaction(command('open',[{name:'pool',type:3,value:'test-pool'}]),{id:interactionId});
+    await deliverDeferred(original,runtime.DB,new DiscordTransport());
+    const draw=await committedDraw(interactionId);
+    const before=await runtime.DB.prepare("SELECT status,error_code,delivery_visibility FROM fb_discord_interactions WHERE interaction_id=?").bind(interactionId).first<{status:string;error_code:string|null;delivery_visibility:string|null}>();
+    expect(before?.status).toBe('completed');
+    await runtime.DB.prepare(mutation).run();
+    const retry=new DiscordTransport();
+    await deliverDeferred({...original,token:'early-retry-token'},runtime.DB,retry);
+    const payload=JSON.stringify(retry.original('early-retry-token')!.payload);
+    expect(payload).toContain('may have completed');
+    expect(payload).toContain('Check receipt');
+    expect(payload).not.toMatch(/nothing was charged|nothing was changed/i);
+    expect(payload).not.toContain('Test One');
+    expect(payload).not.toContain(draw.serial);
+    expect((await runtime.DB.prepare("SELECT COUNT(*) AS n FROM fb_draws WHERE idempotency_key=?").bind(drawIdempotencyKey(interactionId)).first<{n:number}>())!.n).toBe(1);
+    expect((await runtime.DB.prepare("SELECT COUNT(*) AS n FROM fb_ledger_entries WHERE reference_type='draw' AND reference_id=? AND kind='spend'").bind(draw.id).first<{n:number}>())!.n).toBe(1);
+    await markDeliveryVisibility(runtime.DB,interactionId,'public');
+    const after=await runtime.DB.prepare("SELECT status,error_code,delivery_visibility FROM fb_discord_interactions WHERE interaction_id=?").bind(interactionId).first<{status:string;error_code:string|null;delivery_visibility:string|null}>();
+    expect(after).toEqual(before);
+    if (_label==='identity revoked') expect((await runtime.DB.prepare("SELECT COUNT(*) AS n FROM fb_discord_identities WHERE discord_user_id='707281352818425929' AND revoked_at IS NULL").first<{n:number}>())!.n).toBe(0);
+  });
+  it('records a later same-key success after an earlier empty-pool response',async()=>{
+    const player=await ctxFor('cabinet','player@foilbury.local');
+    await fixturePool(player);
+    await runtime.DB.prepare("UPDATE fb_pool_entries SET enabled=0 WHERE id='poe_test'").run();
+    const interactionId='retry-after-empty-pool';
+    const original=interaction(command('open',[{name:'pool',type:3,value:'test-pool'}]),{id:interactionId});
+    await deliverDeferred(original,runtime.DB,new DiscordTransport());
+    const before=await runtime.DB.prepare("SELECT status,error_code FROM fb_discord_interactions WHERE interaction_id=?").bind(interactionId).first<{status:string;error_code:string|null}>();
+    expect(before).toEqual({status:'completed',error_code:'empty_pool_uncertain'});
+    await runtime.DB.prepare("UPDATE fb_pool_entries SET enabled=1 WHERE id='poe_test'").run();
+    await deliverDeferred({...original,token:'retry-success-token'},runtime.DB,new DiscordTransport());
+    const draw=await committedDraw(interactionId);
+    const after=await runtime.DB.prepare("SELECT status,error_code FROM fb_discord_interactions WHERE interaction_id=?").bind(interactionId).first<{status:string;error_code:string|null}>();
+    expect(after).toEqual({status:'completed',error_code:null});
+    expect((await runtime.DB.prepare("SELECT COUNT(*) AS n FROM fb_ledger_entries WHERE reference_type='draw' AND reference_id=? AND kind='spend'").bind(draw.id).first<{n:number}>())!.n).toBe(1);
+  });
+  it('does not let an overlapping old attempt own the new committed outcome',async()=>{
+    const player=await ctxFor('cabinet','player@foilbury.local');
+    await fixturePool(player);
+    await runtime.DB.prepare("UPDATE fb_pool_entries SET enabled=0 WHERE id='poe_test'").run();
+    const interactionId='overlapping-attempt-finish';
+    const original=interaction(command('open',[{name:'pool',type:3,value:'test-pool'}]),{id:interactionId});
+    await deliverDeferred(original,runtime.DB,new DiscordTransport());
+    const oldAttempt=await recordInteractionStart(envFor(runtime.DB),original as never);
+    expect(oldAttempt).toBeTruthy();
+    await runtime.DB.prepare("UPDATE fb_pool_entries SET enabled=1 WHERE id='poe_test'").run();
+    const tracked=faultDatabase([]);
+    let injected=false;
+    const db=new Proxy(tracked.db,{get(target,key){
+      if(key==='batch')return async(statements:D1PreparedStatement[])=>{
+        const result=await target.batch(statements);
+        if(tracked.committed()&&!injected){
+          injected=true;
+          await recordInteractionFinish(envFor(runtime.DB),interactionId,'completed','empty_pool_uncertain',oldAttempt,'public');
+        }
+        return result;
+      };
+      const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
+    }});
+    await deliverDeferred({...original,token:'overlap-token'},db,new DiscordTransport());
+    expect(injected).toBe(true);
+    await committedDraw(interactionId);
+    const state=await runtime.DB.prepare('SELECT status,error_code FROM fb_discord_interactions WHERE interaction_id=?').bind(interactionId).first<{status:string;error_code:string|null}>();
+    expect(state).toEqual({status:'completed',error_code:null});
+  });
+  it('keeps an expired attempt immutable and reconciles a draw that commits late',async()=>{
+    const player=await ctxFor('cabinet','player@foilbury.local');await fixturePool(player);
+    const interactionId='late-commit-after-expiry';
+    const statements=new WeakMap<object,{raw:D1PreparedStatement;sql:string}>();
+    const db=new Proxy(runtime.DB,{get(target,key){
+      if(key==='prepare')return(sql:string)=>{
+        const wrap=(raw:D1PreparedStatement):D1PreparedStatement=>{
+          const proxy=new Proxy(raw,{get(statement,method){
+            if(method==='bind')return(...args:unknown[])=>wrap(statement.bind(...args));
+            const value=Reflect.get(statement,method,statement);return typeof value==='function'?value.bind(statement):value;
+          }});
+          statements.set(proxy,{raw,sql});return proxy;
+        };
+        return wrap(target.prepare(sql));
+      };
+      if(key==='batch')return async(items:D1PreparedStatement[])=>{
+        const containsDraw=items.some(item=>statements.get(item)?.sql.includes('INSERT INTO fb_draws'));
+        if(containsDraw){
+          const old=new Date(Date.now()-60*60_000).toISOString();
+          await runtime.DB.prepare("UPDATE fb_discord_interaction_attempts SET started_at=? WHERE interaction_id=? AND status='processing'").bind(old,interactionId).run();
+          expect(await expireStaleDiscordInteractions(runtime.DB,10)).toBeGreaterThan(0);
+        }
+        return target.batch(items.map(item=>statements.get(item)?.raw??item));
+      };
+      const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
+    }});
+    await deliverDeferred(interaction(command('open',[{name:'pool',type:3,value:'test-pool'}]),{id:interactionId}),db,new DiscordTransport());
+    await committedDraw(interactionId);
+    const attempt=await runtime.DB.prepare('SELECT status,error_code FROM fb_discord_interaction_attempts WHERE interaction_id=?').bind(interactionId).first<{status:string;error_code:string|null}>();
+    expect(attempt).toEqual({status:'expired',error_code:'delivery_timeout'});
+    const parent=await runtime.DB.prepare('SELECT status,error_code FROM fb_discord_interactions WHERE interaction_id=?').bind(interactionId).first<{status:string;error_code:string|null}>();
+    expect(parent).toEqual({status:'completed',error_code:'late_commit_reconciled'});
+  });
+  it('does not let a different actor own or rewrite an interaction projection',async()=>{
+    const player=await ctxFor('cabinet','player@foilbury.local');await fixturePool(player);
+    const interactionId='attempt-other-actor';
+    const original=interaction(command('open',[{name:'pool',type:3,value:'test-pool'}]),{id:interactionId});
+    await deliverDeferred(original,runtime.DB,new DiscordTransport());await committedDraw(interactionId);
+    const before=await runtime.DB.prepare('SELECT status,error_code,delivery_visibility,current_attempt_id FROM fb_discord_interactions WHERE interaction_id=?').bind(interactionId).first();
+    const other={...original,member:{...original.member,user:{id:'111111111111111111',username:'other',global_name:'Other'}}};
+    const otherAttempt=await recordInteractionStart(envFor(runtime.DB),other as never);
+    expect(otherAttempt).toBeTruthy();
+    await recordInteractionFinish(envFor(runtime.DB),interactionId,'failed','other-actor',otherAttempt,'public');
+    const after=await runtime.DB.prepare('SELECT status,error_code,delivery_visibility,current_attempt_id FROM fb_discord_interactions WHERE interaction_id=?').bind(interactionId).first();
+    expect(after).toEqual(before);
+  });
+  it('expires only the old attempt while a newer execution owns the projection',async()=>{
+    const original=interaction(command('open',[{name:'pool',type:3,value:'test-pool'}]),{id:'expired-old-attempt'});
+    const first=await recordInteractionStart(envFor(runtime.DB),original as never);
+    const second=await recordInteractionStart(envFor(runtime.DB),original as never);
+    expect(first).toBeTruthy();expect(second).toBeTruthy();expect(first).not.toBe(second);
+    const old=new Date(Date.now()-60*60_000).toISOString();
+    await runtime.DB.prepare("UPDATE fb_discord_interaction_attempts SET started_at=? WHERE attempt_id=?").bind(old,first).run();
+    await expireStaleDiscordInteractions(runtime.DB,10);
+    const during=await runtime.DB.prepare("SELECT status,current_attempt_id FROM fb_discord_interactions WHERE interaction_id=?").bind(original.id).first();
+    expect(during).toEqual({status:'processing',current_attempt_id:second});
+    await recordInteractionFinish(envFor(runtime.DB),original.id,'completed',undefined,second,'private');
+    await recordInteractionFinish(envFor(runtime.DB),original.id,'failed','stale-finish',first,'public');
+    const parent=await runtime.DB.prepare("SELECT status,error_code,delivery_visibility FROM fb_discord_interactions WHERE interaction_id=?").bind(original.id).first();
+    expect(parent).toEqual({status:'completed',error_code:null,delivery_visibility:'private'});
+    const expired=await runtime.DB.prepare("SELECT status,error_code,delivery_visibility FROM fb_discord_interaction_attempts WHERE attempt_id=?").bind(first).first();
+    expect(expired).toEqual({status:'expired',error_code:'delivery_timeout',delivery_visibility:null});
+  });
+  it.each([['current',false],['revoked',true]])('reconciles a lost terminal acknowledgement with %s identity',async(_label,revoke)=>{
+    const player=await ctxFor('cabinet','player@foilbury.local');await fixturePool(player);
+    await send(interaction(command('profile'),{id:'terminal-profile'}));
+    const discord=await discordPlayer();await setBalance(discord,discord.user!.id,0);
+    const statements=new WeakMap<object,{raw:D1PreparedStatement;sql:string}>();
+    let injected=false;
+    const db=new Proxy(runtime.DB,{get(target,key){
+      if(key==='prepare')return(sql:string)=>{
+        const wrap=(raw:D1PreparedStatement):D1PreparedStatement=>{
+          const proxy=new Proxy(raw,{get(statement,method){
+            if(method==='bind')return(...args:unknown[])=>wrap(statement.bind(...args));
+            const value=Reflect.get(statement,method,statement);return typeof value==='function'?value.bind(statement):value;
+          }});statements.set(proxy,{raw,sql});return proxy;
+        };return wrap(target.prepare(sql));
+      };
+      if(key==='batch')return async(items:D1PreparedStatement[])=>{
+        const terminal=items.some(item=>statements.get(item)?.sql.includes('INSERT OR IGNORE INTO fb_idempotency_keys'));
+        const result=await target.batch(items.map(item=>statements.get(item)?.raw??item));
+        if(terminal&&!injected){injected=true;if(revoke)await runtime.DB.prepare("UPDATE fb_discord_identities SET revoked_at='2026-01-01' WHERE discord_user_id=?").bind(DISCORD_USER_ID).run();throw new Error('lost terminal acknowledgement');}
+        return result;
+      };
+      const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
+    }});
+    const transport=new DiscordTransport(),interactionId='terminal-ack-lost';
+    await deliverDeferred(interaction(command('open',[{name:'pool',type:3,value:'test-pool'}]),{id:interactionId}),db,transport);
+    expect(injected).toBe(true);
+    const payload=JSON.stringify(transport.original('test-interaction-token')!.payload);
+    if(revoke){expect(payload).toContain('may have completed');expect(payload).not.toContain('Not enough Foil');}
+    else {expect(payload).toContain('Not enough Foil');expect(payload).toContain('/foilbury daily');}
+    const marker=await runtime.DB.prepare("SELECT status FROM fb_idempotency_keys WHERE idempotency_key=?").bind(drawIdempotencyKey(interactionId)).first<{status:string}>();
+    expect(marker?.status).toBe('failed');
+    expect((await runtime.DB.prepare('SELECT COUNT(*) AS n FROM fb_draws WHERE idempotency_key=?').bind(drawIdempotencyKey(interactionId)).first<{n:number}>())!.n).toBe(0);
+  });
+  it('recovers the same draw when attempt logging fails before the opening',async()=>{
+    const player=await ctxFor('cabinet','player@foilbury.local');await fixturePool(player);
+    const statements=new WeakMap<object,{raw:D1PreparedStatement;sql:string}>();let injected=false;
+    const db=new Proxy(runtime.DB,{get(target,key){
+      if(key==='prepare')return(sql:string)=>{
+        const wrap=(raw:D1PreparedStatement):D1PreparedStatement=>{
+          const proxy=new Proxy(raw,{get(statement,method){
+            if(method==='bind')return(...args:unknown[])=>wrap(statement.bind(...args));
+            const value=Reflect.get(statement,method,statement);return typeof value==='function'?value.bind(statement):value;
+          }});statements.set(proxy,{raw,sql});return proxy;
+        };return wrap(target.prepare(sql));
+      };
+      if(key==='batch')return async(items:D1PreparedStatement[])=>{
+        if(!injected&&items.some(item=>statements.get(item)?.sql.includes('INSERT INTO fb_discord_interaction_attempts'))){injected=true;throw new Error('attempt logging unavailable');}
+        return target.batch(items.map(item=>statements.get(item)?.raw??item));
+      };
+      const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
+    }});
+    const interactionId='attempt-log-unavailable',transport=new DiscordTransport();
+    await deliverDeferred(interaction(command('open',[{name:'pool',type:3,value:'test-pool'}]),{id:interactionId}),db,transport);
+    expect(injected).toBe(true);
+    const draw=await committedDraw(interactionId);
+    const missing=await runtime.DB.prepare('SELECT interaction_id FROM fb_discord_interactions WHERE interaction_id=?').bind(interactionId).first();
+    expect(missing).toBeNull();
+    const recovery=new DiscordTransport();await redeliver(interactionId,recovery,'attempt-log-recovery');
+    expect(JSON.stringify(recovery.original('attempt-log-recovery')!.payload)).toContain(draw.serial);
+    expect((await runtime.DB.prepare("SELECT COUNT(*) AS n FROM fb_ledger_entries WHERE reference_type='draw' AND reference_id=? AND kind='spend'").bind(draw.id).first<{n:number}>())!.n).toBe(1);
+  });
+  it('scheduled maintenance reconciles an expired draw after the finishing Worker disappears',async()=>{
+    const player=await ctxFor('cabinet','player@foilbury.local');await fixturePool(player);
+    const interactionId='late-commit-worker-gone',statements=new WeakMap<object,{raw:D1PreparedStatement;sql:string}>();let committed=false;
+    const db=new Proxy(runtime.DB,{get(target,key){
+      if(key==='prepare')return(sql:string)=>{
+        const wrap=(raw:D1PreparedStatement):D1PreparedStatement=>{
+          const proxy=new Proxy(raw,{get(statement,method){
+            if(method==='bind')return(...args:unknown[])=>wrap(statement.bind(...args));
+            const value=Reflect.get(statement,method,statement);return typeof value==='function'?value.bind(statement):value;
+          }});statements.set(proxy,{raw,sql});return proxy;
+        };return wrap(target.prepare(sql));
+      };
+      if(key==='batch')return async(items:D1PreparedStatement[])=>{
+        const containsDraw=items.some(item=>statements.get(item)?.sql.includes('INSERT INTO fb_draws'));
+        const isFinish=items.some(item=>statements.get(item)?.sql.includes('UPDATE fb_discord_interaction_attempts SET status='));
+        if(containsDraw){
+          const old=new Date(Date.now()-60*60_000).toISOString();
+          await runtime.DB.prepare("UPDATE fb_discord_interaction_attempts SET started_at=? WHERE interaction_id=? AND status='processing'").bind(old,interactionId).run();
+          await expireStaleDiscordInteractions(runtime.DB,10);
+        }
+        if(committed&&isFinish)throw new Error('finishing Worker disappeared');
+        const result=await target.batch(items.map(item=>statements.get(item)?.raw??item));
+        if(containsDraw)committed=true;
+        return result;
+      };
+      const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
+    }});
+    await deliverDeferred(interaction(command('open',[{name:'pool',type:3,value:'test-pool'}]),{id:interactionId}),db,new DiscordTransport());
+    await committedDraw(interactionId);
+    const before=await runtime.DB.prepare('SELECT status,error_code FROM fb_discord_interactions WHERE interaction_id=?').bind(interactionId).first();
+    expect(before).toEqual({status:'failed',error_code:'delivery_timeout'});
+    // A prefix of unmatched timeouts must not starve a later real draw.
+    await runtime.DB.prepare(`INSERT INTO fb_discord_interactions
+      (interaction_id,application_id,guild_id,channel_id,discord_user_id,command_name,status,error_code,created_at,completed_at)
+      SELECT 'unmatched-'||j.value,x.application_id,x.guild_id,x.channel_id,x.discord_user_id,'fixture','failed','delivery_timeout','2000-01-01T00:00:00.000Z','2000-01-01T00:00:00.000Z'
+        FROM fb_discord_interactions x,json_each(?) j WHERE x.interaction_id=?`).bind(JSON.stringify(Array.from({length:60},(_,i)=>i)),interactionId).run();
+    expect(await expireStaleDiscordInteractions(runtime.DB,10)).toBe(0);
+    expect(await expireStaleDiscordInteractions(runtime.DB,10)).toBeGreaterThan(0);
+    const after=await runtime.DB.prepare('SELECT status,error_code FROM fb_discord_interactions WHERE interaction_id=?').bind(interactionId).first();
+    expect(after).toEqual({status:'completed',error_code:'late_commit_reconciled'});
+    const again=await expireStaleDiscordInteractions(runtime.DB,10);expect(again).toBe(0);
+  });
+  it('does not regress the timeout cursor when maintenance calls overlap',async()=>{
+    await runtime.DB.prepare(`INSERT INTO fb_discord_interactions
+      (interaction_id,application_id,guild_id,channel_id,discord_user_id,command_name,status,error_code,created_at,completed_at)
+      SELECT 'cursor-'||value,?,?,?,?,'fixture','failed','delivery_timeout','2000-01-01T00:00:00.000Z','2000-01-01T00:00:00.000Z' FROM json_each(?)`)
+      .bind(APPLICATION_ID,GUILD_ID,CHANNEL_ID,DISCORD_USER_ID,JSON.stringify(Array.from({length:60},(_,i)=>i))).run();
+    let injected=false,winningCursor:unknown=null;
+    const db=new Proxy(runtime.DB,{get(target,key){
+      if(key==='batch')return async(items:D1PreparedStatement[])=>{
+        if(!injected){injected=true;await reconcileTimedOutDraws(runtime.DB);winningCursor=await runtime.DB.prepare('SELECT completed_at,interaction_id FROM fb_discord_timeout_reconcile_cursor WHERE id=1').first();}
+        return target.batch(items);
+      };
+      const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
+    }});
+    expect(await reconcileTimedOutDraws(db)).toBe(0);
+    expect(injected).toBe(true);
+    expect(await runtime.DB.prepare('SELECT completed_at,interaction_id FROM fb_discord_timeout_reconcile_cursor WHERE id=1').first()).toEqual(winningCursor);
+    await reconcileTimedOutDraws(runtime.DB);
+    expect(await runtime.DB.prepare('SELECT completed_at,interaction_id FROM fb_discord_timeout_reconcile_cursor WHERE id=1').first()).not.toEqual(winningCursor);
+  });
+  it('finishes a fixed timeout cycle even when a newer tail keeps arriving',async()=>{
+    const insert=async(prefix:string,at:string)=>runtime.DB.prepare(`INSERT INTO fb_discord_interactions
+      (interaction_id,application_id,guild_id,channel_id,discord_user_id,command_name,status,error_code,created_at,completed_at)
+      SELECT ?||value,?,?,?,?,'fixture','failed','delivery_timeout',?,? FROM json_each(?)`)
+      .bind(prefix,APPLICATION_ID,GUILD_ID,CHANNEL_ID,DISCORD_USER_ID,at,at,JSON.stringify(Array.from({length:60},(_,i)=>i))).run();
+    await insert('old-','2000-01-01T00:00:00.000Z');
+    await reconcileTimedOutDraws(runtime.DB);
+    const first=await runtime.DB.prepare('SELECT * FROM fb_discord_timeout_reconcile_cursor WHERE id=1').first<{high_completed_at:string}>();
+    expect(first?.high_completed_at).toBe('2000-01-01T00:00:00.000Z');
+    await insert('new-','2001-01-01T00:00:00.000Z');
+    await reconcileTimedOutDraws(runtime.DB);
+    const wrapped=await runtime.DB.prepare('SELECT * FROM fb_discord_timeout_reconcile_cursor WHERE id=1').first<{completed_at:string;high_completed_at:string}>();
+    expect(wrapped?.completed_at).toBe('');expect(wrapped?.high_completed_at).toBe('');
+    await reconcileTimedOutDraws(runtime.DB);
+    const next=await runtime.DB.prepare('SELECT * FROM fb_discord_timeout_reconcile_cursor WHERE id=1').first<{high_completed_at:string}>();
+    expect(next?.high_completed_at).toBe('2001-01-01T00:00:00.000Z');
+  });
+  it('rejects a stale cursor even after another pass completes a full cycle',async()=>{
+    await runtime.DB.prepare(`INSERT INTO fb_discord_interactions
+      (interaction_id,application_id,guild_id,channel_id,discord_user_id,command_name,status,error_code,created_at,completed_at)
+      SELECT 'aba-'||value,?,?,?,?,'fixture','failed','delivery_timeout','2000-01-01T00:00:00.000Z','2000-01-01T00:00:00.000Z' FROM json_each(?)`)
+      .bind(APPLICATION_ID,GUILD_ID,CHANNEL_ID,DISCORD_USER_ID,JSON.stringify(Array.from({length:60},(_,i)=>i))).run();
+    let injected=false;
+    const db=new Proxy(runtime.DB,{get(target,key){
+      if(key==='batch')return async(items:D1PreparedStatement[])=>{
+        if(!injected){injected=true;await reconcileTimedOutDraws(runtime.DB);await reconcileTimedOutDraws(runtime.DB);}
+        return target.batch(items);
+      };
+      const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
+    }});
+    expect(await reconcileTimedOutDraws(db)).toBe(0);
+    const cursor=await runtime.DB.prepare('SELECT completed_at,interaction_id,generation FROM fb_discord_timeout_reconcile_cursor WHERE id=1').first<{completed_at:string;interaction_id:string;generation:number}>();
+    expect(cursor).toEqual({completed_at:'',interaction_id:'',generation:2});
+  });
+  it('uses the intended timeout-page and draw-identity indexes',async()=>{
+    const page=await runtime.DB.prepare(`EXPLAIN QUERY PLAN SELECT interaction_id,completed_at FROM fb_discord_interactions
+      WHERE status='failed' AND error_code='delivery_timeout' AND completed_at IS NOT NULL
+        AND (completed_at>? OR (completed_at=? AND interaction_id>?)) AND (completed_at<? OR (completed_at=? AND interaction_id<=?)) ORDER BY completed_at,interaction_id LIMIT 50`)
+      .bind('','','','z','z','z').all<{detail:string}>();
+    const pagePlan=(page.results??[]).map(row=>row.detail).join('\n');
+    expect(pagePlan).toContain('fb_discord_timeout_reconcile_idx');
+    expect(pagePlan).not.toContain('USE TEMP B-TREE');
+    const lookup=await runtime.DB.prepare(`EXPLAIN QUERY PLAN SELECT x.interaction_id FROM fb_discord_interactions x WHERE x.interaction_id=?
+      AND EXISTS (SELECT 1 FROM fb_discord_installations i
+        JOIN fb_discord_identities di ON di.tenant_id=i.tenant_id AND di.discord_user_id=x.discord_user_id
+        JOIN fb_draws d ON d.tenant_id=i.tenant_id AND d.user_id=di.user_id AND d.idempotency_key='discord:' || x.interaction_id || ':open'
+        WHERE i.application_id=x.application_id AND i.guild_id=x.guild_id)`).bind('fixture').all<{detail:string}>();
+    expect((lookup.results??[]).map(row=>row.detail).join('\n')).toMatch(/SEARCH d USING (?:COVERING )?INDEX .*tenant_id=\? AND user_id=\? AND idempotency_key=\?/);
+    const attempts=await runtime.DB.prepare(`EXPLAIN QUERY PLAN SELECT attempt_id FROM fb_discord_interaction_attempts
+      WHERE status='processing' AND started_at<? ORDER BY started_at,attempt_id LIMIT 50`).bind('2100-01-01').all<{detail:string}>();
+    const attemptPlan=(attempts.results??[]).map(row=>row.detail).join('\n');
+    expect(attemptPlan).toContain('fb_discord_attempts_expiry_idx');expect(attemptPlan).not.toContain('USE TEMP B-TREE');
+    const legacy=await runtime.DB.prepare(`EXPLAIN QUERY PLAN SELECT interaction_id FROM fb_discord_interactions
+      WHERE status='processing' AND current_attempt_id IS NULL AND created_at<? ORDER BY created_at,interaction_id LIMIT 50`).bind('2100-01-01').all<{detail:string}>();
+    const legacyPlan=(legacy.results??[]).map(row=>row.detail).join('\n');
+    expect(legacyPlan).toContain('fb_discord_processing_attempt_idx');expect(legacyPlan).not.toContain('USE TEMP B-TREE');
+    const byBatch=await runtime.DB.prepare(`EXPLAIN QUERY PLAN SELECT attempt_id FROM fb_discord_interaction_attempts
+      WHERE status='expired' AND expiry_batch_id=?`).bind('fixture').all<{detail:string}>();
+    expect((byBatch.results??[]).map(row=>row.detail).join('\n')).toContain('fb_discord_attempts_expiry_batch_idx');
+    const parentUpdate=await runtime.DB.prepare(`EXPLAIN QUERY PLAN UPDATE fb_discord_interactions SET status='failed'
+      WHERE status='processing' AND current_attempt_id IN (SELECT attempt_id FROM fb_discord_interaction_attempts WHERE status='expired' AND expiry_batch_id=?)`)
+      .bind('fixture').all<{detail:string}>();
+    const parentPlan=(parentUpdate.results??[]).map(row=>row.detail).join('\n');
+    expect(parentPlan).toContain('fb_discord_processing_attempt_idx');
+    expect(parentPlan).toContain('fb_discord_attempts_expiry_batch_idx');
+    expect(parentPlan).not.toContain('USE TEMP B-TREE');
   });
 });

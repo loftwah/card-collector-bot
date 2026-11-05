@@ -18,6 +18,7 @@ import {
   getPoolPreview,
   listEligiblePools,
   listPools,
+  readDiscordDrawState,
 } from "../modules/pools";
 import { finishKey, listAchievements } from "../modules/achievements";
 import { compareNpc, listNpcProfiles } from "../modules/npcs";
@@ -166,10 +167,23 @@ function callback(message: DiscordMessage, ephemeral = false): DiscordCallback {
   };
 }
 
+function unavailableOpening(interactionId: string): DiscordCallback {
+  return callback({
+    content:"No eligible cards are available in this capsule. An earlier attempt may have completed; check your receipt or collection before trying again.",
+    components:components([[button("Check receipt",`foilbury:redeliver:${interactionId}`)]]),
+  },true);
+}
+
 function errorCallback(error: unknown, _ephemeral = true): DiscordCallback {
   const apiError = error instanceof ApiError ? error : null;
-  if (apiError && ["draw_outcome_unavailable", "unknown_commit_outcome"].includes(apiError.code)) {
-    return callback({content:"This opening may have completed. Check your collection and wallet before opening another capsule.",allowed_mentions:{parse:[]}},true);
+  if (apiError?.code === "empty_pool_uncertain") {
+    return callback({content: "No eligible cards are available in this capsule. An earlier attempt may have completed; check your collection and wallet before trying again.", allowed_mentions:{parse:[]}}, true);
+  }
+  if (apiError?.code === "draw_terminal_insufficient_funds") {
+    return stateFromError({code:'insufficient_funds',nextStep:'Claim the daily allowance with /foilbury daily, or choose a cheaper capsule from /foilbury packs.'});
+  }
+  if (apiError && ["draw_outcome_unavailable", "unknown_commit_outcome", "draw_scope_changed", "draw_scope_unavailable"].includes(apiError.code)) {
+    return callback({content: "This opening may have completed. Check your collection and wallet before opening another capsule.", allowed_mentions:{parse:[]}}, true);
   }
   if (apiError?.code === "discord_channel_policy_invalid") {
     return callback({content: "This server's channel policy needs repair by an administrator. If you were opening a capsule, check your collection before trying again.", allowed_mentions:{parse:[]}}, true);
@@ -261,7 +275,7 @@ export async function prepareDiscordDraw(
     providedScope ??
     (await resolveDiscordScope(ctx, installation, interaction.channel_id ?? null));
   if (scope.emptyReason) {
-    return { kind: "respond", callback: scopeFailureMessage(scope) };
+    return { kind: "respond", callback: unavailableOpening(interaction.id) };
   }
   const poolSlug = validatePoolSlug(requestedPool ?? "cabinet-draw");
   const poolScope = poolScopeFromDiscord(scope);
@@ -302,8 +316,8 @@ export async function prepareDiscordDraw(
     }
     throw new ApiError(
       409,
-      "empty_pool",
-      `${preview.filters.empty_reason ?? "This pool has no eligible cards right now."} Nothing was charged. Try /foilbury packs, or check your collection preferences.`,
+      "empty_pool_uncertain",
+      "The capsule is not currently available. Check your collection and wallet before trying again; an earlier attempt may have completed.",
     );
   }
   const digest = await sha256Hex(
@@ -385,6 +399,7 @@ export async function presentDiscordDraw(
     balance_after_debit: result.balance_after_debit,
     credits_total: result.credits_total,
     achievement_credits: result.achievement_credits,
+    show_settlement: false,
   });
 }
 
@@ -399,7 +414,7 @@ async function openCard(
   const scope =
     providedScope ??
     (await resolveDiscordScope(ctx, installation, interaction.channel_id ?? null));
-  if (scope.emptyReason) return scopeFailureMessage(scope);
+  if (scope.emptyReason) return unavailableOpening(interaction.id);
   const prepared = await prepareDiscordDraw(
     ctx,
     interaction,
@@ -409,6 +424,9 @@ async function openCard(
     scope,
   );
   if (prepared.kind === "respond") return prepared.callback;
+  // Re-deliver through the current actor/channel/card authorization path.
+  // Never spread the historical distribution from the idempotency row.
+  if (await readDiscordDrawState(ctx,prepared.idempotency,poolScopeFromDiscord(scope))==='completed') return redeliverReceipt(ctx,interaction,interaction.id,installation);
   const result = (await executeDraw(ctx, {
     pool: prepared.poolSlug,
     expectedRevision: prepared.expectedRevision,
@@ -474,7 +492,6 @@ async function redeliverReceipt(
     receipt.variant_id,
   ).catch(() => null);
   const print = editionPrintTitle(currentEdition.name);
-  const credits = receipt.credits_total ?? 0;
   const result = callback(
     {
       embeds: [
@@ -484,17 +501,7 @@ async function redeliverReceipt(
             : `${current.name} — ${currentVariant.name}`,
           description: [
             "This is the recorded result of your original draw. No second pull was made and no second debit was recorded.",
-            `**${receipt.price} ${receipt.currency_symbol}** was charged. Balance recorded with that draw: **${receipt.balance_after} ${receipt.currency_symbol}**.`,
-            ...(credits > 0
-              ? [
-                  `Settled rewards: **+${credits} ${receipt.currency_symbol}**.`,
-                ]
-              : []),
-            ...(receipt.settlement_pending
-              ? [
-                  "Reward settlement is still being confirmed from the ledger. The draw, serial and debit are already recorded and will not be paid twice.",
-                ]
-              : []),
+            `The opening price was **${receipt.price} ${receipt.currency_symbol}**. Check your wallet for your current balance and rewards.`,
           ].join("\n\n"),
           color: 0x245c4b,
           fields: [

@@ -64,6 +64,7 @@ export interface DiscordDrawCommitted {
 
 export interface DiscordDrawSession {
   readonly interactionId: string;
+  readonly attemptId?: string | null;
 }
 
 export interface DiscordDrawDeliveryOutcome {

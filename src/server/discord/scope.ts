@@ -13,6 +13,8 @@ import {
 import { channelAudienceFor } from "./context";
 import { assertChannelAllowed, parseChannelPolicy } from "./channel-policy";
 import type { DiscordInstallation } from "./types";
+import { readDrawScopeEpoch, type DrawScopeEpoch } from "../modules/draw-scope-epoch";
+import { liveViewerContext } from "../modules/live-viewer";
 
 export interface DiscordScopeCollection {
   id: string;
@@ -28,6 +30,8 @@ export interface DiscordScopeCollection {
 }
 
 export interface DiscordScope {
+  drawEpoch?: DrawScopeEpoch | null;
+  drawInstallation?: { id: string; botId: string | null; allowlist: string; audience: string | null; collections: string | null; revision: number; channelKey: string | null };
   installationId: string;
   botId: string;
   tenantId: string;
@@ -82,6 +86,14 @@ export async function resolveDiscordScope(
   installation: DiscordInstallation,
   channelId: string | null | undefined,
 ): Promise<DiscordScope> {
+  // Capture before the first policy or catalogue read. The transaction checks
+  // this exact snapshot after all preview reads have completed.
+  const drawEpoch = ctx.discordPrincipal ? await readDrawScopeEpoch(ctx) : null;
+  if (ctx.discordPrincipal) {
+    const live = ctx.user && await liveViewerContext(ctx,ctx.user.id);
+    if (!live) throw new ApiError(403,"discord_access_changed","Your access changed. Ask the Bot Owner for help.");
+    ctx=live;
+  }
   const channel = channelId ?? null;
   const { allowedChannels } = parseChannelPolicy(installation);
   // Headless previews may omit a Discord channel; they then use public audience.
@@ -104,6 +116,8 @@ export async function resolveDiscordScope(
     DiscordScope,
     "collectionIds" | "collections" | "emptyReason" | "digest" | "configuredCollectionIds"
   > = {
+    drawEpoch,
+    drawInstallation: { id: installation.id, botId: installation.bot_id ?? null, allowlist: installation.channel_allowlist_json, audience: installation.channel_audience_json ?? null, collections: installation.collection_allowlist_json ?? null, revision: Number(installation.configuration_revision ?? 1), channelKey:installation.channel_key??null },
     installationId: installation.id,
     botId: resolvedBot?.id ?? "",
     tenantId: installation.tenant_id,
@@ -181,9 +195,9 @@ export async function resolveDiscordScope(
       JOIN fb_users u ON u.id=di.user_id AND u.disabled_at IS NULL AND u.is_synthetic=0
       JOIN fb_memberships m ON m.user_id=u.id AND m.tenant_id=di.tenant_id AND m.status='active' AND m.revoked_at IS NULL
       JOIN fb_discord_installations ins ON ins.tenant_id=di.tenant_id AND ins.id=? AND ins.application_id=? AND ins.guild_id=? AND ins.active=1 AND ins.revoked_at IS NULL AND ins.game_enabled=1
-        AND ins.bot_id IS ? AND ins.channel_allowlist_json IS ? AND ins.channel_audience_json IS ? AND ins.collection_allowlist_json IS ? AND ins.configuration_revision IS ?
+        AND ins.bot_id IS ? AND ins.channel_allowlist_json IS ? AND ins.channel_audience_json IS ? AND ins.collection_allowlist_json IS ? AND ins.configuration_revision IS ? AND ins.channel_key IS ?
       WHERE di.tenant_id=? AND di.user_id=? AND di.discord_user_id=? AND di.revoked_at IS NULL`,
-      installation.id,principal.applicationId,principal.guildId,installation.bot_id??null,installation.channel_allowlist_json,installation.channel_audience_json??null,installation.collection_allowlist_json??null,installation.configuration_revision??1,installation.tenant_id,ctx.user?.id??'',principal.discordUserId);
+      installation.id,principal.applicationId,principal.guildId,installation.bot_id??null,installation.channel_allowlist_json,installation.channel_audience_json??null,installation.collection_allowlist_json??null,installation.configuration_revision??1,installation.channel_key??null,installation.tenant_id,ctx.user?.id??'',principal.discordUserId);
     if (!live || principal.channelId!==channel) return empty("Your Discord access changed. Reconnect your account or ask the Bot Owner for help.");
     provisionedOwner=ctx.user?.id==='usr_prod_owner' && live.platform_admin===1 && live.active_platform_admin===1;
   }
@@ -366,6 +380,8 @@ export function poolScopeFromDiscord(scope: DiscordScope): {
   digest: string;
   requireFiled: true;
   aiArtEnabled: boolean;
+  drawEpoch?: DrawScopeEpoch | null;
+  drawInstallation?: DiscordScope["drawInstallation"];
 } {
   return {
     collectionIds: scope.collectionIds,
@@ -373,6 +389,8 @@ export function poolScopeFromDiscord(scope: DiscordScope): {
     digest: scope.digest,
     requireFiled: true,
     aiArtEnabled: scope.aiArtEnabled,
+    drawEpoch: scope.drawEpoch,
+    drawInstallation: scope.drawInstallation,
   };
 }
 

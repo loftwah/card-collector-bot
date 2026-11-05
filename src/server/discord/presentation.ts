@@ -1174,6 +1174,8 @@ export interface RevealReceiptInput extends RevealReceiptDomainFields {
   balance_after_debit?: number;
   credits_total?: number;
   achievement_credits?: Array<{ name: string; amount: number }>;
+  /** Only show settlement figures when the caller has verified them. */
+  show_settlement?: boolean;
 }
 
 function publicRenderUrl(input: RevealReceiptInput): string | undefined {
@@ -1215,10 +1217,10 @@ export function revealReceiptMessage(input: RevealReceiptInput): DiscordCallback
     { name: "Serial", value: `\`${serial}\``, inline: true },
     { name: "Opened from", value: `${poolName} · ${price} ${symbol}`, inline: true },
     { name: "Opening debit", value: `−${price} ${symbol}`, inline: true },
-    ...(debitBalance === null
+    ...(input.show_settlement === false || debitBalance === null
       ? []
       : [{ name: "After debit", value: `${debitBalance} ${symbol}`, inline: true }]),
-    ...(credits > 0
+    ...(input.show_settlement !== false && credits > 0
       ? [
           {
             name: "Reward credited",
@@ -1231,7 +1233,9 @@ export function revealReceiptMessage(input: RevealReceiptInput): DiscordCallback
           },
         ]
       : []),
-    { name: "Settled balance", value: `${balance} ${symbol}`, inline: true },
+    ...(input.show_settlement === false
+      ? [{ name:"Wallet", value:"Open your wallet to check your current balance and rewards.", inline:true }]
+      : [{ name: "Settled balance", value: `${balance} ${symbol}`, inline: true }]),
     { name: "Odds", value: `${(probability / 100).toFixed(2)}% for this copy`, inline: false },
   ];
   if (!canShare) {

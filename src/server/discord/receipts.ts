@@ -595,7 +595,7 @@ export async function markDeliveryVisibility(
   visibility: "private" | "public" | "private_fallback",
 ): Promise<void> {
   await db
-    .prepare("UPDATE fb_discord_interactions SET delivery_visibility = ? WHERE interaction_id = ?")
+    .prepare("UPDATE fb_discord_interactions SET delivery_visibility = ? WHERE interaction_id = ? AND delivery_visibility IS NULL")
     .bind(visibility, interactionId)
     .run()
     .catch(() => undefined);

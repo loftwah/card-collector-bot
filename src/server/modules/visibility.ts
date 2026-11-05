@@ -1,5 +1,6 @@
 import { ApiError, type Ctx } from "../context";
 import { all, first } from "../db";
+import { liveViewerContext } from "./live-viewer";
 
 /**
  * Viewing audience is deliberately separate from collection lifecycle
@@ -47,7 +48,11 @@ export function audienceRank(value: string): number {
 }
 
 export async function viewerAccess(ctx: Ctx): Promise<ViewerAccess> {
-  const user = ctx.user;
+  // Discord contexts are built before later reads and must not retain an
+  // elevated membership or platform role after that authority changes.
+  const user = ctx.discordPrincipal && ctx.user
+    ? (await liveViewerContext(ctx, ctx.user.id))?.user ?? null
+    : ctx.user;
   if (!user) {
     return {
       signedIn: false,
@@ -74,8 +79,23 @@ export async function viewerAccess(ctx: Ctx): Promise<ViewerAccess> {
       WHERE user_id = ? AND revoked_at IS NULL`,
     user.id,
   );
-  const managesCurrentTenant =
-    user.platformAdmin || user.role === "owner" || user.role === "editor" || user.role === "economy_admin";
+  const discordAdminTenants = ctx.discordPrincipal ? await all<{tenant_id:string}>(ctx.db,`
+    SELECT DISTINCT m.tenant_id FROM fb_memberships m JOIN fb_bots b ON b.tenant_id=m.tenant_id AND b.status='active'
+     WHERE m.user_id=? AND m.status='active' AND m.revoked_at IS NULL AND (
+       (m.role='owner' AND b.owner_user_id=m.user_id)
+       OR (m.role IN ('editor','economy_admin') AND EXISTS (
+         SELECT 1 FROM fb_bot_admins ba WHERE ba.bot_id=b.id AND ba.user_id=m.user_id AND ba.role='admin' AND ba.status='active' AND ba.revoked_at IS NULL
+           AND json_type(CASE WHEN json_valid(ba.capabilities_json) THEN ba.capabilities_json ELSE 'null' END)='array'
+           AND json_type(CASE WHEN json_valid(m.capabilities_json) THEN m.capabilities_json ELSE 'null' END)='array'
+           AND NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(ba.capabilities_json) THEN ba.capabilities_json ELSE '[]' END) WHERE type<>'text')
+           AND NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(m.capabilities_json) THEN m.capabilities_json ELSE '[]' END) WHERE type<>'text')
+           AND EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(ba.capabilities_json) THEN ba.capabilities_json ELSE '[]' END) WHERE value='content')
+           AND EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(m.capabilities_json) THEN m.capabilities_json ELSE '[]' END) WHERE value='content')
+       )))`,user.id) : null;
+  const adminTenantIds = new Set(discordAdminTenants
+    ? discordAdminTenants.map(row=>row.tenant_id)
+    : memberships.filter((row) => ["owner", "editor", "economy_admin"].includes(row.role)).map((row) => row.tenant_id));
+  const managesCurrentTenant = user.platformAdmin || (ctx.discordPrincipal ? adminTenantIds.has(ctx.tenant.id) : user.role === "owner" || user.role === "editor" || user.role === "economy_admin");
   const globalScope = user.globalCollectionScope;
   return {
     signedIn: true,
@@ -84,9 +104,7 @@ export async function viewerAccess(ctx: Ctx): Promise<ViewerAccess> {
     globalCollectionAdmin: Boolean(globalScope),
     globalCollectionIds: globalScope && !globalScope.all ? new Set(globalScope.collectionIds) : null,
     memberTenantIds: new Set(memberships.map((row) => row.tenant_id)),
-    adminTenantIds: new Set(
-      memberships.filter((row) => ["owner", "editor", "economy_admin"].includes(row.role)).map((row) => row.tenant_id),
-    ),
+    adminTenantIds,
     mainAlbumTenantId: ctx.tenant.id,
     explicitCollectionIds: new Set(grants.map((row) => row.collection_id)),
     managesCurrentTenant,

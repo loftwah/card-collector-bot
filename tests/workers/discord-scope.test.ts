@@ -191,6 +191,11 @@ describe("Discord configured-server scope", () => {
     const identity=await runtime.DB.prepare("SELECT user_id FROM fb_discord_identities WHERE tenant_id=? AND discord_user_id=?").bind(player.tenant.id,DISCORD_USER_ID).first<{user_id:string}>();
     const draw=await runtime.DB.prepare("SELECT ci.serial FROM fb_draws d JOIN fb_card_instances ci ON ci.id=d.instance_id WHERE d.idempotency_key='discord:scoped-receipt-origin:open'").first<{serial:string}>();
     expect(identity?.user_id).toBeTruthy();expect(draw?.serial).toBeTruthy();
+    const stolen=interaction({custom_id:"foilbury:redeliver:scoped-receipt-origin",component_type:2},{type:3});
+    stolen.member.user={id:"111111111111111111",username:"another-player",global_name:"Another player"};
+    const stolenReply=JSON.stringify((await send(stolen)).data);
+    expect(stolenReply).not.toContain('Test One');
+    expect(stolenReply).not.toContain(draw!.serial);
     const now=new Date().toISOString();
     await runtime.DB.prepare("UPDATE fb_collections SET view_audience='members',public_approved_at=NULL WHERE id='col_test_public'").run();
     await runtime.DB.prepare("INSERT INTO fb_collection_viewers (collection_id,user_id,granted_by,created_at) VALUES ('col_test_public',?,?,?)").bind(identity!.user_id,owner.user!.id,now).run();

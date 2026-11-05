@@ -272,8 +272,9 @@ describe("Discord HTTP interactions", () => {
     );
     const openFields = open.payload.data?.embeds?.[0]?.fields?.map((field) => field.name) ?? [];
     expect(openFields).toEqual(
-      expect.arrayContaining(["Opening debit", "Settled balance", "Serial"]),
+      expect.arrayContaining(["Opening debit", "Wallet", "Serial"]),
     );
+    expect(openFields).not.toContain("Settled balance");
     expect(open.payload.data?.flags).toBe(64);
 
     const card = await send(

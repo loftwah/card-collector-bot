@@ -197,6 +197,13 @@ export async function ensureDiscordPlayer(
     };
   }
 
+  // A revoked Discord link is an explicit authority change, not a first-time
+  // onboarding opportunity. The current product has no qualified restore flow.
+  const revoked = await first<{ id: string }>(env.DB,
+    "SELECT id FROM fb_discord_identities WHERE tenant_id=? AND discord_user_id=? AND revoked_at IS NOT NULL LIMIT 1",
+    tenant.id, discordUser.id);
+  if (revoked) throw new ApiError(403, "discord_identity_revoked", "This Discord account's access has been revoked. Ask the Bot Owner for help.");
+
   const email = `discord.${discordUser.id}@players.foilbury.invalid`;
   let user = await first<{
     id: string;
