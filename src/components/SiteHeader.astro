@@ -81,7 +81,7 @@ if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform"
       )}
       <ThemeToggle client:load />
       <details class="relative md:hidden">
-        <summary class="btn btn-ghost btn-sm cursor-pointer list-none" aria-label="Open menu">
+        <summary class="btn btn-ghost btn-sm cursor-pointer list-none" aria-label="Menu">
           Menu
         </summary>
         <div class="absolute right-0 top-11 z-30 min-w-52 border border-[var(--line-strong)] bg-[var(--paper)] p-2 shadow-xl">
@@ -124,7 +124,9 @@ if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform"
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
     document.querySelectorAll<HTMLDetailsElement>(".site-header details[open]").forEach((details) => {
+      const returnFocus = details.contains(document.activeElement);
       details.open = false;
+      if (returnFocus) details.querySelector<HTMLElement>("summary")?.focus();
     });
   });
 </script>
