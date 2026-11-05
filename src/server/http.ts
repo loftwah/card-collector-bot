@@ -60,9 +60,9 @@ export async function findIdempotent(
   operation: string,
   input: IdempotencyInput,
 ): Promise<{ response: unknown; replayed: boolean } | null> {
-  const row = await first<{ request_digest: string; response_json: string }>(
+  const row = await first<{ request_digest: string; response_json: string; status: string }>(
     ctx.db,
-    `SELECT request_digest, response_json FROM fb_idempotency_keys
+    `SELECT request_digest, response_json, status FROM fb_idempotency_keys
       WHERE tenant_id = ? AND actor_type = ? AND actor_id = ? AND operation = ? AND idempotency_key = ?`,
     ctx.tenant.id,
     ctx.actor.type,
@@ -77,6 +77,12 @@ export async function findIdempotent(
       "idempotency_conflict",
       "This idempotency key was already used with a different request.",
     );
+  }
+  // A failed or still-running draw is not a completed receipt. Do not expose
+  // its stored payload or claim a specific outcome without a live-authorized
+  // reader. Existing completed receipts and other operations remain unchanged.
+  if (operation === "draw.execute" && row.status !== "completed") {
+    throw new ApiError(503, "draw_outcome_unavailable", "This opening's outcome could not be confirmed. Check your collection before opening another capsule.");
   }
   return { response: JSON.parse(row.response_json), replayed: true };
 }
