@@ -8,7 +8,6 @@ const canonicalMark = manifest.marks.find((item) => item.slug === canonical) ?? 
 const marks = manifest.marks;
 const wordmarks = manifest.wordmarks;
 const social = manifest.social;
-const status = manifest.system_status;
 
 const boards = manifest.systems.map((system) => {
   const asset = (id: string) => {
@@ -50,23 +49,32 @@ const formatBytes = (bytes: number) => {
 ---
 
 <BaseLayout
-  title="Foilbury brand systems · Signal Fold selected"
-  description="Three complete Foilbury identity systems compared at real Discord sizes. Signal Fold is selected and applied to the Foilbury application; Bastion and Aperture remain available."
-  shareImage="/brand/kit/social/og-1200x630.png"
+  title="Foilbury identity archive"
+  description="Previous Foilbury identity studies and their recorded application history."
 >
+  <section class="container py-10" aria-labelledby="colophon-heading">
+    <h1 class="display-sm text-3xl" id="colophon-heading">Foilbury colophon</h1>
+    <p class="mt-3 max-w-2xl text-[var(--muted)]">
+      The working mark pairs a letterpress-style initial with a pair of collectible cards.
+      This site candidate was selected by the agent; it has not been applied to the Discord application.
+    </p>
+    <div class="mt-5 flex items-center gap-4">
+      <img src="/brand/kit/colophon/mark.svg" alt="Foilbury card colophon" width="64" height="64" />
+      <a class="btn btn-secondary btn-sm" href="/brand/kit/colophon/manifest.json">Asset manifest</a>
+    </div>
+  </section>
   <section class="signal-rule" aria-hidden="true"></section>
   <section class="container py-12 md:py-16">
     <header class="bs-hero">
       <div>
-        <h1 class="display mt-3 text-[clamp(2.8rem,7.2vw,6rem)] uppercase">Three systems.<br />One chosen.</h1>
+        <h2 class="display mt-3 text-[clamp(2.8rem,7.2vw,6rem)] uppercase">Previous identity studies.</h2>
         <p class="mt-5 max-w-2xl text-lg leading-relaxed text-[var(--muted)]">
-          Three complete, original identity directions for Foilbury, compared at 32px, 64px, 512px and Discord banner
-          size. <strong class="text-[var(--ink)]">Signal Fold</strong> was selected under delegated authority on
-          2026/11/04 and applied to the Foilbury application icon and description. Bastion and Aperture remain
-          available. The wider Loftwah guild identity was not replaced.
+          This archive keeps three earlier directions and their exports. <strong class="text-[var(--ink)]">Signal Fold</strong>
+          was applied under delegated authority on 2026/11/04 and was subsequently rejected. Its record remains here
+          for provenance and rollback; Discord changes are tracked separately.
         </p>
         <div class="bs-hero__facts">
-          <span class="bs-stamp">Selected · Signal Fold</span>
+          <span class="bs-stamp">Historic · Signal Fold</span>
           <span class="bs-hero__fact">2 alternatives retained</span>
           <span class="bs-hero__fact">18 assets per system</span>
           <span class="bs-hero__fact">0 paid generations</span>
@@ -74,11 +82,9 @@ const formatBytes = (bytes: number) => {
       </div>
       <aside class="bs-hero__panel" aria-labelledby="decision-state">
         <p class="studio-stat__label">Decision state</p>
-        <p class="bs-hero__state" id="decision-state">Selected</p>
+        <p class="bs-hero__state" id="decision-state">Superseded</p>
         <p class="text-sm leading-relaxed text-[var(--muted)]">
-          <strong class="text-[var(--ink)]">Signal Fold</strong> keeps the folded-card geometry that belongs to a
-          collecting product, reads as a deliberate F at 32px and needs no new palette to stay coherent across the
-          site, cards and Discord.
+          Signal Fold is retained as an earlier applied identity, not as an accepted final direction.
         </p>
         <dl class="bs-state-list">
           <div><dt>Application avatar</dt><dd>Applied</dd></div>
@@ -126,7 +132,7 @@ const formatBytes = (bytes: number) => {
                 <p>{system.tagline}</p>
               </div>
               <span class="bs-pending">
-                {system.slug === selection.selected_system ? "Selected · applied" : "Retained alternative"}
+                {system.slug === selection.selected_system ? "Previously applied · rejected" : "Retained alternative"}
               </span>
             </header>
 
@@ -445,13 +451,13 @@ const formatBytes = (bytes: number) => {
           </ul>
           <div class="bs-provenance__links">
             <a class="btn btn-primary btn-sm" href="/brand/kit/manifest.json" download>Download manifest</a>
-            <a class="btn btn-secondary btn-sm" href={canonicalMark.svg} download>Current mark SVG</a>
+            <a class="btn btn-secondary btn-sm" href={canonicalMark.svg} download>Historic mark SVG</a>
           </div>
         </aside>
       </div>
 
       <div class="bs-gate">
-        <h3 class="display-sm text-2xl uppercase">Selected. Applied where supported.</h3>
+        <h3 class="display-sm text-2xl uppercase">Historical application record.</h3>
         <ol>
           <li><strong>Signal Fold</strong> is the recorded selection, decided by the agent under delegated authority on 2026/11/04.</li>
           <li>The Foilbury application icon and description are applied through Discord's official API; the previous values are recorded for rollback.</li>
@@ -460,8 +466,7 @@ const formatBytes = (bytes: number) => {
           <li>The owner can still change the selection later. Bastion, Aperture, the vector masters and the legacy kit remain intact.</li>
         </ol>
         <p class="bs-gate__note">
-          This page is a selection and provenance record, not a second asset CMS. The selected tokens are carried into
-          the shared product and Discord presentation work.
+          This page is a historical provenance record, not a second asset CMS or a claim of current acceptance.
         </p>
       </div>
     </section>
@@ -472,9 +477,8 @@ const formatBytes = (bytes: number) => {
           <h2 class="display-sm text-3xl uppercase" id="legacy-heading">The incumbent kit stays intact.</h2>
         </div>
         <p>
-          Signal Fold is now the selected identity. The existing mark masters, wordmarks and social exports are
-          preserved below alongside the two retained alternatives; nothing was deleted and the selection can be
-          reversed.
+          The existing mark masters, wordmarks and social exports are preserved below alongside the two retained
+          alternatives. The previously applied Signal Fold direction was subsequently rejected.
         </p>
       </div>
 
@@ -484,7 +488,7 @@ const formatBytes = (bytes: number) => {
           <div class="bs-legacy__current">
             <img src={canonicalMark.png} alt="Signal Fold mark" width="88" height="88" loading="lazy" />
             <div>
-              <p class="studio-stat__label">Selected identity · agent-delegated</p>
+              <p class="studio-stat__label">Historic identity · agent-delegated</p>
               <p class="display-sm text-2xl uppercase">Signal Fold</p>
               <p class="text-sm text-[var(--muted)]">{canonicalMark.note}</p>
               <div class="mt-3 flex flex-wrap gap-2">
@@ -501,7 +505,7 @@ const formatBytes = (bytes: number) => {
                 <div>
                   <div class="flex items-start justify-between gap-2">
                     <h3 class="display-sm text-xl uppercase">{item.label}</h3>
-                    {item.slug === canonical ? <span class="badge badge-signal">Canonical</span> : <span class="badge">Reference</span>}
+                    {item.slug === canonical ? <span class="badge badge-signal">Historic</span> : <span class="badge">Reference</span>}
                   </div>
                   <p class="mt-1 text-xs leading-relaxed text-[var(--muted)]">{item.note}</p>
                   <div class="mt-3 flex flex-wrap gap-2">

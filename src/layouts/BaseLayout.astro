@@ -9,7 +9,7 @@ interface Props {
   shareImage?: string;
   wide?: boolean;
 }
-const { title, description, noIndex = false, shareImage = "/brand/social-preview.jpg" } = Astro.props;
+const { title, description, noIndex = false, shareImage = "/brand/kit/colophon/social-preview.png" } = Astro.props;
 const session = Astro.locals.foilbury;
 const theme = Astro.locals.theme ?? "system";
 const canonical = new URL(Astro.url.pathname, Astro.site ?? Astro.url).href;
@@ -27,10 +27,10 @@ const pageTitle = title.includes("Foilbury") ? title : `${title} · Foilbury`;
     <link rel="preload" href="/fonts/geist/GeistSansVF.woff2" as="font" type="font/woff2" crossorigin />
     {noIndex ? <meta name="robots" content="noindex" /> : null}
     <meta name="foilbury-csrf" content={session?.csrfToken ?? ""} />
-    <meta name="theme-color" content="#141512" />
-    <link rel="icon" href="/brand/favicon-32.png" sizes="32x32" type="image/png" />
-    <link rel="icon" href="/brand/favicon-16.png" sizes="16x16" type="image/png" />
-    <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
+    <meta name="theme-color" content="#27332e" />
+    <link rel="icon" href="/brand/kit/colophon/favicon-32.png" sizes="32x32" type="image/png" />
+    <link rel="icon" href="/brand/kit/colophon/favicon-16.png" sizes="16x16" type="image/png" />
+    <link rel="apple-touch-icon" href="/brand/kit/colophon/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Foilbury" />
@@ -38,6 +38,9 @@ const pageTitle = title.includes("Foilbury") ? title : `${title} · Foilbury`;
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
     <meta property="og:image" content={new URL(shareImage, Astro.site ?? Astro.url).href} />
+    {shareImage === "/brand/kit/colophon/social-preview.png" ? (
+      <meta property="og:image:alt" content="Foilbury: a home for your cards. Free to play." />
+    ) : null}
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={pageTitle} />
     <meta name="twitter:description" content={description} />

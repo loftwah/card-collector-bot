@@ -742,6 +742,51 @@ select.select option {
   min-width: 44px;
 }
 
+.brand-wordmark,
+.brand-symbol {
+  display: inline-block;
+  flex: none;
+  background: currentColor;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+}
+
+.brand-wordmark {
+  width: 76px;
+  height: 22px;
+  mask-image: url("/brand/kit/colophon/wordmark.svg");
+  -webkit-mask-image: url("/brand/kit/colophon/wordmark.svg");
+}
+
+@media (min-width: 360px) {
+  .brand-wordmark {
+    width: 96px;
+    height: 26px;
+  }
+}
+
+.brand-wordmark--large {
+  width: 110px;
+  height: 30px;
+}
+
+.brand-symbol {
+  mask-image: url("/brand/kit/colophon/mark-transparent.svg");
+  -webkit-mask-image: url("/brand/kit/colophon/mark-transparent.svg");
+}
+
+@media (forced-colors: active) {
+  .brand-wordmark,
+  .brand-symbol {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+  }
+}
+
 .site-header .btn-sm {
   padding-inline: 0.5rem;
   white-space: nowrap;

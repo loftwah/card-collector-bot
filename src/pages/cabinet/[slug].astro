@@ -21,7 +21,7 @@ const variants = clean.editions.flatMap((edition) =>
 );
 const setName = clean.sets[0]?.name ?? null;
 ---
-<BaseLayout title={`${clean.name} · Foilbury`} description={clean.description} shareImage={variants[0]?.render_url ?? "/brand/social-preview.jpg"}>
+<BaseLayout title={`${clean.name} · Foilbury`} description={clean.description} shareImage={variants[0]?.render_url ?? "/brand/kit/colophon/social-preview.png"}>
   <script type="application/ld+json" set:html={JSON.stringify({
     "@context": "https://schema.org",
     "@type": "VisualArtwork",
@@ -30,7 +30,7 @@ const setName = clean.sets[0]?.name ?? null;
     creator: { "@type": "Organization", name: "Foilbury" },
     isPartOf: clean.collections[0] ? { "@type": "CollectionPage", name: clean.collections[0].name } : undefined,
     genre: clean.source_work ?? "Collectible card",
-    image: new URL(variants[0]?.render_url ?? "/brand/social-preview.jpg", Astro.site ?? Astro.url).href,
+    image: new URL(variants[0]?.render_url ?? "/brand/kit/colophon/social-preview.png", Astro.site ?? Astro.url).href,
     url: new URL(Astro.url.pathname, Astro.site ?? Astro.url).href,
   })} />
   <script type="application/ld+json" set:html={JSON.stringify({

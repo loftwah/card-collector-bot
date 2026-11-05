@@ -1,0 +1,103 @@
+{
+  "schema": 1,
+  "status": "local-candidate",
+  "decision": "agent-authored; not owner approval",
+  "font": "Fraunces, The Fraunces Project Authors, SIL Open Font License 1.1",
+  "font_source": "public/fonts/Fraunces.ttf",
+  "social_font": "Manrope, The Manrope Project Authors, SIL Open Font License 1.1",
+  "social_font_source": "public/fonts/Manrope.ttf",
+  "social_note": "Vector-only provisional social image; no character artwork or invented card contents.",
+  "generator": "scripts/brand/generate-colophon.mjs",
+  "settings": {
+    "wght": 600,
+    "opsz": 72,
+    "SOFT": 30,
+    "WONK": 0,
+    "monogram": "F on 5:7 card with second card",
+    "wordmarkTracking": 30,
+    "background": "#27332e",
+    "foreground": "#f7f5ef"
+  },
+  "files": [
+    {
+      "name": "FONT-LICENSE.txt",
+      "sha256": "cd3384cafac6f2bddc3955273958a2e029f97027c8037ac539ef5744a77b579e"
+    },
+    {
+      "name": "MANROPE-LICENSE.txt",
+      "sha256": "d826ab6583b12c26807d8716a545bdbbb672df04f48608a364ba9efdbe501c30"
+    },
+    {
+      "name": "apple-touch-icon.png",
+      "sha256": "c7fcfd971f91db80bac4e613bf8aa3fe5febb7c616f0d270f70a16f0126b064a"
+    },
+    {
+      "name": "discord-avatar-1024.png",
+      "sha256": "c1d097f933af28e508f677f77f3db5bb74ec0a04b796e20722a55412637643ca"
+    },
+    {
+      "name": "favicon-16.png",
+      "sha256": "34bb071ee89601f0788745574f582215798737b027f7b8a9d0b0ba5c7e3a181c"
+    },
+    {
+      "name": "favicon-32.png",
+      "sha256": "222b3dd36e2c8b105b827b64a8d8a158ae4fd7743a3d5bc91ace0f9936364a04"
+    },
+    {
+      "name": "favicon-48.png",
+      "sha256": "a8efc8e22bf5076ee38b66156d33cdfaf9bbae8852d26224ec49827192d0ec19"
+    },
+    {
+      "name": "icon-192-maskable.png",
+      "sha256": "a60c1ef27d26a571b76cbe12ebb1d2524668fbe83b597f7bd332d491c825d0af"
+    },
+    {
+      "name": "icon-192.png",
+      "sha256": "5b7d6678f68ce2e63652c62d50cbf34d58c4fb025ae45d0bf00a97d566b19a94"
+    },
+    {
+      "name": "icon-512-maskable.png",
+      "sha256": "d0bfba4a26e54bc6199a6040361c4853efeb6999ed07ea9808c2eb3b9febffd7"
+    },
+    {
+      "name": "icon-512.png",
+      "sha256": "fcb8145a624a62cc09559b62ffa799a651a390678888442424e539861f1db9b7"
+    },
+    {
+      "name": "mark-reverse.svg",
+      "sha256": "912ab701ab6d003038faa2077b9847098b000c42ab05249c8c6bdc04b02589c4"
+    },
+    {
+      "name": "mark-transparent.svg",
+      "sha256": "4f30d8bee0b867b749132811f2792c4d66c79e52ace12092223087102388cc40"
+    },
+    {
+      "name": "mark.svg",
+      "sha256": "0ede1b7910a62db9e833825c0091d0112f92f0a48419bf45cca595209dd04d68"
+    },
+    {
+      "name": "maskable.svg",
+      "sha256": "34b4b0413db0ee406326dafedf6213da039b6461a0fbb02ae97edb70be1e27ef"
+    },
+    {
+      "name": "social-master.svg",
+      "sha256": "9fc017ce9ba7b50b4d31d3f3e7fe48a9d61197a8c1ecd6f737baa8f5d7130c24"
+    },
+    {
+      "name": "social-preview.png",
+      "sha256": "13685c8973b35e57a1d15b928749d4c71f14689ba9c2c01b0a20a3a74c5d7989"
+    },
+    {
+      "name": "wordmark-ink.svg",
+      "sha256": "81be7d810645afefac00f6c17400b75b57b437dd988d4a109bb1ad34195c137b"
+    },
+    {
+      "name": "wordmark-reverse.svg",
+      "sha256": "aafed8c1d91c422e245f57fc8765f276707df6cecfb57127890f29b28f54fdaf"
+    },
+    {
+      "name": "wordmark.svg",
+      "sha256": "1f3e6864d3db46828b84178e5640ac59afb1d4ba4c85c1dfbf477884490391cb"
+    }
+  ]
+}

@@ -162,6 +162,9 @@ importers:
       dotenv:
         specifier: 18.0.9
         version: 18.0.9
+      fontkitten:
+        specifier: 1.0.3
+        version: 1.0.3
       prettier:
         specifier: 3.9.10
         version: 3.9.10
