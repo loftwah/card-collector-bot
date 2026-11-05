@@ -491,7 +491,7 @@ export async function getMemberTradeInventory(ctx: Ctx, memberId: string) {
     `WITH principal AS (
     SELECT u.id AS user_id FROM fb_users u
     JOIN fb_memberships m ON m.user_id = u.id AND m.tenant_id = ?
-    WHERE u.id = ? AND u.disabled_at IS NULL AND m.status = 'active' AND m.revoked_at IS NULL
+    WHERE u.id = ? AND u.disabled_at IS NULL AND u.is_synthetic = 0 AND m.status = 'active' AND m.revoked_at IS NULL
       AND (EXISTS (SELECT 1 FROM fb_sessions s WHERE s.id = ? AND s.user_id = u.id AND s.tenant_id = m.tenant_id
              AND s.revoked_at IS NULL AND julianday(s.expires_at) > julianday('now'))
         OR EXISTS (SELECT 1 FROM fb_agent_tokens tok JOIN fb_agent_grants g ON g.id = tok.grant_id
@@ -515,7 +515,7 @@ export async function getMemberTradeInventory(ctx: Ctx, memberId: string) {
       SELECT 1 FROM fb_bots b WHERE b.tenant_id = ci.tenant_id AND b.status <> 'archived' AND b.ai_art_enabled = 1))
     AND EXISTS (SELECT 1 FROM fb_memberships target JOIN fb_users tu ON tu.id = target.user_id
       WHERE target.tenant_id = ci.tenant_id AND target.user_id = ci.user_id
-        AND target.status = 'active' AND target.revoked_at IS NULL AND tu.disabled_at IS NULL)
+        AND target.status = 'active' AND target.revoked_at IS NULL AND tu.disabled_at IS NULL AND tu.is_synthetic = 0)
     AND EXISTS (SELECT 1 FROM fb_collection_cards cc WHERE cc.card_id = cd.id)
     AND NOT EXISTS (
       SELECT 1 FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id

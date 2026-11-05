@@ -212,6 +212,73 @@ describe("HTTP trade peer visibility", () => {
     expect(await getMemberTradeInventory(ctx, owner.user!.id)).toEqual([]);
     expect(injected).toBe(true);
   });
+  it.each(["disabled", "synthetic"] as const)(
+    "withholds the shelf when a principal becomes %s before the read",
+    async (change) => {
+      const owner = await ctxFor("cabinet", "owner@foilbury.local");
+      const player = await ctxFor("cabinet", "player@foilbury.local");
+      const fixture = await fixturePool(owner);
+      await makeInstance(owner, owner.user!.id, fixture, "IDENTITY-RACE");
+      const session = await createSession(runtime.DB, player.tenant, player.user!);
+      const ctx = await buildContext(
+        new Request("http://localhost:5173/api/v1/members/x/trade-items", {
+          headers: { cookie: `fb_session=${session.token}` },
+        }),
+      );
+      let injected = false;
+      ctx.db = beforeInventoryRead(runtime.DB, async () => {
+        injected = true;
+        if (change === "disabled")
+          await runtime.DB.prepare("UPDATE fb_users SET disabled_at = ? WHERE id = ?")
+            .bind(new Date().toISOString(), player.user!.id)
+            .run();
+        else
+          await runtime.DB.prepare("UPDATE fb_users SET is_synthetic = 1 WHERE id = ?")
+            .bind(player.user!.id)
+            .run();
+      });
+      expect(await getMemberTradeInventory(ctx, owner.user!.id)).toEqual([]);
+      expect(injected).toBe(true);
+    },
+  );
+  it("withholds the shelf when an agent's represented user becomes synthetic before the read", async () => {
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const fixture = await fixturePool(owner);
+    await makeInstance(owner, owner.user!.id, fixture, "AGENT-SYNTHETIC-RACE");
+    const grant = await createAgentGrant(owner, {
+      agentName: "synthetic-race",
+      representedUserId: player.user!.id,
+      scopes: ["inventory:read"],
+      expiresInDays: 1,
+    });
+    const ctx = await buildContext(
+      new Request("http://localhost:5173/api/v1/members/x/trade-items", {
+        headers: { authorization: `Bearer ${grant.token}` },
+      }),
+    );
+    let injected = false;
+    ctx.db = beforeInventoryRead(runtime.DB, async () => {
+      injected = true;
+      await runtime.DB.prepare("UPDATE fb_users SET is_synthetic = 1 WHERE id = ?")
+        .bind(player.user!.id)
+        .run();
+    });
+    expect(await getMemberTradeInventory(ctx, owner.user!.id)).toEqual([]);
+    expect(injected).toBe(true);
+  });
+  it("does not expose an NPC collector through the human peer shelf", async () => {
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const fixture = await fixturePool(owner);
+    await makeInstance(owner, owner.user!.id, fixture, "NPC-PRIVATE");
+    const player = await client("player@foilbury.local");
+    await runtime.DB.prepare("UPDATE fb_users SET is_synthetic = 1 WHERE id = ?")
+      .bind(owner.user!.id)
+      .run();
+    const result = await player(`members/${owner.user!.id}/trade-items`);
+    expect(result.status).toBe(200);
+    expect(result.json.items).toEqual([]);
+  });
   it("rechecks agent scopes at the final read and rejects malformed scope objects", async () => {
     const owner = await ctxFor("cabinet", "owner@foilbury.local");
     const player = await ctxFor("cabinet", "player@foilbury.local");
