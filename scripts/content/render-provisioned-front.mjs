@@ -3,7 +3,7 @@ import { parseQueuedComposition, requireQueuedBackground } from './render-queued
 
 // The queued snapshot is authoritative for this attempt; never substitute a
 // later catalogue read for the edition placement captured when it was queued.
-export async function renderProvisionedFront({ payload, card, subjectPath, backgroundPath, outputPath }) {
+export async function renderProvisionedFront({ payload, card, subjectPath, backgroundPath, outputPath, returnBytes }) {
   requireQueuedBackground(payload);
   return composeCard({
     subjectPath,
@@ -18,5 +18,6 @@ export async function renderProvisionedFront({ payload, card, subjectPath, backg
     rarity: card.rarity?.name ?? '',
     composition: parseQueuedComposition(payload.composition_json),
     outputPath,
+    returnBytes,
   });
 }

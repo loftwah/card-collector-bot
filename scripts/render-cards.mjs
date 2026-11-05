@@ -1,10 +1,8 @@
 #!/usr/bin/env node
-import fs from "node:fs";
-import path from "node:path";
 import sharp from "sharp";
 import { composeCard } from "../art/compose.mjs";
 import { requireQueuedBackground } from "./content/render-queued-front.mjs";
-import { createRenderWorkspace } from "./content/render-workspace.mjs";
+import { readRenderSource } from "./content/render-bytes.mjs";
 import { apiForm, apiJson, ensureServer, BASE_URL, agentToken } from "./lib/api.mjs";
 
 const args = new Set(process.argv.slice(2));
@@ -12,8 +10,6 @@ const json = args.has("--json");
 const queueOnly = args.has("--queue-only");
 const limitArg = process.argv.find((arg) => arg.startsWith("--limit="));
 const limit = limitArg ? Math.max(1, Number(limitArg.split("=")[1])) : undefined;
-const tmpDir = path.join(process.cwd(), ".foilbury/tmp");
-fs.mkdirSync(tmpDir, { recursive: true });
 
 function log(message) {
   if (!json) console.log(message);
@@ -58,10 +54,8 @@ while (true) {
     failed++;
     continue;
   }
-  let workspace;
   try {
     requireQueuedBackground(payload);
-    workspace = createRenderWorkspace(tmpDir);
     const subject = await fetch(
       `${BASE_URL}/api/v1/admin/assets/${payload.subject_asset_id}/bytes`,
       {
@@ -76,29 +70,27 @@ while (true) {
       : null;
     if (background && !background.ok)
       throw new Error(`Background asset fetch failed (${background.status}).`);
-    const subjectPath = workspace.subject;
-    const backgroundPath = workspace.background;
-    fs.writeFileSync(subjectPath, Buffer.from(await subject.arrayBuffer()));
-    if (background) fs.writeFileSync(backgroundPath, Buffer.from(await background.arrayBuffer()));
-    let markPath = "";
+    const subjectPath = await readRenderSource(subject);
+    const backgroundPath = await readRenderSource(background);
+    let markBuffer;
+    let markMime;
     const logoUrl = entry.card.collections?.[0]?.logo_url;
     if (logoUrl) {
       const logo = await fetch(`${BASE_URL}${logoUrl}`, {
         headers: { authorization: `Bearer ${agentToken()}` },
       });
       if (logo.ok) {
-        markPath = workspace.mark(logoUrl.endsWith(".svg") ? "svg" : "png");
-        fs.writeFileSync(markPath, Buffer.from(await logo.arrayBuffer()));
+        markBuffer = await readRenderSource(logo);
+        markMime = logoUrl.endsWith(".svg") ? "image/svg+xml" : "image/png";
       }
     }
-    const outputPath = workspace.front;
     // A multi-print edition is named "Subject — Print title". The face keeps
     // the subject name and uses the print title as its subtitle, so two prints
     // of the same subject are distinguishable without renaming the subject.
     const printTitle = entry.edition?.name?.includes(" — ")
       ? entry.edition.name.split(" — ").slice(1).join(" — ")
       : "";
-    await composeCard({
+    const { buffer: renderBytes } = await composeCard({
       subjectPath,
       backgroundPath,
       material: payload.material_key,
@@ -113,10 +105,10 @@ while (true) {
       className: printTitle ? "Print" : (entry.card.class?.name ?? ""),
       rarity: entry.card.rarity?.name ?? "",
       composition: payload.composition_json ? JSON.parse(payload.composition_json) : null,
-      markPath,
-      outputPath,
+      markBuffer,
+      markMime,
+      returnBytes: true,
     });
-    const renderBytes = fs.readFileSync(outputPath);
     const form = new FormData();
     form.append(
       "file",
@@ -127,8 +119,8 @@ while (true) {
     const completed = await apiForm(`/api/v1/admin/jobs/${job.id}/complete`, form);
     /* Album grids should not download full 750x1050 renders. Derivatives are
        generated from the published bytes, never from the private source art. */
-    if (completed?.assetId) await uploadDerivatives(completed.assetId, outputPath);
-    if (completed?.back?.assetId) await uploadDerivatives(completed.back.assetId, outputPath);
+    if (completed?.assetId) await uploadDerivatives(completed.assetId, renderBytes);
+    if (completed?.back?.assetId) await uploadDerivatives(completed.back.assetId, renderBytes);
     rendered++;
     log(`  rendered ${entry.card.name} — ${entry.variant.name}`);
   } catch (error) {
@@ -141,8 +133,6 @@ while (true) {
       () => undefined,
     );
     log(`  failed ${entry.card.name} — ${entry.variant.name}: ${message}`);
-  } finally {
-    if (workspace) console.error(`Render scratch retained: ${workspace.directory}`);
   }
 }
 

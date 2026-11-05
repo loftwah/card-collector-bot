@@ -25,7 +25,7 @@ export function parseQueuedComposition(value) {
   return composition;
 }
 
-export async function renderQueuedFront({ payload, meta, subjectPath, backgroundPath, markPath, outputPath }) {
+export async function renderQueuedFront({ payload, meta, subjectPath, backgroundPath, markPath, markBuffer, markMime, outputPath, returnBytes }) {
   return composeCard({
     subjectPath,
     backgroundPath: payload.background_asset_id ? backgroundPath : null,
@@ -39,6 +39,9 @@ export async function renderQueuedFront({ payload, meta, subjectPath, background
     rarity: meta?.rarity?.name ?? '',
     composition: parseQueuedComposition(payload.composition_json),
     markPath,
+    markBuffer,
+    markMime,
     outputPath,
+    returnBytes,
   });
 }

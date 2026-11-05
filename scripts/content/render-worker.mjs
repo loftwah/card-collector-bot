@@ -8,14 +8,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { composeCardBack } from "../../art/compose.mjs";
 import { renderQueuedFront, requireQueuedBackground } from "./render-queued-front.mjs";
-import { createRenderWorkspace } from "./render-workspace.mjs";
+import { readRenderSource, readLocalRenderSource } from "./render-bytes.mjs";
 import { apiForm, apiJson, BASE_URL, agentToken, accessHeaders } from "../lib/api.mjs";
 
 const root = process.cwd();
 const contentDir = path.join(root, ".foilbury/content");
 const generatedDir = path.join(root, ".foilbury/generated");
-const tmpDir = path.join(root, ".foilbury/tmp");
-fs.mkdirSync(tmpDir, { recursive: true });
 const worker = process.argv.find((arg) => arg.startsWith("--worker="))?.split("=")[1] ?? "1";
 const jsonOut = process.argv.includes("--json");
 
@@ -45,7 +43,7 @@ async function fetchBytes(url) {
     headers: { authorization: `Bearer ${agentToken()}`, ...accessHeaders() },
   });
   if (!response.ok) throw new Error(`${url} returned ${response.status}`);
-  return Buffer.from(await response.arrayBuffer());
+  return readRenderSource(response);
 }
 
 let rendered = 0;
@@ -59,37 +57,31 @@ while (true) {
   if (!claimed.job) continue;
   const payload = claimed.job.payload;
   const attempt = claimed.job.attempts;
-  let workspace;
   try {
     requireQueuedBackground(payload);
-    workspace = createRenderWorkspace(tmpDir);
-    const subjectPath = workspace.subject;
-    const backgroundPath = workspace.background;
-    fs.writeFileSync(subjectPath, await fetchBytes(`/api/v1/admin/assets/${payload.subject_asset_id}/bytes`));
-    if (payload.background_asset_id) fs.writeFileSync(backgroundPath, await fetchBytes(`/api/v1/admin/assets/${payload.background_asset_id}/bytes`));
-    const outputPath = workspace.front;
+    const subjectPath = await fetchBytes(`/api/v1/admin/assets/${payload.subject_asset_id}/bytes`);
+    const backgroundPath = await fetchBytes(`/api/v1/admin/assets/${payload.background_asset_id}/bytes`);
     const meta = cardMeta.get(payload.card_id);
-    let markPath = "";
+    let markBuffer;
+    let markMime;
     const logoUrl = meta?.collections?.[0]?.logo_url;
     if (logoUrl) {
       try {
         const ext = logoUrl.endsWith(".svg") ? "svg" : "png";
-        markPath = workspace.mark(ext);
-        fs.writeFileSync(markPath, await fetchBytes(logoUrl));
+        markBuffer = await fetchBytes(logoUrl);
+        markMime = ext === "svg" ? "image/svg+xml" : "image/png";
       } catch {
-        markPath = "";
+        markBuffer = undefined;
       }
     }
-    await renderQueuedFront({ payload, meta, subjectPath, backgroundPath, markPath, outputPath });
+    const { buffer: outputBytes } = await renderQueuedFront({ payload, meta, subjectPath, backgroundPath, markBuffer, markMime, returnBytes: true });
     const backSource = backBySlug.get(payload.card_slug) ?? backByName.get(payload.card_name);
     let backBytes;
     if (backSource) {
-      const backPath = workspace.back;
-      await composeCardBack({ backPath: backSource, material: payload.material_key, effect: payload.effect_key ?? "none", outputPath: backPath });
-      backBytes = fs.readFileSync(backPath);
+      backBytes = await composeCardBack({ backPath: readLocalRenderSource(backSource), material: payload.material_key, effect: payload.effect_key ?? "none", returnBytes: true });
     }
     const form = new FormData();
-    form.append("file", new Blob([fs.readFileSync(outputPath)], { type: "image/webp" }), `${payload.variant_id}.webp`);
+    form.append("file", new Blob([outputBytes], { type: "image/webp" }), `${payload.variant_id}.webp`);
     if (backBytes) form.append("back", new Blob([backBytes], { type: "image/webp" }), `${payload.variant_id}-back.webp`);
     form.append("attempt", String(attempt));
     await apiForm(`/api/v1/admin/jobs/${job.id}/complete`, form);
@@ -100,8 +92,6 @@ while (true) {
     const message = error instanceof Error ? error.message : String(error);
     await apiJson(`/api/v1/admin/jobs/${job.id}/fail`, { method: "POST", body: { message, attempt } }).catch(() => undefined);
     log(`failed ${payload.variant_id}: ${message}`);
-  } finally {
-    if (workspace) console.error(`Render scratch retained: ${workspace.directory}`);
   }
 }
 const result = { worker, rendered, failed, elapsed_ms: Date.now() - started };
