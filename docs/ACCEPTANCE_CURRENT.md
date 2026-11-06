@@ -151,3 +151,36 @@ The focused tests are `node --test tests/scripts/assisted-acceptance.test.mjs`.
 They are logic and negative-control tests only. A green run does not replace a
 real Discord invocation or an independent observer; those remain blocked in this
 document.
+
+## 2026-11-06 Studio collections loading states
+
+PR #89 merged at `517b3f280464c5590cb073d8bba2ba52f71971d7` and deployed as
+Worker `a16d2774-5fac-44c9-bf80-79f40ae9afea`. The routine release rebuilt the
+artifact, passed all 18 read-only production smoke checks and wrote
+`.foilbury/evidence/release-receipt-517b3f280464-ba811d01-5fd4-4278-b9a5-f87c5ad7748b.json`.
+The exact merged source passed the isolated supervisor at
+`.foilbury/evidence/technical-candidate-9BkfXc/receipt.json` (sha256
+`d567549913188b1730afc2e4d870b1750b964c02cbc82127ba411d675ee96682`): `pnpm check`,
+built Worker, UI (54), product (59/59), artwork (11/11), album, privacy and
+performance. An initial run failed an unrelated `public-inspector` focus
+assertion; the same container passed that test alone and the full re-run passed.
+
+The synthetic built-Worker Studio journey held the real `/studio/collections`
+request, observed eight reduced-motion placeholders and no `0 on · 0 shown` or
+empty-list claim, then loaded real collections. A forced 503 showed
+`Collections unavailable`; keyboard retry loaded the real data. Desktop
+selection and serious/critical axe passed. The journey found `aria-label` on a
+generic loading `div`; the detail placeholder now has `role="status"`, and the
+component fixture checks axe during loading as well as after load. The synthetic
+Worker has five collections, so its create panel moved 102px; the eight-row
+component fixture measured 0px at 390px and 1280px. Production pages eight rows,
+and the live first page has more than eight collections.
+
+Signed-in live read-back is **BLOCKED**: the retained bootstrap owner password
+returns `invalid_credentials`, and no current magic-link, passkey or signed-in
+browser session was available. The deployed `AdminApp.DDQntcOI.js` chunk is
+byte-identical to the built artifact (`sha256
+7280509a64baa72fe11ef79d451fa1bb003c0bd657955d2725eebef2b3ef8969`) and contains
+the new loading, error and retry strings. This is technical artifact evidence,
+not signed-in product acceptance. Physical-device and assistive-technology
+checks remain unperformed; non-eight-row geometry can still shift.
