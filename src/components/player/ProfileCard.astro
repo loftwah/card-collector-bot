@@ -1,0 +1,44 @@
+---
+import { printTitle } from "../../lib/utils";
+
+interface Props {
+  card: {
+    id: string;
+    card_name: string;
+    render_url: string | null;
+    thumbnail_url: string | null;
+    edition_name: string;
+    variant_name: string;
+    serial: string;
+  };
+}
+
+const { card } = Astro.props;
+---
+
+<article class="profile-card">
+  <div class="profile-card__object">
+    {
+      card.render_url ? (
+        <img
+          src={card.thumbnail_url ?? card.render_url}
+          alt={`${card.card_name} — ${printTitle(card.edition_name) ?? card.variant_name}`}
+          width="300"
+          height="420"
+          loading="lazy"
+        />
+      ) : (
+        <div class="card-face-fallback">{card.card_name.charAt(0)}</div>
+      )
+    }
+  </div>
+  <div class="profile-card__body">
+    <p class="profile-card__name">{card.card_name}</p>
+    <p class="profile-card__meta">
+      {printTitle(card.edition_name) ? `${printTitle(card.edition_name)} · ` : ""}
+      {card.variant_name}
+    </p>
+    <p class="profile-card__serial">{card.serial}</p>
+    <a class="btn btn-secondary btn-sm" href={`/play/card/${card.id}`}>Inspect</a>
+  </div>
+</article>

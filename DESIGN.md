@@ -126,8 +126,9 @@ typography, radii, home hierarchy and light/dark treatment are implemented. The
 public landing, collection library, collection binder, My cards, draw studio,
 collector profile and trade workbench now use the same direction: art-led
 tiles, exact-copy controls outside the 5:7 object, separate roster and finish
-progress, one primary opening action above the fold, and a read-only cosmetic
-library before the full profile editor.
+progress, one primary opening action above the fold, and a saved profile look
+with a short collector note. The profile share snapshot carries the chosen look
+and note; it never carries the wallet, email, account ID or private ledger.
 
 The remaining member surfaces (missions, achievements, gifts, wishlist,
 preferences and account security), Studio, Platform and Discord still need the

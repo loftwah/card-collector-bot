@@ -355,3 +355,15 @@ Production source `617c773` deployed as Worker `a3cc5c7b-0d0e-4147-93ff-fe4cb29c
 | Playwright | `@playwright/test` 1.64.1 | Real browser checks at 320/390/1440, light/dark axe, 57/57 product QA, draw settlement recovery and a real exact-copy trade workbench journey | The fixed mobile navigation can sit over a control that Playwright scrolls to the bottom; a real user can scroll further. The test helper scrolls controls to centre. No product code change was needed for that tooling artefact. | `pnpm test:ui`; `pnpm test:product` 57/57; `.foilbury/audit-slices.mjs`; `.foilbury/test-draw-recovery.mjs`; `.foilbury/test-trades.mjs` |
 
 The slice replaced the public manifesto hero with a restrained library landing, moved collections to art-led tiles with separate roster/finish progress, rebuilt My cards as a two-column exact-copy grid with controls outside the 5:7 object, rebuilt the collection binder and draw summary, added a curated profile with four read-only starter looks, and rebuilt the trade workbench with explicit give/receive, NPC boundaries and stale/reserved states. `pnpm check` passed 316 tests; `pnpm build` produced the production artifact; the local Worker was used for every browser check.
+
+## 2026-11-07 collector profile look and note
+
+| Field | Record |
+| --- | --- |
+| Skill | Project-local Impeccable; context already loaded this session; craft-floor and Operate guidance applied to the profile and share surfaces. |
+| Data change | `migrations/0028_profile_identity.sql` adds `profile_look` and `profile_bio` to `fb_player_preferences`. Additive only; the previous Worker ignores both columns, so a Worker-only rollback remains compatible. |
+| API | `PATCH /api/v1/me/preferences` accepts `profileLook` (`quiet`, `signal`, `binder`, `night`) and `profileBio` (160 characters, trimmed). `getPreferences` validates the stored look and falls back to `quiet`. |
+| UI | The profile page now renders the saved look (`data-profile-look`), a short collector note, a real customiser with four selectable looks, live DOM update on save, and a share snapshot that carries the look and note. `ShareManager` no longer prints a second page heading. |
+| Share boundary | Profile share payload includes `profile_look` and `profile_bio`; the share view validates the look, escapes the note and still omits wallet, email, account ID, ledger and serials. |
+| Findings | The first customiser preview only rendered cards that existed, so the binder look collapsed to one slot. The fix renders four slots with honest placeholders. The share footer printed `Your copy serial: undefined` for a profile share; it now prints the serial only for card shares. The Impeccable detector flagged the bio's 3px left border; replaced with a 2px top rule. |
+| Verification | `pnpm check` 318/318; `pnpm build`; `pnpm test:ui`; `pnpm test:product` 57/57; focused customiser save/reload/axe test; focused profile share look/note/axe test; detector `[]`. Evidence: `.foilbury/evidence/profile-customiser-390.png`, `profile-customiser-1440.png`, `profile-share-390.png`. |

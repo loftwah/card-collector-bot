@@ -642,6 +642,8 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
         reducedMotion: z.boolean().optional(),
         soundEnabled: z.boolean().optional(),
         sharingEnabled: z.boolean().optional(),
+        profileLook: z.enum(["quiet", "signal", "binder", "night"]).optional(),
+        profileBio: z.string().max(160).optional(),
       }),
     );
     return json(await updatePreferences(ctx, body));
