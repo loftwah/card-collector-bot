@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Globe2, Loader2, Lock, Plus, Trash2 } from "lucide-react";
 import { api, apiUpload, describeError } from "@/lib/client";
 import { Button } from "../ui/button";
@@ -43,9 +43,17 @@ function CollectionMark({ collection }: { collection: Collection }) {
 export default function AdminCollections({ platformAdmin, globalCollectionAdmin = false, botAdmin = false }: { platformAdmin: boolean; globalCollectionAdmin?: boolean; botAdmin?: boolean }) {
   const canCreateGlobal = platformAdmin || globalCollectionAdmin;
   const [collections, setCollections] = useState<Collection[]>([]);
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const [loadError, setLoadError] = useState("");
+  const loadSequence = useRef(0);
   const [cards, setCards] = useState<CardRow[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [collectionCards, setCollectionCards] = useState<Array<{ id: string; name: string; slug: string; status: string; render_url: string | null }>>([]);
+  const [detailId, setDetailId] = useState("");
+  const [detailState, setDetailState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [detailError, setDetailError] = useState("");
+  const [detailRefresh, setDetailRefresh] = useState(0);
+  const detailSequence = useRef(0);
   const [addIds, setAddIds] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -72,28 +80,59 @@ export default function AdminCollections({ platformAdmin, globalCollectionAdmin 
   const selected = collections.find((collection) => collection.id === selectedId) ?? null;
 
   async function load() {
+    const sequence = ++loadSequence.current;
+    ++detailSequence.current;
+    setCollectionCards([]); setAddIds([]); setDetailId(""); setDetailState("idle");
+    setLoadState("loading");
+    setLoadError("");
     try {
       const [c, cardsResult] = await Promise.all([
         api<{ items: Collection[] }>("/api/v1/admin/collections"),
         api<{ items: CardRow[] }>("/api/v1/admin/cards?limit=200"),
       ]);
+      if (sequence !== loadSequence.current) return;
+      if (!Array.isArray(c.items) || !Array.isArray(cardsResult.items)) throw new Error("Invalid collection response");
       setCollections(c.items);
       setCards(cardsResult.items);
-      if (!selectedId && c.items[0]) setSelectedId(c.items[0].id);
+      setSelectedId((current) => c.items.some((item) => item.id === current) ? current : (c.items[0]?.id ?? ""));
+      setDetailRefresh((generation) => generation + 1);
+      setLoadState("ready");
     } catch (cause) {
-      setError(describeError(cause));
+      if (sequence !== loadSequence.current) return;
+      setCollections([]);
+      setCards([]);
+      setSelectedId("");
+      setLoadError(describeError(cause));
+      setLoadState("error");
     }
   }
   useEffect(() => { void load(); }, []);
 
   async function loadCollection(id: string) {
-    if (!id) { setCollectionCards([]); return; }
+    const sequence = ++detailSequence.current;
+    const listSequence = loadSequence.current;
+    setCollectionCards([]); setAddIds([]); setDetailId(id); setDetailError("");
+    if (!id) { setDetailState("idle"); return; }
+    setDetailState("loading");
     try {
       const result = await api<{ cards: Array<{ id: string; name: string; slug: string; status: string; render_url: string | null }> }>(`/api/v1/admin/collections/${id}`);
+      if (sequence !== detailSequence.current || listSequence !== loadSequence.current) return;
+      if (!Array.isArray(result.cards)) throw new Error("Invalid collection cards response");
       setCollectionCards(result.cards);
-    } catch (cause) { setError(describeError(cause)); }
+      setDetailState("ready");
+    } catch (cause) {
+      if (sequence !== detailSequence.current || listSequence !== loadSequence.current) return;
+      setDetailError(describeError(cause));
+      setDetailState("error");
+    }
   }
-  useEffect(() => { void loadCollection(selectedId); }, [selectedId]);
+  function chooseCollection(id: string) {
+    if (id === selectedId) return;
+    ++detailSequence.current;
+    setCollectionCards([]); setAddIds([]); setDetailId(""); setDetailState("idle");
+    setSelectedId(id);
+  }
+  useEffect(() => { if (loadState === "ready") void loadCollection(selectedId); }, [selectedId, loadState, detailRefresh]);
 
   const availableCards = useMemo(() => cards.filter((card) => !collectionCards.some((item) => item.id === card.id) && card.status !== "retired"), [cards, collectionCards]);
   const filteredCollections = useMemo(() => {
@@ -142,7 +181,7 @@ export default function AdminCollections({ platformAdmin, globalCollectionAdmin 
       const result = await api<{ added: number }>(`/api/v1/admin/collections/${selected.id}/cards`, { method: "POST", body: { cardIds: addIds } });
       setAddIds([]);
       setMessage(`${result.added} card${result.added === 1 ? "" : "s"} added to ${selected.name}.`);
-      await load(); await loadCollection(selected.id);
+      await load();
     } catch (cause) { setError(describeError(cause)); } finally { setBusy(""); }
   }
 
@@ -152,7 +191,7 @@ export default function AdminCollections({ platformAdmin, globalCollectionAdmin 
     try {
       await api(`/api/v1/admin/collections/${selected.id}/cards/${cardId}`, { method: "DELETE", body: undefined });
       setMessage("Card removed from the collection.");
-      await load(); await loadCollection(selected.id);
+      await load();
     } catch (cause) { setError(describeError(cause)); } finally { setBusy(""); }
   }
 
@@ -192,17 +231,23 @@ export default function AdminCollections({ platformAdmin, globalCollectionAdmin 
 
       <div className="mt-6 grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
         <section>
-          <div className="flex flex-wrap items-center justify-between gap-3"><p className="eyebrow">Visible to this Bot</p><span className="font-mono text-[0.6rem] text-[var(--muted)]">{collections.filter((collection) => collection.enabled).length} on · {filteredCollections.length} shown</span></div>
+          <div className="flex flex-wrap items-center justify-between gap-3"><p className="eyebrow">Visible to this Bot</p><span className="font-mono text-[0.6rem] text-[var(--muted)]" role="status">{loadState === "loading" ? "Loading collections…" : loadState === "error" ? "Collections unavailable" : `${collections.filter((collection) => collection.enabled).length} on · ${filteredCollections.length} shown`}</span></div>
           <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
-            <Input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Search world, source or owner" aria-label="Search collections" />
-            <Select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }} aria-label="Filter by status"><option value="all">All statuses</option><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></Select>
+            <Input disabled={loadState !== "ready"} value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Search world, source or owner" aria-label="Search collections" />
+            <Select disabled={loadState !== "ready"} value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }} aria-label="Filter by status"><option value="all">All statuses</option><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></Select>
           </div>
-          <div className="mt-3 grid gap-2">
-            {pagedCollections.map((collection) => (
-              <div key={collection.id} className={`border p-3 transition-colors ${selectedId === collection.id ? "border-[var(--brass)] bg-[var(--paper-2)]" : "border-[var(--line)]"}`}>
+          <div className="studio-collections-loading mt-3 grid gap-2" aria-busy={loadState === "loading"}>
+            {loadState === "loading" ? Array.from({ length: 8 }, (_, index) => (
+              <div key={index} className="flex min-h-[6.5rem] items-center gap-3 border border-[var(--line)] p-3" aria-hidden="true">
+                <span className="skeleton h-12 w-12 shrink-0" /><span className="grid flex-1 gap-2"><span className="skeleton h-4 w-2/3" /><span className="skeleton h-3 w-4/5" /><span className="skeleton h-3 w-1/2" /></span>
+              </div>
+            )) : null}
+            {loadState === "error" ? <div className="error-box" role="alert"><p>Could not load collections. {loadError}</p><Button className="mt-3" size="sm" variant="secondary" onClick={() => void load()}>Retry loading collections</Button></div> : null}
+            {loadState === "ready" ? pagedCollections.map((collection) => (
+              <div key={collection.id} className={`min-h-[6.5rem] border p-3 transition-colors ${selectedId === collection.id ? "border-[var(--brass)] bg-[var(--paper-2)]" : "border-[var(--line)]"}`}>
                 <div className="flex items-start gap-3">
                   <CollectionMark collection={collection} />
-                  <button className="min-w-0 flex-1 text-left" onClick={() => setSelectedId(collection.id)}>
+                  <button className="min-w-0 flex-1 text-left" onClick={() => chooseCollection(collection.id)}>
                     <p className="flex items-center gap-2 font-semibold">{collection.name} {collection.scope === "global" ? <span className="badge badge-rare"><Globe2 size={11} /> Global</span> : <span className="badge">Your Bot</span>}</p>
                     <p className="mt-1 line-clamp-2 text-xs text-[var(--muted)]">{collection.description || "No description yet."}</p>
                     <p className="mt-1 font-mono text-[0.58rem] uppercase tracking-[0.08em] text-[var(--muted)]">{collection.card_count} cards · {collection.status} · {collection.view_audience === "public" ? "public showcase" : collection.view_audience} · {collection.owner_name}</p>
@@ -214,10 +259,10 @@ export default function AdminCollections({ platformAdmin, globalCollectionAdmin 
                   </div>
                 </div>
               </div>
-            ))}
-            {filteredCollections.length === 0 ? <p className="empty">No collections match this search and status.</p> : null}
+            )) : null}
+            {loadState === "ready" && filteredCollections.length === 0 ? <p className="empty">No collections match this search and status.</p> : null}
           </div>
-          {pageCount > 1 ? (
+          {loadState === "ready" && pageCount > 1 ? (
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--line)] pt-3">
               <p className="font-mono text-[0.58rem] uppercase tracking-[0.08em] text-[var(--muted)]">Page {safePage} of {pageCount}</p>
               <div className="flex gap-2">
@@ -228,8 +273,8 @@ export default function AdminCollections({ platformAdmin, globalCollectionAdmin 
           ) : null}
         </section>
 
-        <section className="surface-flat p-5">
-          {selected ? (
+        <section className={`surface-flat p-5 ${loadState === "loading" || (loadState === "ready" && selected) ? "min-h-[75rem] xl:min-h-[60rem]" : ""}`}>
+          {loadState === "loading" ? <div className="studio-collections-loading grid min-h-[32rem] content-start gap-4" role="status" aria-label="Loading collection details" aria-busy="true"><span className="skeleton h-12 w-2/3" /><span className="skeleton h-12 w-full" /><span className="skeleton h-24 w-full" /><span className="skeleton h-12 w-full" /><span className="skeleton h-12 w-full" /></div> : loadState === "error" ? <p className="text-sm text-[var(--muted)]">Collection details are unavailable until the list is loaded.</p> : selected ? (
             <>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex items-center gap-3"><CollectionMark collection={selected} /><div><p className="eyebrow">{selected.scope === "global" ? "Global collection" : "Bot collection"}</p><h3 className="display-sm text-2xl">{selected.name}</h3></div></div>
@@ -260,9 +305,10 @@ export default function AdminCollections({ platformAdmin, globalCollectionAdmin 
             </>
           ) : <p className="text-sm text-[var(--muted)]">Choose a collection to inspect it.</p>}
 
-          {selected ? (
+          {loadState === "ready" && selected ? (
             <div className="mt-6 border-t border-[var(--line)] pt-4">
-              <div className="flex flex-wrap items-end justify-between gap-3"><p className="eyebrow">Cards in {selected.name}</p><span className="font-mono text-[0.6rem] text-[var(--muted)]">{collectionCards.length} cards</span></div>
+              <div className="flex flex-wrap items-end justify-between gap-3"><p className="eyebrow">Cards in {selected.name}</p><span className="font-mono text-[0.6rem] text-[var(--muted)]">{detailId === selected.id && detailState === "ready" ? `${collectionCards.length} cards` : ""}</span></div>
+              {detailId !== selected.id || detailState === "idle" || detailState === "loading" ? <p className="mt-3 text-sm text-[var(--muted)]" role="status">Loading cards…</p> : detailState === "error" ? <div className="error-box mt-3" role="alert"><p>Could not load cards. {detailError}</p><Button className="mt-3" size="sm" variant="secondary" onClick={() => void loadCollection(selected.id)}>Retry loading cards</Button></div> : <>
               <div className="mt-3 grid gap-2">
                 {collectionCards.map((card) => (
                   <div key={card.id} className="flex items-center justify-between gap-3 border border-[var(--line)] px-3 py-2">
@@ -287,6 +333,7 @@ export default function AdminCollections({ platformAdmin, globalCollectionAdmin 
                   <Button className="mt-3" size="sm" onClick={addCards} disabled={!addIds.length || busy === "add"}>{busy === "add" ? <><Loader2 className="animate-spin" size={13} /> Adding…</> : <><Plus size={13} /> Add selected cards</>}</Button>
                 </div>
               ) : null}
+              </>}
             </div>
           ) : null}
         </section>
