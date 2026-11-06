@@ -81,9 +81,9 @@ const fmtDuration = (seconds: number) => seconds >= 3600 ? `${Math.round(seconds
         <div class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {collections.map((collection) => (
             <a class="border border-[var(--line)] bg-[var(--paper)] p-4 no-underline transition-colors hover:border-[var(--ink)]" href={`/cabinet?collection=${collection.slug}`}>
-              <div class="flex items-center gap-3">
+              <div class="flex min-w-0 flex-wrap items-center gap-3">
                 {collection.logo_url ? <img src={collection.logo_url} alt="" class="h-10 w-10 object-contain" width="40" height="40" /> : null}
-                <div><p class="font-semibold">{collection.name}</p><p class="font-mono text-[0.56rem] uppercase tracking-[0.1em] text-[var(--muted)]">{collection.card_count} public cards</p></div>
+                <div class="min-w-0 break-words"><p class="font-semibold">{collection.name}</p><p class="font-mono text-[0.56rem] uppercase tracking-[0.1em] text-[var(--muted)]">{collection.card_count} public cards</p></div>
               </div>
             </a>
           ))}
@@ -98,9 +98,9 @@ const fmtDuration = (seconds: number) => seconds >= 3600 ? `${Math.round(seconds
         <p class="mt-3 max-w-3xl text-[var(--muted)]">Each collection carries a readable emblem, palette, description, source boundary and a frozen release roster. The card front and back use the same mark so the set is recognisable before the name is read.</p>
         <div class="mt-5 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
           <div class="border border-[var(--line)] bg-[var(--paper)] p-4">
-            <div class="flex items-center gap-4">
+            <div class="flex min-w-0 flex-wrap items-center gap-4">
               {collections[0]?.logo_url ? <img src={collections[0].logo_url} alt="" class="h-16 w-16 object-contain" width="64" height="64" /> : null}
-              <div><p class="display-sm text-2xl uppercase">{collections[0]?.name ?? "Foilbury world"}</p><p class="font-mono text-[0.58rem] uppercase tracking-[0.1em] text-[var(--muted)]">{collections[0]?.card_count ?? 0} cards · public showcase</p></div>
+              <div class="min-w-0 break-words"><p class="display-sm text-2xl uppercase">{collections[0]?.name ?? "Foilbury world"}</p><p class="font-mono text-[0.58rem] uppercase tracking-[0.1em] text-[var(--muted)]">{collections[0]?.card_count ?? 0} cards · public showcase</p></div>
             </div>
             <p class="mt-3 text-sm text-[var(--muted)]">{collections[0]?.description ?? "A curated world."}</p>
           </div>
