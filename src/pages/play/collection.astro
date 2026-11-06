@@ -202,11 +202,6 @@ const nextFinish =
                       ? "border-[var(--line-strong)] bg-[var(--paper)]"
                       : "border-dashed border-[var(--line)] bg-[var(--paper-3)]/40",
                   ]}
-                  aria-label={
-                    card.owned
-                      ? `${card.name}, owned`
-                      : `${card.name}, missing. Find an eligible capsule.`
-                  }
                 >
                   {card.owned && card.render_url ? (
                     <img
@@ -219,12 +214,13 @@ const nextFinish =
                     />
                   ) : (
                     <div class="grid aspect-[5/7] w-full place-items-center bg-[var(--ink)]/5">
-                      <span class="px-1 text-center font-mono text-[0.5rem] uppercase tracking-[0.08em] text-[var(--muted)]">
+                      <span aria-hidden="true" class="px-1 text-center font-mono text-[0.5rem] uppercase tracking-[0.08em] text-[var(--muted)]">
                         {card.name}
                       </span>
                     </div>
                   )}
                   <p class="mt-1 truncate text-[0.62rem] font-semibold">{card.name}</p>
+                  {!card.owned ? <span class="sr-only">Find an eligible capsule.</span> : null}
                   <p class="font-mono text-[0.48rem] uppercase tracking-[0.06em] text-[var(--muted)]">
                     {card.owned
                       ? `${card.copies} cop${card.copies === 1 ? "y" : "ies"}${card.finishes.length ? ` · ${card.finishes.length}/4 finishes` : ""}`
