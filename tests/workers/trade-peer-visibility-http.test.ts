@@ -78,6 +78,9 @@ describe("HTTP trade peer visibility", () => {
         card_name: "Test One",
         variant_name: "Plain",
         serial: "VISIBLE-SERIAL",
+        material_key: "plain",
+        effect_key: "none",
+        render_url: "/media/public/test",
       },
     ]);
   });

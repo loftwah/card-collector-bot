@@ -661,12 +661,20 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     requireScope(ctx, "inventory:read");
     const limit = Math.min(120, Math.max(1, Number(url.searchParams.get("limit") ?? 48) || 48));
     const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0) || 0);
+    const sortParam = url.searchParams.get("sort");
+    const sort: "newest" | "name" | "finish" | undefined =
+      sortParam === "name" || sortParam === "finish" || sortParam === "newest"
+        ? sortParam
+        : undefined;
     const query = {
       status: url.searchParams.get("status") ?? undefined,
       search: url.searchParams.get("search") ?? undefined,
       favourite: url.searchParams.get("favourite") === "true",
       setSlug: url.searchParams.get("set") ?? undefined,
       collection: url.searchParams.get("collection") ?? undefined,
+      finish: url.searchParams.get("finish") ?? undefined,
+      duplicates: url.searchParams.get("duplicates") === "true",
+      sort,
       limit,
       offset,
     };

@@ -1,67 +1,37 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
-import { pageContext, publicStats, pickVariant } from "../server/page";
-import { listCards, listSets } from "../server/modules/catalogue";
+import { pageContext } from "../server/page";
+import { listCards } from "../server/modules/catalogue";
 import { listPublicCollections } from "../server/modules/collections";
 
 const ctx = await pageContext(Astro.request);
 const session = Astro.locals.foilbury;
 const user = session?.user ?? null;
-const [allCards, allSets, stats, collections] = await Promise.all([
-  listCards(ctx, { publicOnly: true, limit: 24 }),
-  listSets(ctx, undefined, { publicOnly: true }),
-  publicStats(ctx),
-  listPublicCollections(ctx),
-]);
-const publishedSets = allSets.filter((set) => set.status === "published");
-const bySlug = new Map(allCards.map((card) => [card.slug, card]));
-const heroSpecs = [
-  {
-    slug: "loftwah",
-    material: "gold",
-    effect: "holographic",
-    className: "w-[29%] -rotate-[5deg] translate-y-8",
-  },
-  {
-    slug: "tux",
-    material: "silver",
-    effect: undefined,
-    className: "w-[42%] z-10",
-  },
-  {
-    slug: "gabe",
-    material: "gold",
-    effect: undefined,
-    className: "w-[29%] rotate-[6deg] translate-y-12",
-  },
-];
-const heroCards = heroSpecs
-  .map((spec) => {
-    const card = bySlug.get(spec.slug);
-    if (!card) return null;
-    const variant = pickVariant(card, spec.material, spec.effect);
-    if (!variant?.render_url) return null;
-    return { ...spec, card, variant };
-  })
-  .filter(Boolean) as Array<{
-  slug: string;
-  material: string;
-  className: string;
-  card: (typeof allCards)[number];
-  variant: NonNullable<ReturnType<typeof pickVariant>>;
-}>;
-const featured = allCards
-  .filter((card) =>
+const collections = await listPublicCollections(ctx);
+const featuredCollection = collections[0] ?? null;
+const featuredCards = featuredCollection
+  ? await listCards(ctx, {
+      publicOnly: true,
+      collection: featuredCollection.slug,
+      limit: 4,
+    })
+  : [];
+
+const featuredCard =
+  featuredCards.find((card) =>
     card.editions.some((edition) => edition.variants.some((variant) => variant.render_url)),
-  )
-  .slice(0, 10);
+  ) ?? null;
+const featuredVariant =
+  featuredCard?.editions
+    .flatMap((edition) => edition.variants)
+    .find((variant) => variant.render_url) ?? null;
 const primaryHref = user ? "/play" : "/login?next=%2Fplay";
-const collectionTone = ["#e0492f", "#0e5b53", "#4a1e4d", "#b8791f"];
+const shelfCollections = collections.slice(0, 4);
 ---
 
 <BaseLayout
-  title="Foilbury — a collector's cabinet"
-  description="Foilbury is a free collectible-card album: Loftwah's original worlds in a public showcase, a rich members' album, and cards made to inspect on both sides."
+  title="Foilbury — a personal card library"
+  description="A free collectible-card album for approved original worlds. Browse the public shelf, open a capsule and keep the cards you love."
 >
   <script
     type="application/ld+json"
@@ -71,7 +41,7 @@ const collectionTone = ["#e0492f", "#0e5b53", "#4a1e4d", "#b8791f"];
       name: "Foilbury",
       url: "https://foilbury.loftwah.com/",
       description:
-        "A free collectible-card album for Loftwah's original worlds and members' curated collections.",
+        "A free personal card library for approved original collections, with a public shelf and a member album.",
       potentialAction: {
         "@type": "SearchAction",
         target: "https://foilbury.loftwah.com/cabinet?search={search_term_string}",
@@ -79,352 +49,179 @@ const collectionTone = ["#e0492f", "#0e5b53", "#4a1e4d", "#b8791f"];
       },
     })}
   />
-  <section class="landing landing-hero relative overflow-hidden border-b border-[var(--line)]">
-    <div class="pointer-events-none absolute inset-0 hero-wash" aria-hidden="true"></div>
-    <div class="container relative grid items-center gap-6 py-10 lg:min-h-[78vh] lg:grid-cols-[1.1fr_0.9fr] lg:gap-x-12 lg:gap-y-0 lg:py-20">
-      <div class="relative z-10">
-        <h1 class="display max-w-[13ch] text-[clamp(2.8rem,9vw,6rem)]">
-          Characters worth keeping.
-        </h1>
-        <p class="mt-5 max-w-xl text-base leading-relaxed text-[var(--muted)] md:text-lg">
-          A free album for the characters you love. Open capsules, discover their cards and make a
-          collection that's yours.
+  <section class="public-hero border-b border-[var(--line)]">
+    <div class="container public-hero__grid">
+      <div class="public-hero__copy">
+        <h1 class="public-hero__title">Pull something wonderful.</h1>
+        <p class="public-hero__lede">
+          A free album for original character cards. Open a capsule, keep the copy, and arrange a
+          shelf that is yours.
         </p>
-        <div class="mt-6 flex flex-wrap gap-3">
-          <a class="btn btn-primary" href={primaryHref}>
-            {user ? "Open my album" : "Start collecting"}
-          </a>
-          <a class="btn btn-secondary" href="#showcase">
-            See the public showcase
+        <div class="public-hero__actions">
+          <a class="btn btn-primary" href="/cabinet">Browse originals</a>
+          <a class="btn btn-secondary" href={primaryHref}>
+            {user ? "Open my library" : "Sign in"}
           </a>
         </div>
+        <p class="public-hero__note">
+          Free to play. Earned Foil only. No purchase, marketplace or cash-out.
+        </p>
       </div>
 
-      <div
-        class:list={[
-          "relative flex flex-col items-center justify-center",
-          heroCards.length ? "min-h-[245px] lg:min-h-[540px]" : "hidden",
-        ]}
-        aria-label="Selected cards from the public showcase"
-      >
-        <div class="hero-orbit" aria-hidden="true"></div>
-        <div class="flex w-[94%] items-center justify-center">
-          {heroCards.map((entry, index) => (
-            <a
-              href={`/cabinet/${entry.card.slug}`}
-              class:list={[
-                "hero-card relative block shrink-0 transition-transform duration-500 hover:z-30 hover:-translate-y-3",
-                entry.className,
-              ]}
-              style={`--tilt:${index === 0 ? "-5deg" : index === 2 ? "6deg" : "0deg"}`}
-              aria-label={`${entry.card.name} card`}
-            >
-              <div class="card-face hero-card-frame rounded-[7px]">
+      <div class="public-hero__shelf">
+        {
+          featuredCard && featuredVariant ? (
+            <a class="public-feature" href={`/cabinet/${featuredCard.slug}`}>
+              <div class="public-feature__card">
                 <img
-                  src={entry.variant.render_url!}
+                  src={featuredVariant.render_url!}
                   srcset={
-                    entry.variant.preview_url
-                      ? `${entry.variant.preview_url} 600w, ${entry.variant.render_url} 750w`
+                    featuredVariant.preview_url
+                      ? `${featuredVariant.preview_url} 600w, ${featuredVariant.render_url} 750w`
                       : undefined
                   }
-                  sizes="(min-width: 1024px) 24vw, 40vw"
+                  sizes="(min-width: 1024px) 34vw, 76vw"
                   alt=""
-                  loading="eager"
-                  decoding="async"
-                  fetchpriority={entry.slug === "tux" ? "high" : "auto"}
-                  data-hero-art
                   width="750"
                   height="1050"
+                  loading="eager"
+                  fetchpriority="high"
+                  decoding="async"
                 />
-                <span class="hero-card-error" aria-hidden="true">
-                  Artwork unavailable
-                </span>
+              </div>
+              <div class="public-feature__caption">
+                <p class="eyebrow">{featuredCollection?.name ?? "Public shelf"}</p>
+                <p class="public-feature__name">{featuredCard.name}</p>
+                <p class="public-feature__meta">
+                  {featuredVariant.material_name}
+                  {featuredVariant.effect_name &&
+                  featuredVariant.effect_name.toLowerCase() !== "none"
+                    ? ` · ${featuredVariant.effect_name}`
+                    : ""}{" "}
+                  finish
+                </p>
+                <span class="public-feature__link">View this card</span>
               </div>
             </a>
-          ))}
-        </div>
-        <p
-          class="mt-6 flex w-[94%] justify-center text-center text-sm font-semibold text-[var(--ink)]"
-          aria-hidden="true"
-        >
-          {heroCards.map((entry) => (
-            <span
-              class="min-w-0 break-words"
-              style={`width:${entry.slug === "tux" ? "42%" : "29%"}`}
-            >
-              {entry.card.name}
-            </span>
-          ))}
-        </p>
-        <noscript>
-          <p class="mt-3 text-center text-sm text-[var(--muted)]">
-            If an image doesn't load, open its card page.
-          </p>
-        </noscript>
-        <div class="absolute bottom-1 right-0 hidden max-w-[14rem] border-l border-[var(--brass)] pl-4 text-right lg:block">
-          <p class="font-mono text-[0.58rem] uppercase tracking-[0.14em] text-[var(--brass)]">
-            Public showcase
-          </p>
-          <p class="mt-1 text-xs text-[var(--muted)]">
-            Loftwah's own worlds, approved for signed-out viewing. Member albums stay private.
-          </p>
-        </div>
-      </div>
-      <div class="border-t border-[var(--line)] pt-4 text-sm text-[var(--muted)] lg:col-span-2">
-        {stats.cards > 0
-          ? `${stats.cards} public ${stats.cards === 1 ? "card" : "cards"} to explore`
-          : "No public cards are available yet."}
+          ) : (
+            <div class="public-feature public-feature--empty">
+              <div class="public-feature__card" aria-hidden="true">
+                <span>Foilbury</span>
+              </div>
+              <div class="public-feature__caption">
+                <p class="eyebrow">Public shelf</p>
+                <p class="public-feature__name">The first originals are being prepared.</p>
+                <p class="public-feature__meta">Approved public artwork appears here.</p>
+              </div>
+            </div>
+          )
+        }
       </div>
     </div>
   </section>
 
-  <section id="showcase" class="landing border-b border-[var(--line)] bg-[var(--paper-2)]/45">
-    <div class="container py-16 md:py-24">
-      <div class="grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-end">
+  <section id="how-it-works" class="public-band border-b border-[var(--line)]">
+    <div class="container public-how">
+      <div class="public-how__intro">
+        <h2 class="public-how__title">One capsule. One card. Keep the copy.</h2>
+      </div>
+      <ol class="public-steps">
+        <li>
+          <span class="public-step__index" aria-hidden="true">01</span>
+          <h3>Choose a capsule</h3>
+          <p>See the exact cost and the actual eligible odds before you open anything.</p>
+        </li>
+        <li>
+          <span class="public-step__index" aria-hidden="true">02</span>
+          <h3>Open one card</h3>
+          <p>Every opening commits one card copy with its own serial and saved receipt.</p>
+        </li>
+        <li>
+          <span class="public-step__index" aria-hidden="true">03</span>
+          <h3>Keep it in your library</h3>
+          <p>Inspect the front and back, follow roster progress and trade duplicates.</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="public-collections border-b border-[var(--line)]">
+    <div class="container">
+      <div class="public-section-head">
         <div>
-          <p class="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-[var(--coral)]">
-            The public showcase
+          <h2 class="public-section-title">A shelf of original worlds.</h2>
+          <p class="public-section-lede">
+            Approved original collections, shown without member data. The public shelf is a
+            preview; your own album stays private.
           </p>
-          <h2 class="display-sm mt-3 text-4xl md:text-6xl">Explore the public collection.</h2>
-          <p class="mt-5 max-w-md text-[var(--muted)]">
-            Browse cards from Loftwah's own worlds. This showcase is available without signing in;
-            member collections stay private.
-          </p>
-          <a class="btn btn-secondary mt-6" href="/cabinet">
-            Browse every public card
-          </a>
         </div>
-        <div class="grid auto-rows-fr gap-4 sm:grid-cols-2">
-          {collections.map((collection, index) => (
-            <a
-              href={`/cabinet?collection=${collection.slug}`}
-              class={`showcase-panel showcase-panel--${(index % 4) + 1} group no-underline`}
-              style={`--panel-tone:${collectionTone[index % collectionTone.length]}`}
-            >
-              <div class="flex items-start justify-between gap-3">
-                <div class="flex items-center gap-3">
-                  {collection.logo_url ? (
+        <a class="btn btn-secondary btn-sm" href="/cabinet">Browse every card</a>
+      </div>
+
+      {
+        shelfCollections.length ? (
+          <div class="public-collection-grid">
+            {shelfCollections.map((collection, index) => (
+              <a
+                class="public-collection"
+                href={`/cabinet?collection=${collection.slug}`}
+                data-tone={index % 4}
+              >
+                <div class="public-collection__art">
+                  {collection.cover_url ? (
                     <img
-                      src={collection.logo_url}
+                      src={collection.cover_url}
                       alt=""
-                      class="h-12 w-12 object-contain"
-                      width="48"
-                      height="48"
-                      loading="lazy"
+                      width="750"
+                      height="1050"
+                      loading={index === 0 ? "eager" : "lazy"}
                     />
                   ) : (
-                    <span class="grid h-12 w-12 place-items-center border border-current/30 font-display text-xl">
-                      {collection.name.charAt(0)}
-                    </span>
+                    <div class="public-collection__fallback" aria-hidden="true">
+                      {collection.logo_url ? (
+                        <img src={collection.logo_url} alt="" width="72" height="72" />
+                      ) : null}
+                      <span>{collection.name}</span>
+                    </div>
                   )}
-                  <div>
-                    <h3 class="font-display text-2xl leading-tight">{collection.name}</h3>
-                    <p class="font-mono text-[0.56rem] uppercase tracking-[0.12em] text-[var(--muted)]">
-                      {collection.card_count} cards · public
-                    </p>
-                  </div>
                 </div>
-                <span
-                  class="text-xl transition-transform duration-300 group-hover:translate-x-1"
-                  aria-hidden="true"
-                >
-                  →
-                </span>
-              </div>
-              <p class="mt-4 line-clamp-3 text-sm leading-relaxed text-[var(--muted)]">
-                {collection.description}
+                <div class="public-collection__body">
+                  <h3>{collection.name}</h3>
+                  <p>{collection.description || "An approved original collection."}</p>
+                  <span class="public-collection__link">Explore collection →</span>
+                </div>
+              </a>
+            ))}
+          </div>
+        ) : (
+          <div class="empty mt-6">
+            <div>
+              <p class="display-sm text-2xl">The public shelf is being prepared.</p>
+              <p class="mt-2 text-sm">
+                Approved originals will appear here. Member collections stay private.
               </p>
-              <div class="mt-5 flex items-center gap-1.5" aria-hidden="true">
-                <span class="h-1.5 w-10 rounded-full" style="background:var(--coral)"></span>
-                <span class="h-1.5 w-5 rounded-full" style="background:var(--saffron)"></span>
-                <span class="h-1.5 w-2.5 rounded-full" style="background:var(--teal)"></span>
-              </div>
-            </a>
-          ))}
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="landing container py-16 md:py-24">
-    <div class="flex flex-wrap items-end justify-between gap-5">
-      <div>
-        <h2 class="display-sm text-4xl md:text-6xl">A small collection, properly made.</h2>
-        <p class="mt-3 max-w-xl text-[var(--muted)]">
-          Browse the cards in the public showcase and discover their artwork and available finishes.
-        </p>
-      </div>
-      <a class="btn btn-secondary btn-sm" href="/cabinet">
-        Browse public cards
-      </a>
-    </div>
-    <div class="card-grid mt-9">
-      {featured.map((card, index) => {
-        const variant = card.editions
-          .flatMap((edition) => edition.variants)
-          .find((item) => item.render_url);
-        return (
-          <a
-            href={`/cabinet/${card.slug}`}
-            class:list={["group no-underline", index >= 6 && "hidden sm:block"]}
-          >
-            <div class="card-face">
-              {variant?.render_url ? (
-                <img
-                  src={variant.thumbnail_url ?? variant.render_url}
-                  alt={`${card.name} card`}
-                  loading="lazy"
-                  width="750"
-                  height="1050"
-                />
-              ) : (
-                <div class="card-face-fallback">{card.name.charAt(0)}</div>
-              )}
             </div>
-            <div class="mt-2 flex items-start justify-between gap-2">
-              <div>
-                <p class="display-sm text-base leading-tight">{card.name}</p>
-                <p class="mt-0.5 text-xs text-[var(--muted)]">
-                  {card.subtitle ?? card.collections[0]?.name ?? "Cabinet card"}
-                </p>
-              </div>
-              {card.rarity ? <span class="badge">{card.rarity.name}</span> : null}
-            </div>
-          </a>
-        );
-      })}
+          </div>
+        )
+      }
     </div>
   </section>
 
-  <section class="landing border-y border-[var(--line)] bg-[var(--paper-2)]/55">
-    <div class="container grid gap-10 py-16 md:grid-cols-[0.95fr_1.05fr] md:py-24">
+  <section class="public-close">
+    <div class="container public-close__inner">
       <div>
-        <h2 class="display-sm text-4xl md:text-6xl">The members' album.</h2>
-        <p class="mt-5 max-w-lg text-[var(--muted)]">
-          Sign in with Discord or a one-use email link to explore the collections available to you,
-          inspect your cards and follow your progress.
+        <h2 class="public-close__title">Start with one card.</h2>
+        <p class="public-close__lede">
+          Sign in with Discord, a one-use email link or a passkey. Your copies, serials and progress
+          stay in this Bot's album.
         </p>
-        <ul class="mt-6 grid gap-3 text-sm">
-          <li class="flex gap-3">
-            <span class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--coral)]"></span>
-            <span>Daily Foil, achievements and set completions. Nothing is purchasable.</span>
-          </li>
-          <li class="flex gap-3">
-            <span class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--saffron)]"></span>
-            <span>See available odds and the cost before opening a capsule.</span>
-          </li>
-          <li class="flex gap-3">
-            <span class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--teal)]"></span>
-            <span>Member-only franchise albums are not promoted on this public page.</span>
-          </li>
-        </ul>
-        <div class="mt-7 flex flex-wrap gap-3">
-          <a class="btn btn-primary" href="/login?next=%2Fplay">
-            Join the album
-          </a>
-          <a class="btn btn-secondary" href="/login?next=%2Fplay%2Fcollection">
-            I already have an account
-          </a>
-        </div>
       </div>
-      <div class="grid auto-rows-fr gap-4 sm:grid-cols-2">
-        {[
-          [
-            "Open a capsule",
-            "Pick an available collection, check its odds and cost, then open a card. If the result is uncertain, check your album before trying again.",
-          ],
-          [
-            "Inspect the object",
-            "Explore available card fronts and backs, with an optional 3D view.",
-          ],
-          ["Keep the story", "Explore the details and collection context available for each card."],
-          ["Let duplicates travel", "Trade or recycle extra cards where available."],
-        ].map(([title, body]) => (
-          <article class="surface-flat p-5">
-            <h3 class="display-sm text-2xl">{title}</h3>
-            <p class="mt-2 text-sm leading-relaxed text-[var(--muted)]">{body}</p>
-          </article>
-        ))}
-      </div>
-    </div>
-  </section>
-
-  <section class="landing container py-16 md:py-24">
-    <div class="grid gap-8 md:grid-cols-[0.8fr_1.2fr] md:items-start">
-      <div>
-        <h2 class="display-sm text-4xl md:text-5xl">Collect a room, not a spreadsheet.</h2>
-        <p class="mt-4 max-w-md text-[var(--muted)]">
-          Explore release checklists and work towards the rewards available for each one.
-        </p>
-        <a class="btn btn-secondary mt-6" href={primaryHref}>
-          Open the album
+      <div class="public-close__actions">
+        <a class="btn btn-primary" href={primaryHref}>
+          {user ? "Open my library" : "Sign in to collect"}
         </a>
-      </div>
-      <div class="grid gap-3 sm:grid-cols-2">
-        {publishedSets.map((set) => (
-          <article class="surface-flat p-5">
-            <div class="flex items-start justify-between gap-3">
-              <div>
-                <p class="font-mono text-[0.56rem] uppercase tracking-[0.12em] text-[var(--muted)]">
-                  Release {set.version}
-                </p>
-                <h3 class="display-sm mt-1 text-2xl">{set.name}</h3>
-              </div>
-              <span class="badge">{set.cards.length} cards</span>
-            </div>
-            <p class="mt-3 text-sm leading-relaxed text-[var(--muted)]">{set.description}</p>
-            <div class="mt-5 flex items-center justify-between border-t border-[var(--line)] pt-3">
-              <span class="font-mono text-[0.58rem] uppercase tracking-[0.1em] text-[var(--muted)]">
-                Completion reward
-              </span>
-              <span class="font-mono text-sm text-[var(--brass)]">✦ {set.reward_amount}</span>
-            </div>
-          </article>
-        ))}
-        {publishedSets.length === 0 ? (
-          <p class="text-sm text-[var(--muted)]">No public releases to show yet.</p>
-        ) : null}
+        <a class="btn btn-secondary" href="/cabinet">Browse the public shelf</a>
       </div>
     </div>
   </section>
-
-  <section class="landing border-t border-[var(--line)]">
-    <div class="container flex flex-wrap items-center justify-between gap-6 py-10">
-      <div>
-        <p class="font-display text-3xl">Made for collecting.</p>
-        <p class="mt-1 text-sm text-[var(--muted)]">
-          Free play · no payments · no marketplace · no cash-out.
-        </p>
-      </div>
-      <div class="flex flex-wrap gap-2">
-        <a class="btn btn-secondary btn-sm" href="/journal">
-          Journal
-        </a>
-        <a class="btn btn-ghost btn-sm" href="/docs/agent-guide">
-          Agent guide
-        </a>
-      </div>
-    </div>
-  </section>
-  <script>
-    document.querySelectorAll<HTMLImageElement>("img[data-hero-art]").forEach((image) => {
-      const frame = image.closest<HTMLElement>(".hero-card-frame");
-      const link = image.closest<HTMLAnchorElement>("a.hero-card");
-      if (!frame || !link) return;
-      const originalLabel = link.getAttribute("aria-label");
-      const unavailable = () => {
-        frame.dataset.artState = "error";
-        if (originalLabel) {
-          link.setAttribute("aria-label", `${originalLabel}, artwork unavailable`);
-        }
-      };
-      const loaded = () => {
-        frame.dataset.artState = "loaded";
-        if (originalLabel) link.setAttribute("aria-label", originalLabel);
-      };
-      image.addEventListener("load", loaded);
-      image.addEventListener("error", unavailable);
-      if (image.complete) image.naturalWidth ? loaded() : unavailable();
-    });
-  </script>
 </BaseLayout>

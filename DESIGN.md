@@ -123,9 +123,16 @@ renderer, autoplay audio or compulsory cinematic.
 
 The player shell, five-destination navigation, compact header, palette,
 typography, radii, home hierarchy and light/dark treatment are implemented. The
-remaining member, Studio, Platform and Discord surfaces still need to be
-migrated screen by screen from the Stitch reference set. The Stitch artwork is
-concept reference, not final collection art.
+public landing, collection library, collection binder, My cards, draw studio,
+collector profile and trade workbench now use the same direction: art-led
+tiles, exact-copy controls outside the 5:7 object, separate roster and finish
+progress, one primary opening action above the fold, and a read-only cosmetic
+library before the full profile editor.
+
+The remaining member surfaces (missions, achievements, gifts, wishlist,
+preferences and account security), Studio, Platform and Discord still need the
+same screen-by-screen migration. The Stitch artwork is concept reference, not
+final collection art.
 
 ## Verification
 

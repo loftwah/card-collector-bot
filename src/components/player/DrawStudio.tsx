@@ -145,7 +145,7 @@ function drawLabel(state: DrawStudioState): string {
     case "loading":
       return "Loading odds…";
     case "ready":
-      return `Draw for ✦ ${preview?.price ?? 0}`;
+      return `Open for ✦ ${preview?.price ?? 0}`;
     case "blocked":
       switch (phase.reason) {
         case "empty_pool":
@@ -368,6 +368,7 @@ export default function DrawStudio({
   pools,
   initialBalance,
   initialPool = "",
+  dailyReward,
   environment,
   accountId,
   botId,
@@ -375,6 +376,7 @@ export default function DrawStudio({
   pools: DrawPool[];
   initialBalance: number;
   initialPool?: string;
+  dailyReward: number;
   environment: string;
   accountId: string;
   botId: string;
@@ -1019,6 +1021,26 @@ export default function DrawStudio({
     () => new Set(preview?.entries.map((entry) => entry.card_id) ?? []).size,
     [preview],
   );
+  const finishOdds = useMemo(() => {
+    const totals: Record<"plain" | "silver" | "gold" | "holographic", number> = {
+      plain: 0,
+      silver: 0,
+      gold: 0,
+      holographic: 0,
+    };
+    for (const entry of preview?.entries ?? []) {
+      const key =
+        entry.material_key === "diamond" || /holographic/i.test(entry.variant_name)
+          ? "holographic"
+          : entry.material_key === "gold"
+            ? "gold"
+            : entry.material_key === "silver"
+              ? "silver"
+              : "plain";
+      totals[key] += entry.probability_bps;
+    }
+    return totals;
+  }, [preview]);
   const operation = operationOf(state.phase);
   const receipt = receiptOf(state.phase);
   const locked = isLockedPhase(state.phase);
@@ -1068,9 +1090,64 @@ export default function DrawStudio({
     );
   }
 
+  const selectedPrice = preview?.price ?? selectedPool?.price ?? 0;
+  const projectedBalance = Math.max(0, state.balance - selectedPrice);
+
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-[minmax(0,0.72fr)_minmax(0,1.28fr)] lg:items-start">
-      <aside className="grid min-w-0 gap-4">
+    <div className="draw-studio">
+      {receiptPanel ? <div className="draw-studio__receipt">{receiptPanel}</div> : null}
+
+      <section className="draw-summary" aria-label="Selected capsule">
+        <div className="draw-summary__identity">
+          <h2 className="draw-summary__name">
+            {selectedPool?.name ?? preview?.pool.name ?? "Choose a capsule"}
+          </h2>
+          <p className="draw-summary__description">
+            {selectedPool?.description ??
+              preview?.pool.description ??
+              "Choose a capsule to see its exact cost and odds."}
+          </p>
+          {selectedPool?.eligibleCount !== undefined ? (
+            <p className="draw-summary__eligible">
+              {selectedPool.eligibleCount} eligible card
+              {selectedPool.eligibleCount === 1 ? "" : "s"} for you
+            </p>
+          ) : null}
+        </div>
+
+        <dl className="draw-summary__costs">
+          <div>
+            <dt>Opening cost</dt>
+            <dd>✦ {selectedPrice}</dd>
+          </div>
+          <div>
+            <dt>Your balance</dt>
+            <dd>✦ {state.balance}</dd>
+          </div>
+          <div>
+            <dt>Projected balance</dt>
+            <dd>✦ {projectedBalance}</dd>
+          </div>
+        </dl>
+
+        <div className="draw-summary__action">
+          <Button
+            ref={drawButtonRef}
+            className="w-full"
+            onClick={() => void draw(state, scopeKey)}
+            disabled={!canDraw(state) || drawScopeKey(state.scope) !== scopeKey}
+            aria-busy={state.phase.status === "submitting" || state.phase.status === "reconciling"}
+          >
+            {drawLabel(state)}
+          </Button>
+          <p className="draw-summary__note">
+            One card is saved immediately. Daily allowance ✦ {dailyReward}.
+          </p>
+        </div>
+      </section>
+
+      <div className="draw-studio__layout">
+        <aside className="draw-studio__aside">
         <div className="surface-flat p-5">
           <label className="field">
             <span className="label">Choose a capsule</span>
@@ -1163,27 +1240,14 @@ export default function DrawStudio({
         </div>
 
         <div className="border border-[var(--line)] p-5">
-          <p className="eyebrow">Balance</p>
-          <p className="display-sm mt-1 text-4xl text-[var(--brass)]">✦ {state.balance}</p>
-          <p className="mt-1 text-xs text-[var(--muted)]">
-            {preview ? `${preview.currency.name} · price ✦ ${preview.price}` : "Select a pool"}
+          <p className="eyebrow">Collection draw preferences</p>
+          <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
+            Turn collections and content filters on or off before you choose a capsule. Preferences
+            only change future eligibility; they never change a committed card.
           </p>
-          <div className="mt-4">
-            <Button
-              ref={drawButtonRef}
-              className="w-full"
-              onClick={() => void draw(state, scopeKey)}
-              disabled={!canDraw(state) || drawScopeKey(state.scope) !== scopeKey}
-              aria-busy={
-                state.phase.status === "submitting" || state.phase.status === "reconciling"
-              }
-            >
-              {drawLabel(state)}
-            </Button>
-          </div>
-          <p className="mt-2 min-h-[3lh] text-center font-mono text-[0.55rem] tracking-[0.1em] text-[var(--muted)] uppercase">
-            Odds shown before you open · no purchase
-          </p>
+          <a className="btn btn-secondary btn-sm mt-3" href="/play/preferences">
+            Open preferences
+          </a>
         </div>
       </aside>
 
@@ -1315,8 +1379,6 @@ export default function DrawStudio({
           </div>
         ) : null}
 
-        {!preview ? receiptPanel : null}
-
         {preview ? (
           <>
             <div
@@ -1324,12 +1386,13 @@ export default function DrawStudio({
               aria-busy={state.phase.status === "loading"}
             >
               <div>
-                <p className="eyebrow">
-                  {preview.pool.name} · revision {preview.revision}
-                </p>
-                <h2 className="display-sm mt-1 text-4xl">Know the odds.</h2>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="display-sm text-3xl">Transparent draw odds</h2>
+                  <span className="badge">Revision {preview.revision}</span>
+                </div>
                 <p className="mt-2 max-w-xl text-sm text-[var(--muted)]">
-                  {preview.pool.description}
+                  Every eligible copy is listed with its actual chance. Nothing is reweighted after
+                  you commit.
                 </p>
                 {state.phase.status === "loading" ? (
                   <p className="mt-2 text-xs text-[var(--muted)]" role="status">
@@ -1343,6 +1406,25 @@ export default function DrawStudio({
                 <p className="text-xs text-[var(--muted)]">{cardCount} identities</p>
               </div>
             </div>
+
+            <div className="draw-finish-odds" aria-label="Chance by finish">
+              {(
+                [
+                  ["Plain", finishOdds.plain],
+                  ["Silver", finishOdds.silver],
+                  ["Gold", finishOdds.gold],
+                  ["Holographic", finishOdds.holographic],
+                ] as const
+              ).map(([label, bps]) => (
+                <div key={label} className="draw-finish-odds__item">
+                  <span>{label}</span>
+                  <strong>{pct(bps)}</strong>
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-[var(--muted)]">
+              Chance by finish across every eligible copy. One opening returns one card.
+            </p>
 
             {preview.filters.player_hidden_collection_ids.length ? (
               <div className="notice mt-4 text-sm">
@@ -1399,8 +1481,6 @@ export default function DrawStudio({
                 </div>
               </div>
             ) : null}
-
-            {receiptPanel}
 
             <div className="mt-6">
               <div className="flex items-center justify-between gap-3">
@@ -1472,6 +1552,7 @@ export default function DrawStudio({
             </div>
           </>
         ) : null}
+        </div>
       </div>
     </div>
   );

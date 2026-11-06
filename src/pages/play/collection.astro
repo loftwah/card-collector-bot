@@ -5,7 +5,6 @@ import SharePanel from "../../components/player/SharePanel";
 import { pageContext } from "../../server/page";
 import { countInventory, getInventory } from "../../server/modules/collection";
 import { listSets } from "../../server/modules/catalogue";
-import { getWalletSummary } from "../../server/modules/wallet";
 import {
   collectionBinder,
   collectionProgress,
@@ -24,11 +23,10 @@ const inventoryFilter = {
   setSlug: initialSet || undefined,
   collection: initialCollection || undefined,
 };
-const [items, totalItems, sets, wallet, collections] = await Promise.all([
+const [items, totalItems, sets, collections] = await Promise.all([
   getInventory(ctx, { ...inventoryFilter, limit: 24 }),
   countInventory(ctx, inventoryFilter),
   listSets(ctx, user.id),
-  getWalletSummary(ctx.db, ctx.tenant.id, user.id, 1),
   listCollections(ctx),
 ]);
 const publishedSets = sets.filter((set) => set.status === "published");
@@ -51,216 +49,307 @@ const nextFinish =
     .map((key) => ({ key, ...(finishStats[key] ?? { owned: 0, total: 0 }) }))
     .filter((entry) => entry.total > 0 && entry.owned < entry.total)
     .sort((a, b) => b.owned / Math.max(1, b.total) - a.owned / Math.max(1, a.total))[0] ?? null;
+const rosterPct = progress && progress.total_cards
+  ? Math.round((progress.owned_cards / progress.total_cards) * 100)
+  : 0;
+const filledSlots = binder ? binder.cards.filter((card) => card.owned).length : 0;
+const audienceLabel = (audience: string) =>
+  audience === "public" ? "Public showcase" : audience === "private" ? "Private" : "Member album";
+const finishLabel = (key: string) => finishLabels[key] ?? key;
 ---
 
-<PlayerLayout title="Collection · Foilbury">
-  <div class="member-collection">
-  <div class="flex flex-wrap items-end justify-between gap-4">
-    <div>
-      <p class="eyebrow">Private collection</p>
-      <h2 class="display-sm mt-1 text-4xl">Your drawers.</h2>
-      <p class="mt-2 max-w-xl text-sm text-[var(--muted)]">
-        Search, filter and favourite the cards you have drawn. Reserved cards are held for an open
-        trade and cannot be spent twice.
-      </p>
-    </div>
-    <div class="flex flex-wrap items-center gap-3">
-      <div class="text-right">
-        <p class="eyebrow">Foil</p>
-        <p class="font-mono text-2xl text-[var(--brass)]">✦ {wallet.balance}</p>
-      </div>
-      <a class="btn btn-primary btn-sm" href="/play/draw">
-        Draw a card
-      </a>
-    </div>
-  </div>
-  <div class="mt-7">
-    {selected && progress && binder ? (
-      <section class="member-collection__section mb-8 border border-[var(--line)] bg-[var(--paper-2)]/35">
-        <div class="member-collection__details grid gap-5 border-b border-[var(--line)] p-5 lg:grid-cols-[1fr_auto] lg:items-start">
-          <div class="flex flex-wrap items-start gap-4">
-            {selected.logo_url ? (
-              <img
-                src={selected.logo_url}
-                alt=""
-                class="h-16 w-16 object-contain"
-                width="64"
-                height="64"
-              />
+<PlayerLayout title={selected ? `${selected.name} · Foilbury` : "My cards · Foilbury"}>
+  {
+    selected && progress && binder ? (
+      <div class="collection-album">
+        <header class="collection-album__hero">
+          <div class="collection-album__cover">
+            {selected.cover_url ? (
+              <img src={selected.cover_url} alt="" width="750" height="1050" loading="eager" />
             ) : (
-              <span class="grid h-16 w-16 place-items-center bg-[var(--ink)] font-display text-2xl text-[var(--paper)]">
-                {selected.name.charAt(0)}
+              <span class="collection-album__cover-fallback" aria-hidden="true">
+                {selected.logo_url ? <img src={selected.logo_url} alt="" width="72" height="72" /> : null}
+                <span>{selected.name}</span>
               </span>
             )}
-            <div class="min-w-0">
-              <h3 class="display-sm text-3xl uppercase">{selected.name}</h3>
-              <p class="mt-1 max-w-xl text-sm text-[var(--muted)]">{selected.description}</p>
-              {ctx.csrfToken ? <form method="post" action={`/play/world/${encodeURIComponent(selected.id)}/explore`} class="mt-3">
-                <input type="hidden" name="csrf" value={ctx.csrfToken} />
-                <button type="submit" class="btn btn-secondary btn-sm">Record world visit</button>
-                <p class="mt-1 text-xs text-[var(--muted)]">After looking around, record this visit for today's mission.</p>
-              </form> : null}
-              <p class="mt-2 font-mono text-[0.6rem] uppercase tracking-[0.1em] text-[var(--muted)]">
-                {selected.view_audience === "public"
-                  ? "Public showcase"
-                  : selected.view_audience === "private"
-                    ? "Private album"
-                    : "Member album"}{" "}
-                · {progress.total_cards} subjects · {progress.total_variants} core variants
+          </div>
+
+          <div class="collection-album__intro">
+            <a class="collection-album__back" href="/play/collections">
+              ← All collections
+            </a>
+            <h1 class="page-title mt-2">{selected.name}</h1>
+            <span class="badge">{audienceLabel(selected.view_audience)}</span>
+            <p class="collection-album__description">
+              {selected.description || "A curated collection."}
+            </p>
+            <div class="collection-album__actions">
+              <a class="btn btn-primary" href="/play/draw">Open a capsule</a>
+              <a class="btn btn-secondary" href="#my-cards">My cards</a>
+            </div>
+            <p class="collection-album__note">
+              {selected.source_work ?? (selected.scope === "global" ? "Foilbury original" : "This Bot")}
+              {" · "}
+              {progress.total_cards} subjects · {progress.total_variants} core variants
+            </p>
+          </div>
+
+          <dl class="collection-album__stats">
+            <div>
+              <dt>Subjects</dt>
+              <dd>{progress.owned_cards}/{progress.total_cards}</dd>
+            </div>
+            <div>
+              <dt>Copies</dt>
+              <dd>{progress.owned_copies}</dd>
+            </div>
+            <div>
+              <dt>Duplicates</dt>
+              <dd>{progress.duplicates}</dd>
+            </div>
+          </dl>
+        </header>
+
+        <div class="collection-album__progress">
+          <div class="collection-progress-block">
+            <div class="collection-progress-block__head">
+              <p class="collection-progress-block__label">Roster completion</p>
+              <p class="collection-progress-block__value">
+                {progress.owned_cards} of {progress.total_cards} subjects · {rosterPct}%
               </p>
             </div>
+            <div
+              class="collection-progress-block__bar"
+              role="progressbar"
+              aria-valuemin="0"
+              aria-valuemax={progress.total_cards}
+              aria-valuenow={progress.owned_cards}
+              aria-label={`${selected.name} roster completion`}
+            >
+              <span style={`width:${rosterPct}%`}></span>
+            </div>
+            <p class="collection-progress-block__hint">
+              Roster counts unique subjects. Finish progress below is a separate goal.
+            </p>
           </div>
-          <div class="member-collection__stats grid grid-cols-3 gap-3 text-center">
-            <div>
-              <p class="studio-stat__label">Subjects</p>
-              <p class="display-sm text-2xl">
-                {progress.owned_cards}/{progress.total_cards}
+
+          <div class="collection-progress-block">
+            <div class="collection-progress-block__head">
+              <p class="collection-progress-block__label">Owned by finish</p>
+              <p class="collection-progress-block__value">
+                {progress.owned_variants}/{progress.total_variants} core variants
               </p>
             </div>
-            <div>
-              <p class="studio-stat__label">Copies</p>
-              <p class="display-sm text-2xl">{progress.owned_copies}</p>
-            </div>
-            <div>
-              <p class="studio-stat__label">Duplicates</p>
-              <p class="display-sm text-2xl">{progress.duplicates}</p>
-            </div>
-          </div>
-        </div>
-        <div class="member-collection__details grid gap-5 p-5 lg:grid-cols-[1fr_1fr]">
-          <div>
-            <div class="flex items-end justify-between gap-3">
-              <p class="studio-stat__label">Core finish progress</p>
-              <span class="font-mono text-[0.58rem] uppercase tracking-[0.1em] text-[var(--muted)]">
-                current ownership
-              </span>
-            </div>
-            <div class="mt-3 grid gap-2">
+            <div class="collection-finish-list">
               {finishOrder.map((key) => {
                 const stat = finishStats[key] ?? { owned: 0, total: 0 };
                 const pct = stat.total ? Math.round((stat.owned / stat.total) * 100) : 0;
                 return (
-                  <div>
-                    <div class="flex items-baseline justify-between gap-3 text-sm">
-                      <span class="font-medium">{finishLabels[key]}</span>
-                      <span class="font-mono text-[0.62rem] text-[var(--muted)]">
-                        {stat.owned}/{stat.total}{" "}
-                        {stat.total && stat.owned >= stat.total ? "· mastered" : ""}
+                  <div class="collection-finish-row">
+                    <div class="collection-finish-row__head">
+                      <span>{finishLabel(key)}</span>
+                      <span class="mono">
+                        {stat.owned}/{stat.total}
+                        {stat.total && stat.owned >= stat.total ? " · mastered" : ""}
                       </span>
                     </div>
                     <div
-                      class="mt-1 h-2 bg-[var(--paper-3)]"
+                      class="collection-finish-row__bar"
                       role="progressbar"
                       aria-valuemin="0"
                       aria-valuemax={stat.total}
                       aria-valuenow={stat.owned}
-                      aria-label={`${finishLabels[key]} progress`}
+                      aria-label={`${finishLabel(key)} progress`}
                     >
-                      <div class="h-full bg-[var(--signal)]" style={`width:${pct}%`}></div>
+                      <span style={`width:${pct}%`}></span>
                     </div>
                   </div>
                 );
               })}
             </div>
             {nextFinish ? (
-              <p class="mt-3 text-xs text-[var(--muted)]">
-                Next target:{" "}
-                <strong>
-                  {finishLabels[nextFinish.key]} {nextFinish.owned}/{nextFinish.total}
-                </strong>{" "}
-                — {nextFinish.total - nextFinish.owned} missing in this world.
+              <p class="collection-progress-block__hint">
+                Next finish target: <strong>{finishLabel(nextFinish.key)}</strong>{" "}
+                {nextFinish.owned}/{nextFinish.total} — {nextFinish.total - nextFinish.owned} missing.
               </p>
             ) : (
-              <p class="mt-3 text-xs green">
-                Every published core finish is held. Finish mastery is complete for this world.
+              <p class="collection-progress-block__hint green">
+                Every published core finish is held. Finish mastery is complete for this collection.
               </p>
             )}
           </div>
-          <div>
-            <div class="flex items-end justify-between gap-3">
-              <p class="studio-stat__label">
-                Binder · {binder.cards.filter((card) => card.owned).length}/{binder.total} filled
-              </p>
-              <a
-                class="font-mono text-[0.58rem] uppercase tracking-[0.1em] underline underline-offset-4"
-                href="/play/collections"
-              >
-                Change world
-              </a>
+        </div>
+
+        <nav class="collection-album__sections" aria-label="Collection sections">
+          <a href="#album">Album</a>
+          <a href="#my-cards">All cards</a>
+          <a href="#about">About</a>
+        </nav>
+
+        <section id="album" class="collection-album__section">
+          <div class="collection-section-head">
+            <div>
+              <h2 class="collection-section-title">Full binder</h2>
             </div>
-            <div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {binder.cards.map((card) => (
-                <a
-                  href={
-                    card.owned && card.instance_id
-                      ? `/play/card/${card.instance_id}`
-                      : `/play/draw?collection=${selected.slug}`
-                  }
-                  class:list={[
-                    "group relative block border p-1 no-underline",
-                    card.owned
-                      ? "border-[var(--line-strong)] bg-[var(--paper)]"
-                      : "border-dashed border-[var(--line)] bg-[var(--paper-3)]/40",
-                  ]}
-                >
+            <p class="collection-section-meta">
+              {filledSlots}/{binder.total} slots filled
+            </p>
+          </div>
+          <div class="binder-grid">
+            {binder.cards.map((card) => (
+              <article class="binder-slot" data-owned={card.owned ? "true" : "false"}>
+                <div class="binder-slot__object">
                   {card.owned && card.render_url ? (
-                    <img
-                      src={card.render_url}
-                      alt=""
-                      class="aspect-[5/7] w-full object-cover"
-                      loading="lazy"
-                      width="150"
-                      height="210"
-                    />
+                    <img src={card.render_url} alt="" width="300" height="420" loading="lazy" />
                   ) : (
-                    <div class="grid aspect-[5/7] w-full place-items-center bg-[var(--ink)]/5">
-                      <span aria-hidden="true" class="px-1 text-center font-mono text-[0.5rem] uppercase tracking-[0.08em] text-[var(--muted)]">
-                        {card.name}
-                      </span>
+                    <div class="binder-slot__missing">
+                      <span class="binder-slot__missing-mark" aria-hidden="true">+</span>
+                      <span>{card.owned ? "Render unavailable" : "Missing"}</span>
                     </div>
                   )}
-                  <p class="mt-1 truncate text-[0.62rem] font-semibold">{card.name}</p>
-                  {!card.owned ? <span class="sr-only">Find an eligible capsule.</span> : null}
-                  <p class="font-mono text-[0.48rem] uppercase tracking-[0.06em] text-[var(--muted)]">
+                </div>
+                <div class="binder-slot__body">
+                  <p class="binder-slot__name">{card.name}</p>
+                  <p class="binder-slot__meta">
                     {card.owned
-                      ? `${card.copies} cop${card.copies === 1 ? "y" : "ies"}${card.finishes.length ? ` · ${card.finishes.length}/4 finishes` : ""}`
-                      : "Missing"}
+                      ? `${card.copies} cop${card.copies === 1 ? "y" : "ies"}${
+                          card.finishes.length
+                            ? ` · ${card.finishes.map(finishLabel).join(", ")}`
+                            : ""
+                        }`
+                      : "Not yet collected"}
                   </p>
-                </a>
-              ))}
+                  {card.owned && card.instance_id ? (
+                    <a class="btn btn-secondary btn-sm" href={`/play/card/${card.instance_id}`}>
+                      Inspect
+                    </a>
+                  ) : (
+                    <a class="btn btn-secondary btn-sm" href="/play/draw">
+                      Find a capsule
+                    </a>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section id="my-cards" class="collection-album__section">
+          <div class="collection-section-head">
+            <div>
+              <h2 class="collection-section-title">My cards</h2>
+            </div>
+            <a class="btn btn-secondary btn-sm" href="/play/collections">
+              Browse collections
+            </a>
+          </div>
+          <p class="collection-section-lede">
+            Every owned copy in this collection, with its own serial and finish. Filters and sort
+            apply to the copies you hold.
+          </p>
+          <CollectionBrowser
+            scopeKey={JSON.stringify([ctx.tenant.id, user.id])}
+            client:load
+            initialItems={items}
+            initialTotal={totalItems}
+            initialSearch={initialSearch}
+            initialFavourite={initialFavourite}
+            initialSet={initialSet}
+            sets={publishedSets.map((set) => ({ slug: set.slug, name: set.name }))}
+            collections={collections
+              .filter((collection) => collection.enabled)
+              .map((collection) => ({
+                slug: collection.slug,
+                name: collection.name,
+                logo_url: collection.logo_url,
+              }))}
+            initialCollection={initialCollection}
+          />
+        </section>
+
+        <section id="about" class="collection-album__section">
+          <div class="collection-section-head">
+            <div>
+              <h2 class="collection-section-title">The collection</h2>
             </div>
           </div>
-        </div>
-        <div class="member-collection__details border-t border-[var(--line)] p-5">
-          <SharePanel
+          <div class="collection-about">
+            <div>
+              <p>{selected.description || "A curated collection."}</p>
+              <dl class="collection-about__facts">
+                <div>
+                  <dt>Audience</dt>
+                  <dd>{audienceLabel(selected.view_audience)}</dd>
+                </div>
+                <div>
+                  <dt>Source</dt>
+                  <dd>{selected.source_work ?? "Foilbury original"}</dd>
+                </div>
+                <div>
+                  <dt>Scope</dt>
+                  <dd>{selected.scope === "global" ? "Foilbury collection" : "This Bot"}</dd>
+                </div>
+              </dl>
+              {ctx.csrfToken ? (
+                <form
+                  method="post"
+                  action={`/play/world/${encodeURIComponent(selected.id)}/explore`}
+                  class="mt-5"
+                >
+                  <input type="hidden" name="csrf" value={ctx.csrfToken} />
+                  <button type="submit" class="btn btn-secondary btn-sm">
+                    Record a world visit
+                  </button>
+                  <p class="mt-2 text-xs text-[var(--muted)]">
+                    After looking around, record this visit for today's mission.
+                  </p>
+                </form>
+              ) : null}
+            </div>
+            <SharePanel
+              client:load
+              kind="collection"
+              targetId={selected.id}
+              title={selected.name}
+              description={`${progress.owned_cards}/${progress.total_cards} subjects · ${progress.owned_variants}/${progress.total_variants} core variants. The share is a labelled snapshot, not live inventory.`}
+              frontUrl={selected.cover_url}
+            />
+          </div>
+        </section>
+      </div>
+    ) : (
+      <div class="my-cards-page">
+        <header class="border-b border-[var(--line)] pb-6">
+          <h1 class="page-title mt-2">My cards</h1>
+          <p class="mt-3 max-w-2xl text-[var(--muted)]">
+            Every card copy you hold in this Bot. Choose a collection to open its binder, or search
+            exact copies here.
+          </p>
+          <a class="btn btn-secondary btn-sm mt-4" href="/play/collections">
+            Browse collections
+          </a>
+        </header>
+        <div class="mt-7">
+          <CollectionBrowser
+            scopeKey={JSON.stringify([ctx.tenant.id, user.id])}
             client:load
-            kind="collection"
-            targetId={selected.id}
-            title={selected.name}
-            description={`${progress.owned_cards}/${progress.total_cards} subjects · ${progress.owned_variants}/${progress.total_variants} core variants. The share is a labelled snapshot, not live inventory.`}
-            frontUrl={selected.cover_url}
+            initialItems={items}
+            initialTotal={totalItems}
+            initialSearch={initialSearch}
+            initialFavourite={initialFavourite}
+            initialSet={initialSet}
+            sets={publishedSets.map((set) => ({ slug: set.slug, name: set.name }))}
+            collections={collections
+              .filter((collection) => collection.enabled)
+              .map((collection) => ({
+                slug: collection.slug,
+                name: collection.name,
+                logo_url: collection.logo_url,
+              }))}
+            initialCollection={initialCollection}
           />
         </div>
-      </section>
-    ) : null}
-    <CollectionBrowser
-      scopeKey={JSON.stringify([ctx.tenant.id, user.id])}
-      client:load
-      initialItems={items}
-      initialTotal={totalItems}
-      initialSearch={initialSearch}
-      initialFavourite={initialFavourite}
-      initialSet={initialSet}
-      sets={publishedSets.map((set) => ({ slug: set.slug, name: set.name }))}
-      collections={collections
-        .filter((collection) => collection.enabled)
-        .map((collection) => ({
-          slug: collection.slug,
-          name: collection.name,
-          logo_url: collection.logo_url,
-        }))}
-      initialCollection={initialCollection}
-    />
-  </div>
-  </div>
+      </div>
+    )
+  }
 </PlayerLayout>

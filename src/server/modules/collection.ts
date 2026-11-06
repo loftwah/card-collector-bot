@@ -35,6 +35,7 @@ export interface InventoryRow {
   locked: number;
   acquired_via: string;
   acquired_at: string;
+  duplicate_count: number;
   render_url: string | null;
   thumbnail_url: string | null;
   back_render_url: string | null;
@@ -56,6 +57,10 @@ const INVENTORY_SELECT = `SELECT ci.id, ci.card_id, ci.variant_id, cd.name AS ca
   v.name AS variant_name, m.key AS material_key, fx.key AS effect_key,
   rar.key AS rarity_key, rar.name AS rarity_name, rar.tone AS rarity_tone,
   cls.name AS class_name, cat.name AS category_name, ci.serial, ci.status, ci.favourite, ci.locked,
+  (SELECT COUNT(*) FROM fb_card_instances dup
+    WHERE dup.tenant_id = ci.tenant_id AND dup.user_id = ci.user_id
+      AND dup.card_id = ci.card_id AND dup.variant_id = ci.variant_id
+      AND dup.status IN ('owned','reserved')) AS duplicate_count,
   ci.acquired_via, ci.acquired_at, cd.status AS card_status, ('/media/render/' || vr.asset_id) AS render_url,
   ('/media/back/' || br.asset_id) AS back_render_url,
   (SELECT '/media/derivative/' || d.id FROM fb_asset_derivatives d WHERE d.tenant_id = vr.tenant_id AND d.source_asset_id = vr.asset_id AND d.size_key = 'thumb' AND d.status = 'ready' LIMIT 1) AS thumbnail_url,
@@ -80,6 +85,9 @@ interface InventoryQuery {
   favourite?: boolean;
   setSlug?: string;
   collection?: string;
+  finish?: string;
+  duplicates?: boolean;
+  sort?: "newest" | "name" | "finish";
   limit?: number;
   offset?: number;
 }
@@ -116,6 +124,20 @@ function inventoryFilter(ctx: Ctx, options: InventoryQuery) {
     );
     params.push(options.collection);
   }
+  if (options.finish) {
+    if (options.finish === "holographic") {
+      where.push("(m.key = 'diamond' OR fx.key = 'holographic')");
+    } else if (["plain", "silver", "gold"].includes(options.finish)) {
+      where.push("m.key = ?");
+      params.push(options.finish);
+    }
+  }
+  if (options.duplicates) {
+    where.push(`(SELECT COUNT(*) FROM fb_card_instances dup
+      WHERE dup.tenant_id = ci.tenant_id AND dup.user_id = ci.user_id
+        AND dup.card_id = ci.card_id AND dup.variant_id = ci.variant_id
+        AND dup.status IN ('owned','reserved')) > 1`);
+  }
   return { where: where.join(" AND "), params };
 }
 
@@ -127,6 +149,8 @@ export async function countInventory(ctx: Ctx, options: InventoryQuery = {}): Pr
      FROM fb_card_instances ci
      JOIN fb_card_definitions cd ON cd.id = ci.card_id
      JOIN fb_variants v ON v.id = ci.variant_id
+     JOIN fb_materials m ON m.id = v.material_id
+     LEFT JOIN fb_effects fx ON fx.id = v.effect_id
      WHERE ${where}`,
     ...params,
   );
@@ -140,9 +164,15 @@ export async function getInventory(
   const { where, params } = inventoryFilter(ctx, options);
   const limit = Math.min(500, Math.max(1, options.limit ?? 200));
   const offset = Math.max(0, Math.floor(options.offset ?? 0));
+  const order =
+    options.sort === "name"
+      ? "cd.name COLLATE NOCASE, ci.acquired_at DESC, ci.id DESC"
+      : options.sort === "finish"
+        ? "m.sort, fx.sort, cd.name COLLATE NOCASE, ci.id DESC"
+        : "ci.acquired_at DESC, ci.id DESC";
   return all<InventoryRow>(
     ctx.db,
-    `${INVENTORY_SELECT} WHERE ${where} ORDER BY ci.acquired_at DESC, ci.id DESC LIMIT ? OFFSET ?`,
+    `${INVENTORY_SELECT} WHERE ${where} ORDER BY ${order} LIMIT ? OFFSET ?`,
     ...params,
     limit,
     offset,
@@ -504,10 +534,15 @@ export async function getMemberTradeInventory(ctx: Ctx, memberId: string) {
                              AND scope.type = 'text' AND scope.value = 'inventory:read')
                AND NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(g.scopes_json) THEN g.scopes_json ELSE '[]' END) scope_bad WHERE scope_bad.type <> 'text')))
   )
-  SELECT ci.id, cd.name AS card_name, v.name AS variant_name, ci.serial
+  SELECT ci.id, cd.name AS card_name, v.name AS variant_name, ci.serial,
+         m.key AS material_key, fx.key AS effect_key,
+         (SELECT vr.public_url FROM fb_variant_renders vr
+           WHERE vr.variant_id = ci.variant_id AND vr.status = 'published' LIMIT 1) AS render_url
   FROM principal p JOIN fb_card_instances ci ON ci.tenant_id = ? AND ci.user_id = ?
   JOIN fb_card_definitions cd ON cd.id = ci.card_id
   JOIN fb_variants v ON v.id = ci.variant_id AND v.card_id = cd.id
+  JOIN fb_materials m ON m.id = v.material_id
+  LEFT JOIN fb_effects fx ON fx.id = v.effect_id
   JOIN fb_artwork_editions e ON e.id = v.edition_id AND e.tenant_id = v.tenant_id AND e.card_id = cd.id
   JOIN fb_assets subject ON subject.id = e.subject_asset_id AND subject.tenant_id = e.tenant_id
   WHERE ci.status = 'owned' AND ci.locked = 0 AND cd.status = 'published' AND cd.archived_at IS NULL
