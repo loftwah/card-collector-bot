@@ -2253,19 +2253,13 @@ html[data-motion="reduced"] .layered-card__effect {
   grid-template-columns: 64px minmax(0, 1fr);
   border-top: 1px solid var(--line);
   padding: 1.5rem 0;
+  scroll-margin-top: 5rem;
 }
 
 .tour-step > div:last-child,
 .tour-step .grid > * {
   min-width: 0;
   overflow-wrap: anywhere;
-}
-
-@media (max-width: 640px) {
-  .tour-step {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0.5rem;
-  }
 }
 
 .tour-step__index {
@@ -2296,7 +2290,9 @@ html[data-motion="reduced"] .layered-card__effect {
     max-width: 190px;
   }
   .tour-step {
-    grid-template-columns: 40px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.5rem;
+    scroll-margin-top: 11rem;
   }
   .tour-step__index {
     font-size: 1.6rem;
