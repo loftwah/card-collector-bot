@@ -14,8 +14,8 @@ try {
   const page=await context.newPage();await page.goto('/tour');
   const start=page.getByRole('link',{name:'Start the tour'});assert.equal(await start.getAttribute('href'),'#step-1');
   const names=['What Foilbury is','A real set','Free play','Inspect the object','Progress and mastery','Show it off'];
-  for(let i=0;i<6;i++) { const link=page.getByRole('link',{name:names[i],exact:true}); assert.equal(await link.getAttribute('href'),`#step-${i+1}`); assert.equal(await page.locator(`#step-${i+1}`).count(),1); }
-  await start.focus();assert.equal(await start.evaluate(el=>document.activeElement===el),true);await page.keyboard.press('Enter');assert.equal(new URL(page.url()).hash,'#step-1');
+  for(let i=0;i<6;i++) { const link=page.getByRole('link',{name:names[i],exact:true}); assert.equal(await link.getAttribute('href'),`#step-${i+1}`); assert.equal(await page.locator(`#step-${i+1}`).count(),1); const r=await link.boundingBox();assert.ok(r && r.height>=44,`section ${i+1} touch target`); }
+  await start.focus();assert.equal(await start.evaluate(el=>document.activeElement===el),true);await page.keyboard.press('Enter');assert.equal(new URL(page.url()).hash,'#step-1');assert.equal(await page.evaluate(()=>document.activeElement?.id),'step-1');
   await page.getByRole('link',{name:'Show it off',exact:true}).click();assert.equal(new URL(page.url()).hash,'#step-6');
   const end=page.getByRole('navigation',{name:'End of tour'});assert.equal(await end.getByText("You've reached the end of the tour.").count(),1);assert.equal(await end.getByRole('link',{name:'Back to the start'}).getAttribute('href'),'#step-1');
   await page.goto('/tour?step=3.8');assert.equal(await page.getByRole('link',{name:'Go to section 3'}).getAttribute('href'),'#step-3');
