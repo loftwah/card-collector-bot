@@ -19,9 +19,18 @@ try {
   return Astro.redirect("/play/collection");
 }
 const { instance, history, draws } = detail;
-const ownedCopy = await first<{ id: string }>(ctx.db,
-  "SELECT id FROM fb_card_instances WHERE id=? AND tenant_id=? AND user_id=? AND status IN ('owned','reserved')",
-  instance.id, ctx.tenant.id, ctx.user!.id);
+const ownedCopy = await first<{ id: string }>(
+  ctx.db,
+  `SELECT ci.id
+     FROM fb_card_instances ci
+     JOIN fb_card_definitions cd ON cd.id=ci.card_id AND cd.status='published' AND cd.archived_at IS NULL
+     JOIN fb_variants v ON v.id=ci.variant_id AND v.card_id=cd.id AND v.status='published' AND v.archived_at IS NULL
+     JOIN fb_artwork_editions e ON e.id=v.edition_id AND e.tenant_id=v.tenant_id AND e.card_id=cd.id AND e.status='published' AND e.archived_at IS NULL
+    WHERE ci.id=? AND ci.tenant_id=? AND ci.user_id=? AND ci.status IN ('owned','reserved')`,
+  instance.id,
+  ctx.tenant.id,
+  ctx.user!.id,
+);
 const sets = await listSets(ctx, ctx.user!.id);
 const set = sets.find(
   (item) => item.cards.some((card) => card.id === instance.card_id) && item.status === "published",

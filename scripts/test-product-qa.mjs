@@ -234,7 +234,7 @@ try {
 
   await failOnThrow("cabinet overview and card contract", async () => {
     await page.goto("/play");
-    await page.getByRole("heading", { name: /your cabinet/i }).waitFor();
+    await page.getByRole("heading", { name: /your library/i }).waitFor();
     const geo = await publishedGeometry(page);
     check("featured card is present", geo.present);
     check(
@@ -250,8 +250,8 @@ try {
     );
     check("no nested interactive card controls", geo.nestedInteractive === 0);
 
-    await page.locator(".cabinet-more__summary").click();
-    const menuBox = await page.locator(".cabinet-more__menu").boundingBox();
+    await page.locator(".player-more__summary").click();
+    const menuBox = await page.locator(".player-more__menu").boundingBox();
     check(
       "cabinet More menu is fully visible",
       Boolean(menuBox && menuBox.height > 100 && menuBox.y + menuBox.height <= 1000),
@@ -260,7 +260,7 @@ try {
     await page.keyboard.press("Escape");
     check(
       "Escape closes the cabinet menu",
-      (await page.locator(".cabinet-more[open]").count()) === 0,
+      (await page.locator(".player-more[open]").count()) === 0,
     );
 
     await page.getByRole("button", { name: /show .* back/i }).click();
@@ -583,7 +583,7 @@ try {
     const phone = await mobile.newPage();
     watch(phone);
     await phone.goto("/play");
-    await phone.getByRole("heading", { name: /your cabinet/i }).waitFor();
+    await phone.getByRole("heading", { name: /your library/i }).waitFor();
     check(
       "mobile play has no horizontal document overflow",
       await phone.evaluate(
@@ -643,7 +643,7 @@ try {
 
   await failOnThrow("deliberate negative controls calibrate the detectors", async () => {
     await page.goto("/play");
-    await page.getByRole("heading", { name: /your cabinet/i }).waitFor();
+    await page.getByRole("heading", { name: /your library/i }).waitFor();
     await page.addStyleTag({
       content: ".published-card{aspect-ratio:auto !important;height:120px !important}",
     });
@@ -654,7 +654,7 @@ try {
       `ratio ${broken.ratio?.toFixed(3)}`,
     );
     await page.reload();
-    await page.getByRole("heading", { name: /your cabinet/i }).waitFor();
+    await page.getByRole("heading", { name: /your library/i }).waitFor();
     await page.addStyleTag({ content: ".card-toolbar{display:none !important}" });
     const hiddenControls = await page.evaluate(() => {
       const toolbar = document.querySelector(".card-toolbar");

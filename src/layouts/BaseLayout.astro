@@ -8,8 +8,15 @@ interface Props {
   noIndex?: boolean;
   shareImage?: string;
   wide?: boolean;
+  shell?: "site" | "player";
 }
-const { title, description, noIndex = false, shareImage = "/brand/social-preview.jpg" } = Astro.props;
+const {
+  title,
+  description,
+  noIndex = false,
+  shareImage = "/brand/social-preview.jpg",
+  shell = "site",
+} = Astro.props;
 const session = Astro.locals.foilbury;
 const theme = Astro.locals.theme ?? "system";
 const canonical = new URL(Astro.url.pathname, Astro.site ?? Astro.url).href;
@@ -23,11 +30,10 @@ const pageTitle = title.includes("Foilbury") ? title : `${title} · Foilbury`;
     <title>{pageTitle}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
-    <link rel="preload" href="/fonts/geist/GeistSerifVF.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="/fonts/geist/GeistSansVF.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin />
     {noIndex ? <meta name="robots" content="noindex" /> : null}
     <meta name="foilbury-csrf" content={session?.csrfToken ?? ""} />
-    <meta name="theme-color" content="#141512" />
+    <meta name="theme-color" content="#11141B" />
     <link rel="icon" href="/brand/favicon-32.png" sizes="32x32" type="image/png" />
     <link rel="icon" href="/brand/favicon-16.png" sizes="16x16" type="image/png" />
     <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
@@ -45,10 +51,10 @@ const pageTitle = title.includes("Foilbury") ? title : `${title} · Foilbury`;
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
-    <SiteHeader />
+    {shell === "site" ? <SiteHeader /> : <slot name="shell" />}
     <main id="main">
       <slot />
     </main>
-    <SiteFooter />
+    {shell === "site" ? <SiteFooter /> : null}
   </body>
 </html>

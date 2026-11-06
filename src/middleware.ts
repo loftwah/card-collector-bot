@@ -28,6 +28,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     context.locals.foilbury = {
       tenantId: ctx.tenant.id,
       tenantSlug: ctx.tenant.slug,
+      tenantName: ctx.tenant.name,
       user: ctx.user,
       sessionId: ctx.sessionId,
       csrfToken: ctx.csrfToken,

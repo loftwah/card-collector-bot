@@ -60,7 +60,7 @@ try {
     page.on("pageerror", (error) => errors.push(error.message));
     await login(context);
     await page.goto("/play");
-    await page.getByRole("heading", { name: /your cabinet/i }).waitFor();
+    await page.getByRole("heading", { name: /your library/i }).waitFor();
     await audit(page, `${scheme} authenticated player home`, `ui-play-${scheme}.png`);
     await page.goto("/play/collection");
     await page.getByRole("heading", { name: /your drawers/i }).waitFor();
@@ -128,7 +128,7 @@ try {
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/play");
-    await page.getByRole("heading", { name: /your cabinet/i }).waitFor();
+    await page.getByRole("heading", { name: /your library/i }).waitFor();
     await audit(page, `${scheme} mobile player home`, `ui-play-mobile-${scheme}.png`);
     await page.goto("/play/collections");
     await page.getByRole("heading", { name: /every world you can enter/i }).waitFor();
