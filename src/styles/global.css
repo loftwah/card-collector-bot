@@ -1468,6 +1468,9 @@ a:hover > .card-face,
   animation: skeleton 1.6s linear infinite;
 }
 
+/* Studio's short-lived placeholders stay still for every motion preference. */
+.studio-collections-loading .skeleton { animation: none; }
+
 @media (prefers-reduced-motion: reduce) {
   .draw-odds-placeholder .skeleton { animation: none; }
 }
