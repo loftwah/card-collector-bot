@@ -6,7 +6,10 @@ const { entries, error } = await readJournalFeed(async () => {
   const { getEmDashCollection } = await import("emdash");
   return getEmDashCollection("posts", { orderBy: { published_at: "desc" }, limit: 12 });
 });
-if (error) Astro.response.status = 503;
+if (error) {
+  Astro.response.status = 503;
+  Astro.response.headers.set("Cache-Control", "no-store");
+}
 ---
 <BaseLayout title="Journal · Foilbury" description="Notes from the Foilbury editorial desk: the cabinet, the source artwork and the collecting practice.">
   <section class="journal-intro border-b border-[var(--line)]">
