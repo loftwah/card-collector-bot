@@ -234,7 +234,7 @@ try {
 
   await failOnThrow("cabinet overview and card contract", async () => {
     await page.goto("/play");
-    await page.getByRole("heading", { name: /your cabinet/i }).waitFor();
+    await page.getByRole("heading", { name: /your library/i }).waitFor();
     const geo = await publishedGeometry(page);
     check("featured card is present", geo.present);
     check(
@@ -583,7 +583,7 @@ try {
     const phone = await mobile.newPage();
     watch(phone);
     await phone.goto("/play");
-    await phone.getByRole("heading", { name: /your cabinet/i }).waitFor();
+    await phone.getByRole("heading", { name: /your library/i }).waitFor();
     check(
       "mobile play has no horizontal document overflow",
       await phone.evaluate(
@@ -643,7 +643,7 @@ try {
 
   await failOnThrow("deliberate negative controls calibrate the detectors", async () => {
     await page.goto("/play");
-    await page.getByRole("heading", { name: /your cabinet/i }).waitFor();
+    await page.getByRole("heading", { name: /your library/i }).waitFor();
     await page.addStyleTag({
       content: ".published-card{aspect-ratio:auto !important;height:120px !important}",
     });
@@ -654,7 +654,7 @@ try {
       `ratio ${broken.ratio?.toFixed(3)}`,
     );
     await page.reload();
-    await page.getByRole("heading", { name: /your cabinet/i }).waitFor();
+    await page.getByRole("heading", { name: /your library/i }).waitFor();
     await page.addStyleTag({ content: ".card-toolbar{display:none !important}" });
     const hiddenControls = await page.evaluate(() => {
       const toolbar = document.querySelector(".card-toolbar");
