@@ -98,8 +98,8 @@ try {
   requireSameDeployment(after,deployments()[0]);
 } catch (error) { verificationError=String(error?.message ?? error); }
 const dir=path.join(root,'.foilbury/evidence'); fs.mkdirSync(dir,{recursive:true,mode:0o700});
-const receipt={generated_at:new Date().toISOString(),source_sha:source.sha,deployment_version:uploaded,deployment:after,previous_deployment:previous,rollback,changed_paths:changed,migrations:schema,artifact_sha256:bundle.artifact.sha256,smoke:`deployed-smoke-${runId}.json`,verified:verificationError===null,unverified_reason:verificationError,elapsed_seconds:(Date.now()-started)/1000};
+const receipt={generated_at:new Date().toISOString(),source_sha:source.sha,deployment_version:uploaded,deployment:after,previous_deployment:previous,rollback,changed_paths:changed,migrations:schema,artifact_sha256:bundle.artifact.sha256,smoke:`deployed-smoke-${runId}.json`,verified:verificationError===null,verification_scope:'deployment identity and read-only HTTP smoke',product_acceptance:'not_assessed',unverified_reason:verificationError,elapsed_seconds:(Date.now()-started)/1000};
 const file=path.join(dir,`release-receipt-${source.sha.slice(0,12)}-${runId}.json`);
 fs.writeFileSync(file,JSON.stringify(receipt,null,2),{flag:'wx',mode:0o600});
 if(verificationError) throw new Error(`Upload ${uploaded ?? 'unknown'} is unverified: ${verificationError}. Inspect ${file} before retrying.`);
-console.log(`Production verified: ${source.sha} / ${uploaded} (${receipt.elapsed_seconds.toFixed(1)}s). Receipt: ${file}`);
+console.log(`Production deployment identity and HTTP smoke verified: ${source.sha} / ${uploaded} (${receipt.elapsed_seconds.toFixed(1)}s). Product acceptance not assessed; exercise the affected live journey. Receipt: ${file}`);
