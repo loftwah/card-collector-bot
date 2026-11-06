@@ -102,6 +102,8 @@ The normal signed-in Studio calls `/api/v1/studio/*`, which aliases the collecti
 
 Platform role grants are human-only: `POST /api/v1/platform/roles` requires Super Admin and recent strong authentication. Only `global_collection_admin` is assignable; the Super Admin role remains a separate provisioning path. Revocation is idempotent.
 
+Operational pickers use `GET /api/v1/admin/people`, which returns names and Bot roles but no contact fields. Contact records and pending invitations use `GET /api/v1/admin/team`; that route, and the lower-level `GET /api/v1/admin/members`, are human-only and require the live `members` capability. Agent grants cannot read them. `pnpm api:inventory` regenerates the checked method/path/role/scope/schema inventory in `docs/API_ROUTE_INVENTORY.md` after a dispatch change.
+
 ## Authority
 
 - The server derives the tenant and member from the credential. A request parameter is not authority.

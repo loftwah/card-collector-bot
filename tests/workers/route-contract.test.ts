@@ -174,6 +174,17 @@ describe("exact API dispatch and least-privilege player scopes", () => {
     expect(evaluateDenied.response.status).toBe(403);
     const joinDenied = await sendJson(inventoryOnly, "/api/v1/me/join", "POST", {});
     expect(joinDenied.response.status).toBe(403);
+
+    // An operations agent may see names for pickers, but never contact records.
+    const opsAgent = agentFor(owner, ["ops:read"]);
+    const people = await sendJson(opsAgent, "/api/v1/admin/people", "GET");
+    expect(people.response.status).toBe(200);
+    expect((people.json.items as Array<Record<string, unknown>>).every((item) => !("email" in item))).toBe(true);
+    const contact = await sendJson(opsAgent, "/api/v1/admin/members", "GET");
+    expect(contact.response.status).toBe(403);
+    expect((contact.json.error as { code: string }).code).toBe("human_admin_required");
+    const team = await sendJson(opsAgent, "/api/v1/admin/team", "GET");
+    expect(team.response.status).toBe(403);
   });
 
   it("exposes the exact approved distribution and accepts that fingerprint", async () => {
