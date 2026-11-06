@@ -95,6 +95,11 @@ const nextFinish =
             <div class="min-w-0">
               <h3 class="display-sm text-3xl uppercase">{selected.name}</h3>
               <p class="mt-1 max-w-xl text-sm text-[var(--muted)]">{selected.description}</p>
+              {ctx.csrfToken ? <form method="post" action={`/play/world/${encodeURIComponent(selected.id)}/explore`} class="mt-3">
+                <input type="hidden" name="csrf" value={ctx.csrfToken} />
+                <button type="submit" class="btn btn-secondary btn-sm">Record world visit</button>
+                <p class="mt-1 text-xs text-[var(--muted)]">After looking around, record this visit for today's mission.</p>
+              </form> : null}
               <p class="mt-2 font-mono text-[0.6rem] uppercase tracking-[0.1em] text-[var(--muted)]">
                 {selected.view_audience === "public"
                   ? "Public showcase"
@@ -197,11 +202,6 @@ const nextFinish =
                       ? "border-[var(--line-strong)] bg-[var(--paper)]"
                       : "border-dashed border-[var(--line)] bg-[var(--paper-3)]/40",
                   ]}
-                  aria-label={
-                    card.owned
-                      ? `${card.name}, owned`
-                      : `${card.name}, missing. Find an eligible capsule.`
-                  }
                 >
                   {card.owned && card.render_url ? (
                     <img
@@ -214,12 +214,13 @@ const nextFinish =
                     />
                   ) : (
                     <div class="grid aspect-[5/7] w-full place-items-center bg-[var(--ink)]/5">
-                      <span class="px-1 text-center font-mono text-[0.5rem] uppercase tracking-[0.08em] text-[var(--muted)]">
+                      <span aria-hidden="true" class="px-1 text-center font-mono text-[0.5rem] uppercase tracking-[0.08em] text-[var(--muted)]">
                         {card.name}
                       </span>
                     </div>
                   )}
                   <p class="mt-1 truncate text-[0.62rem] font-semibold">{card.name}</p>
+                  {!card.owned ? <span class="sr-only">Find an eligible capsule.</span> : null}
                   <p class="font-mono text-[0.48rem] uppercase tracking-[0.06em] text-[var(--muted)]">
                     {card.owned
                       ? `${card.copies} cop${card.copies === 1 ? "y" : "ies"}${card.finishes.length ? ` · ${card.finishes.length}/4 finishes` : ""}`
