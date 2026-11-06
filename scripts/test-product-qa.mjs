@@ -250,8 +250,8 @@ try {
     );
     check("no nested interactive card controls", geo.nestedInteractive === 0);
 
-    await page.locator(".cabinet-more__summary").click();
-    const menuBox = await page.locator(".cabinet-more__menu").boundingBox();
+    await page.locator(".player-more__summary").click();
+    const menuBox = await page.locator(".player-more__menu").boundingBox();
     check(
       "cabinet More menu is fully visible",
       Boolean(menuBox && menuBox.height > 100 && menuBox.y + menuBox.height <= 1000),
@@ -260,7 +260,7 @@ try {
     await page.keyboard.press("Escape");
     check(
       "Escape closes the cabinet menu",
-      (await page.locator(".cabinet-more[open]").count()) === 0,
+      (await page.locator(".player-more[open]").count()) === 0,
     );
 
     await page.getByRole("button", { name: /show .* back/i }).click();

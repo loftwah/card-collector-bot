@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowUpRight, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -30,7 +30,12 @@ export default function PublishedCard({
   className?: string;
 }) {
   const [flipped, setFlipped] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const back = backUrl || frontUrl;
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   const faces = (
     <>
@@ -55,7 +60,7 @@ export default function PublishedCard({
   );
 
   return (
-    <div className={cn("published-card-shell", className)}>
+    <div className={cn("published-card-shell", className)} data-hydrated={hydrated ? "true" : "false"}>
       {href ? (
         <a href={href} className="published-card block no-underline" aria-label={`Inspect ${name}`}>
           {faces}
@@ -71,6 +76,7 @@ export default function PublishedCard({
             onClick={() => setFlipped((value) => !value)}
             aria-pressed={flipped}
             aria-label={flipped ? `Show ${name} front` : `Show ${name} back`}
+            disabled={!hydrated}
           >
             <RotateCcw size={13} aria-hidden="true" /> {flipped ? "Front" : "Back"}
           </button>

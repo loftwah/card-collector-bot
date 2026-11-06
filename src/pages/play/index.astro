@@ -148,7 +148,7 @@ const activeRemaining = Math.max(0, activeTotal - activeOwned);
     </div>
   </section>
 
-  <section class="mt-7 grid gap-5 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)] lg:items-start">
+  <section class="latest-acquisition mt-7 grid gap-5 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)] lg:items-start">
     <div class="surface p-4 sm:p-5">
       <div class="flex items-center justify-between gap-3 pb-3">
         <div>
@@ -168,7 +168,7 @@ const activeRemaining = Math.max(0, activeTotal - activeOwned);
           </a>
         ) : null}
       </div>
-      <div class="grid items-start gap-4 sm:grid-cols-[minmax(0,300px)_minmax(0,1fr)]">
+      <div class="grid grid-cols-[minmax(0,160px)_minmax(0,1fr)] items-start gap-4 sm:grid-cols-[minmax(0,300px)_minmax(0,1fr)]">
         <div>
           {featured?.render_url ? (
             <PublishedCard
@@ -210,48 +210,6 @@ const activeRemaining = Math.max(0, activeTotal - activeOwned);
     </div>
 
     <div class="grid gap-4">
-      {publishedSets.length ? (
-        <div class="panel">
-          <div class="panel-head px-4 pt-4">
-            <div>
-              <p class="studio-stat__label">Continue a release</p>
-              <p class="panel-title mt-0.5">{activeSet?.name ?? "Sets"}</p>
-            </div>
-            <a class="text-xs underline underline-offset-4" href="/play/rewards">
-              All rewards
-            </a>
-          </div>
-          <div class="panel-body grid gap-3">
-            {publishedSets.slice(0, 3).map((set) => {
-              const owned = set.progress?.owned ?? 0;
-              const total = set.progress?.total ?? set.cards.length;
-              const pct = total ? Math.round((owned / total) * 100) : 0;
-              return (
-                <div>
-                  <div class="flex items-baseline justify-between gap-2">
-                    <p class="text-sm font-semibold">{set.name}</p>
-                    <span class="font-mono text-[0.6rem] text-[var(--muted)]">
-                      {owned}/{total}
-                    </span>
-                  </div>
-                  <div class="mt-1.5 h-1.5 bg-[var(--paper-3)]">
-                    <div class="h-full bg-[var(--signal)]" style={`width:${pct}%`}></div>
-                  </div>
-                  <p class="mt-1 font-mono text-[0.54rem] uppercase tracking-[0.08em] text-[var(--muted)]">
-                    v{set.version} ·{" "}
-                    {set.progress?.claimed
-                      ? "reward claimed"
-                      : set.progress?.complete
-                        ? "completion ready"
-                        : `✦ ${set.reward_amount} on completion`}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-
       {nextAchievement ? (
         <div class="panel">
           <div class="panel-head px-4 pt-4">
