@@ -184,3 +184,31 @@ byte-identical to the built artifact (`sha256
 the new loading, error and retry strings. This is technical artifact evidence,
 not signed-in product acceptance. Physical-device and assistive-technology
 checks remain unperformed; non-eight-row geometry can still shift.
+
+## 2026-11-06 API dispatch contract (#16)
+
+Runtime source `0886641e41d1f94c8c789a57b5db25f3fb168a5d`. `pnpm check`
+passed 316 tests, including the new route-inventory contract. The inventory
+records 168 dispatcher routes and 21 direct Astro routes with no shadowed or
+duplicate branch, and reconciles 340 browser/CLI/MCP/OpenAPI consumer paths
+(208 with an explicit method) with no unresolved path or method mismatch.
+`/api/v1/studio/*` is checked as its executing admin alias.
+
+The reconciliation found that the CLI and MCP card-merge call had no dispatcher
+branch. `POST /api/v1/admin/cards/{id}/merge` now requires content write and
+recent strong authentication, and an HTTP test asserts the persisted alias.
+Operational pickers use `GET /api/v1/admin/people` (id, display name, role).
+Contact records and invitations are human-only under the live `members`
+capability at `/admin/team` and `/admin/members`; `/admin/bot` no longer carries
+the people arrays. Economy-only and agent callers were denied the contact routes
+in HTTP tests.
+
+The exact built Worker at that source was exercised with a synthetic trade and
+gift receipt. The phone gift page rendered the recorded description, note, value
+and reason. The trade detail rendered both sides of the offer, recorded the
+first acceptance, then the second, reached `completed`, and the serials
+exchanged. Serious/critical axe findings were empty on the gift page and both
+trade-detail states. Evidence is under
+`.foilbury/evidence/gift-trade-ui-20261106/` in the isolated worktree.
+
+Production deployment and live read-back are **PENDING** for this change.
