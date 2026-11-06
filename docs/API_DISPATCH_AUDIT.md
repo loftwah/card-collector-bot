@@ -89,5 +89,12 @@ These are not claimed by #16:
   auth/security suites; they are not a second dispatch table and do not change
   the findings above.
 
-No production data was mutated by this audit. Deployment status and the live
-read-back are recorded in the release receipt when the change is deployed.
+No production data was mutated by this audit. Source `617c773` was deployed as
+Worker `a3cc5c7b-0d0e-4147-93ff-fe4cb29c2ea3`; the live build header is
+`617c773da4e9`. All 18 read-only production smoke checks passed and the deployed
+`GiftComposer`, `AdminTeam` and `AdminApp` chunks are byte-identical to the built
+artifact. Signed-in live read-back is **BLOCKED** by the stale bootstrap owner
+password and the absence of a current magic-link, passkey or Access session.
+Production dev login is disabled. Signed-out `/api/v1/admin/*` requests only
+return the Access redirect, so this is technical artifact evidence rather than
+signed-in production acceptance.

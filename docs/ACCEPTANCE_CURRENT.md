@@ -211,4 +211,17 @@ exchanged. Serious/critical axe findings were empty on the gift page and both
 trade-detail states. Evidence is under
 `.foilbury/evidence/gift-trade-ui-20261106/` in the isolated worktree.
 
-Production deployment and live read-back are **PENDING** for this change.
+Production was deployed from `617c773da4e970cdc9bcb3031d15a73528feb892` as
+Worker `a3cc5c7b-0d0e-4147-93ff-fe4cb29c2ea3`. The release rebuilt the artifact,
+passed `pnpm check` and all 18 read-only production smoke checks, and wrote
+`.foilbury/evidence/release-receipt-617c773da4e9-9fc176a8-71e8-4e6b-893c-c59e34c53dc9.json`
+in the release worktree. The live build header is `617c773da4e9`.
+
+Signed-in live read-back is **BLOCKED** by the retained bootstrap owner
+password returning `invalid_credentials`; production dev login is disabled and
+no current magic-link, passkey or Access session was available. The deployed
+`GiftComposer`, `AdminTeam` and `AdminApp` client chunks are byte-identical to
+the built artifact (`sha256 161239ad…`, `7653fff1…`/`fd647612…`, `d7238c56…`).
+Signed-out `/api/v1/admin/*` requests return the Access redirect, so they do not
+prove the new route guards. This is technical artifact evidence, not signed-in
+production acceptance.
