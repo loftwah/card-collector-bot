@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { bootstrap, ctxFor, fixturePool, runtime, walletBalance } from "./helpers";
 import { executeDraw, getPoolPreview, listEligiblePools } from "../../src/server/modules/pools";
-import { getPreferences, updatePreferences } from "../../src/server/modules/economy";
+import { getPreferences, updatePreferences, type ProfileLook } from "../../src/server/modules/economy";
 import { nowIso } from "../../src/server/db";
 
 describe("collection-first draw preferences and preview consent", () => {
@@ -138,6 +138,30 @@ describe("collection-first draw preferences and preview consent", () => {
     const stillThere = await getPoolPreview(player, "test-pool");
     expect(stillThere.eligible_count).toBe(1);
     expect(stillThere.filters.unfiled_count).toBe(1);
+  });
+
+  it("persists a chosen profile look and short collector note without touching draw eligibility", async () => {
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    await fixturePool(player);
+    const initial = await getPreferences(player);
+    expect(initial.profile_look).toBe("quiet");
+    expect(initial.profile_bio).toBe("");
+    const saved = await updatePreferences(player, {
+      profileLook: "night",
+      profileBio: "  Deep-sea cards and quiet shelves.  ",
+    });
+    expect(saved.profile_look).toBe("night");
+    expect(saved.profile_bio).toBe("Deep-sea cards and quiet shelves.");
+    expect(saved.hidden_collection_ids).toEqual(initial.hidden_collection_ids);
+    const reread = await getPreferences(player);
+    expect(reread.profile_look).toBe("night");
+    expect(reread.profile_bio).toBe("Deep-sea cards and quiet shelves.");
+    await expect(updatePreferences(player, { profileLook: "neon" as ProfileLook })).rejects.toMatchObject({
+      code: "profile_look_invalid",
+    });
+    await expect(updatePreferences(player, { profileBio: "x".repeat(161) })).rejects.toMatchObject({
+      code: "profile_bio_too_long",
+    });
   });
 
   it("validates collection ids and preserves the separate content filter", async () => {

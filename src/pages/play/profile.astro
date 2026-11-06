@@ -3,17 +3,19 @@ import PlayerLayout from "../../layouts/PlayerLayout.astro";
 import AchievementBadge from "../../components/player/AchievementBadge.astro";
 import ShareLinkButton from "../../components/player/ShareLinkButton";
 import ShareManager from "../../components/player/ShareManager";
+import ProfileCustomiser from "../../components/player/ProfileCustomiser";
+import ProfileCard from "../../components/player/ProfileCard.astro";
 import { pageContext } from "../../server/page";
 import { countInventory, getInventory } from "../../server/modules/collection";
 import { listAchievements } from "../../server/modules/achievements";
 import { listCollections } from "../../server/modules/collections";
-import { listShareLinks } from "../../server/modules/economy";
+import { getPreferences, listShareLinks } from "../../server/modules/economy";
 import { first } from "../../server/db";
 import { printTitle } from "../../lib/utils";
 
 const ctx = await pageContext(Astro.request);
 const user = ctx.user!;
-const [favourites, recent, totalCopies, subjectRow, membership, achievements, collections, shares] =
+const [favourites, recent, totalCopies, subjectRow, membership, achievements, collections, shares, prefs] =
   await Promise.all([
     getInventory(ctx, { limit: 12, favourite: true }),
     getInventory(ctx, { limit: 1 }),
@@ -35,12 +37,16 @@ const [favourites, recent, totalCopies, subjectRow, membership, achievements, co
     listAchievements(ctx, user.id),
     listCollections(ctx),
     listShareLinks(ctx),
+    getPreferences(ctx),
   ]);
 
 const earned = achievements.filter((item) => item.state === "earned");
 const featured = favourites[0] ?? recent[0] ?? null;
 const featuredIsFavourite = Boolean(featured?.favourite);
 const showcase = favourites.slice(1, 5);
+const binderCards = [featured, ...showcase]
+  .filter((card): card is NonNullable<typeof card> => Boolean(card))
+  .slice(0, 4);
 const displayedWorlds = collections.slice(0, 3);
 const initials = (user.displayName || "Collector")
   .split(/\s+/)
@@ -79,10 +85,10 @@ const starterLooks = [
     note: "A low row of cards on a dark shelf.",
   },
 ];
-const lookCards = favourites.slice(0, 4);
 ---
 
 <PlayerLayout title="Collector profile · Foilbury">
+  <div class="profile-page" data-profile-look={prefs.profile_look}>
   <section class="profile-hero">
     <div class="profile-hero__identity">
       <span class="profile-avatar" aria-hidden="true">{initials}</span>
@@ -95,11 +101,12 @@ const lookCards = favourites.slice(0, 4);
           A curated view of what you keep. Favourites, collection progress and the badges you
           actually earned. Your wallet, email and account ID are not part of this page.
         </p>
+        <p class="profile-hero__bio" data-profile-bio>{prefs.profile_bio}</p>
       </div>
     </div>
     <div class="profile-hero__actions">
       <ShareLinkButton client:load kind="profile" label="Share profile" />
-      <a class="btn btn-secondary btn-sm" href="#starter-looks">Customise</a>
+      <a class="btn btn-secondary btn-sm" href="#customise">Customise</a>
     </div>
     <dl class="profile-stats">
       <div>
@@ -185,37 +192,25 @@ const lookCards = favourites.slice(0, 4);
       <a class="profile-section__link" href="/play/collection">Manage favourites →</a>
     </div>
     {
-      showcase.length ? (
-        <div class="profile-showcase">
-          {showcase.map((card) => (
-            <article class="profile-card">
-              <div class="profile-card__object">
-                {card.render_url ? (
-                  <img
-                    src={card.thumbnail_url ?? card.render_url}
-                    alt={`${card.card_name} — ${printTitle(card.edition_name) ?? card.variant_name}`}
-                    width="300"
-                    height="420"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div class="card-face-fallback">{card.card_name.charAt(0)}</div>
-                )}
-              </div>
-              <div class="profile-card__body">
-                <p class="profile-card__name">{card.card_name}</p>
-                <p class="profile-card__meta">
-                  {printTitle(card.edition_name) ? `${printTitle(card.edition_name)} · ` : ""}
-                  {card.variant_name}
-                </p>
-                <p class="profile-card__serial">{card.serial}</p>
-                <a class="btn btn-secondary btn-sm" href={`/play/card/${card.id}`}>
-                  Inspect
-                </a>
-              </div>
-            </article>
-          ))}
-        </div>
+      binderCards.length ? (
+        <>
+          {showcase.length ? (
+            <div class="profile-showcase profile-showcase--rest">
+              {showcase.map((card) => (
+                <ProfileCard card={card} />
+              ))}
+            </div>
+          ) : (
+            <p class="profile-section__lede profile-showcase-note">
+              Pin more favourites to fill this shelf.
+            </p>
+          )}
+          <div class="profile-showcase profile-showcase--binder">
+            {binderCards.map((card) => (
+              <ProfileCard card={card} />
+            ))}
+          </div>
+        </>
       ) : (
         <div class="empty mt-5">
           <div>
@@ -229,46 +224,18 @@ const lookCards = favourites.slice(0, 4);
     }
   </section>
 
-  <section id="starter-looks" class="profile-section">
-    <div class="profile-section__head">
-      <div>
-        <h2 class="profile-section__title">Four ways to arrange a profile</h2>
-      </div>
-      <span class="badge">Read-only preview</span>
-    </div>
-    <p class="profile-section__lede">
-      These are four genuinely different compositions using your current cards. Applying a look and
-      saving it to your account is a later editor release; nothing here changes your inventory or
-      share links.
-    </p>
-    <div class="profile-looks">
-      {starterLooks.map((look) => (
-        <article class="profile-look" data-look={look.key}>
-          <div class="profile-look__preview" aria-hidden="true">
-            {lookCards.length
-              ? lookCards.map((card, index) => (
-                  <div class="profile-look__card" data-slot={index + 1}>
-                    {card.render_url ? (
-                      <img src={card.thumbnail_url ?? card.render_url} alt="" loading="lazy" />
-                    ) : (
-                      <div class="card-face-fallback">{card.card_name.charAt(0)}</div>
-                    )}
-                  </div>
-                ))
-              : [0, 1, 2, 3].map((index) => (
-                  <div class="profile-look__card" data-slot={index + 1}>
-                    <span class="profile-look__placeholder" />
-                  </div>
-                ))}
-          </div>
-          <div class="profile-look__body">
-            <h3>{look.name}</h3>
-            <p>{look.note}</p>
-          </div>
-        </article>
-      ))}
-    </div>
-  </section>
+  <ProfileCustomiser
+    client:load
+    initialLook={prefs.profile_look}
+    initialBio={prefs.profile_bio}
+    looks={starterLooks}
+    cards={binderCards.map((card) => ({
+      id: card.id,
+      card_name: card.card_name,
+      render_url: card.render_url,
+      thumbnail_url: card.thumbnail_url,
+    }))}
+  />
 
   <section class="profile-section">
     <div class="profile-section__head">
@@ -341,4 +308,5 @@ const lookCards = favourites.slice(0, 4);
     </div>
     <ShareManager client:load initial={shares} />
   </section>
+  </div>
 </PlayerLayout>

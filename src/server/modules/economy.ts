@@ -405,6 +405,9 @@ export async function getLedger(ctx: Ctx, userId: string, limit = 100) {
   return getWalletSummary(ctx.db, ctx.tenant.id, userId, Math.min(200, Math.max(1, limit)));
 }
 
+const PROFILE_LOOKS = ["quiet", "signal", "binder", "night"] as const;
+export type ProfileLook = (typeof PROFILE_LOOKS)[number];
+
 export async function getPreferences(ctx: Ctx) {
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in to change preferences.");
@@ -414,10 +417,12 @@ export async function getPreferences(ctx: Ctx) {
     reduced_motion: number;
     sound_enabled: number;
     sharing_enabled: number;
+    profile_look: string;
+    profile_bio: string;
     updated_at: string;
   }>(
     ctx.db,
-    "SELECT hide_tags_json, hidden_collection_ids_json, reduced_motion, sound_enabled, sharing_enabled, updated_at FROM fb_player_preferences WHERE tenant_id = ? AND user_id = ?",
+    "SELECT hide_tags_json, hidden_collection_ids_json, reduced_motion, sound_enabled, sharing_enabled, profile_look, profile_bio, updated_at FROM fb_player_preferences WHERE tenant_id = ? AND user_id = ?",
     ctx.tenant.id,
     user.id,
   );
@@ -427,6 +432,10 @@ export async function getPreferences(ctx: Ctx) {
     reduced_motion: Boolean(row?.reduced_motion),
     sound_enabled: Boolean(row?.sound_enabled),
     sharing_enabled: Boolean(row?.sharing_enabled),
+    profile_look: (row && PROFILE_LOOKS.includes(row.profile_look as ProfileLook)
+      ? row.profile_look
+      : "quiet") as ProfileLook,
+    profile_bio: row?.profile_bio ?? "",
     updated_at: row?.updated_at ?? null,
   };
 }
@@ -449,6 +458,8 @@ export async function updatePreferences(
     reducedMotion?: boolean;
     soundEnabled?: boolean;
     sharingEnabled?: boolean;
+    profileLook?: ProfileLook;
+    profileBio?: string;
   },
 ) {
   const user = ctx.user;
@@ -477,17 +488,27 @@ export async function updatePreferences(
     }
   }
   const current = await getPreferences(ctx);
+  const profileLook = input.profileLook ?? current.profile_look;
+  if (!PROFILE_LOOKS.includes(profileLook)) {
+    throw new ApiError(422, "profile_look_invalid", "Choose one of the available profile looks.");
+  }
+  const profileBio = (input.profileBio ?? current.profile_bio).trim();
+  if (profileBio.length > 160) {
+    throw new ApiError(422, "profile_bio_too_long", "Keep the collector note to 160 characters or fewer.");
+  }
   await ctx.db.batch([
     ctx.db
       .prepare(
-        `INSERT INTO fb_player_preferences (tenant_id, user_id, hide_tags_json, hidden_collection_ids_json, reduced_motion, sound_enabled, sharing_enabled, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO fb_player_preferences (tenant_id, user_id, hide_tags_json, hidden_collection_ids_json, reduced_motion, sound_enabled, sharing_enabled, profile_look, profile_bio, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(tenant_id, user_id) DO UPDATE SET
            hide_tags_json = excluded.hide_tags_json,
            hidden_collection_ids_json = excluded.hidden_collection_ids_json,
            reduced_motion = excluded.reduced_motion,
            sound_enabled = excluded.sound_enabled,
            sharing_enabled = excluded.sharing_enabled,
+           profile_look = excluded.profile_look,
+           profile_bio = excluded.profile_bio,
            updated_at = excluded.updated_at`,
       )
       .bind(
@@ -498,6 +519,8 @@ export async function updatePreferences(
         (input.reducedMotion ?? current.reduced_motion) ? 1 : 0,
         (input.soundEnabled ?? current.sound_enabled) ? 1 : 0,
         (input.sharingEnabled ?? current.sharing_enabled) ? 1 : 0,
+        profileLook,
+        profileBio,
         nowIso(),
       ),
     auditStatement(ctx, "preferences.updated", "preferences", user.id, {
@@ -506,6 +529,8 @@ export async function updatePreferences(
       reduced_motion: input.reducedMotion ?? current.reduced_motion,
       sound_enabled: input.soundEnabled ?? current.sound_enabled,
       sharing_enabled: input.sharingEnabled ?? current.sharing_enabled,
+      profile_look: profileLook,
+      profile_bio_length: profileBio.length,
     }),
   ]);
   return getPreferences(ctx);
@@ -816,6 +841,8 @@ export async function createShareLink(
     payload = {
       label: "Collector profile",
       display_name: user.displayName,
+      profile_look: prefs.profile_look,
+      profile_bio: prefs.profile_bio,
       cards: counts?.cards ?? 0,
       favourites: counts?.favourites ?? 0,
       favourite_cards: favourites,

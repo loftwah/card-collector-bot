@@ -16,6 +16,10 @@ const pageTitle = active ? `${publicView ? shareTitle : "Member share"} · Foilb
 const currentPublic = Boolean(collection && collection.view_audience === "public" && collection.public_approved_at);
 const finishLabel = String(payload.finish ?? "").replaceAll("diamond", "holographic");
 const publicHref = currentPublic && collection ? `/cabinet?collection=${collection.slug}` : collection ? `/play/collection?collection=${collection.slug}` : "/cabinet";
+const profileLookLabels: Record<string, string> = { quiet: "Quiet archive", signal: "Signal room", binder: "Binder desk", night: "Night shelf" };
+const profileLook = ["quiet", "signal", "binder", "night"].includes(String(payload.profile_look ?? ""))
+  ? String(payload.profile_look)
+  : "quiet";
 ---
 <BaseLayout title={pageTitle} description={publicView ? `${shareTitle} — an explicitly shared Foilbury snapshot.` : "A members-only Foilbury share. Sign in with an entitled account to view it."} noIndex>
   <section class="container py-12 md:py-16">
@@ -27,7 +31,7 @@ const publicHref = currentPublic && collection ? `/cabinet?collection=${collecti
           <span class="badge">Snapshot · {formatDual(String(payload.captured_at ?? link!.created_at))}</span>
           <span class="badge">Expires {formatDate(link!.expires_at)}</span>
         </div>
-        <h1 class="display mt-5 text-[clamp(2.8rem,7vw,6rem)] uppercase">{kind === "card" || kind === "latest" ? payload.card_name : kind === "achievement" ? payload.achievement_name : kind === "collection" ? payload.collection_name : kind === "wishlist" ? "Wanted cards" : kind === "profile" ? `${payload.display_name ?? owner ?? "A collector"}'s showcase` : `${owner ?? "A collector"} shared a cabinet`}</h1>
+        <h1 class="page-title mt-5">{kind === "card" || kind === "latest" ? payload.card_name : kind === "achievement" ? payload.achievement_name : kind === "collection" ? payload.collection_name : kind === "wishlist" ? "Wanted cards" : kind === "profile" ? `${payload.display_name ?? owner ?? "A collector"}'s showcase` : `${owner ?? "A collector"} shared a cabinet`}</h1>
         <p class="mt-3 max-w-2xl text-[var(--muted)]">{kind === "card" || kind === "latest" ? `${finishLabel || "Card"}${payload.subtitle ? ` · ${payload.subtitle}` : ""}` : kind === "achievement" ? payload.achievement_description : kind === "collection" ? (collection?.description ?? payload.description ?? "A curated Foilbury world.") : "An explicitly shared snapshot. It is not a live inventory and cannot be used to act on the owner's account."}</p>
 
         {kind === "card" || kind === "latest" ? (
@@ -75,31 +79,38 @@ const publicHref = currentPublic && collection ? `/cabinet?collection=${collecti
         ) : null}
 
         {kind === "profile" ? (
-          <div class="mt-8 grid max-w-4xl gap-6 lg:grid-cols-[1fr_1fr]">
-            <div class="grid gap-3 sm:grid-cols-2">
+          <div class="share-profile" data-profile-look={profileLook}>
+            <div class="share-profile__meta">
+              <span class="badge">{profileLookLabels[profileLook]}</span>
+              <span class="badge">Collector snapshot</span>
+            </div>
+            {payload.profile_bio ? <p class="profile-hero__bio">{String(payload.profile_bio)}</p> : null}
+            <div class="profile-showcase share-profile__cards">
               {Array.isArray(payload.favourite_cards) && payload.favourite_cards.length ? payload.favourite_cards.map((card: { name?: string; variant_name?: string; render_url?: string | null }) => (
-                <div class="border border-[var(--line)] bg-[var(--paper)] p-2">
-                  {card.render_url ? <img src={card.render_url} alt="" class="w-full border border-[var(--line)]" loading="lazy" /> : null}
-                  <p class="mt-1 text-sm font-semibold">{card.name}</p><p class="font-mono text-[0.54rem] uppercase tracking-[0.08em] text-[var(--muted)]">{card.variant_name}</p>
-                </div>
+                <article class="profile-card">
+                  <div class="profile-card__object">
+                    {card.render_url ? <img src={card.render_url} alt="" loading="lazy" /> : <div class="card-face-fallback">{(card.name ?? "?").charAt(0)}</div>}
+                  </div>
+                  <div class="profile-card__body">
+                    <p class="profile-card__name">{card.name}</p>
+                    <p class="profile-card__meta">{card.variant_name}</p>
+                  </div>
+                </article>
               )) : <p class="text-sm text-[var(--muted)]">No pinned favourites in this snapshot.</p>}
             </div>
-            <div>
-              <div class="grid grid-cols-2 gap-3">
-                <div class="border border-[var(--line)] p-4"><p class="studio-stat__label">Owned cards</p><p class="display-sm mt-1 text-3xl">{String(payload.cards ?? 0)}</p></div>
-                <div class="border border-[var(--line)] p-4"><p class="studio-stat__label">Favourites</p><p class="display-sm mt-1 text-3xl">{String(payload.favourites ?? 0)}</p></div>
-              </div>
-              <p class="mt-4 studio-stat__label">Recent badges</p>
-              <ul class="mt-2 grid gap-2">
-                {Array.isArray(payload.badges) ? payload.badges.map((badge: { name?: string }) => <li class="border border-[var(--line)] px-3 py-2 text-sm">{badge.name}</li>) : null}
-              </ul>
-              <p class="mt-4 text-xs leading-relaxed text-[var(--muted)]">Only pinned favourites, counts and opted-in badges appear. Wallet, email, account ID and private ledger never do.</p>
+            <dl class="profile-stats share-profile__stats">
+              <div><dt>Owned cards</dt><dd>{String(payload.cards ?? 0)}</dd></div>
+              <div><dt>Favourites</dt><dd>{String(payload.favourites ?? 0)}</dd></div>
+            </dl>
+            <div class="profile-badges share-profile__badges">
+              {Array.isArray(payload.badges) ? payload.badges.map((badge: { name?: string }) => <div class="profile-badge"><p class="profile-badge__name">{badge.name}</p></div>) : null}
             </div>
+            <p class="mt-4 text-xs leading-relaxed text-[var(--muted)]">Only pinned favourites, counts and opted-in badges appear. Wallet, email, account ID and private ledger never do.</p>
           </div>
         ) : null}
 
         <div class="mt-10 border-t border-[var(--line)] pt-5 text-xs leading-relaxed text-[var(--muted)]">
-          <p>{showSerial ? `Your copy serial: ${payload.serial}. ` : ""}This is a snapshot captured at share time, not a live wallet or inventory. The owner can revoke the link; already-downloaded bytes cannot be recalled.</p>
+          <p>{showSerial && (kind === "card" || kind === "latest") ? `Your copy serial: ${payload.serial}. ` : ""}This is a snapshot captured at share time, not a live wallet or inventory. The owner can revoke the link; already-downloaded bytes cannot be recalled.</p>
           <p class="mt-2">No email, account ID, wallet balance, private ledger or admin data is exposed.</p>
         </div>
         <div class="mt-6 flex flex-wrap gap-3">

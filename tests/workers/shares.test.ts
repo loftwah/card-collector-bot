@@ -30,6 +30,20 @@ describe("deliberate sharing", () => {
     expect(profile.kind).toBe("profile");
   });
 
+  it("captures the chosen profile look and note without private identifiers", async () => {
+    await bootstrap();
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    await updatePreferences(owner, {
+      sharingEnabled: true,
+      profileLook: "night",
+      profileBio: "Quiet shelves, loud cards.",
+    });
+    const profile = await createShareLink(owner, { kind: "profile", expiresInDays: 7 });
+    expect(profile.preview.profile_look).toBe("night");
+    expect(profile.preview.profile_bio).toBe("Quiet shelves, loud cards.");
+    expect(JSON.stringify(profile.preview)).not.toMatch(/email|balance|ledger|account_id/i);
+  });
+
   it("does not let a player share another member's copy", async () => {
     await bootstrap();
     const owner = await ctxFor("cabinet", "owner@foilbury.local");
