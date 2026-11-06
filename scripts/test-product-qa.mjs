@@ -188,12 +188,12 @@ try {
     const page = await context.newPage();
     watch(page);
     await page.goto("/");
-    await page.getByRole("heading", { name: /characters worth keeping/i }).waitFor();
+    await page.getByRole("heading", { name: /pull something wonderful/i }).waitFor();
     check(
       "public home has one clear primary action",
-      (await page.getByRole("link", { name: /start collecting/i }).count()) === 1,
+      (await page.locator(".public-hero").getByRole("link", { name: /browse originals/i }).count()) === 1,
     );
-    await page.getByRole("link", { name: /browse every public card/i }).click();
+    await page.locator(".public-hero").getByRole("link", { name: /browse originals/i }).click();
     await page.getByRole("heading", { name: /public showcase/i }).waitFor();
     check("public catalogue navigation resolves", page.url().endsWith("/cabinet"));
     const cardLink = page.locator('a[href^="/cabinet/"]').first();
@@ -281,7 +281,7 @@ try {
 
   await failOnThrow("collection filters, totals and stale responses", async () => {
     await page.goto("/play/collection");
-    await page.getByRole("heading", { name: /your drawers/i }).waitFor();
+    await page.getByRole("heading", { name: /my cards/i }).waitFor();
     await page.locator('[data-hydrated="true"]').waitFor();
     const totalLabel = await page.locator('[aria-live="polite"]').innerText();
     const apiTotal = await (await owner.request.get("/api/v1/inventory?limit=1")).json();
@@ -291,7 +291,7 @@ try {
       `${totalLabel} vs ${apiTotal.total}`,
     );
     const firstFace = await page
-      .locator(".card-face")
+      .locator(".inventory-card__object")
       .first()
       .evaluate((el) => {
         const rect = el.getBoundingClientRect();
@@ -309,7 +309,7 @@ try {
     check("collection card image decoded", firstFace.loaded);
 
     /* Empty is not an error. */
-    await page.getByLabel("Search your collection").fill("zzzz-no-such-card");
+    await page.getByLabel("Search your cards").fill("zzzz-no-such-card");
     await page.getByRole("button", { name: "Apply" }).click();
     await page.getByText(/no cards match this view/i).waitFor({ timeout: 15000 });
     check(
@@ -324,7 +324,7 @@ try {
         await new Promise((resolve) => setTimeout(resolve, 900));
       await route.continue();
     });
-    await page.getByLabel("Search your collection").fill("");
+    await page.getByLabel("Search your cards").fill("");
     const collectionSelect = page.getByLabel("Collection", { exact: true });
     const options = await collectionSelect
       .locator("option")
@@ -368,7 +368,7 @@ try {
       await route.continue();
     });
     await page.goto("/play/collection");
-    await page.getByRole("heading", { name: /your drawers/i }).waitFor();
+    await page.getByRole("heading", { name: /my cards/i }).waitFor();
     await page.locator('[data-hydrated="true"]').waitFor();
     expectingFailure = true;
     await page.getByRole("button", { name: "Apply" }).click();
@@ -393,7 +393,7 @@ try {
     await login(noJs);
     const bare = await noJs.newPage();
     await bare.goto("/play/collection");
-    await bare.getByLabel("Search your collection").fill("zzzz-no-such-card");
+    await bare.getByLabel("Search your cards").fill("zzzz-no-such-card");
     await Promise.all([
       bare.waitForNavigation(),
       bare.getByRole("button", { name: "Apply" }).click(),
@@ -430,10 +430,10 @@ try {
       (await page.getByRole("alert").innerText()).includes("unavailable"),
     );
     await page.getByRole("button", { name: /retry this capsule preview/i }).click();
-    await page.getByRole("heading", { name: /know the odds/i }).waitFor();
+    await page.getByRole("heading", { name: /transparent draw odds/i }).waitFor();
     check(
       "draw preview retry recovers",
-      (await page.getByRole("heading", { name: /know the odds/i }).count()) === 1,
+      (await page.getByRole("heading", { name: /transparent draw odds/i }).count()) === 1,
     );
     await page.unroute("**/api/v1/pools/*");
     expectingFailure = false;
@@ -604,10 +604,10 @@ try {
       (await phone.locator('.published-card__back[data-hidden="false"]').count()) > 0,
     );
     await phone.goto("/play/collections");
-    await phone.getByRole("heading", { name: /every world you can enter/i }).waitFor();
+    await phone.getByRole("heading", { name: /^Collections$/i }).waitFor();
     check(
       "mobile worlds paginate rather than stacking every collection",
-      (await phone.locator(".world-card").count()) <= 9,
+      (await phone.locator(".collection-tile").count()) <= 9,
     );
     check(
       "mobile worlds have no horizontal overflow",
@@ -616,7 +616,7 @@ try {
       ),
     );
     await phone.goto("/play/collection");
-    await phone.getByRole("heading", { name: /your drawers/i }).waitFor();
+    await phone.getByRole("heading", { name: /my cards/i }).waitFor();
     check(
       "mobile collection has no horizontal overflow",
       await phone.evaluate(

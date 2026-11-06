@@ -41,7 +41,7 @@ try {
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto("/");
-    await page.getByRole("heading", { name: /characters worth keeping/i }).waitFor();
+    await page.getByRole("heading", { name: /pull something wonderful/i }).waitFor();
     await audit(page, `${scheme} public home`, `ui-home-${scheme}.png`);
     await page.goto("/cabinet");
     await page.getByRole("heading", { name: /public showcase/i }).waitFor();
@@ -63,10 +63,10 @@ try {
     await page.getByRole("heading", { name: /your library/i }).waitFor();
     await audit(page, `${scheme} authenticated player home`, `ui-play-${scheme}.png`);
     await page.goto("/play/collection");
-    await page.getByRole("heading", { name: /your drawers/i }).waitFor();
+    await page.getByRole("heading", { name: /my cards/i }).waitFor();
     await audit(page, `${scheme} collection`);
     await page.goto("/play/collections");
-    await page.getByRole("heading", { name: /every world you can enter/i }).waitFor();
+    await page.getByRole("heading", { name: /^Collections$/i }).waitFor();
     await audit(page, `${scheme} worlds browser`, `ui-worlds-${scheme}.png`);
     const instance = await page.evaluate(async () => {
       const response = await fetch("/api/v1/inventory?limit=1");
@@ -131,7 +131,7 @@ try {
     await page.getByRole("heading", { name: /your library/i }).waitFor();
     await audit(page, `${scheme} mobile player home`, `ui-play-mobile-${scheme}.png`);
     await page.goto("/play/collections");
-    await page.getByRole("heading", { name: /every world you can enter/i }).waitFor();
+    await page.getByRole("heading", { name: /^Collections$/i }).waitFor();
     await audit(page, `${scheme} mobile worlds browser`, `ui-worlds-mobile-${scheme}.png`);
     await page.goto("/admin/collections");
     await page.getByText(/worlds with a front door/i).waitFor();

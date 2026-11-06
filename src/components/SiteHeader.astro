@@ -5,9 +5,9 @@ const session = Astro.locals.foilbury;
 const user = session?.user ?? null;
 const path = Astro.url.pathname;
 const links = [
-  { href: "/cabinet", label: "Explore" },
+  { href: "/cabinet", label: "Browse originals" },
+  { href: "/#how-it-works", label: "How it works" },
   { href: "/journal", label: "Journal" },
-  { href: "/tour", label: "How it works" },
 ];
 if (user) links.push({ href: "/play", label: "My library" });
 const canStudio = Boolean(
@@ -79,11 +79,6 @@ if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform"
           >
             {user.displayName}
           </a>
-          {!["owner", "editor", "economy_admin"].includes(user.role) ? (
-            <a class="btn btn-secondary btn-sm hidden sm:inline-flex" href="/create-bot">
-              Create a Bot
-            </a>
-          ) : null}{" "}
           <LogoutButton client:load />
         </>
       ) : (
@@ -117,14 +112,6 @@ if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform"
               href="/account/security"
             >
               Account security
-            </a>
-          ) : null}
-          {!user ? (
-            <a
-              class="block px-3 py-2 font-sans text-[0.9rem] text-[var(--muted)] no-underline hover:bg-[var(--ink)]/5 hover:text-[var(--ink)]"
-              href="/create-bot"
-            >
-              Create a Bot
             </a>
           ) : null}
         </div>
