@@ -331,6 +331,6 @@ Independent review found a later mobile CSS rule overrode the intended stacked t
 
 The first stacked-layout follow-up exposed a second 320px/200% overflow in the introduction: its implicit grid track expanded around the skip link. The next candidate constrains the intro track and link width; the failed assertion is retained in `browser-header-followup.log` and needs a built rerun.
 
-The constrained introduction initially still overflowed at 320px/200% because the large “cabinet” heading was wider than its column; `browser-intro-followup.log` retains the failure. The heading now scales down at narrow sizes and can wrap long words as a last resort; built rerun remains required.
+The constrained introduction initially still overflowed at 320px/200% because the large “cabinet” heading was wider than its column; `browser-intro-followup.log` retains the failure. The heading now scales down at narrow sizes and can wrap long words as a last resort; the later built candidate `b1e6c1c` passed the strengthened navigation and zoom checks in `browser-heading-followup.log`. Final light/dark 320/390 anchor screenshots are retained alongside it; the shared header remains tall at 320px/200%.
 
 At 320px/200%, the corrected fragment reached the visible heading but the inherited 3rem-physical title consumed most of the remaining viewport. The tour section heading now uses a narrower responsive scale; the initial anchor screenshot and passing geometry log are retained before the final built rerun.
