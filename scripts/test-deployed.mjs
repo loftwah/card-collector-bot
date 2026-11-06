@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /**
- * Read-only production smoke test. No credentials required.
+ * Read-only production HTTP smoke. No credentials required.
+ * This verifies transport, source identity and the explicit checks below;
+ * it does not verify signed-in interactions, visual quality or product acceptance.
  */
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
@@ -13,6 +15,7 @@ fs.mkdirSync(evidence, { recursive: true });
 const runId=process.env.FOILBURY_SMOKE_RUN_ID ?? randomUUID();
 if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(runId)) throw new Error("Invalid smoke run identifier.");
 const smokeFile=path.join(evidence,`deployed-smoke-${runId}.json`);
+const verificationScope = "read-only HTTP smoke; signed-in browser journeys, visual quality and product acceptance are not assessed";
 const results = [];
 const pass = (name, detail = "") => { results.push({ name, status: "PASS", detail }); console.log(`PASS ${name}${detail ? ` · ${detail}` : ""}`); };
 const fail = (name, error) => { results.push({ name, status: "FAIL", detail: String(error?.message ?? error) }); console.error(`FAIL ${name} · ${error?.message ?? error}`); };
@@ -38,63 +41,46 @@ try {
     if (response.status !== 200) throw new Error(`${route} returned ${response.status}`);
     pass(`production ${route} responds 200`);
   }
-  const brand = await get("/brand-kit");
-  if (
-    !brand.body.includes("Signal Fold") ||
-    !brand.body.includes("Bastion") ||
-    !brand.body.includes("Aperture") ||
-    !brand.body.includes("Selected · Signal Fold")
-  ) {
-    throw new Error("Brand kit is missing a reviewed system or the recorded selection.");
-  }
-  for (const asset of [
-    "/brand/kit/systems/signal-fold/icon-512.png",
-    "/brand/kit/systems/signal-fold/banner-960x540.png",
-    "/brand/kit/systems/bastion/icon-512.png",
-    "/brand/kit/systems/aperture/icon-512.png",
-    "/brand/kit/selection.json",
-  ]) {
-    const response = await get(asset);
-    if (response.status !== 200) throw new Error(`${asset} returned ${response.status}`);
-  }
-  pass("production brand kit exposes all three systems, the selection and live assets");
+  // #26 rejects Signal Fold. HTTP smoke must not require that rejected identity
+  // or historical alternatives to remain selected. The route check above is
+  // availability evidence only; inspect current artwork in its real UI separately.
   const tour = await get("/tour");
   if (!tour.body.includes("Hold it to the light") && !tour.body.includes("Inspect both faces")) throw new Error("Website tour is missing its inspection stage.");
-  pass("production website tour is present and uses real public cards");
+  pass("production website tour contains its inspection-stage text");
   const showcase = await get("/showcase");
-  if (!showcase.body.includes("foilbury-trailer-16x9.mp4")) throw new Error("Showcase page is missing the playable trailer.");
-  pass("production showcase exposes playable public video");
+  if (!showcase.body.includes("foilbury-trailer-16x9.mp4")) throw new Error("Showcase page is missing the trailer reference.");
+  pass("production showcase HTML references the trailer; playback is not assessed");
   const studio = await get("/studio");
   if (![301, 302, 303, 307, 308].includes(studio.status)) throw new Error(`/studio returned ${studio.status}, expected a login redirect.`);
   const studioApi = await get("/api/v1/studio/collections");
   if (studioApi.status !== 401) throw new Error(`/api/v1/studio/collections returned ${studioApi.status}, expected 401.`);
-  pass("production Studio requires a signed-in scoped session");
+  pass("production Studio rejects these signed-out page and API requests");
   const home = await get("/");
   for (const secret of ["Shai Gilgeous-Alexander", "nba-opening-night", "Chainsaw Man", "Death Note"]) {
     if (home.body.includes(secret)) throw new Error(`Production homepage leaks ${secret}`);
   }
-  pass("production public HTML contains no member catalogue content");
+  pass("production public HTML excludes the checked member catalogue markers");
 
   const collections = JSON.parse((await get("/api/v1/collections")).body);
   if (collections.items.some((item) => item.slug === "nba-opening-night")) throw new Error("Signed-out collection API includes NBA.");
   if (!collections.items.some((item) => item.slug === "bubbles")) throw new Error("Signed-out collection API is missing Bubbles.");
-  pass("production signed-out collection API is public-only", `${collections.items.length} public collections`);
+  pass("production signed-out collection API excludes NBA and includes Bubbles", `${collections.items.length} returned collections`);
 
   const pool = await get("/api/v1/pools/cabinet-draw");
   if (pool.status !== 401) throw new Error(`Signed-out pool preview returned ${pool.status}, expected 401.`);
   const admin = await get("/admin");
   if (![301, 302, 303, 307, 308, 403].includes(admin.status)) throw new Error(`/admin returned ${admin.status}`);
-  pass("production pool preview and administration are protected", `admin ${admin.status}`);
+  pass("production pool preview and administration reject these signed-out requests", `admin ${admin.status}`);
 
   const sitemap = await get("/sitemap-public.xml");
   if (/nba-opening-night|shai-gilgeous-alexander/i.test(sitemap.body)) throw new Error("Production sitemap leaks member content.");
   if (!sitemap.body.includes("cabinet/tux")) throw new Error("Production sitemap is missing a public card.");
-  pass("production sitemap is public-only");
+  pass("production sitemap excludes checked member markers and includes the public card");
 
-  fs.writeFileSync(smokeFile, JSON.stringify({ generated_at: new Date().toISOString(), base, expected_build: expectedBuild, results }, null, 2),{flag:"wx",mode:0o600});
+  fs.writeFileSync(smokeFile, JSON.stringify({ generated_at: new Date().toISOString(), base, expected_build: expectedBuild, verification_scope: verificationScope, product_acceptance: "not_assessed", results }, null, 2),{flag:"wx",mode:0o600});
 } catch (error) {
   console.error(error?.stack ?? error);
-  fail("deployed smoke", error);
-  fs.writeFileSync(smokeFile, JSON.stringify({ generated_at: new Date().toISOString(), base, expected_build: expectedBuild, results }, null, 2),{flag:"wx",mode:0o600});
+  fail("deployed HTTP smoke", error);
+  fs.writeFileSync(smokeFile, JSON.stringify({ generated_at: new Date().toISOString(), base, expected_build: expectedBuild, verification_scope: verificationScope, product_acceptance: "not_assessed", results }, null, 2),{flag:"wx",mode:0o600});
   process.exitCode = 1;
 }
