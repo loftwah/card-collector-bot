@@ -274,7 +274,7 @@ export default function AdminCollections({ platformAdmin, globalCollectionAdmin 
         </section>
 
         <section className={`surface-flat p-5 ${loadState === "loading" || (loadState === "ready" && selected) ? "min-h-[75rem] xl:min-h-[60rem]" : ""}`}>
-          {loadState === "loading" ? <div className="studio-collections-loading grid min-h-[32rem] content-start gap-4" aria-label="Loading collection details" aria-busy="true"><span className="skeleton h-12 w-2/3" /><span className="skeleton h-12 w-full" /><span className="skeleton h-24 w-full" /><span className="skeleton h-12 w-full" /><span className="skeleton h-12 w-full" /></div> : loadState === "error" ? <p className="text-sm text-[var(--muted)]">Collection details are unavailable until the list is loaded.</p> : selected ? (
+          {loadState === "loading" ? <div className="studio-collections-loading grid min-h-[32rem] content-start gap-4" role="status" aria-label="Loading collection details" aria-busy="true"><span className="skeleton h-12 w-2/3" /><span className="skeleton h-12 w-full" /><span className="skeleton h-24 w-full" /><span className="skeleton h-12 w-full" /><span className="skeleton h-12 w-full" /></div> : loadState === "error" ? <p className="text-sm text-[var(--muted)]">Collection details are unavailable until the list is loaded.</p> : selected ? (
             <>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex items-center gap-3"><CollectionMark collection={selected} /><div><p className="eyebrow">{selected.scope === "global" ? "Global collection" : "Bot collection"}</p><h3 className="display-sm text-2xl">{selected.name}</h3></div></div>
