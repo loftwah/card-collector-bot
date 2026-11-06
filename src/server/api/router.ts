@@ -172,7 +172,6 @@ import {
   createAchievement,
   evaluateAchievements,
   listAchievements,
-  recordCollectionExploration,
 } from "../modules/achievements";
 import {
   listAdminGiftCampaigns,
@@ -517,7 +516,6 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     const collection = await getCollection(ctx, segments[1]);
     if (collection.status !== "published")
       throw new ApiError(404, "collection_not_found", "That collection is not published.");
-    await recordCollectionExploration(ctx, collection.id);
     return json({
       collection,
       cards: await listCollectionCards(ctx, collection.id),

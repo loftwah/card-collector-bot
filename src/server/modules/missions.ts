@@ -26,7 +26,7 @@ export const DAILY_MISSION_CATALOGUE: MissionDefinition[] = [
     key: "explore",
     version: 1,
     title: "Visit a world",
-    description: "Open any collection you can access and look around.",
+    description: "Look around a world, then record your visit.",
     eventTypes: ["collection.explored"],
     target: 1,
     reward: 60,
@@ -395,6 +395,39 @@ export async function recordDailyInteraction(
     dedupeKey: `${eventType}:${user.id}:${utcDayKey()}`,
     userId: user.id,
   });
+}
+
+/** Record a deliberate world visit with live authority in the same statement. */
+export async function recordWorldExploration(ctx: Ctx, collectionId: string): Promise<{recorded: true; day: string}> {
+  const user = ctx.user;
+  if (!user || ctx.actor.type !== "user" || ctx.actor.id !== user.id || !ctx.sessionId)
+    throw new ApiError(403, "exploration_unavailable", "This visit could not be recorded.");
+  const date = new Date(), now = date.toISOString(), day = utcDayKey(date);
+  const key = `explore:${user.id}:${collectionId}:${day}`;
+  // Conservative: current member, explicit viewer and Bot owner access only.
+  // Broader curator/administrator rights need a reusable live policy predicate.
+  const live = `FROM fb_collections c JOIN fb_users u ON u.id=? AND u.disabled_at IS NULL AND u.is_synthetic=0
+    JOIN fb_memberships m ON m.tenant_id=? AND m.user_id=u.id AND m.status='active' AND m.revoked_at IS NULL
+    JOIN fb_sessions s ON s.id=? AND s.user_id=u.id AND s.tenant_id=m.tenant_id AND s.revoked_at IS NULL AND julianday(s.expires_at)>julianday('now')
+    WHERE c.id=? AND c.status='published' AND c.archived_at IS NULL AND (c.scope='global' OR c.owner_tenant_id=m.tenant_id)
+      AND ((c.view_audience='public' AND c.public_approved_at IS NOT NULL)
+        OR (c.view_audience='members' AND (c.scope='global' OR c.owner_tenant_id=m.tenant_id))
+        OR (c.view_audience='private' AND (
+          EXISTS (SELECT 1 FROM fb_collection_viewers cv WHERE cv.collection_id=c.id AND cv.user_id=u.id AND cv.revoked_at IS NULL)
+          OR EXISTS (SELECT 1 FROM fb_bots b JOIN fb_memberships om ON om.tenant_id=b.tenant_id AND om.user_id=u.id
+            WHERE b.tenant_id=c.owner_tenant_id AND b.owner_user_id=u.id AND b.status<>'archived'
+              AND om.role='owner' AND om.status='active' AND om.revoked_at IS NULL))))`;
+  const args = [user.id, ctx.tenant.id, ctx.sessionId, collectionId];
+  const inserted = await first<{id:string}>(ctx.db, `INSERT INTO fb_domain_events
+    (id,tenant_id,user_id,event_type,object_type,object_id,dedupe_key,payload_json,created_at)
+    SELECT ?,m.tenant_id,u.id,'collection.explored','collection',c.id,?,'{}',? ${live}
+    ON CONFLICT(tenant_id,dedupe_key) DO NOTHING RETURNING id`,newId('evt'),key,now,...args);
+  if (inserted) return {recorded:true,day};
+  const existing = await first<{id:string}>(ctx.db, `SELECT c.id ${live} AND EXISTS
+    (SELECT 1 FROM fb_domain_events e WHERE e.tenant_id=m.tenant_id AND e.user_id=u.id AND e.event_type='collection.explored'
+      AND e.object_type='collection' AND e.object_id=c.id AND e.dedupe_key=?)`,...args,key);
+  if (!existing) throw new ApiError(404, "exploration_unavailable", "This visit could not be recorded.");
+  return {recorded:true,day};
 }
 
 /** Record an explicit inspection only while this human session still owns the copy. */
