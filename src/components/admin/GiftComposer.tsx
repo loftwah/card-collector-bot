@@ -8,7 +8,6 @@ import { Field, Input, Select, Textarea } from "../ui/input";
 
 interface Member {
   id: string;
-  email: string;
   display_name: string;
   role: string;
 }
@@ -66,7 +65,7 @@ export default function GiftComposer({ platformAdmin }: { platformAdmin: boolean
   async function load() {
     try {
       const [memberResult, cardResult, campaignResult] = await Promise.all([
-        api<{ items: Member[] }>("/api/v1/admin/members"),
+        api<{ items: Member[] }>("/api/v1/admin/people"),
         api<{ items: CardRow[] }>("/api/v1/admin/cards?limit=200"),
         api<{ items: Campaign[] }>("/api/v1/admin/gifts"),
       ]);
@@ -85,7 +84,7 @@ export default function GiftComposer({ platformAdmin }: { platformAdmin: boolean
   const filtered = useMemo(
     () =>
       members.filter((member) => {
-        const haystack = `${member.display_name} ${member.email}`.toLowerCase();
+        const haystack = `${member.display_name} ${member.role}`.toLowerCase();
         return haystack.includes(query.toLowerCase());
       }),
     [members, query],
@@ -198,7 +197,7 @@ export default function GiftComposer({ platformAdmin }: { platformAdmin: boolean
                 <p className="label">Recipients</p>
                 <p className="text-sm text-[var(--muted)]">{selected.length} selected · {members.length} members in this Bot</p>
               </div>
-              <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name or email" className="max-w-xs" />
+              <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name or role" className="max-w-xs" />
             </div>
             <div className="mt-3 max-h-64 overflow-auto border border-[var(--line)]">
               {filtered.map((member) => {
@@ -215,7 +214,7 @@ export default function GiftComposer({ platformAdmin }: { platformAdmin: boolean
                     />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-semibold">{member.display_name}</span>
-                      <span className="block truncate text-xs text-[var(--muted)]">{member.email} · {member.role}</span>
+                      <span className="block truncate text-xs text-[var(--muted)]">{member.role}</span>
                     </span>
                   </label>
                 );

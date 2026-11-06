@@ -444,6 +444,28 @@ function ensureOps(ctx: Ctx) {
   }
 }
 
+/**
+ * Contact and membership records are a people-administration boundary. A
+ * content, economy or grants operator can pick a member by name, but cannot
+ * enumerate email addresses. Only the Bot Owner or a Bot Admin explicitly
+ * granted `members` can read the contact directory, and an agent never can.
+ */
+function ensureMemberAdmin(ctx: Ctx) {
+  if (ctx.actor.type === "agent")
+    throw new ApiError(
+      403,
+      "human_admin_required",
+      "Agent grants cannot read member contact records.",
+    );
+  const user = requireUser(ctx);
+  if (!user.platformAdmin && user.role !== "owner" && !hasCapability(user, "members"))
+    throw new ApiError(
+      403,
+      "insufficient_capability",
+      "Your role does not include member management.",
+    );
+}
+
 function ensureStepUp(ctx: Ctx): void {
   // Scoped agent credentials are a separate, revocable machine path. They
   // still pass every route-level scope and role check; they cannot impersonate
@@ -874,6 +896,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     segments[3] === "status" &&
     method === "POST"
   ) {
+    ensureMemberAdmin(ctx);
     ensureStepUp(ctx);
     const body = await readJson(
       request,
@@ -1241,6 +1264,19 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
         201,
       );
     }
+  }
+  if (
+    segments.length === 4 &&
+    segments[0] === "admin" &&
+    segments[1] === "cards" &&
+    segments[2] &&
+    segments[3] === "merge" &&
+    method === "POST"
+  ) {
+    ensureContentWrite(ctx);
+    ensureStepUp(ctx);
+    const body = await readJson(request, z.object({ targetId: idSchema }));
+    return json(await mergeCards(ctx, segments[2], body.targetId));
   }
   if (
     segments[0] === "admin" &&
@@ -1701,9 +1737,33 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     await revokeAgentGrant(ctx, segments[2]);
     return json({ ok: true });
   }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "members" && method === "GET") {
+  // Operational pickers need a name and role, never contact data. Economy,
+  // gift and agent screens use this directory; the contact-bearing member
+  // records below stay behind the people-administration capability.
+  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "people" && method === "GET") {
     ensureOps(ctx);
+    return json({ items: await listTenantMembers(ctx) });
+  }
+  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "members" && method === "GET") {
+    ensureMemberAdmin(ctx);
     return json({ items: await listMembers(ctx) });
+  }
+  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "team" && method === "GET") {
+    ensureMemberAdmin(ctx);
+    const { botForTenant } = await import("../modules/bots");
+    const bot = await botForTenant(ctx.db, ctx.tenant.id);
+    if (!bot)
+      throw new ApiError(404, "bot_not_found", "No Bot is attached to this administration area.");
+    return json({
+      bot,
+      admins: await listBotAdmins(ctx, bot.id),
+      invitations: await listBotInvitations(ctx, bot.id),
+      current_role: ctx.user?.platformAdmin
+        ? "Super Admin"
+        : ctx.user?.role === "owner"
+          ? "Bot Owner"
+          : "Bot Admin",
+    });
   }
 
   // Assets, imports and render jobs
@@ -2138,17 +2198,9 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     const bot = await botForTenant(ctx.db, ctx.tenant.id);
     if (!bot)
       throw new ApiError(404, "bot_not_found", "No Bot is attached to this administration area.");
-    return json({
-      bot,
-      aiArtEnabled: Number(bot.ai_art_enabled ?? 0) === 1,
-      admins: await listBotAdmins(ctx, bot.id),
-      invitations: await listBotInvitations(ctx, bot.id),
-      current_role: ctx.user?.platformAdmin
-        ? "Super Admin"
-        : ctx.user?.role === "owner"
-          ? "Bot Owner"
-          : "Bot Admin",
-    });
+    // Bot settings, not the people directory. Contact records and invitations
+    // are served by GET /admin/team behind the `members` capability.
+    return json({ bot, aiArtEnabled: Number(bot.ai_art_enabled ?? 0) === 1 });
   }
   if (
     segments[0] === "admin" &&

@@ -120,7 +120,6 @@ interface PoolRow {
 
 interface Member {
   id: string;
-  email: string;
   display_name: string;
   role: string;
 }
@@ -2373,7 +2372,7 @@ function AdminEconomy() {
     try {
       const [e, m] = await Promise.all([
         api<Record<string, unknown>>("/api/v1/admin/economy"),
-        api<{ items: Member[] }>("/api/v1/admin/members"),
+        api<{ items: Member[] }>("/api/v1/admin/people"),
       ]);
       setEconomy(e);
       setMembers(m.items);
@@ -2531,7 +2530,7 @@ function AdminEconomy() {
                   <option value="">Choose member</option>
                   {members.map((member) => (
                     <option key={member.id} value={member.id}>
-                      {member.display_name} · {member.email}
+                      {member.display_name} · {member.role}
                     </option>
                   ))}
                 </Select>
@@ -2627,7 +2626,7 @@ function AdminAgents() {
     try {
       const [a, m] = await Promise.all([
         api<{ items: AgentRow[] }>("/api/v1/admin/agents"),
-        api<{ items: Member[] }>("/api/v1/admin/members"),
+        api<{ items: Member[] }>("/api/v1/admin/people"),
       ]);
       setAgents(a.items);
       setMembers(m.items);

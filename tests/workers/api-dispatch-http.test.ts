@@ -4,6 +4,7 @@ import { ALL } from "../../src/pages/api/v1/[...path]";
 import { createAgentGrant, createSession } from "../../src/server/modules/identity";
 import { bootstrap, ctxFor, fixturePool, makeInstance, runtime } from "./helpers";
 import { createTrade } from "../../src/server/modules/trades";
+import { createCard } from "../../src/server/modules/catalogue";
 import suffixRegressions from "../fixtures/api-suffix-regressions.json";
 
 async function client(email: string) {
@@ -130,6 +131,29 @@ describe("HTTP API dispatch boundaries", () => {
     expect(received.json.items.map((item: { id: string }) => item.id)).toEqual(["award_http"]);
     expect(received.json.items[0].description).toBe("HTTP gift");
   });
+  it("keeps the CLI and MCP card-merge route reachable", async () => {
+    const ownerCtx = await ctxFor("cabinet", "owner@foilbury.local");
+    const fixture = await fixturePool(ownerCtx);
+    const target = await createCard(ownerCtx, {
+      slug: "http-merge-target",
+      name: "HTTP Merge Target",
+      description: "A target identity for the dispatch contract.",
+      logicalId: "test:http-merge-target",
+    });
+    const owner = await client("owner@foilbury.local");
+    const response = await owner(`admin/cards/${fixture.cardId}/merge`, "POST", {
+      targetId: target.id,
+    });
+    expect(response.status).toBe(200);
+    expect(response.json.status).toBe("merged");
+    expect(response.json.target_id).toBe(target.id);
+    const alias = await runtime.DB.prepare(
+      "SELECT target_card_id FROM fb_card_aliases WHERE tenant_id = ? AND source_card_id = ?",
+    )
+      .bind(ownerCtx.tenant.id, fixture.cardId)
+      .first<{ target_card_id: string }>();
+    expect(alias?.target_card_id).toBe(target.id);
+  });
   it("does not offer revoked or synthetic users as trade peers", async () => {
     const owner = await ctxFor("cabinet", "owner@foilbury.local");
     const player = await ctxFor("cabinet", "player@foilbury.local");
@@ -199,11 +223,63 @@ describe("HTTP API dispatch boundaries", () => {
     ).toBe(true);
     const privileged = await player("admin/members");
     expect(privileged.status).toBe(403);
+    expect(privileged.json.error?.code).toBe("insufficient_capability");
+
     const owner = await client("owner@foilbury.local");
     const admin = await owner("admin/members");
     expect(admin.status).toBe(200);
     expect(
       admin.json.items.some((item: Record<string, unknown>) => typeof item.email === "string"),
     ).toBe(true);
+
+    // Operational pickers get names and roles, never contact details.
+    const people = await owner("admin/people");
+    expect(people.status).toBe(200);
+    expect(
+      people.json.items.length > 0 &&
+        people.json.items.every(
+          (item: Record<string, unknown>) =>
+            !("email" in item) && !("capabilities_json" in item) && !("created_at" in item),
+        ),
+    ).toBe(true);
+
+    // Bot settings remain available without the people directory.
+    const settings = await owner("admin/bot");
+    expect(settings.status).toBe(200);
+    expect("admins" in settings.json).toBe(false);
+    expect("invitations" in settings.json).toBe(false);
+    const team = await owner("admin/team");
+    expect(team.status).toBe(200);
+    expect(
+      team.json.admins.some((item: Record<string, unknown>) => typeof item.email === "string"),
+    ).toBe(true);
+    expect(Array.isArray(team.json.invitations)).toBe(true);
+  });
+  it("requires the live members capability, not a content or economy grant, for contact records", async () => {
+    const playerCtx = await ctxFor("cabinet", "player@foilbury.local");
+    const player = await client("player@foilbury.local");
+    const setCaps = (caps: string[]) =>
+      runtime.DB.prepare("UPDATE fb_memberships SET capabilities_json = ? WHERE tenant_id = ? AND user_id = ?")
+        .bind(JSON.stringify(caps), playerCtx.tenant.id, playerCtx.user!.id)
+        .run();
+    try {
+      await setCaps(["economy"]);
+      expect((await player("admin/people")).status).toBe(200);
+      const economyContact = await player("admin/members");
+      expect(economyContact.status).toBe(403);
+      expect(economyContact.json.error?.code).toBe("insufficient_capability");
+
+      await setCaps(["members"]);
+      const memberContact = await player("admin/members");
+      expect(memberContact.status).toBe(200);
+      expect(
+        memberContact.json.items.some(
+          (item: Record<string, unknown>) => typeof item.email === "string",
+        ),
+      ).toBe(true);
+      expect((await player("admin/team")).status).toBe(200);
+    } finally {
+      await setCaps([]);
+    }
   });
 });

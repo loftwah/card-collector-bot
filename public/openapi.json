@@ -2061,16 +2061,50 @@
         }
       }
     },
+    "/api/v1/admin/people": {
+      "get": {
+        "tags": [
+          "Administration"
+        ],
+        "summary": "List member names for operational pickers",
+        "description": "Requires the same Bot operations authority as the surrounding screen: owner, content/economy/grants capability, or an agent with ops:read. Returns id, display_name and role only, without contact details. Email and membership administration fields are excluded; use /api/v1/admin/members for contact data.",
+        "responses": {
+          "200": {
+            "description": "Active member names and roles without contact details"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/admin/members": {
       "get": {
         "tags": [
           "Administration"
         ],
-        "summary": "List Bot membership records for authorised operations",
-        "description": "Requires a human owner or a member with content, economy or grants capability; agents require ops:read and an administrative represented role. Responses include email addresses.",
+        "summary": "Read member contact records for people administration",
+        "description": "Human-only. Requires the Bot Owner, Super Admin, or a Bot Admin with the members capability. Agent grants are denied. Returns membership records including email addresses.",
         "responses": {
           "200": {
-            "description": "Administrative member records including contact details"
+            "description": "Member records including contact details"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/team": {
+      "get": {
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Read Bot administrators and pending invitations",
+        "description": "Human-only. Requires the Bot Owner, Super Admin, or a Bot Admin with the members capability. Returns Bot settings, administrator contact records and pending invitation addresses. Bot settings without contact data remain at /api/v1/admin/bot.",
+        "responses": {
+          "200": {
+            "description": "Bot administrators and pending invitations"
           },
           "403": {
             "$ref": "#/components/responses/Error"
