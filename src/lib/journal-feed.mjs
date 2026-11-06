@@ -1,4 +1,8 @@
-/** Read published journal data without treating a CMS error as an empty list. */
+/**
+ * Read published journal data without treating a CMS error as an empty list.
+ * @param {() => Promise<{entries?: Array<{id: string, slug?: string | null, data: {title?: string, excerpt?: string, publishedAt?: string | null}}>, error?: unknown}>} load
+ * @returns {Promise<{entries: Array<{id: string, slug: string, title: string, excerpt: string, publishedAt: string | null}>, error: boolean}>}
+ */
 export async function readJournalFeed(load) {
   try {
     const result = await load();
