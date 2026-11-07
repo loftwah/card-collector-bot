@@ -2449,9 +2449,13 @@ async function tourShare(
         { name: "Look", value: starterLookLabel(prefs.profile_look), inline: true },
       ];
       if (featured) {
+        const meta =
+          featured.finish && featured.finish !== featured.variantName
+            ? `${featured.variantName} · ${featured.finish}`
+            : featured.variantName;
         fields.push({
           name: "Featured copy",
-          value: `**${featured.cardName}**\n${featured.variantName} · ${featured.finish}`,
+          value: `**${featured.cardName}**\n${meta}`,
           inline: false,
         });
       }

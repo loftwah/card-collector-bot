@@ -186,7 +186,9 @@ const starterLooks = [
           <div class="profile-feature__copy">
             <h2 class="profile-feature__name">{featured.cardName}</h2>
             <p class="profile-feature__meta">
-              {featured.variantName} · {featured.finish}
+              {featured.finish && featured.finish !== featured.variantName
+                ? `${featured.variantName} · ${featured.finish}`
+                : featured.variantName}
             </p>
             <p class="profile-feature__serial">{featured.serial}</p>
             <p class="profile-feature__note">

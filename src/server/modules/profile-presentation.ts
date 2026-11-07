@@ -362,7 +362,6 @@ export interface ProfileSharePresentation {
     card_name: string;
     variant_name: string;
     finish: string;
-    serial: string;
     render_url: string | null;
   } | null;
   favourites: Array<{
@@ -395,7 +394,6 @@ export function profileSharePresentation(resolved: ResolvedProfilePresentation):
           card_name: resolved.featured.cardName,
           variant_name: resolved.featured.variantName,
           finish: resolved.featured.finish,
-          serial: resolved.featured.serial,
           render_url: resolved.featured.renderUrl,
         }
       : null,

@@ -3961,12 +3961,14 @@ html[data-motion="reduced"] .layered-card__effect {
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--panel-2);
+  order: -1;
 }
 
 @media (min-width: 1000px) {
   .profile-customiser__preview {
     position: sticky;
     top: 7rem;
+    order: 0;
   }
 }
 

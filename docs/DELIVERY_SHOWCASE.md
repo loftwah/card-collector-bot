@@ -1,80 +1,95 @@
-# Delivery showcase channel
+# Delivery showcase
 
-The owner's Woodhouse Discord channel is the **human-facing delivery showcase**
-for Foilbury. It is where the owner can see what reached `main` and production,
-which issue or pull request it belongs to, and what to look for in the product.
+The owner's Woodhouse Discord showcase is the running, human-facing record of
+delivered **Foilbury** work. It answers: what changed, why it matters, which
+issue or pull request owns it, and where to inspect the result.
 
-It is **not** acceptance evidence. A posted message does not replace a deployed
-build identity, a focused test, a rendered browser check or a real Discord-client
-observation. Keep those receipts in the usual places.
+It is not a second release system and not acceptance evidence. The release
+receipt, the issue checkpoint and the exercised live journey remain authoritative.
 
-## Configuration
+The shared contract lives in
+[Woodhouse `docs/DISCORD_SHOWCASE.md`](https://github.com/loftwah/woodhouse-new/blob/main/docs/DISCORD_SHOWCASE.md)
+and is tracked by [Woodhouse #171](https://github.com/loftwah/woodhouse-new/issues/171).
 
-The webhook lives in `.env` as `WOODHOUSE_DISCORD_CHANNEL`. It is a secret and is
-never committed. `.env.example` keeps an empty placeholder.
+## Transport
 
-```sh
-# .env
-WOODHOUSE_DISCORD_CHANNEL=https://discord.com/api/webhooks/...
-```
+`WOODHOUSE_DISCORD_CHANNEL` is the **webhook URL**, not a numeric channel ID.
+It is a secret: keep it in `.env` or the host's private environment, never in a
+tracked file, payload, screenshot or log. `WOODHOUSE_DISCORD_WEBHOOK_URL` is an
+optional alias only when the canonical variable is absent.
 
-## When to post
-
-Post one concise update after a coherent outcome reaches production:
-
-- one issue or a small, tightly coupled issue/PR set;
-- the exact source revision and Worker version;
-- the live URL or the exact Discord command/share to try;
-- the visible behaviour to look for;
-- an honest status: `PRODUCTION_VERIFIED`, `IN_PROGRESS` or `BLOCKED`;
-- the real residual (for example mobile or independent spectator proof).
-
-Do not post per commit, per test run or per review finding. Do not post private
-card art, member data, tokens, emails, screenshots of restricted content or a
-claim that a blocked human step passed.
-
-## Command
+Use the shared Woodhouse wrapper from a trusted local checkout, with this
+repository as the working directory:
 
 ```sh
-pnpm showcase:post -- \
-  --title "Collector identity in Discord" \
-  --summary "The saved profile composition now appears in /foilbury profile and in deliberate profile shares." \
-  --issues 46,43,41,42 \
-  --pr 100 \
-  --source 90929837d0a3a0dd3863441847f2dd10fd5e7a71 \
-  --worker 5e523dd3-692b-44ee-b971-0ee533f89e59 \
-  --url "https://foilbury.loftwah.com/play/profile" \
-  --look-for "Open /foilbury profile: selected look, featured owned copy and badges." \
-  --look-for "Use Share preview in a members channel: the same composition is posted; public channels stay counts-only." \
-  --status PRODUCTION_VERIFIED \
-  --key profile-discord-2026-11-07
+node /path/to/woodhouse-new/scripts/showcase-delivery.mjs \
+  /private/foilbury-event.json
 ```
 
-The script:
+Omit `--send` first and inspect the payload. Add `--send` only when the event is
+accurate and public-safe. The wrapper verifies the repository, observes remote
+`main`, deduplicates, sends, and reads the message back. Do not curl-and-run
+moving remote code.
 
-- reads the webhook from `.env` or the environment;
-- posts one embed with issue/PR links, source/Worker, live URL, what to look for
-  and status;
-- never prints the webhook URL;
-- records the posted message under `.foilbury/showcase/<key>.json`;
-- refuses to repost the same `--key` unless `--force` is passed;
-- supports `--dry-run` to inspect the exact payload;
-- suppresses mentions.
+The wrapper's state directory defaults to
+`~/.local/state/woodhouse-discord-showcase`. Keep it outside the repository and
+use the same directory when continuing on the same host.
 
-## Message shape
+## Status vocabulary
 
-| Field | Content |
+| Status | Meaning |
 | --- | --- |
-| Issues and pull request | Links to the exact issue(s) and PR |
-| Source and deployment | Source SHA and Worker version |
-| Live | Production URL or the command to run |
-| What to look for | One to four concrete visible checks |
-| Status | `PRODUCTION_VERIFIED`, `IN_PROGRESS` or `BLOCKED` |
-| Footer | Foilbury delivery showcase and short source |
+| `MERGED_TO_MAIN` | Source is integrated; production may still be pending |
+| `PRODUCTION_VERIFIED` | The exact deployed source/version and the affected live flow were checked |
+| `DOCS_TOOLING_DONE` | Non-runtime work is checked on `main`; no redeploy needed |
+| `BLOCKED` | A concrete external impediment; state the next action |
+| `RELEASE_FAILED` | The release failed; state the exact failing step |
+| `PROJECT_HIGHLIGHT` | A useful milestone or authentic visual; makes no release claim |
 
-## Relationship to the release contract
+## Event shape
 
-The showcase is the owner's view of delivery, not a second release system. The
-release receipt, the issue checkpoint and the live journey remain the authority.
-If the showcase says `PRODUCTION_VERIFIED`, the production build identity and the
-affected journey must have actually been exercised on that revision.
+The shared wrapper validates the event. A Foilbury event should include:
+
+```json
+{
+  "project": "Foilbury",
+  "repo": "loftwah/card-collector-bot",
+  "stage": "PRODUCTION_VERIFIED",
+  "outcomeId": "collector-identity-discord-2026-11-07",
+  "title": "Collector identity in Discord",
+  "summary": "The saved profile composition appears in /foilbury profile and deliberate profile shares.",
+  "whyItMatters": "A collector can show a chosen look, exact featured copy and earned badges instead of a count-only summary.",
+  "issues": [
+    { "number": 46, "url": "https://github.com/loftwah/card-collector-bot/issues/46", "state": "open" }
+  ],
+  "pullRequests": [
+    { "number": 100, "url": "https://github.com/loftwah/card-collector-bot/pull/100", "state": "merged" }
+  ],
+  "commit": "90929837d0a3a0dd3863441847f2dd10fd5e7a71",
+  "source": "90929837d0a3a0dd3863441847f2dd10fd5e7a71",
+  "version": "Worker 5e523dd3-692b-44ee-b971-0ee533f89e59",
+  "inspect": "https://foilbury.loftwah.com/play/profile",
+  "verified": "Deployed build identity and read-only smoke; signed-in profile/share composition inspected.",
+  "limits": "Real Discord client invocation, mobile capture and independent spectator remain for #7/#19.",
+  "demoUrl": "https://foilbury.loftwah.com/play/profile"
+}
+```
+
+Use the actual field names required by the current shared wrapper; the example
+above is the intended semantic content, not a substitute for reading its
+validator. Keep text concise and suitable for the channel audience.
+
+## What belongs in a post
+
+- one coherent outcome, announced by the integrator;
+- real issue and pull request links with their actual state;
+- source SHA and deployed version;
+- changed behaviour and why it matters;
+- the exact route, command or share to inspect;
+- what was verified and what remains;
+- public-safe screenshots or a real feature link when useful.
+
+Do not post per commit, per test run or per review finding. Never post secrets,
+private card art, member data, restricted screenshots, or a claim that a blocked
+human step passed. A notification failure is a notification fault, not a reason
+to redeploy or to claim the post succeeded.
