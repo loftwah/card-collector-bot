@@ -295,3 +295,10 @@ production acceptance.
   17 were refreshed in place. The demo collector is honestly shown at 8/9
   current-release subjects; `Three schools` remains the frozen release-5 8/8
   achievement. Read-back remains 17/17 PASS.
+- **Collection art:** 17 generic gradient/dot/initials banners and their marks
+  were replaced with compositions built from actual card renders, collection
+  palettes and source-specific character marks. Collection release versions were
+  preserved; old assets remain for rollback. The Danganronpa profile share was
+  recreated with the new banner/mark and stages 1/3/10/15/16 were refreshed.
+  Full per-card art review remains open under #39; see
+  `docs/ART_AUDIT_2026-11-08.md`.
