@@ -3999,6 +3999,23 @@ html[data-motion="reduced"] .layered-card__effect {
   border-bottom: 1px solid var(--line);
 }
 
+.profile-preview__hero::after {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  content: "";
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--panel) 92%, transparent) 0%,
+      color-mix(in srgb, var(--panel) 78%, transparent) 46%,
+      color-mix(in srgb, var(--panel) 18%, transparent) 78%,
+      transparent 100%
+    ),
+    linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--panel) 38%, transparent) 100%);
+}
+
 .profile-preview__banner {
   position: absolute;
   inset: 0;
@@ -4011,6 +4028,7 @@ html[data-motion="reduced"] .layered-card__effect {
 
 .profile-preview__hero > :not(.profile-preview__banner) {
   position: relative;
+  z-index: 2;
 }
 
 .profile-preview__identity {

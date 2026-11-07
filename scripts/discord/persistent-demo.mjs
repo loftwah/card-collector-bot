@@ -423,7 +423,7 @@ async function readMissionState(installation) {
   };
 }
 
-function recentDraws(day) {
+function recentDraws(day, installation) {
   return d1(
     `SELECT d.id AS draw_id, d.instance_id, d.created_at, d.price, d.pool_revision,
             cd.name AS card_name, ci.serial, v.name AS variant_name,
@@ -540,7 +540,7 @@ async function ensureMissionProgress({ state, installation, previewEndpoint }) {
     }
   }
 
-  const draws = recentDraws(board.day);
+  const draws = recentDraws(board.day, installation);
   return {
     day: board.day,
     period_key: board.period_key,
@@ -796,7 +796,7 @@ function finishLabel(variant) {
 }
 
 async function main() {
-  console.log(`Foilbury persistent demo · ${RUN_ID} · ${dryRun ? "dry run" : "publish"}`);
+  console.log(`Foilbury persistent demo · ${RUN_ID} · ${dryRun ? "dry run" : prepareOnly ? "prepare" : "publish"}`);
   const installation = d1(
     `SELECT * FROM fb_discord_installations WHERE id = ${quote(INSTALLATION_ID)}`,
   )[0];
