@@ -23,6 +23,7 @@ import { ROOT } from "../lib/local.mjs";
 
 const args = new Set(process.argv.slice(2));
 const prepareOnly = args.has("--prepare");
+const noDraw = args.has("--no-draw");
 const dryRun = args.has("--dry-run") || (!args.has("--publish") && !prepareOnly);
 const resume = !args.has("--fresh");
 const refreshArg = process.argv.find((arg) => arg.startsWith("--refresh="));
@@ -896,7 +897,7 @@ async function main() {
   });
 
   // Draw to completion through the real shared API, bounded and idempotent.
-  if (!dryRun) {
+  if (!dryRun && !noDraw) {
     let unique = new Set(state.draws.map((draw) => draw.card_id));
     let attempts = state.draws.length;
     while (unique.size < cardFiles.length && attempts < MAX_DRAWS) {
@@ -994,7 +995,8 @@ async function main() {
   const completion = state.achievement ?? null;
   if (!dryRun && completing) {
     const achievement = d1(
-      `SELECT d.name, u.reward_amount, u.reward_state, u.reward_ledger_id, u.earned_at
+      `SELECT d.name, u.reward_amount, u.reward_state, u.reward_ledger_id, u.earned_at,
+              json_extract(d.criteria_json, '$.roster_card_ids') AS roster_json
          FROM fb_achievement_unlocks u JOIN fb_achievement_definitions d ON d.id = u.achievement_id
         WHERE u.tenant_id = ${quote(installation.tenant_id)} AND u.user_id = ${quote(actor.userId)}
           AND json_extract(d.criteria_json, '$.collection_id') = ${quote(collection.id)}
@@ -1011,7 +1013,20 @@ async function main() {
             WHERE tenant_id = ${quote(installation.tenant_id)} AND user_id = ${quote(actor.userId)}
               AND reference_type = 'achievement' ORDER BY created_at DESC LIMIT 1`,
         )[0];
-    state.achievement = achievement ? { ...achievement, reward: reward ?? null } : null;
+    state.achievement = achievement
+      ? {
+          ...achievement,
+          reward: reward ?? null,
+          frozen_roster_size: (() => {
+            try {
+              const roster = JSON.parse(achievement.roster_json ?? "[]");
+              return Array.isArray(roster) && roster.length ? roster.length : null;
+            } catch {
+              return null;
+            }
+          })(),
+        }
+      : null;
     saveState(state);
   }
 
@@ -1130,6 +1145,7 @@ async function publishStages({
   const duplicates = state.draws.length - uniqueAfter;
   const achievement = state.achievement;
   const mission = state.mission;
+  const frozenTarget = achievement?.frozen_roster_size ?? uniqueAfter;
   const missionBoard = state.missions;
   const achievementBoard = state.achievements;
   const profile = state.profile;
@@ -1225,8 +1241,8 @@ async function publishStages({
   const completionPath = await composeGrid({
     cards: cardFiles.map((card) => ({ ...card, caption: "Gold reference front" })),
     owned: new Set(state.draws.map((draw) => draw.card_id)),
-    title: `${collection.name} · complete`,
-    subtitle: `${uniqueAfter}/${cardFiles.length} subjects · achievement ${achievement?.name ?? "evaluated from the committed draw"}`,
+    title: `${collection.name} · release 5 achievement`,
+    subtitle: `${frozenTarget}/${frozenTarget} frozen subjects · current release ${collection.release_version} has ${cardFiles.length}`,
     out: path.join(ASSET_DIR, "completion.png"),
   });
 
@@ -1334,8 +1350,8 @@ async function publishStages({
     {
       stage: 2,
       embed: {
-        title: "The complete released roster · eight subjects",
-        description: `Every subject in the version ${collection.release_version} release, using the saved Gold front renders. The album publishes Plain, Silver, Gold and Holographic variants — ${preview?.eligible_count ?? 32} eligible variants in the capsule.`,
+        title: `The complete released roster · ${cardFiles.length} subjects`,
+        description: `Every subject in the version ${collection.release_version} release, using the saved Gold front renders. The album publishes Plain, Silver, Gold and Holographic variants — ${preview?.eligible_count ?? cardFiles.length * 4} eligible variants in the capsule.`,
         color: 0x245c4b,
         fields: [
           {
@@ -1493,7 +1509,7 @@ async function publishStages({
       stage: 7,
       embed: {
         title: "Progress · before and after",
-        description: `Before this run the demonstration collector owned ${uniqueBefore}/${cardFiles.length} unique subjects. After ${state.draws.length} real openings it owns ${uniqueAfter}/${cardFiles.length}, with ${duplicates} duplicate ${duplicates === 1 ? "copy" : "copies"}. The completion target is the frozen release ${collection.release_version} roster, not a moving count.`,
+        description: `Before this run the demonstration collector owned ${uniqueBefore}/${cardFiles.length} unique subjects. After ${state.draws.length} real openings it owns ${uniqueAfter}/${cardFiles.length}, with ${duplicates} duplicate ${duplicates === 1 ? "copy" : "copies"}. The earned milestone stays frozen on its original release-5 roster; the current release ${collection.release_version} adds ${cardFiles.length - frozenTarget} new subject${cardFiles.length - frozenTarget === 1 ? "" : "s"}.`,
         color: uniqueAfter === cardFiles.length ? 0x3f9d5a : 0x7c6b4f,
         fields: [
           {
@@ -1505,7 +1521,7 @@ async function publishStages({
           { name: "Duplicates", value: String(duplicates), inline: true },
           {
             name: "Completion target",
-            value: `Frozen release ${collection.release_version} · ${cardFiles.length} subjects`,
+            value: `Frozen release 5 · ${frozenTarget} subjects · current release ${collection.release_version} · ${cardFiles.length} subjects`,
             inline: false,
           },
         ],
@@ -1529,14 +1545,19 @@ async function publishStages({
     {
       stage: 8,
       embed: {
-        title: `Completion · ${achievement?.name ?? "frozen roster milestone"} earned once`,
-        description: `The final unique subject was acquired by a real opening at ${dualTime(completing?.drawn_at ?? new Date().toISOString())}. The achievement engine evaluated the frozen roster, unlocked the milestone and credited the one-time reward exactly once.`,
+        title: `Frozen completion · ${achievement?.name ?? "roster milestone"} earned once`,
+        description: `The final unique subject of the frozen ${frozenTarget}-card achievement roster was acquired by a real opening at ${dualTime(completing?.drawn_at ?? new Date().toISOString())}. The achievement engine evaluated that frozen roster, unlocked the milestone and credited the one-time reward exactly once. The current release ${collection.release_version} adds ${cardFiles.length - frozenTarget} new subject${cardFiles.length - frozenTarget === 1 ? "" : "s"}; it does not rewrite the earned award.`,
         color: 0x3f9d5a,
         fields: [
           { name: "Achievement", value: achievement?.name ?? "Three schools", inline: true },
           {
-            name: "Target",
-            value: `${cardFiles.length}/${cardFiles.length} subjects`,
+            name: "Frozen target",
+            value: `${frozenTarget}/${frozenTarget} subjects · release 5`,
+            inline: true,
+          },
+          {
+            name: "Current release",
+            value: `${collection.release_version} · ${cardFiles.length} subjects · ${uniqueAfter} owned`,
             inline: true,
           },
           {
@@ -1601,14 +1622,19 @@ async function publishStages({
       embed: {
         title: "Profile and achievements · member-safe summary",
         description:
-          "Counts are scoped to this server's configured collection. No wallet total, email, session or administrator control is shown. No NPC collector is configured in this Bot, so no synthetic spectator is presented.",
+          "Counts are scoped to this server's configured collection. No wallet total, email, session or administrator control is shown. The current release has more subjects than the frozen achievement roster; both are reported separately. No NPC collector is configured in this Bot, so no synthetic spectator is presented.",
         color: 0x7c6b4f,
         fields: [
           { name: "Owned copies", value: String(state.draws.length), inline: true },
           { name: "Unique subjects", value: `${uniqueAfter}/${cardFiles.length}`, inline: true },
           {
+            name: "Current release",
+            value: `${collection.release_version} · ${cardFiles.length} subjects`,
+            inline: true,
+          },
+          {
             name: "Completion milestone",
-            value: achievement ? achievement.name : "Not evaluated",
+            value: achievement ? `${achievement.name} · frozen release 5` : "Not evaluated",
             inline: true,
           },
           {
@@ -1626,8 +1652,8 @@ async function publishStages({
     {
       stage: 11,
       embed: {
-        title: `Deliberate share · ${collection.name} complete`,
-        description: `The demonstration collector explicitly shared the completed album to this verified members channel. Sharing does not transfer ownership; the attachment can be copied after delivery. ${uniqueAfter}/${cardFiles.length} unique subjects.`,
+        title: `Deliberate share · release 5 completion`,
+        description: `The demonstration collector explicitly shared the completed release-5 album to this verified members channel. Sharing does not transfer ownership; the attachment can be copied after delivery. ${uniqueAfter}/${cardFiles.length} current-release subjects are owned; the earned milestone remains frozen at ${frozenTarget}/${frozenTarget}.`,
         color: 0x3f9d5a,
         fields: [
           { name: "Album", value: collection.name, inline: true },
@@ -1673,12 +1699,12 @@ async function publishStages({
           },
           {
             name: "Source events",
-            value: `${state.draws.length} real openings · ${uniqueAfter} unique subjects · ${duplicates} duplicates · ${mission ? `mission ${mission.title} claimed once` : "no mission claim"} · ${achievement?.name ?? "completion milestone"} with one reward`,
+            value: `${state.draws.length} real openings · ${uniqueAfter}/${cardFiles.length} unique subjects · ${duplicates} duplicates · ${mission ? `mission ${mission.title} claimed once` : "no mission claim"} · ${achievement?.name ?? "completion milestone"} (frozen release 5) with one reward`,
             inline: false,
           },
           {
             name: "Identity",
-            value: `Build \`${(state.build.source_sha ?? "").slice(0, 12)}\` · Worker \`${(state.worker_version ?? "").slice(0, 12)}\` · scope \`${(state.scope_digest ?? "").slice(0, 16)}\` · schema 0027`,
+            value: `Build \`${(state.build.source_sha ?? "").slice(0, 12)}\` · Worker \`${(state.worker_version ?? "").slice(0, 12)}\` · scope \`${(state.scope_digest ?? "").slice(0, 16)}\` · schema 0030`,
             inline: false,
           },
           {
@@ -2003,12 +2029,12 @@ async function publishStages({
     },
     {
       name: "Source events",
-      value: `${state.draws.length} original-run openings · ${uniqueAfter} unique subjects · ${duplicates} duplicates · ${missionBoard ? `${missionBoard.claimed_count}/${missionBoard.items.length} daily missions claimed` : "mission board not read"} · ${achievement?.name ?? "completion milestone"} with one reward · one deliberate profile share`,
+      value: `${state.draws.length} original-run openings · ${uniqueAfter}/${cardFiles.length} unique subjects · ${duplicates} duplicates · ${missionBoard ? `${missionBoard.claimed_count}/${missionBoard.items.length} daily missions claimed` : "mission board not read"} · ${achievement?.name ?? "completion milestone"} (frozen release 5) with one reward · one deliberate profile share`,
       inline: false,
     },
     {
       name: "Identity",
-      value: `Build \`${(state.build.source_sha ?? "").slice(0, 12)}\` · Worker \`${(state.worker_version ?? "").slice(0, 12)}\` · scope \`${(state.scope_digest ?? "").slice(0, 16)}\` · schema 0029`,
+      value: `Build \`${(state.build.source_sha ?? "").slice(0, 12)}\` · Worker \`${(state.worker_version ?? "").slice(0, 12)}\` · scope \`${(state.scope_digest ?? "").slice(0, 16)}\` · schema 0030`,
       inline: false,
     },
     {
@@ -2154,7 +2180,7 @@ async function publishStages({
       fields.push({
         name: "Extension",
         value:
-          "Collector identity, missions and achievements chapters were added on 2026/11/08. The original opening, completion and reward receipts above are unchanged.",
+          "Collector identity, missions and achievements chapters were added on 2026/11/08. The Danganronpa release is now 6 with Gonta Gokuhara; the original opening, completion and reward receipts above remain the frozen release-5 achievement.",
         inline: false,
       });
       fields.push({

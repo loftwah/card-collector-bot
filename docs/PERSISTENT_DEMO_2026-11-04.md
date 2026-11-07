@@ -143,6 +143,30 @@ sequence.
   2026/11/14. The private recipient link is retained in the run state, not
   republished in the channel.
 
+### Release 6 refresh after the Gonta import
+
+The bounded production import added Gonta Gokuhara to Danganronpa on
+2026/11/08 (release 5 → 6, 9 subjects, 36 variants; pool revision 4). The
+retained demonstration was refreshed without another draw or charge:
+
+- Stages 2, 3, 7, 8, 10, 11, 12 and 17 were patched. Stage 2 now shows the
+  complete 9-subject release-6 roster and 36 eligible variants.
+- The demonstration collector owns 8 of the 9 current subjects. Stage 7 shows
+  `8/9` with Gonta marked missing, not a false `9/9`.
+- `Three schools` remains a genuine, once-only release-5 achievement. Stage 8
+  and its image now say **release 5 achievement, 8/8 frozen subjects, current
+  release 6 has 9**. The award is not revoked or re-awarded.
+- Stage 10 reports `8/9` current-release subjects and the frozen release-5
+  milestone. Stage 11 is labelled a release-5 completion share.
+- Stages 12 and 17 now show `8/9` unique current-release subjects and schema
+  0030. The read-back remains **17/17 PASS**; no new messages were posted, so
+  all historical message IDs remain stable.
+
+The Gonta render and its four finishes are in
+`.foilbury/evidence/incremental-import-2026-11-07T18-00-36-952Z/contact-sheet.png`.
+The import backup, aliases, collection release and pool revision are recorded
+in `docs/CONTENT_QUALITY_MATRIX.md` and the import evidence JSON.
+
 ## Repairs made during the journey
 
 - A later draw receipt presented earlier achievement unlocks as newly earned
