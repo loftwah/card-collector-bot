@@ -13,6 +13,7 @@ dist/
 .playwright-mcp/
 test-results/
 playwright-report/
+storybook-static/
 coverage/
 .DS_Store
 *.log

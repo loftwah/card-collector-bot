@@ -6,20 +6,28 @@ import ShareManager from "../../components/player/ShareManager";
 import ProfileCustomiser from "../../components/player/ProfileCustomiser";
 import ProfileCard from "../../components/player/ProfileCard.astro";
 import { pageContext } from "../../server/page";
-import { countInventory, getInventory } from "../../server/modules/collection";
+import { countInventory } from "../../server/modules/collection";
 import { listAchievements } from "../../server/modules/achievements";
 import { listCollections } from "../../server/modules/collections";
 import { getPreferences, listShareLinks } from "../../server/modules/economy";
+import {
+  getProfilePresentationOptions,
+  resolveProfilePresentation,
+} from "../../server/modules/profile-presentation";
 import { first } from "../../server/db";
-import { printTitle } from "../../lib/utils";
 
 const ctx = await pageContext(Astro.request);
 const user = ctx.user!;
-const [favourites, recent, totalCopies, subjectRow, membership, achievements, collections, shares, prefs] =
+const [totalCopies, favouriteRow, subjectRow, membership, achievements, collections, shares, prefs, profileOptions] =
   await Promise.all([
-    getInventory(ctx, { limit: 12, favourite: true }),
-    getInventory(ctx, { limit: 1 }),
     countInventory(ctx),
+    first<{ count: number }>(
+      ctx.db,
+      `SELECT COUNT(*) AS count FROM fb_card_instances
+        WHERE tenant_id = ? AND user_id = ? AND status IN ('owned','reserved') AND favourite = 1`,
+      ctx.tenant.id,
+      user.id,
+    ),
     first<{ subjects: number }>(
       ctx.db,
       `SELECT COUNT(DISTINCT card_id) AS subjects FROM fb_card_instances
@@ -38,16 +46,30 @@ const [favourites, recent, totalCopies, subjectRow, membership, achievements, co
     listCollections(ctx),
     listShareLinks(ctx),
     getPreferences(ctx),
+    getProfilePresentationOptions(ctx),
   ]);
 
 const earned = achievements.filter((item) => item.state === "earned");
-const featured = favourites[0] ?? recent[0] ?? null;
-const featuredIsFavourite = Boolean(featured?.favourite);
-const showcase = favourites.slice(1, 5);
+const profile = resolveProfilePresentation(
+  prefs.profile_presentation,
+  profileOptions,
+  prefs.profile_presentation_version,
+);
+const featured = profile.featured;
+const showcase = profile.favourites.filter((card) => card.id !== featured?.id).slice(0, 4);
 const binderCards = [featured, ...showcase]
   .filter((card): card is NonNullable<typeof card> => Boolean(card))
   .slice(0, 4);
 const displayedWorlds = collections.slice(0, 3);
+const shelfCard = (card: (typeof binderCards)[number]) => ({
+  id: card.id,
+  card_name: card.cardName,
+  render_url: card.renderUrl,
+  thumbnail_url: card.thumbnailUrl,
+  edition_name: null,
+  variant_name: card.variantName,
+  serial: card.serial,
+});
 const initials = (user.displayName || "Collector")
   .split(/\s+/)
   .filter(Boolean)
@@ -88,10 +110,26 @@ const starterLooks = [
 ---
 
 <PlayerLayout title="Collector profile · Foilbury">
-  <div class="profile-page" data-profile-look={prefs.profile_look}>
+  <div
+    class="profile-page"
+    data-profile-look={prefs.profile_look}
+    data-profile-frame={profile.selection.frame}
+    data-avatar-decoration={profile.selection.avatarDecoration}
+    data-name-treatment={profile.selection.nameTreatment}
+    data-profile-effect={profile.selection.effect}
+  >
   <section class="profile-hero">
+    {profile.banner.imageUrl ? (
+      <img class="profile-hero__banner" src={profile.banner.imageUrl} alt="" aria-hidden="true" />
+    ) : null}
     <div class="profile-hero__identity">
-      <span class="profile-avatar" aria-hidden="true">{initials}</span>
+      {profile.portrait.imageUrl ? (
+        <span class="profile-avatar profile-avatar--image" aria-hidden="true">
+          <img src={profile.portrait.imageUrl} alt="" width="64" height="64" />
+        </span>
+      ) : (
+        <span class="profile-avatar" aria-hidden="true">{initials}</span>
+      )}
       <div class="min-w-0">
         <h1 class="page-title mt-1">{user.displayName}</h1>
         <p class="profile-hero__meta">
@@ -119,7 +157,7 @@ const starterLooks = [
       </div>
       <div>
         <dt>Favourites</dt>
-        <dd>{favourites.length}</dd>
+        <dd>{favouriteRow?.count ?? 0}</dd>
       </div>
       <div>
         <dt>Badges</dt>
@@ -133,29 +171,28 @@ const starterLooks = [
       featured ? (
         <>
           <div class="profile-feature__art">
-            {featured.render_url ? (
+            {featured.renderUrl ? (
               <img
-                src={featured.render_url}
-                alt={`${featured.card_name} — ${printTitle(featured.edition_name) ?? featured.variant_name}`}
+                src={featured.renderUrl}
+                alt={`${featured.cardName} — ${featured.variantName}`}
                 width="750"
                 height="1050"
                 loading="eager"
               />
             ) : (
-              <div class="card-face-fallback">{featured.card_name.charAt(0)}</div>
+              <div class="card-face-fallback">{featured.cardName.charAt(0)}</div>
             )}
           </div>
           <div class="profile-feature__copy">
-            <h2 class="profile-feature__name">{featured.card_name}</h2>
+            <h2 class="profile-feature__name">{featured.cardName}</h2>
             <p class="profile-feature__meta">
-              {printTitle(featured.edition_name) ? `${printTitle(featured.edition_name)} · ` : ""}
-              {featured.variant_name}
+              {featured.variantName} · {featured.finish}
             </p>
             <p class="profile-feature__serial">{featured.serial}</p>
             <p class="profile-feature__note">
-              {featuredIsFavourite
+              {profile.favourites.some((card) => card.id === featured.id)
                 ? "Pinned from your favourites."
-                : "Featured from your library. Favourite a card to pin it here."}
+                : "Chosen as the featured copy in your composition."}
               The card object is shown as saved; the controls sit outside it.
             </p>
             <div class="profile-feature__actions">
@@ -197,7 +234,7 @@ const starterLooks = [
           {showcase.length ? (
             <div class="profile-showcase profile-showcase--rest">
               {showcase.map((card) => (
-                <ProfileCard card={card} />
+                <ProfileCard card={shelfCard(card)} />
               ))}
             </div>
           ) : (
@@ -207,7 +244,7 @@ const starterLooks = [
           )}
           <div class="profile-showcase profile-showcase--binder">
             {binderCards.map((card) => (
-              <ProfileCard card={card} />
+              <ProfileCard card={shelfCard(card)} />
             ))}
           </div>
         </>
@@ -224,17 +261,27 @@ const starterLooks = [
     }
   </section>
 
+  {
+    profile.fallbackNotes.length ? (
+      <div class="profile-fallback-note" role="status">
+        <strong>Some saved choices are unavailable.</strong>
+        <ul>
+          {profile.fallbackNotes.map((note) => (
+            <li>{note}</li>
+          ))}
+        </ul>
+        <p>Choose a replacement below; nothing else in your profile changed.</p>
+      </div>
+    ) : null
+  }
+
   <ProfileCustomiser
     client:load
     initialLook={prefs.profile_look}
     initialBio={prefs.profile_bio}
     looks={starterLooks}
-    cards={binderCards.map((card) => ({
-      id: card.id,
-      card_name: card.card_name,
-      render_url: card.render_url,
-      thumbnail_url: card.thumbnail_url,
-    }))}
+    presentation={profile}
+    options={profileOptions}
   />
 
   <section class="profile-section">
@@ -245,17 +292,17 @@ const starterLooks = [
       <a class="profile-section__link" href="/play/achievements">All achievements →</a>
     </div>
     {
-      earned.length ? (
+      profile.badges.length ? (
         <div class="profile-badges">
-          {earned.slice(0, 6).map((item) => (
+          {profile.badges.map((item) => (
             <div class="profile-badge">
               <AchievementBadge
-                artKey={item.art_key}
+                artKey={item.artKey}
                 name={item.name}
                 category={item.category}
                 earned
                 size={48}
-                emblemUrl={item.collection_logo_url}
+                emblemUrl={item.collectionLogoUrl}
               />
               <div class="min-w-0">
                 <p class="profile-badge__name">{item.name}</p>

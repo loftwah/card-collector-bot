@@ -1,11 +1,11 @@
 # Stitch design handoff — working record
 
-Status: 6 November 2026. Design exploration in progress; nothing here is
+Status: 7 November 2026. Design exploration in progress; nothing here is
 deployed or accepted as the final product.
 
-Prompts 00–13 and platform screens G01–G03 have been generated in the Foilbury
-Stitch project. The Stitch daily screen-generation quota is exhausted at G04.
-G04/G05, the Discord boards (D01–D05), the convergence pass and the remaining
+Prompts 00–15 and platform screens G01–G05 have been generated in the Foilbury
+Stitch project. The daily quota reset and G04, G05 and Discord boards D01–D05
+were generated. The Prompt 16 copy corrections were applied; the remaining
 state variants are outstanding. Exact screen IDs and the resume point are in
 [`STITCH_SCREEN_INDEX.md`](./STITCH_SCREEN_INDEX.md).
 
@@ -133,9 +133,9 @@ copy. The pack is unpacked under `.foilbury/stitch/handoff/`.
 | 11 Studio rewards | S06–S09 | Desktop Studio workspace complete |
 | 12 Studio people and audit | S10–S13 | Desktop Studio workspace complete |
 | 13 Studio supporting | S14–S17 | Desktop Studio workspace complete |
-| 14 Platform | G01–G05 | G01–G03 complete; G04–G05 blocked by daily quota |
-| 15 Discord boards | D01–D05 | Not started; blocked by daily quota |
-| 16 Consistency and prototype | All screens, states and journeys | Not started; blocked by daily quota |
+| 14 Platform | G01–G05 | G01–G05 complete |
+| 15 Discord boards | D01–D05 | Five desktop boards complete |
+| 16 Consistency and prototype | All screens, states and journeys | Copy corrections applied; state variants and compact Studio/Platform boards remain |
 
 ## Review protocol
 
@@ -160,8 +160,16 @@ not just add a new palette beside them.
 
 ## Storybook
 
-Set up Storybook after the component inventory is settled, not before. The
-handoff’s implementation note sets the boundaries:
+Storybook 10.6.6 is configured with `@storybook/react-vite`, the real
+`src/styles/global.css`, the project’s `@` alias, the Tailwind Vite plugin,
+`@storybook/addon-a11y`, `@storybook/addon-docs` and dark/light theme support.
+The first batch imports actual React components and real fixture states:
+Foundations, Controls, PublishedCard, CardInspector, DailyMissions,
+ProfileCustomiser, RewardCenter, and member screen compositions. `pnpm
+storybook` runs the local catalogue; `pnpm storybook:build` produces the static
+build. Astro pages remain Astro.
+
+The handoff’s implementation note sets the boundaries:
 
 - Use a React/Vite integration compatible with the current Astro/React project;
   do not force an unrelated framework upgrade.
@@ -182,8 +190,8 @@ handoff’s implementation note sets the boundaries:
   adapter cannot rerender native Astro Controls.
 - Build and host the catalogue separately, with development dependencies and its
   own output. A normal product deploy does not build every catalogue.
-- Add `pnpm storybook` and a static build only after the first component batch is
-  implemented.
+- `pnpm storybook` and `pnpm storybook:build` are now available after the first
+  component batch.
 
 Astro page components are not rendered directly by Storybook. Do not add a
 second component library or a parallel design system to make them fit.

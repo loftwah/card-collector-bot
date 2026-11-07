@@ -150,10 +150,13 @@
         "profile:write"
       ],
       "roles": [],
-      "schema": "{ hideTags?:array, hiddenCollectionIds?:array, reducedMotion?:boolean, soundEnabled?:boolean, sharingEnabled?:boolean, profileLook?:enum, profileBio?:string }",
+      "schema": "{ hideTags?:array, hiddenCollectionIds?:array, reducedMotion?:boolean, soundEnabled?:boolean, sharingEnabled?:boolean, profileLook?:enum, profileBio?:string, profilePresentation?:string, profilePresentationVersion?:number }",
       "calls": [
         "optional",
         "max",
+        "nullable",
+        "positive",
+        "int",
         "updatePreferences"
       ],
       "studio_alias": false

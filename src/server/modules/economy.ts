@@ -12,6 +12,14 @@ import { auditStatement, findIdempotent, idempotencyStatement, type IdempotencyI
 import { getWalletSummary } from "./wallet";
 import { nextDailyEligibleAt } from "./daily-time";
 import { listCollections } from "./collections";
+import {
+  getProfilePresentationOptions,
+  parseProfilePresentation,
+  profilePresentationVersion,
+  profileSharePresentation,
+  resolveProfilePresentation,
+  validateProfilePresentation,
+} from "./profile-presentation";
 
 export interface EconomySettings {
   currency_name: string;
@@ -419,10 +427,12 @@ export async function getPreferences(ctx: Ctx) {
     sharing_enabled: number;
     profile_look: string;
     profile_bio: string;
+    profile_presentation_json: string;
+    profile_presentation_version: number;
     updated_at: string;
   }>(
     ctx.db,
-    "SELECT hide_tags_json, hidden_collection_ids_json, reduced_motion, sound_enabled, sharing_enabled, profile_look, profile_bio, updated_at FROM fb_player_preferences WHERE tenant_id = ? AND user_id = ?",
+    "SELECT hide_tags_json, hidden_collection_ids_json, reduced_motion, sound_enabled, sharing_enabled, profile_look, profile_bio, profile_presentation_json, profile_presentation_version, updated_at FROM fb_player_preferences WHERE tenant_id = ? AND user_id = ?",
     ctx.tenant.id,
     user.id,
   );
@@ -436,6 +446,8 @@ export async function getPreferences(ctx: Ctx) {
       ? row.profile_look
       : "quiet") as ProfileLook,
     profile_bio: row?.profile_bio ?? "",
+    profile_presentation: parseProfilePresentation(row?.profile_presentation_json),
+    profile_presentation_version: profilePresentationVersion(row),
     updated_at: row?.updated_at ?? null,
   };
 }
@@ -460,6 +472,8 @@ export async function updatePreferences(
     sharingEnabled?: boolean;
     profileLook?: ProfileLook;
     profileBio?: string;
+    profilePresentation?: unknown;
+    profilePresentationVersion?: number;
   },
 ) {
   const user = ctx.user;
@@ -496,11 +510,31 @@ export async function updatePreferences(
   if (profileBio.length > 160) {
     throw new ApiError(422, "profile_bio_too_long", "Keep the collector note to 160 characters or fewer.");
   }
+  if (
+    input.profilePresentationVersion !== undefined &&
+    input.profilePresentationVersion !== current.profile_presentation_version
+  ) {
+    throw new ApiError(
+      409,
+      "profile_presentation_stale",
+      "Your profile changed in another tab. Reload the latest saved composition before saving again.",
+      {
+        current_version: current.profile_presentation_version,
+        current_presentation: current.profile_presentation,
+      },
+    );
+  }
+  const profilePresentation = input.profilePresentation
+    ? validateProfilePresentation(input.profilePresentation, await getProfilePresentationOptions(ctx))
+    : current.profile_presentation;
+  const nextProfilePresentationVersion = input.profilePresentation
+    ? current.profile_presentation_version + 1
+    : current.profile_presentation_version;
   await ctx.db.batch([
     ctx.db
       .prepare(
-        `INSERT INTO fb_player_preferences (tenant_id, user_id, hide_tags_json, hidden_collection_ids_json, reduced_motion, sound_enabled, sharing_enabled, profile_look, profile_bio, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO fb_player_preferences (tenant_id, user_id, hide_tags_json, hidden_collection_ids_json, reduced_motion, sound_enabled, sharing_enabled, profile_look, profile_bio, profile_presentation_json, profile_presentation_version, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(tenant_id, user_id) DO UPDATE SET
            hide_tags_json = excluded.hide_tags_json,
            hidden_collection_ids_json = excluded.hidden_collection_ids_json,
@@ -509,6 +543,8 @@ export async function updatePreferences(
            sharing_enabled = excluded.sharing_enabled,
            profile_look = excluded.profile_look,
            profile_bio = excluded.profile_bio,
+           profile_presentation_json = excluded.profile_presentation_json,
+           profile_presentation_version = excluded.profile_presentation_version,
            updated_at = excluded.updated_at`,
       )
       .bind(
@@ -521,6 +557,8 @@ export async function updatePreferences(
         (input.sharingEnabled ?? current.sharing_enabled) ? 1 : 0,
         profileLook,
         profileBio,
+        JSON.stringify(profilePresentation),
+        nextProfilePresentationVersion,
         nowIso(),
       ),
     auditStatement(ctx, "preferences.updated", "preferences", user.id, {
@@ -531,6 +569,18 @@ export async function updatePreferences(
       sharing_enabled: input.sharingEnabled ?? current.sharing_enabled,
       profile_look: profileLook,
       profile_bio_length: profileBio.length,
+      profile_presentation: {
+        version: nextProfilePresentationVersion,
+        portrait: profilePresentation.portrait,
+        banner: profilePresentation.banner,
+        frame: profilePresentation.frame,
+        avatar_decoration: profilePresentation.avatarDecoration,
+        name_treatment: profilePresentation.nameTreatment,
+        effect: profilePresentation.effect,
+        featured: Boolean(profilePresentation.featuredInstanceId),
+        favourites: profilePresentation.favouriteInstanceIds.length,
+        badges: profilePresentation.badgeIds.length,
+      },
     }),
   ]);
   return getPreferences(ctx);
@@ -809,34 +859,16 @@ export async function createShareLink(
       captured_at: nowIso(),
     };
   } else if (kind === "profile") {
-    const [counts, favourites, badges] = await Promise.all([
+    const [counts, options] = await Promise.all([
       first<{ cards: number; favourites: number }>(
         ctx.db,
         "SELECT COUNT(*) AS cards, COALESCE(SUM(favourite), 0) AS favourites FROM fb_card_instances WHERE tenant_id = ? AND user_id = ? AND status IN ('owned','reserved')",
         ctx.tenant.id,
         user.id,
       ),
-      all<{ name: string; variant_name: string; render_url: string | null }>(
-        ctx.db,
-        `SELECT cd.name, v.name AS variant_name,
-                (SELECT vr.public_url FROM fb_variant_renders vr WHERE vr.variant_id = v.id AND vr.status = 'published' LIMIT 1) AS render_url
-           FROM fb_card_instances ci
-           JOIN fb_card_definitions cd ON cd.id = ci.card_id
-           JOIN fb_variants v ON v.id = ci.variant_id
-          WHERE ci.tenant_id = ? AND ci.user_id = ? AND ci.status IN ('owned','reserved') AND ci.favourite = 1
-          ORDER BY ci.updated_at DESC LIMIT 6`,
-        ctx.tenant.id,
-        user.id,
-      ),
-      all<{ name: string; art_key: string; category: string }>(
-        ctx.db,
-        `SELECT d.name, d.art_key, d.category FROM fb_achievement_unlocks u
-           JOIN fb_achievement_definitions d ON d.id = u.achievement_id
-          WHERE u.tenant_id = ? AND u.user_id = ? ORDER BY u.earned_at DESC LIMIT 6`,
-        ctx.tenant.id,
-        user.id,
-      ),
+      getProfilePresentationOptions(ctx),
     ]);
+    const resolved = resolveProfilePresentation(prefs.profile_presentation, options);
     audience = "member";
     payload = {
       label: "Collector profile",
@@ -845,8 +877,17 @@ export async function createShareLink(
       profile_bio: prefs.profile_bio,
       cards: counts?.cards ?? 0,
       favourites: counts?.favourites ?? 0,
-      favourite_cards: favourites,
-      badges,
+      favourite_cards: resolved.favourites.map((copy) => ({
+        name: copy.cardName,
+        variant_name: copy.variantName,
+        render_url: copy.renderUrl,
+      })),
+      badges: resolved.badges.map((badge) => ({
+        name: badge.name,
+        art_key: badge.artKey,
+        category: badge.category,
+      })),
+      presentation: profileSharePresentation(resolved),
       audience,
       captured_at: nowIso(),
     };

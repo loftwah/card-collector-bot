@@ -36,6 +36,31 @@ achievement view now carries `collection_name` / `collection_slug`.
   These are unperformed, not accepted. Do not run a full Discord walkthrough without Dean's real
   client and a second controlled account.
 
+## 2026-11-07 continuation
+
+- Verified production identity from the release receipt and live headers:
+  source `60114b7564cb27d2e554ada8dd60f6812381ed0c`, Worker
+  `981b71ba-55f3-42cc-a347-f5fcedf57fc1`.
+- Stitch quota reset. Generated **G04** (`14fc3aaafa4045dba2682bb74f0740c6`) and
+  **G05** (`eb67da6a2ab5458db37115abe7b8e0ea`) individually, plus **D01–D05**
+  (`31746686cff44d2eb039109e8dc60b6a`, `b8fd479d4c714d2abd003c76189c5558`,
+  `0d7d3e47515742b782280b3940835620`, `bb72d6bca174449680f7eacda288f916`,
+  `019aa2221537424090dd6899154fc0fc`) in the existing Foilbury project and design
+  system. Prompt 16 copy corrections were applied to P08, P09, S04, S05, S10 and
+  G05. Remaining state variants are listed in `docs/STITCH_SCREEN_INDEX.md`.
+- Storybook 10.6.6 is configured with the actual React components, real fixtures,
+  light/dark, phone/desktop viewports, reduced-motion preview and axe. Commands:
+  `pnpm storybook` and `pnpm storybook:build`. The first batch covers Foundations,
+  Controls, PublishedCard, CardInspector, DailyMissions, ProfileCustomiser,
+  RewardCenter and two member screen compositions. The built catalogue passed the
+  local Chromium/axe check at 390 and 1440.
+- #42 independent composition slice: additive migration
+  `0029_profile_presentation.sql`; saved portrait/banner/frame/avatar decoration/
+  name treatment/effect, exact featured owned copy, ordered favourites and
+  ordered earned badges, version-fenced save and stale-tab recovery. The profile
+  share snapshot carries the composition and exact featured copy. Focused
+  preference/share tests and the real local 390/1440 journey pass.
+
 ## Next outcomes, in order
 
 1. **Stitch resume (only if the daily quota has reset).**
@@ -44,15 +69,13 @@ achievement view now carries `collection_name` / `collection_slug`.
    - Generate **G04** and **G05** individually, not as a batch.
    - Run **Prompt 15** for Discord boards D01–D05.
    - Run **Prompt 16** for convergence and the missing state variants.
-   - Apply the known copy fixes: P08/P09 “vault”, S04 “Physical Run/Bleed”, S05 “mints”,
-     S10 printed `G02`.
-2. **Storybook** with the actual React components, real fixture states, viewport, light/dark,
-   reduced motion and accessibility. Do not rewrite Astro pages as React. Group Foundations,
-   Controls, Foilbury components and Screen compositions. Add `pnpm storybook` only after the
-   first component batch.
-3. **#42 full customiser** — independent portrait/banner/frame/avatar decoration/name/effect,
-   featured exact owned copy and finish, ordered favourites/badges, compact/full previews,
-   locked/preview-only states, cancel/reset and failed/stale-save recovery.
+   - Copy fixes: applied to the generated P08/P09, S04, S05, S10 and G05 screens.
+2. **Storybook** — first component batch is configured and verified. Extend the catalogue as
+   new reviewed components appear; do not rewrite Astro pages as React.
+3. **#42 full customiser** — the independent composition, exact featured copy, ordered shelf and
+   badges, compact/full preview, cancel/reset and stale-save recovery are implemented locally.
+   Remaining: locked/preview-only cosmetics, a dedicated share/export composer, and the final
+   keyboard/touch reorder acceptance across the full #40 viewport matrix.
 4. **Remaining shells** — Studio, Platform and Discord still use the older direction.
 
 ## Guardrails

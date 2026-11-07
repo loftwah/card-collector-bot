@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { bootstrap, ctxFor, fixturePool, runtime, walletBalance } from "./helpers";
+import { bootstrap, ctxFor, fixturePool, makeInstance, runtime, walletBalance } from "./helpers";
 import { executeDraw, getPoolPreview, listEligiblePools } from "../../src/server/modules/pools";
 import { getPreferences, updatePreferences, type ProfileLook } from "../../src/server/modules/economy";
+import {
+  getProfilePresentationOptions,
+  resolveProfilePresentation,
+} from "../../src/server/modules/profile-presentation";
 import { nowIso } from "../../src/server/db";
 
 describe("collection-first draw preferences and preview consent", () => {
@@ -162,6 +166,146 @@ describe("collection-first draw preferences and preview consent", () => {
     await expect(updatePreferences(player, { profileBio: "x".repeat(161) })).rejects.toMatchObject({
       code: "profile_bio_too_long",
     });
+  });
+
+  it("persists independent profile components, exact copy, shelf order and badges with a version fence", async () => {
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const fixture = await fixturePool(player);
+    const first = await makeInstance(player, player.user!.id, fixture, "PROFILE-FIRST");
+    const second = await makeInstance(player, player.user!.id, fixture, "PROFILE-SECOND");
+    const now = nowIso();
+    await runtime.DB.batch([
+      runtime.DB.prepare("UPDATE fb_collections SET logo_url = '/media/logo.png', banner_url = '/media/banner.png' WHERE id = 'col_test_public'"),
+      runtime.DB.prepare("UPDATE fb_card_instances SET favourite = 1 WHERE id IN (?, ?)").bind(first, second),
+      runtime.DB
+        .prepare(
+          `INSERT INTO fb_achievement_definitions
+          (id, scope, key, version, name, description, criteria_json, reward_json, visibility, art_key, category, sort, status, created_by, created_at, updated_at)
+         VALUES ('ach_profile_test', 'platform', 'profile-test', 1, 'Profile badge', 'Earned for the profile fixture.', '{}', '{}', 'member', 'medal-first', 'milestone', 0, 'active', 'test', ?, ?)`,
+        )
+        .bind(now, now),
+      runtime.DB
+        .prepare(
+          `INSERT INTO fb_achievement_unlocks
+          (id, tenant_id, user_id, achievement_id, achievement_version, earned_at, reward_state, reward_amount, notification_state, created_at)
+         VALUES ('unl_profile_test', ?, ?, 'ach_profile_test', 1, ?, 'none', 0, 'suppressed', ?)`,
+        )
+        .bind(player.tenant.id, player.user!.id, now, now),
+    ]);
+
+    const options = await getProfilePresentationOptions(player);
+    expect(options.collections.some((collection) => collection.id === "col_test_public")).toBe(true);
+    expect(options.badges.map((badge) => badge.id)).toContain("ach_profile_test");
+
+    const saved = await updatePreferences(player, {
+      profileLook: "night",
+      profilePresentationVersion: 1,
+      profilePresentation: {
+        portrait: "collection:col_test_public",
+        banner: "collection:col_test_public",
+        frame: "signal",
+        avatarDecoration: "ring",
+        nameTreatment: "wide",
+        effect: "sheen",
+        featuredInstanceId: first,
+        favouriteInstanceIds: [second, first],
+        badgeIds: ["ach_profile_test"],
+      },
+    });
+    expect(saved.profile_presentation_version).toBe(2);
+    expect(saved.profile_presentation.featuredInstanceId).toBe(first);
+    expect(saved.profile_presentation.favouriteInstanceIds).toEqual([second, first]);
+    expect(saved.profile_presentation.badgeIds).toEqual(["ach_profile_test"]);
+
+    const reread = await getPreferences(player);
+    expect(reread.profile_presentation.frame).toBe("signal");
+    expect(reread.profile_presentation.avatarDecoration).toBe("ring");
+    expect(reread.profile_presentation.nameTreatment).toBe("wide");
+    expect(reread.profile_presentation.effect).toBe("sheen");
+
+    const resolved = resolveProfilePresentation(reread.profile_presentation, options, reread.profile_presentation_version);
+    expect(resolved.featured?.id).toBe(first);
+    expect(resolved.featured?.serial).toBe("PROFILE-FIRST");
+    expect(resolved.favourites.map((copy) => copy.id)).toEqual([second, first]);
+    expect(resolved.badges.map((badge) => badge.id)).toEqual(["ach_profile_test"]);
+    expect(resolved.fallbackNotes).toEqual([]);
+
+    await expect(
+      updatePreferences(player, {
+        profilePresentationVersion: 1,
+        profilePresentation: reread.profile_presentation,
+      }),
+    ).rejects.toMatchObject({ code: "profile_presentation_stale" });
+
+    await expect(
+      updatePreferences(player, {
+        profilePresentationVersion: 2,
+        profilePresentation: { ...reread.profile_presentation, featuredInstanceId: "ins_missing" },
+      }),
+    ).rejects.toMatchObject({ code: "profile_featured_unavailable" });
+
+    await expect(
+      updatePreferences(player, {
+        profilePresentationVersion: 2,
+        profilePresentation: { ...reread.profile_presentation, badgeIds: ["ach_missing"] },
+      }),
+    ).rejects.toMatchObject({ code: "profile_badge_unavailable" });
+
+    await runtime.DB.prepare("UPDATE fb_card_instances SET status = 'traded', favourite = 0 WHERE id = ?").bind(first).run();
+    const afterTrade = await getProfilePresentationOptions(player);
+    const fallback = resolveProfilePresentation(reread.profile_presentation, afterTrade, 2);
+    expect(fallback.featured?.id).toBe(second);
+    expect(fallback.selection.favouriteInstanceIds).toContain(first);
+    expect(fallback.favourites.map((copy) => copy.id)).toEqual([second]);
+    expect(fallback.fallbackNotes.join(" ")).toContain("featured copy");
+  });
+
+  it("keeps two collectors' compositions independent", async () => {
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const fixture = await fixturePool(player);
+    const playerCopy = await makeInstance(player, player.user!.id, fixture, "PLAYER-COPY");
+    const ownerCopy = await makeInstance(owner, owner.user!.id, fixture, "OWNER-COPY");
+    await runtime.DB.prepare("UPDATE fb_collections SET logo_url = '/media/logo.png' WHERE id = 'col_test_public'").run();
+    await runtime.DB.prepare("UPDATE fb_card_instances SET favourite = 1 WHERE id IN (?, ?)").bind(playerCopy, ownerCopy).run();
+
+    await updatePreferences(player, {
+      profilePresentationVersion: 1,
+      profilePresentation: {
+        portrait: "monogram",
+        banner: "none",
+        frame: "double",
+        avatarDecoration: "stamp",
+        nameTreatment: "boxed",
+        effect: "edge",
+        featuredInstanceId: playerCopy,
+        favouriteInstanceIds: [playerCopy],
+        badgeIds: [],
+      },
+    });
+    const ownerBefore = await getPreferences(owner);
+    expect(ownerBefore.profile_presentation_version).toBe(1);
+    expect(ownerBefore.profile_presentation.frame).toBe("none");
+    expect(ownerBefore.profile_presentation.featuredInstanceId).toBeNull();
+
+    await updatePreferences(owner, {
+      profilePresentationVersion: 1,
+      profilePresentation: {
+        portrait: "monogram",
+        banner: "none",
+        frame: "hairline",
+        avatarDecoration: "none",
+        nameTreatment: "plain",
+        effect: "none",
+        featuredInstanceId: ownerCopy,
+        favouriteInstanceIds: [ownerCopy],
+        badgeIds: [],
+      },
+    });
+    const playerAfter = await getPreferences(player);
+    expect(playerAfter.profile_presentation.frame).toBe("double");
+    expect(playerAfter.profile_presentation.featuredInstanceId).toBe(playerCopy);
+    expect(playerAfter.profile_presentation.badgeIds).toEqual([]);
   });
 
   it("validates collection ids and preserves the separate content filter", async () => {
