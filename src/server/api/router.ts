@@ -216,6 +216,15 @@ import {
   setNpcStatus,
   updateNpc,
 } from "../modules/npcs";
+import {
+  cancelNpcTrade,
+  confirmNpcTrade,
+  createNpcTrade,
+  getNpcTrade,
+  listNpcTrades,
+  npcTradeOffers,
+  previewNpcTrade,
+} from "../modules/npc-trades";
 
 const idSchema = z.string().min(3).max(80);
 const cardBody = z.object({
@@ -1088,6 +1097,42 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     if (segments.length === 3 && segments[2] === "compare" && method === "GET") {
       return json(await compareNpc(ctx, npcId));
     }
+    if (segments.length === 3 && segments[2] === "trade-offers" && method === "GET") {
+      requireNpcRead(ctx);
+      return json(await npcTradeOffers(ctx, npcId));
+    }
+    if (segments.length === 3 && segments[2] === "trade-preview" && method === "POST") {
+      playerWrite(ctx);
+      if (ctx.actor.type === "agent") requireScope(ctx, "trade:write");
+      const body = await readJson(
+        request,
+        z.object({
+          giveInstanceIds: z.array(idSchema).min(1).max(5),
+          takeInstanceIds: z.array(idSchema).min(1).max(5),
+        }),
+      );
+      return json(await previewNpcTrade(ctx, { npcId, ...body }));
+    }
+    if (segments.length === 3 && segments[2] === "trades" && method === "POST") {
+      playerWrite(ctx);
+      if (ctx.actor.type === "agent") requireScope(ctx, "trade:write");
+      const body = await readJson(
+        request,
+        z.object({
+          giveInstanceIds: z.array(idSchema).min(1).max(5),
+          takeInstanceIds: z.array(idSchema).min(1).max(5),
+          idempotencyKey: z.string().min(8).max(200).optional(),
+        }),
+      );
+      return json(
+        await createNpcTrade(ctx, {
+          npcId,
+          ...body,
+          idempotencyKey: body.idempotencyKey ?? request.headers.get("idempotency-key") ?? undefined,
+        }),
+        201,
+      );
+    }
     if (segments.length === 3 && segments[2] === "preview" && method === "POST") {
       return json(await previewNpcAction(ctx, npcId));
     }
@@ -1102,6 +1147,29 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     if (segments.length === 3 && ["pause", "resume", "retire"].includes(segments[2] ?? "") && method === "POST") {
       return json(await setNpcStatus(ctx, npcId, segments[2] === "pause" ? "paused" : segments[2] === "retire" ? "retired" : "active"));
     }
+  }
+
+  // Human-initiated NPC exchanges. The trade itself uses the shared trade
+  // lifecycle; these routes only expose the NPC decision and confirmation.
+  if (segments[0] === "npc-trades" && segments.length === 1 && method === "GET") {
+    playerWrite(ctx);
+    if (ctx.actor.type === "agent") requireScope(ctx, "trade:write");
+    return json({ items: await listNpcTrades(ctx) });
+  }
+  if (segments[0] === "npc-trades" && segments[1] && segments.length === 2 && method === "GET") {
+    playerWrite(ctx);
+    if (ctx.actor.type === "agent") requireScope(ctx, "trade:write");
+    return json(await getNpcTrade(ctx, segments[1]));
+  }
+  if (segments[0] === "npc-trades" && segments[1] && segments[2] === "confirm" && segments.length === 3 && method === "POST") {
+    playerWrite(ctx);
+    if (ctx.actor.type === "agent") requireScope(ctx, "trade:write");
+    return json(await confirmNpcTrade(ctx, segments[1]));
+  }
+  if (segments[0] === "npc-trades" && segments[1] && segments[2] === "cancel" && segments.length === 3 && method === "POST") {
+    playerWrite(ctx);
+    if (ctx.actor.type === "agent") requireScope(ctx, "trade:write");
+    return json(await cancelNpcTrade(ctx, segments[1]));
   }
 
   // Content administration
