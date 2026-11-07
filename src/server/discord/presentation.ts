@@ -296,6 +296,7 @@ function assertPublicUrl(
     fail("invalid_url", path, "Expected a valid absolute URL.");
   }
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    console.error("DEBUG invalid url", path, raw, parsed.protocol);
     fail("invalid_url", path, "Only http(s) links may be used in Discord buttons.");
   }
   if (parsed.username || parsed.password) {
@@ -1863,9 +1864,17 @@ export interface ProfileInput {
   achievementsEarned?: number;
   publicBadgeCount?: number;
   isBotAdmin?: boolean;
+  lookLabel?: string;
+  note?: string;
+  featured?: { name: string; variant: string; finish: string };
+  badgeNames?: string[];
+  imageAttachment?: string;
+  attachment?: DiscordAttachment;
   profileUrl: string;
+  customiseUrl?: string;
   dailyCustomId?: string;
   collectionCustomId?: string;
+  shareCustomId?: string;
 }
 
 export function profileMessage(input: ProfileInput): DiscordCallback {
@@ -1876,7 +1885,30 @@ export function profileMessage(input: ProfileInput): DiscordCallback {
     input.dailyAvailable || !input.nextDailyAt
       ? "Ready now"
       : formatDiscordTimestamp(input.nextDailyAt);
-  const fields: FieldInput[] = [
+  const look = input.lookLabel ? visibleText(input.lookLabel, "lookLabel") : null;
+  const note = input.note ? visibleText(input.note, "note", { multiline: true }) : null;
+  const featured = input.featured
+    ? {
+        name: visibleText(input.featured.name, "featured.name"),
+        variant: visibleText(input.featured.variant, "featured.variant"),
+        finish: visibleText(input.featured.finish, "featured.finish"),
+      }
+    : null;
+  const badgeNames = (input.badgeNames ?? [])
+    .map((name) => visibleText(name, "badgeNames"))
+    .slice(0, 6);
+  const fields: FieldInput[] = [];
+  if (featured) {
+    fields.push({
+      name: "Featured copy",
+      value: `**${featured.name}**\n${featured.variant} · ${featured.finish}`,
+      inline: false,
+    });
+  }
+  if (look) {
+    fields.push({ name: "Look", value: look, inline: true });
+  }
+  fields.push(
     {
       name: "Balance",
       value: `${assertNonNegative(input.balance, "balance")} ${symbol}`,
@@ -1887,7 +1919,7 @@ export function profileMessage(input: ProfileInput): DiscordCallback {
       value: String(assertNonNegative(input.ownedCards, "ownedCards")),
       inline: true,
     },
-  ];
+  );
   if (input.uniqueCards !== undefined) {
     fields.push({
       name: "Unique cards",
@@ -1903,34 +1935,51 @@ export function profileMessage(input: ProfileInput): DiscordCallback {
       inline: true,
     });
   }
+  if (badgeNames.length) {
+    fields.push({
+      name: "Selected badges",
+      value: badgeNames.join(" · ").slice(0, 1000),
+      inline: false,
+    });
+  }
+  if (note) {
+    fields.push({ name: "Collector note", value: note.slice(0, 1000), inline: false });
+  }
   fields.push({ name: "Inventory scope", value: "This Bot across every server", inline: false });
   fields.push({
     name: "Privacy",
     value:
-      "This response is private. Public profile sharing is separate, explicit and limited to approved counts.",
+      "This response is private. Your share preview shows exactly what the channel will receive.",
     inline: false,
   });
-  const rows: ButtonInput[][] = [
-    [
-      ...(input.dailyCustomId
-        ? [{ label: "Daily", customId: input.dailyCustomId, style: 2 } as ButtonInput]
-        : []),
-      ...(input.collectionCustomId
-        ? [{ label: "Collection", customId: input.collectionCustomId, style: 2 } as ButtonInput]
-        : []),
-      { label: "Open profile", url: input.profileUrl },
-    ],
-  ];
+  const rows: ButtonInput[][] = [];
+  const primary: ButtonInput[] = [];
+  if (input.dailyCustomId)
+    primary.push({ label: "Daily", customId: input.dailyCustomId, style: 2 });
+  if (input.collectionCustomId)
+    primary.push({ label: "Collection", customId: input.collectionCustomId, style: 2 });
+  primary.push({ label: "View showcase", url: input.profileUrl });
+  if (primary.length) rows.push(primary);
+  const secondary: ButtonInput[] = [];
+  if (input.customiseUrl)
+    secondary.push({ label: "Customise", url: input.customiseUrl });
+  if (input.shareCustomId)
+    secondary.push({ label: "Share preview", customId: input.shareCustomId, style: 2 });
+  if (secondary.length) rows.push(secondary);
   return buildMessage({
     visibility: "private",
     embed: {
       title: displayName,
-      description: `Collector in **${scopeName}**${input.isBotAdmin ? " · Bot administration available" : ""}.`,
+      description: `Collector in **${scopeName}**${look ? ` · ${look}` : ""}${input.isBotAdmin ? " · Bot administration available" : ""}.`,
       accent: FOILBURY_PALETTE.deepAqua,
       fields,
+      ...(input.imageAttachment
+        ? { image: { attachment: input.imageAttachment, width: 750, height: 1050 } }
+        : {}),
       footer: "Private response · sharing is separate and explicit",
     },
     rows,
+    ...(input.attachment ? { attachments: [input.attachment] } : {}),
   });
 }
 

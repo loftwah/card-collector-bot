@@ -1153,6 +1153,46 @@ describe("Discord HTTP interactions", () => {
     expect(duplicate.payload.data?.embeds?.[0]?.description).toMatch(/already shared/i);
   });
 
+  it("shares the saved collector composition with its featured copy and badges", async () => {
+    const player = await ctxFor("cabinet", "owner@foilbury.local");
+    const fixture = await fixturePool(player);
+    await send(interaction(command("profile"), { id: "profile-identity" }));
+    const identity = await runtime.DB.prepare(
+      "SELECT user_id FROM fb_discord_identities WHERE discord_user_id = ?",
+    )
+      .bind(DISCORD_USER_ID)
+      .first<{ user_id: string }>();
+    expect(identity?.user_id).toBeTruthy();
+    const instance = await makeInstance(player, identity!.user_id, fixture, "FB-TEST-PROFILE");
+    await runtime.DB.prepare("UPDATE fb_card_instances SET favourite = 1 WHERE id = ?")
+      .bind(instance)
+      .run();
+    await runtime.DB.prepare(
+      "UPDATE fb_discord_installations SET channel_audience_json = ? WHERE id = 'dci_test'",
+    )
+      .bind(JSON.stringify({ [CHANNEL_ID]: "members" }))
+      .run();
+    const shared = await send(
+      interaction(
+        { custom_id: `foilbury:tourshare:profile:${player.user!.id}`, component_type: 2 },
+        { id: "composition-profile-share", type: 3 },
+      ),
+    );
+    expect(shared.payload.data?.flags).toBeUndefined();
+    const embed = shared.payload.data?.embeds?.[0] as
+      | { title?: string; fields?: Array<{ name: string; value: string }>; image?: { url: string } }
+      | undefined;
+    expect(embed?.title).toContain("Dean");
+    expect(embed?.fields?.some((field) => field.name === "Featured copy")).toBe(true);
+    expect(embed?.fields?.find((field) => field.name === "Featured copy")?.value).toContain(
+      "Test One",
+    );
+    expect(embed?.image?.url).toBe("attachment://foilbury-share.webp");
+    const serialised = JSON.stringify(embed);
+    expect(serialised).not.toContain("FB-TEST-PROFILE");
+    expect(serialised).not.toContain(player.user!.email);
+  });
+
   it("selects the server's enabled album without a hard-coded slug", async () => {
     const player = await ctxFor("cabinet", "player@foilbury.local");
     await fixturePool(player);

@@ -33,6 +33,7 @@ export type {
 
 export interface ProfileCopyView {
   id: string;
+  cardId: string;
   cardName: string;
   variantName: string;
   finish: string;
@@ -173,6 +174,7 @@ export async function getProfilePresentationOptions(ctx: Ctx): Promise<ProfilePr
 function copyView(row: InventoryRow): ProfileCopyView {
   return {
     id: row.id,
+    cardId: row.card_id,
     cardName: row.card_name,
     variantName: printTitle(row.edition_name) ?? row.variant_name,
     finish: displayFinish(row.variant_name, row.material_key, row.effect_key),

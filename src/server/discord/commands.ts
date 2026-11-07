@@ -4,7 +4,11 @@ import { auditStatement } from "../http";
 import { newId, sha256Hex } from "../ids";
 import { getInventory } from "../modules/collection";
 import { displayFinish, printTitle as editionPrintTitle } from "../../lib/utils";
-import { claimDailyReward, getEconomy } from "../modules/economy";
+import { claimDailyReward, getEconomy, getPreferences } from "../modules/economy";
+import {
+  getProfilePresentationOptions,
+  resolveProfilePresentation,
+} from "../modules/profile-presentation";
 import { getWalletSummary } from "../modules/wallet";
 import { getCard, listCards } from "../modules/catalogue";
 import {
@@ -963,7 +967,21 @@ async function profile(
         scope.collectionIds.includes(achievement.criteria.collection_id)),
   );
   const earned = achievements.filter((achievement) => achievement.state === "earned").length;
-  return profileMessage({
+  const scopedBadgeNames = new Set(
+    achievements.filter((achievement) => achievement.state === "earned").map((achievement) => achievement.name),
+  );
+  const [prefs, profileOptions] = await Promise.all([
+    getPreferences(ctx),
+    getProfilePresentationOptions(ctx),
+  ]);
+  const presentation = resolveProfilePresentation(
+    prefs.profile_presentation,
+    profileOptions,
+    prefs.profile_presentation_version,
+  );
+  const featured = presentation.featured;
+  const render = featured ? await profileRenderFor(ctx, featured.id) : null;
+  const result = profileMessage({
     displayName: ctx.user!.displayName,
     scopeName: ctx.tenant.name,
     currencySymbol: wallet.currencySymbol,
@@ -977,10 +995,62 @@ async function profile(
       (achievement) => achievement.visibility === "public" && achievement.state === "earned",
     ).length,
     isBotAdmin: isBotAdmin(ctx.user!),
-    profileUrl: absoluteUrl(ctx.config.publicOrigin, "/play")!,
+    lookLabel: starterLookLabel(prefs.profile_look),
+    note: prefs.profile_bio || undefined,
+    featured: featured
+      ? {
+          name: featured.cardName,
+          variant: featured.variantName,
+          finish: featured.finish,
+        }
+      : undefined,
+    badgeNames: presentation.badges
+      .map((badge) => badge.name)
+      .filter((name) => scopedBadgeNames.has(name)),
+    imageAttachment: render ? "foilbury-profile.webp" : undefined,
+    attachment: render
+      ? {
+          r2Key: render.r2_key,
+          filename: "foilbury-profile.webp",
+          contentType: render.mime || "image/webp",
+        }
+      : undefined,
+    profileUrl: absoluteUrl(ctx.config.publicOrigin, "/play/profile")!,
+    customiseUrl: absoluteUrl(ctx.config.publicOrigin, "/play/profile#customise")!,
     dailyCustomId: "foilbury:daily",
     collectionCustomId: "foilbury:collection",
+    shareCustomId: `foilbury:tourshare:profile:${ctx.user!.id}`,
   });
+  return result;
+}
+
+async function profileRenderFor(
+  ctx: Ctx,
+  instanceId: string,
+): Promise<{ r2_key: string; mime: string; width: number; height: number } | null> {
+  return first<{ r2_key: string; mime: string; width: number; height: number }>(
+    ctx.db,
+    `SELECT a.r2_key, a.mime, vr.width, vr.height
+       FROM fb_card_instances ci
+       JOIN fb_variant_renders vr ON vr.variant_id = ci.variant_id AND vr.status = 'published'
+       JOIN fb_assets a ON a.id = vr.asset_id AND a.tenant_id = vr.tenant_id
+      WHERE ci.id = ? AND ci.tenant_id = ? AND ci.user_id = ? AND ci.status IN ('owned','reserved')
+      LIMIT 1`,
+    instanceId,
+    ctx.tenant.id,
+    ctx.user!.id,
+  );
+}
+
+function starterLookLabel(look: string): string {
+  return (
+    {
+      quiet: "Quiet archive",
+      signal: "Signal room",
+      binder: "Binder desk",
+      night: "Night shelf",
+    }[look] ?? "Quiet archive"
+  );
 }
 
 async function npcView(ctx: Ctx, query: string): Promise<DiscordCallback> {
@@ -2300,40 +2370,126 @@ async function tourShare(
       footer: { text: "Explicit completion share · no balance, email or admin controls" },
     };
   } else {
-    const scopedCardIds = await discordScopeCardIds(ctx, scope);
-    const inventory = (await getInventory(ctx, { limit: 200 })).filter((item) =>
-      scopedCardIds.has(item.card_id),
+    const [prefs, profileOptions] = await Promise.all([
+      getPreferences(ctx),
+      getProfilePresentationOptions(ctx),
+    ]);
+    const presentation = resolveProfilePresentation(
+      prefs.profile_presentation,
+      profileOptions,
+      prefs.profile_presentation_version,
     );
-    const achievements = await listAchievements(ctx, ctx.user!.id);
-    const publicCards: string[] = [];
-    for (const item of inventory.slice(0, 20)) {
-      if ((await effectiveCardAudience(ctx, item.card_id)) === "public") publicCards.push(item.card_id);
-    }
-    const publicBadges = achievements.filter(
-      (item) =>
-        item.state === "earned" &&
-        item.visibility === "public" &&
-        (!item.criteria?.collection_id ||
-          (typeof item.criteria.collection_id === "string" &&
-            scope.collectionIds.includes(item.criteria.collection_id))),
-    );
+    const featured = presentation.featured;
     objectId = ctx.user!.id;
-    embed = {
-      title: `${ctx.user!.displayName} · collector profile`,
-      description: "A member chose to share this public profile summary in an authorised channel.",
-      color: 0x7c6b4f,
-      fields: [
-        {
-          name: "Public showcase cards",
-          value: String(new Set(publicCards).size),
-          inline: true,
+    if (channelAudience === "public") {
+      const scopedCardIds = await discordScopeCardIds(ctx, scope);
+      const inventory = (await getInventory(ctx, { limit: 200 })).filter((item) =>
+        scopedCardIds.has(item.card_id),
+      );
+      const achievements = await listAchievements(ctx, ctx.user!.id);
+      const publicCards: string[] = [];
+      for (const item of inventory.slice(0, 20)) {
+        if ((await effectiveCardAudience(ctx, item.card_id)) === "public") publicCards.push(item.card_id);
+      }
+      const publicBadges = achievements.filter(
+        (item) =>
+          item.state === "earned" &&
+          item.visibility === "public" &&
+          (!item.criteria?.collection_id ||
+            (typeof item.criteria.collection_id === "string" &&
+              scope.collectionIds.includes(item.criteria.collection_id))),
+      );
+      audience = "public";
+      embed = {
+        title: `${ctx.user!.displayName} · collector profile`,
+        description:
+          "A member chose to share this public profile summary in an authorised channel. Member artwork and favourites stay private.",
+        color: 0x7c6b4f,
+        fields: [
+          {
+            name: "Public showcase cards",
+            value: String(new Set(publicCards).size),
+            inline: true,
+          },
+          { name: "Public badges", value: String(publicBadges.length), inline: true },
+        ],
+        footer: {
+          text: "Only approved public counts · no wallet, email, member roster, session or administrator data",
         },
-        { name: "Public badges", value: String(publicBadges.length), inline: true },
-      ],
-      footer: {
-        text: "Only approved public counts · no wallet, email, member roster, session or administrator data",
-      },
-    };
+      };
+    } else {
+      if (featured) {
+        await assertCardInDiscordScope(ctx, scope, featured.cardId);
+        const featuredAudience = await effectiveCardAudience(ctx, featured.cardId);
+        if (audienceRank(channelAudience) < audienceRank(featuredAudience)) {
+          throw new ApiError(
+            403,
+            "share_channel_audience",
+            "This channel has not been verified for the featured card's audience. Nothing was shared.",
+          );
+        }
+      }
+      render = featured ? await profileRenderFor(ctx, featured.id) : null;
+      const scopedBadgeNames = new Set(
+        (await listAchievements(ctx, ctx.user!.id))
+          .filter(
+            (achievement) =>
+              achievement.state === "earned" &&
+              (!achievement.criteria?.collection_id ||
+                (typeof achievement.criteria.collection_id === "string" &&
+                  scope.collectionIds.includes(achievement.criteria.collection_id))),
+          )
+          .map((achievement) => achievement.name),
+      );
+      const badgeNames = presentation.badges
+        .map((badge) => badge.name)
+        .filter((name) => scopedBadgeNames.has(name))
+        .slice(0, 6);
+      const fields: Array<{ name: string; value: string; inline?: boolean }> = [
+        { name: "Look", value: starterLookLabel(prefs.profile_look), inline: true },
+      ];
+      if (featured) {
+        fields.push({
+          name: "Featured copy",
+          value: `**${featured.cardName}**\n${featured.variantName} · ${featured.finish}`,
+          inline: false,
+        });
+      }
+      if (badgeNames.length) {
+        fields.push({
+          name: "Selected badges",
+          value: badgeNames.join(" · ").slice(0, 1000),
+          inline: false,
+        });
+      }
+      if (prefs.profile_bio) {
+        fields.push({
+          name: "Collector note",
+          value: prefs.profile_bio.slice(0, 1000),
+          inline: false,
+        });
+      }
+      fields.push({
+        name: "Privacy",
+        value:
+          "Shared by explicit consent. No wallet, email, account ID, ledger or card serial is included.",
+        inline: false,
+      });
+      audience = "members";
+      embed = {
+        title: `${ctx.user!.displayName} · collector profile`,
+        description:
+          "A member chose to share this collector view in an authorised channel. The featured copy is the exact owned card; the look and badges are the saved composition.",
+        color: 0x2ce3d3,
+        fields,
+        ...(render
+          ? { image: { url: "attachment://foilbury-share.webp", width: 750, height: 1050 } }
+          : {}),
+        footer: {
+          text: "Foilbury composition · member audience · changing a look does not alter past awards",
+        },
+      };
+    }
   }
 
   const shareId = newId("shr");
@@ -2364,8 +2520,11 @@ async function tourShare(
           {
             type: 2,
             style: 5,
-            label: "Open the album",
-            url: absoluteUrl(ctx.config.publicOrigin, "/play")!,
+            label: kind === "profile" ? "View the full profile" : "Open the album",
+            url: absoluteUrl(
+              ctx.config.publicOrigin,
+              kind === "profile" ? "/play/profile" : "/play",
+            )!,
           },
         ],
       ]),
