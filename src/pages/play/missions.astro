@@ -7,7 +7,6 @@ import { getDailyMissions } from "../../server/modules/missions";
 
 const ctx = await pageContext(Astro.request);
 const state = await getDailyMissions(ctx);
-const ready = state.missions.filter((mission) => mission.claimable).length;
 ---
 
 <PlayerLayout title="Missions · Foilbury">
@@ -16,16 +15,6 @@ const ready = state.missions.filter((mission) => mission.claimable).length;
     lede="Optional daily goals. They use the same wallet and ledger as everything else and never ask you to post, invite or spend."
   >
     <p class="member-head__note">Resets {state.reset_local}.</p>
-    <dl slot="aside" class="member-stats">
-      <div class="member-stat">
-        <dt>Earned today</dt>
-        <dd>{state.currency_symbol} {state.earned_today} <span>/ {state.cap}</span></dd>
-      </div>
-      <div class="member-stat">
-        <dt>Ready to claim</dt>
-        <dd>{ready}</dd>
-      </div>
-    </dl>
   </MemberHeader>
 
   <div class="mt-6">

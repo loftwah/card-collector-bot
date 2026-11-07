@@ -572,12 +572,18 @@ export async function executeDraw(
       payload: { card_id: selected.card_id, variant_id: selected.variant_id, instance_id: instanceId },
     });
     const result = await evaluateAchievements(ctx, { userId: user.id, eventId });
-    achievements = result.unlocked.map((item) => ({
-      id: item.id,
-      name: item.name,
-      reward_amount: item.reward_amount,
-      reward_state: item.reward_state,
-    }));
+    // `evaluateAchievements` also returns earlier unlocks so their reward
+    // fulfilment can be retried. A draw receipt must only present what this
+    // draw actually unlocked; otherwise an old badge looks newly earned and
+    // its historical reward is added to this opening's credit total.
+    achievements = result.unlocked
+      .filter((item) => item.earned_at && new Date(item.earned_at).getTime() >= new Date(now).getTime())
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        reward_amount: item.reward_amount,
+        reward_state: item.reward_state,
+      }));
   } catch (error) {
     settlementPending = true;
     console.error(JSON.stringify({ level: "error", message: "achievement evaluation after draw failed", draw_id: drawId, error: String(error) }));

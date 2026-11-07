@@ -22,7 +22,8 @@ import sharp from "sharp";
 import { ROOT } from "../lib/local.mjs";
 
 const args = new Set(process.argv.slice(2));
-const dryRun = args.has("--dry-run") || !args.has("--publish");
+const prepareOnly = args.has("--prepare");
+const dryRun = args.has("--dry-run") || (!args.has("--publish") && !prepareOnly);
 const resume = !args.has("--fresh");
 const refreshArg = process.argv.find((arg) => arg.startsWith("--refresh="));
 const refreshStages = new Set(
@@ -35,6 +36,7 @@ const refreshStages = new Set(
     : [],
 );
 const RUN_ID = "foilbury-demo-2026-11-04";
+const FINAL_STAGE = 17;
 const GUILD_ID = "997734945206313041";
 const CHANNEL_ID = "1566700752385081355";
 const APPLICATION_ID = "1566702936615026769";
@@ -66,7 +68,8 @@ const env = { ...readEnv(path.join(ROOT, ".env")), ...process.env };
 const botToken = env.DISCORD_BOT_TOKEN;
 const actor = fs.existsSync(ACTOR_FILE) ? JSON.parse(fs.readFileSync(ACTOR_FILE, "utf8")) : null;
 if (!dryRun && !botToken) throw new Error("DISCORD_BOT_TOKEN is missing.");
-if (!dryRun && !actor?.token) throw new Error("Run scripts/discord/provision-demo-actor.mjs --apply first.");
+if (!dryRun && !actor?.token)
+  throw new Error("Run scripts/discord/provision-demo-actor.mjs --apply first.");
 
 function quote(value) {
   return `'${String(value).replaceAll("'", "''")}'`;
@@ -118,7 +121,10 @@ function workerBuild() {
   const metaFile = path.join(ROOT, "dist", "server", "build-meta.json");
   if (fs.existsSync(metaFile)) {
     const meta = JSON.parse(fs.readFileSync(metaFile, "utf8"));
-    return { source_sha: meta.source_sha ?? meta.git_sha ?? null, tree_hash: meta.tree_hash ?? null };
+    return {
+      source_sha: meta.source_sha ?? meta.git_sha ?? null,
+      tree_hash: meta.tree_hash ?? null,
+    };
   }
   const result = spawnSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" });
   return { source_sha: result.stdout.trim(), tree_hash: null };
@@ -180,7 +186,9 @@ async function discord(method, endpoint, body, files = [], attempt = 0) {
     return discord(method, endpoint, body, files, attempt + 1);
   }
   if (!response.ok) {
-    const error = new Error(`Discord ${method} ${endpoint} failed: ${response.status} ${text.slice(0, 500)}`);
+    const error = new Error(
+      `Discord ${method} ${endpoint} failed: ${response.status} ${text.slice(0, 500)}`,
+    );
     error.status = response.status;
     throw error;
   }
@@ -200,7 +208,9 @@ async function api(method, endpoint, body, idempotencyKey) {
   });
   const text = await response.text();
   if (!response.ok) {
-    const error = new Error(`API ${method} ${endpoint} failed: ${response.status} ${text.slice(0, 800)}`);
+    const error = new Error(
+      `API ${method} ${endpoint} failed: ${response.status} ${text.slice(0, 800)}`,
+    );
     error.status = response.status;
     error.body = text;
     throw error;
@@ -258,10 +268,16 @@ function stateDefault() {
     stages: {},
     draws: [],
     mission: null,
+    mission_draw: null,
+    missions: null,
     achievement: null,
+    achievements: null,
+    profile: null,
     progress_before: null,
     progress_after: null,
     conclusion_message_id: null,
+    extended_at: null,
+    backup: ".foilbury/backups/prod-pre-demo-extension-2026-11-07.json",
   };
 }
 
@@ -286,25 +302,33 @@ function assertDiscordPayload(payload) {
   if (embeds.length > 10) throw new Error("Discord allows at most 10 embeds per message.");
   let total = 0;
   for (const embed of embeds) {
-    total += (embed.title ?? "").length + (embed.description ?? "").length + (embed.footer?.text ?? "").length;
+    total +=
+      (embed.title ?? "").length +
+      (embed.description ?? "").length +
+      (embed.footer?.text ?? "").length;
     if ((embed.title ?? "").length > 256) throw new Error("Embed title exceeds 256 characters.");
-    if ((embed.description ?? "").length > 4096) throw new Error("Embed description exceeds 4096 characters.");
+    if ((embed.description ?? "").length > 4096)
+      throw new Error("Embed description exceeds 4096 characters.");
     if ((embed.fields ?? []).length > 25) throw new Error("Embed field count exceeds 25.");
     for (const field of embed.fields ?? []) {
       if (field.name.length > 256) throw new Error("Embed field name exceeds 256 characters.");
       if (field.value.length > 1024) throw new Error("Embed field value exceeds 1024 characters.");
       total += field.name.length + field.value.length;
     }
-    if ((embed.footer?.text ?? "").length > 2048) throw new Error("Embed footer exceeds 2048 characters.");
+    if ((embed.footer?.text ?? "").length > 2048)
+      throw new Error("Embed footer exceeds 2048 characters.");
   }
   if (total > 6000) throw new Error(`Message text is ${total} characters; Discord allows 6000.`);
   const rows = payload.components ?? [];
   if (rows.length > 5) throw new Error("Discord allows at most 5 action rows.");
   for (const row of rows) {
-    if ((row.components ?? []).length > 5) throw new Error("Discord allows at most 5 buttons per row.");
+    if ((row.components ?? []).length > 5)
+      throw new Error("Discord allows at most 5 buttons per row.");
     for (const component of row.components ?? []) {
-      if ((component.label ?? "").length > 80) throw new Error("Button label exceeds 80 characters.");
-      if (component.custom_id && component.custom_id.length > 100) throw new Error("Button custom_id exceeds 100 characters.");
+      if ((component.label ?? "").length > 80)
+        throw new Error("Button label exceeds 80 characters.");
+      if (component.custom_id && component.custom_id.length > 100)
+        throw new Error("Button custom_id exceeds 100 characters.");
     }
   }
 }
@@ -341,6 +365,309 @@ async function downloadR2(key, fileName) {
   await sharp(temporary).png().toFile(destination);
   fs.rmSync(temporary, { force: true });
   return destination;
+}
+
+const PROFILE_LOOK_LABELS = {
+  quiet: "Quiet archive",
+  signal: "Signal room",
+  binder: "Binder desk",
+  night: "Night shelf",
+};
+const PROFILE_FRAME_LABELS = {
+  none: "No frame",
+  hairline: "Hairline",
+  double: "Double rule",
+  signal: "Signal rule",
+};
+const PROFILE_AVATAR_LABELS = {
+  none: "No decoration",
+  ring: "Ring",
+  corner: "Corner marks",
+  stamp: "Stamp",
+};
+const PROFILE_NAME_LABELS = {
+  plain: "Plain",
+  wide: "Wide tracking",
+  boxed: "Boxed",
+};
+const PROFILE_EFFECT_LABELS = {
+  none: "None",
+  sheen: "Soft sheen",
+  edge: "Accent edge",
+};
+
+function profileLookLabel(key) {
+  return PROFILE_LOOK_LABELS[key] ?? key;
+}
+
+async function readMissionState(installation) {
+  const board = await api("GET", "/api/v1/missions/daily");
+  const claims = d1(
+    `SELECT id, rule_key, amount, created_at FROM fb_reward_claims
+      WHERE tenant_id = ${quote(installation.tenant_id)} AND user_id = ${quote(actor.userId)}
+        AND period_key = ${quote(board.period_key)} AND rule_key LIKE 'mission:%'
+      ORDER BY created_at`,
+  );
+  const claimByKey = new Map(
+    claims.map((claim) => [claim.rule_key.slice(claim.rule_key.lastIndexOf(":") + 1), claim]),
+  );
+  const items = board.missions.map((mission) => ({
+    ...mission,
+    claim: claimByKey.get(mission.key) ?? null,
+  }));
+  return {
+    ...board,
+    items,
+    claimed_count: items.filter((mission) => mission.claimed).length,
+    ready_count: items.filter((mission) => mission.claimable).length,
+  };
+}
+
+function recentDraws(day) {
+  return d1(
+    `SELECT d.id AS draw_id, d.instance_id, d.created_at, d.price, d.pool_revision,
+            cd.name AS card_name, ci.serial, v.name AS variant_name,
+            m.key AS material_key, COALESCE(fx.key, 'none') AS effect_key
+       FROM fb_draws d
+       JOIN fb_card_instances ci ON ci.id = d.instance_id
+       JOIN fb_card_definitions cd ON cd.id = ci.card_id
+       JOIN fb_variants v ON v.id = d.variant_id
+       JOIN fb_materials m ON m.id = v.material_id
+       LEFT JOIN fb_effects fx ON fx.id = v.effect_id
+      WHERE d.tenant_id = ${quote(installation.tenant_id)} AND d.user_id = ${quote(actor.userId)}
+        AND substr(d.created_at, 1, 10) = ${quote(day)}
+      ORDER BY d.created_at`,
+  );
+}
+
+async function ensureMissionProgress({ state, installation, previewEndpoint }) {
+  let board = await readMissionState(installation);
+  const openMission = board.missions.find((mission) => mission.key === "open");
+  if (openMission && !openMission.complete && !openMission.claimed) {
+    const key = `${RUN_ID}-mission-${board.day}-open`;
+    try {
+      const fresh = await api("GET", previewEndpoint);
+      if (!fresh?.eligible_count)
+        throw new Error("The mission capsule is not eligible; no draw was made.");
+      const spend = fresh.price;
+      if (spend > PRICE_CEILING)
+        throw new Error("The mission opening would exceed the bounded ceiling.");
+      let receipt;
+      try {
+        receipt = await api(
+          "POST",
+          "/api/v1/draws",
+          {
+            pool: POOL_SLUG,
+            expectedRevision: fresh.revision,
+            expectedDistribution: fresh.distribution_fingerprint,
+            installationId: INSTALLATION_ID,
+            channelId: CHANNEL_ID,
+          },
+          key,
+        );
+      } catch (error) {
+        if (error.status === 409 && /stale|conflict/i.test(error.body ?? "")) {
+          const retry = await api("GET", previewEndpoint);
+          receipt = await api(
+            "POST",
+            "/api/v1/draws",
+            {
+              pool: POOL_SLUG,
+              expectedRevision: retry.revision,
+              expectedDistribution: retry.distribution_fingerprint,
+              installationId: INSTALLATION_ID,
+              channelId: CHANNEL_ID,
+            },
+            key,
+          );
+        } else {
+          throw error;
+        }
+      }
+      state.mission_draw = { ...receipt, key };
+      saveState(state);
+      board = await readMissionState(installation);
+    } catch (error) {
+      state.mission_draw = { ...(state.mission_draw ?? {}), error: error.message, key };
+      saveState(state);
+    }
+  }
+
+  const claims = [];
+  for (const mission of board.missions.filter((item) => item.claimable)) {
+    try {
+      const claim = await api(
+        "POST",
+        "/api/v1/missions/daily/claim",
+        { key: mission.key },
+        `${RUN_ID}-mission-${board.day}-${mission.key}`,
+      );
+      claims.push({ key: mission.key, title: mission.title, ...claim });
+    } catch (error) {
+      claims.push({ key: mission.key, title: mission.title, error: error.message });
+    }
+  }
+  if (claims.length) {
+    saveState(state);
+    board = await readMissionState(installation);
+  }
+
+  let replay = null;
+  const firstClaimed = board.items.find((mission) => mission.claimed && mission.claim);
+  if (firstClaimed) {
+    const before = await api("GET", "/api/v1/missions/daily");
+    try {
+      const result = await api(
+        "POST",
+        "/api/v1/missions/daily/claim",
+        { key: firstClaimed.key },
+        `${RUN_ID}-mission-replay-${board.day}-${firstClaimed.key}`,
+      );
+      const after = await api("GET", "/api/v1/missions/daily");
+      replay = {
+        key: firstClaimed.key,
+        title: firstClaimed.title,
+        claim_id: result.claim_id,
+        amount: result.amount,
+        replayed: result.replayed === true,
+        earned_before: before.earned_today,
+        earned_after: after.earned_today,
+        balance_after: result.balance_after,
+      };
+    } catch (error) {
+      replay = { key: firstClaimed.key, title: firstClaimed.title, error: error.message };
+    }
+  }
+
+  const draws = recentDraws(board.day);
+  return {
+    day: board.day,
+    period_key: board.period_key,
+    reset_at: board.reset_at,
+    reset_local: board.reset_local,
+    cap: board.cap,
+    currency_symbol: board.currency_symbol,
+    earned_today: board.earned_today,
+    claimed_count: board.claimed_count,
+    ready_count: board.ready_count,
+    items: board.items.map((mission) => ({
+      key: mission.key,
+      title: mission.title,
+      description: mission.description,
+      reward: mission.reward,
+      progress: mission.progress,
+      target: mission.target,
+      complete: mission.complete,
+      claimed: mission.claimed,
+      claimable: mission.claimable,
+      claimed_at: mission.claimed_at,
+      claim_id: mission.claim?.id ?? null,
+    })),
+    claims,
+    replay,
+    draws,
+  };
+}
+
+async function ensureProfileShare({ state, installation }) {
+  let prefs = await api("GET", "/api/v1/me/preferences");
+  if (!prefs.sharing_enabled) {
+    prefs = await api("PATCH", "/api/v1/me/preferences", { sharingEnabled: true });
+  }
+  const selection = JSON.stringify(prefs.profile_presentation);
+  const existing = state.profile?.share;
+  if (existing?.id && state.profile?.selection === selection) {
+    const list = await api("GET", "/api/v1/shares").catch(() => ({ items: [] }));
+    const row = list.items?.find((item) => item.id === existing.id);
+    if (row?.status === "active" && new Date(row.expires_at) > new Date()) {
+      state.profile = { ...state.profile, prefs, share: { ...existing, status: "active" } };
+      saveState(state);
+      return { prefs, share: { ...existing, status: "active" }, reused: true };
+    }
+  }
+
+  const share = await api("POST", "/api/v1/shares", { kind: "profile", expiresInDays: 7 });
+  const next = {
+    id: share.id,
+    url: share.url,
+    token: share.token,
+    audience: share.audience,
+    expires_at: share.expires_at,
+    created_at: new Date().toISOString(),
+    status: "active",
+  };
+  state.profile = {
+    prefs,
+    look: prefs.profile_look,
+    bio: prefs.profile_bio,
+    version: prefs.profile_presentation_version,
+    updated_at: prefs.updated_at,
+    selection,
+    selection_values: prefs.profile_presentation,
+    presentation: share.preview?.presentation ?? null,
+    share_preview: share.preview ?? null,
+    share: next,
+  };
+  saveState(state);
+  return { prefs, share: next, reused: false };
+}
+
+async function readAchievementState({ state, installation }) {
+  const count = () =>
+    d1(
+      `SELECT
+         (SELECT COUNT(*) FROM fb_achievement_unlocks WHERE tenant_id = ${quote(installation.tenant_id)} AND user_id = ${quote(actor.userId)}) AS unlocks,
+         (SELECT COALESCE(SUM(amount), 0) FROM fb_ledger_entries
+           WHERE tenant_id = ${quote(installation.tenant_id)} AND user_id = ${quote(actor.userId)}
+             AND reference_type = 'achievement') AS reward_foil`,
+    )[0];
+  const before = count();
+  let evaluation = null;
+  try {
+    evaluation = await api("POST", "/api/v1/achievements/evaluate", {});
+  } catch (error) {
+    evaluation = { error: error.message };
+  }
+  const after = count();
+  const items = (await api("GET", "/api/v1/achievements")).items ?? [];
+  const stateOf = (item) => item.state;
+  const compact = (item) => ({
+    id: item.id,
+    name: item.name,
+    description: item.description,
+    state: item.state,
+    progress: item.progress,
+    target: item.target,
+    earned_at: item.earned_at,
+    reward_amount: item.reward_amount,
+    art_key: item.art_key,
+    category: item.category,
+    collection_name: item.collection_name ?? null,
+    collection_slug: item.collection_slug ?? null,
+  });
+  const earned = items.filter((item) => stateOf(item) === "earned").map(compact);
+  const inProgress = items
+    .filter((item) => stateOf(item) === "in_progress")
+    .map(compact)
+    .sort((a, b) => b.progress / Math.max(1, b.target) - a.progress / Math.max(1, a.target));
+  const locked = items.filter((item) => stateOf(item) === "locked");
+  state.achievements = {
+    total: items.length,
+    earned,
+    in_progress: inProgress,
+    locked_count: locked.length,
+    evaluation: {
+      returned: Array.isArray(evaluation?.unlocked) ? evaluation.unlocked.length : 0,
+      error: evaluation?.error ?? null,
+      unlocks_before: before?.unlocks ?? 0,
+      unlocks_after: after?.unlocks ?? 0,
+      reward_foil_before: before?.reward_foil ?? 0,
+      reward_foil_after: after?.reward_foil ?? 0,
+    },
+  };
+  saveState(state);
+  return state.achievements;
 }
 
 async function composeGrid({ cards, owned, title, subtitle, out, columns = 4 }) {
@@ -413,7 +740,10 @@ async function composeFinishStrip({ variants, out, title, subtitle }) {
       `<text x="${margin}" y="${margin + 62}" fill="#b9b2a3" font-family="sans-serif" font-size="16">${escapeXml(subtitle)}</text>`,
   );
   for (let index = 0; index < variants.length; index += 1) {
-    const bytes = await sharp(variants[index].file).resize(cellW, cellH, { fit: "cover" }).png().toBuffer();
+    const bytes = await sharp(variants[index].file)
+      .resize(cellW, cellH, { fit: "cover" })
+      .png()
+      .toBuffer();
     composites.push({ input: bytes, left: margin + index * (cellW + gap), top: margin + header });
   }
   const svg = Buffer.from(
@@ -513,7 +843,8 @@ async function main() {
   state.release_version = collection.release_version;
   state.bot_id = bot?.id ?? null;
   state.ai_art_enabled = Number(bot?.ai_art_enabled ?? 0) === 1;
-  state.channel_audience = JSON.parse(installation.channel_audience_json ?? "{}")[CHANNEL_ID] ?? "public";
+  state.channel_audience =
+    JSON.parse(installation.channel_audience_json ?? "{}")[CHANNEL_ID] ?? "public";
   state.worker_version = workerVersion();
   state.build = workerBuild();
   state.scope_digest = state.scope_digest ?? null;
@@ -627,7 +958,9 @@ async function main() {
       }
     }
     if (unique.size < cardFiles.length) {
-      throw new Error(`Only ${unique.size}/${cardFiles.length} unique subjects after ${state.draws.length} draws; the demonstration is incomplete.`);
+      throw new Error(
+        `Only ${unique.size}/${cardFiles.length} unique subjects after ${state.draws.length} draws; the demonstration is incomplete.`,
+      );
     }
     saveState(state);
   }
@@ -682,41 +1015,67 @@ async function main() {
     saveState(state);
   }
 
-  // Claim one real mission and replay the same claim to prove no extra credit.
+  // Exercise the real mission board, collector identity and achievement
+  // cabinet. The browser pass records the human-session actions (world visit,
+  // inspection, opening and claims); these reads prove the persisted result
+  // and replay one claim without crediting it again.
   if (!dryRun) {
-    const missions = await api("GET", "/api/v1/missions/daily");
-    const claimable = missions.missions?.find((mission) => mission.claimable);
-    if (claimable) {
-      const first = await api(
-        "POST",
-        "/api/v1/missions/daily/claim",
-        { key: claimable.key },
-        `${RUN_ID}-mission-${claimable.key}`,
-      );
-      const replay = await api(
-        "POST",
-        "/api/v1/missions/daily/claim",
-        { key: claimable.key },
-        `${RUN_ID}-mission-${claimable.key}`,
-      );
-      state.mission = { key: claimable.key, title: claimable.title, first, replay, claim_count: 1 };
-      saveState(state);
-    }
+    state.extended_at = new Date().toISOString();
+    state.missions = await ensureMissionProgress({ state, installation, previewEndpoint });
+    await ensureProfileShare({ state, installation });
+    await readAchievementState({ state, installation });
+    saveState(state);
   }
 
-  console.log(JSON.stringify({
-    collection: collection.name,
-    cards: cardFiles.length,
-    draws: state.draws.length,
-    unique: new Set(state.draws.map((draw) => draw.card_id)).size,
-    scope_digest: state.scope_digest,
-    achievement: state.achievement,
-    mission: state.mission,
-    dry_run: dryRun,
-  }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        collection: collection.name,
+        cards: cardFiles.length,
+        draws: state.draws.length,
+        unique: new Set(state.draws.map((draw) => draw.card_id)).size,
+        scope_digest: state.scope_digest,
+        achievement: state.achievement?.name ?? null,
+        mission: state.missions
+          ? {
+              day: state.missions.day,
+              claimed: state.missions.claimed_count,
+              ready: state.missions.ready_count,
+              earned_today: state.missions.earned_today,
+            }
+          : null,
+        profile_share: state.profile?.share
+          ? {
+              id: state.profile.share.id,
+              status: state.profile.share.status,
+              expires_at: state.profile.share.expires_at,
+            }
+          : null,
+        achievements: state.achievements
+          ? {
+              earned: state.achievements.earned.length,
+              in_progress: state.achievements.in_progress.length,
+              locked: state.achievements.locked_count,
+            }
+          : null,
+        dry_run: dryRun,
+        prepare_only: prepareOnly,
+      },
+      null,
+      2,
+    ),
+  );
 
   if (dryRun) {
-    console.log("Dry run: composing and validating the narrated sequence without drawing or posting.");
+    console.log(
+      "Dry run: composing and validating the narrated sequence without drawing or posting.",
+    );
+  }
+  if (prepareOnly) {
+    console.log(
+      "Prepare-only: production reads and idempotent journey actions completed; no channel messages were posted.",
+    );
+    return;
   }
 
   // The actual message publication is implemented in publishStages() below.
@@ -734,8 +1093,21 @@ function stageFromMessage(message) {
   return match ? Number(match[1]) : null;
 }
 
-async function publishStages({ state, collection, cardFiles, banner, rosterPath, preview, installation }) {
-  if (!dryRun && state.stages[1]?.message_id && state.stages[12]?.message_id && refreshStages.size === 0) {
+async function publishStages({
+  state,
+  collection,
+  cardFiles,
+  banner,
+  rosterPath,
+  preview,
+  installation,
+}) {
+  if (
+    !dryRun &&
+    state.stages[1]?.message_id &&
+    state.stages[FINAL_STAGE]?.message_id &&
+    refreshStages.size === 0
+  ) {
     console.log("The demonstration is already complete; leaving the retained messages unchanged.");
     return;
   }
@@ -746,7 +1118,8 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
     if (stage && message.author?.id === APPLICATION_ID) existing.set(stage, message);
   }
   for (const [stage, message] of existing) {
-    if (!state.stages[stage]) state.stages[stage] = { message_id: message.id, posted_at: message.timestamp };
+    if (!state.stages[stage])
+      state.stages[stage] = { message_id: message.id, posted_at: message.timestamp };
   }
   saveState(state);
 
@@ -757,6 +1130,9 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
   const duplicates = state.draws.length - uniqueAfter;
   const achievement = state.achievement;
   const mission = state.mission;
+  const missionBoard = state.missions;
+  const achievementBoard = state.achievements;
+  const profile = state.profile;
 
   const cardById = new Map(cardFiles.map((card) => [card.card_id, card]));
   const featuredCard = cardById.get(featured?.card_id);
@@ -785,10 +1161,11 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
     { label: "Holographic", material: "gold", effect: "holographic" },
   ];
   const finishVariants = featuredCard
-    ? (await Promise.all(
-        finishSpecs.map(async (spec) => {
-          const row = d1(
-            `SELECT fr.r2_key, v.name, v.id AS variant_id FROM fb_variants v
+    ? (
+        await Promise.all(
+          finishSpecs.map(async (spec) => {
+            const row = d1(
+              `SELECT fr.r2_key, v.name, v.id AS variant_id FROM fb_variants v
                JOIN fb_materials m ON m.id = v.material_id
                LEFT JOIN fb_effects fx ON fx.id = v.effect_id
                JOIN fb_variant_renders vr ON vr.variant_id = v.id AND vr.status = 'published'
@@ -797,37 +1174,40 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
                 AND m.key = ${quote(spec.material)}
                 AND COALESCE(fx.key, 'none') = ${quote(spec.effect)}
                 AND v.status = 'published' LIMIT 1`,
-          )[0];
-          if (!row?.r2_key) return null;
-          return {
-            label: spec.label,
-            file: await downloadR2(row.r2_key, `finish-${spec.label.toLowerCase()}.webp`),
-            caption:
-              row.variant_id === featured.variant_id
-                ? "owned by the demo collector"
-                : "catalogue example, not owned",
-          };
-        }),
-      )).filter(Boolean)
+            )[0];
+            if (!row?.r2_key) return null;
+            return {
+              label: spec.label,
+              file: await downloadR2(row.r2_key, `finish-${spec.label.toLowerCase()}.webp`),
+              caption:
+                row.variant_id === featured.variant_id
+                  ? "owned by the demo collector"
+                  : "catalogue example, not owned",
+            };
+          }),
+        )
+      ).filter(Boolean)
     : [];
 
   const finishPath = finishVariants.length
     ? await composeFinishStrip({
         variants: finishVariants,
         title: `Supported finishes · ${featuredCard?.name ?? "card"}`,
-        subtitle: "Catalogue examples. A comparison does not imply the collector owns every finish.",
+        subtitle:
+          "Catalogue examples. A comparison does not imply the collector owns every finish.",
         out: path.join(ASSET_DIR, "finishes.png"),
       })
     : null;
-  const pairPath = featuredFront && featuredBack
-    ? await composePair({
-        front: featuredFront,
-        back: featuredBack,
-        title: `${featured?.card_name ?? "Awarded card"} · saved front and back`,
-        subtitle: `Serial ${featured?.serial ?? ""} · ${dualTime(featured?.drawn_at ?? new Date().toISOString())}`,
-        out: path.join(ASSET_DIR, "front-back.png"),
-      })
-    : null;
+  const pairPath =
+    featuredFront && featuredBack
+      ? await composePair({
+          front: featuredFront,
+          back: featuredBack,
+          title: `${featured?.card_name ?? "Awarded card"} · saved front and back`,
+          subtitle: `Serial ${featured?.serial ?? ""} · ${dualTime(featured?.drawn_at ?? new Date().toISOString())}`,
+          out: path.join(ASSET_DIR, "front-back.png"),
+        })
+      : null;
   const beforePath = await composeGrid({
     cards: cardFiles.map((card) => ({ ...card, caption: "Gold reference front" })),
     owned: new Set(state.draws.slice(0, 1).map((draw) => draw.card_id)),
@@ -850,13 +1230,53 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
     out: path.join(ASSET_DIR, "completion.png"),
   });
 
-  const stageLinks = (stage) => (state.stages[stage]?.message_id ? messageLink(state.stages[stage].message_id) : null);
+  const stageLinks = (stage) =>
+    state.stages[stage]?.message_id ? messageLink(state.stages[stage].message_id) : null;
   const nextLink = (stage) => {
     const link = stageLinks(stage);
     return link ? [{ type: 2, style: 5, label: `Stage ${stage} →`, url: link }] : [];
   };
+  const chapterIndexLink = () => {
+    const link = stageLinks(12);
+    return link ? [{ type: 2, style: 5, label: "Chapter index", url: link }] : [];
+  };
+  const missionsBoardPath = path.join(ASSET_DIR, "missions-board.png");
+  const achievementsBoardPath = path.join(ASSET_DIR, "achievements-board.png");
+  const profileHeroPath = path.join(ASSET_DIR, "profile-hero.png");
+  const profileSharePath = path.join(ASSET_DIR, "profile-share.png");
+  const newStageImages = new Map([
+    [13, { name: "missions-board.png", path: missionsBoardPath }],
+    [14, { name: "achievements-board.png", path: achievementsBoardPath }],
+    [15, { name: "profile-hero.png", path: profileHeroPath }],
+    [16, { name: "profile-share.png", path: profileSharePath }],
+  ]);
+  if (!dryRun) {
+    for (const [stage, image] of newStageImages) {
+      if (state.stages[stage]?.message_id) continue;
+      if (!fs.existsSync(image.path) || fs.statSync(image.path).size < 1000) {
+        throw new Error(
+          `Stage ${stage} needs ${image.path}; capture the real rendered surface before publishing.`,
+        );
+      }
+    }
+  }
+  const imageFor = (stage) => {
+    const image = newStageImages.get(stage);
+    if (!image || !fs.existsSync(image.path)) return {};
+    return {
+      image: { url: `attachment://${image.name}` },
+      files: [{ name: image.name, path: image.path }],
+    };
+  };
   const web = (label, path) => ({ type: 2, style: 5, label, url: `${PUBLIC_ORIGIN}${path}` });
 
+  const missionDraw =
+    missionBoard?.draws?.[missionBoard.draws.length - 1] ?? state.mission_draw ?? null;
+  const missionReplay = missionBoard?.replay ?? null;
+  const profilePresentation = profile?.presentation ?? null;
+  const profileSelection = profile?.selection_values ?? null;
+  const profileShare = profile?.share ?? null;
+  const profileSharePreview = profile?.share_preview ?? null;
   const stages = [
     {
       stage: 1,
@@ -869,21 +1289,28 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
         color: 0xc9a227,
         fields: [
           { name: "Server", value: `Loftwah · <#${CHANNEL_ID}>`, inline: true },
-          { name: "Collection", value: `${collection.name} · release ${collection.release_version}`, inline: true },
+          {
+            name: "Collection",
+            value: `${collection.name} · release ${collection.release_version}`,
+            inline: true,
+          },
           { name: "Audience", value: "Members · verified channel", inline: true },
           {
             name: "Actor",
-            value: "Foilbury Demo Collector — a labelled, non-human demonstration account. Not Dean and not a Discord member.",
+            value:
+              "Foilbury Demo Collector — a labelled, non-human demonstration account. Not Dean and not a Discord member.",
             inline: false,
           },
           {
             name: "Recorded versus replayed",
-            value: "The opening, further pulls, mission claim, completion and reward below were executed for this run through the shared services. No historical receipt is presented as a new action.",
+            value:
+              "The opening, further pulls, mission claim, completion and reward below were executed for this run through the shared services. No historical receipt is presented as a new action.",
             inline: false,
           },
           {
             name: "Starting state",
-            value: "The labelled demo collector started with a bounded, audited 8,000 Foil provisioning grant and no cards. It is not Dean's wallet and not a real player's balance. Every opening below is a real draw from the configured capsule.",
+            value:
+              "The labelled demo collector started with a bounded, audited 8,000 Foil provisioning grant and no cards. It is not Dean's wallet and not a real player's balance. Every opening below is a real draw from the configured capsule.",
             inline: false,
           },
           {
@@ -893,7 +1320,8 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
           },
           {
             name: "Artwork provenance",
-            value: "Sourced character references (Danganronpa Wiki/Fandom), reviewed for this private non-commercial album; card design and finishes are Foilbury originals. Not AI-generated.",
+            value:
+              "Sourced character references (Danganronpa Wiki/Fandom), reviewed for this private non-commercial album; card design and finishes are Foilbury originals. Not AI-generated.",
             inline: false,
           },
         ],
@@ -928,10 +1356,15 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
       stage: 3,
       embed: {
         title: "Free play · the pack this run used",
-        description: "The demonstration collector used a bounded, audited demo grant, not Dean's Foil or a real player's wallet. Each opening below cost the ordinary price from the collection capsule; the odds are the real per-variant odds returned by the deployed preview.",
+        description:
+          "The demonstration collector used a bounded, audited demo grant, not Dean's Foil or a real player's wallet. Each opening below cost the ordinary price from the collection capsule; the odds are the real per-variant odds returned by the deployed preview.",
         color: 0x7c6b4f,
         fields: [
-          { name: "Capsule", value: `${preview?.pool?.name ?? "Danganronpa capsule"} · ${preview?.price ?? 80} Foil`, inline: true },
+          {
+            name: "Capsule",
+            value: `${preview?.pool?.name ?? "Danganronpa capsule"} · ${preview?.price ?? 80} Foil`,
+            inline: true,
+          },
           { name: "Eligible variants", value: String(preview?.eligible_count ?? 32), inline: true },
           {
             name: "Finish odds",
@@ -941,11 +1374,21 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
                 const key = finishLabel({ material: entry.material_key, effect: entry.effect_key });
                 odds.set(key, (odds.get(key) ?? 0) + entry.probability_bps);
               }
-              return [...odds.entries()].sort((a, b) => b[1] - a[1]).map(([key, bps]) => `${key} ${(bps / 100).toFixed(2)}%`).join(" · ") || "Read from the live capsule preview";
+              return (
+                [...odds.entries()]
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([key, bps]) => `${key} ${(bps / 100).toFixed(2)}%`)
+                  .join(" · ") || "Read from the live capsule preview"
+              );
             })(),
             inline: false,
           },
-          { name: "No automatic draw", value: "The next stage is a real opening that was committed before this message was posted. Viewing this stage never spends Foil.", inline: false },
+          {
+            name: "No automatic draw",
+            value:
+              "The next stage is a real opening that was committed before this message was posted. Viewing this stage never spends Foil.",
+            inline: false,
+          },
         ],
         footer: { text: `Foilbury · ${RUN_ID} · stage 3` },
         ...(banner ? { image: { url: "attachment://collection-banner.png" } } : {}),
@@ -957,34 +1400,65 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
       stage: 4,
       embed: {
         title: `A real opening · ${featured?.card_name ?? "awarded card"} — ${featured ? finishLabel({ material: featured.material_key, effect: featured.effect_key }) : ""}`,
-        description: "This copy was awarded by the shared draw service, not a grant or a mock. The serial, draw ID and one debit are recorded in D1; a retry returns the same receipt and cannot re-roll.",
+        description:
+          "This copy was awarded by the shared draw service, not a grant or a mock. The serial, draw ID and one debit are recorded in D1; a retry returns the same receipt and cannot re-roll.",
         color: 0xd97757,
         fields: [
           { name: "Serial", value: `\`${featured?.serial ?? "—"}\``, inline: true },
           { name: "Draw", value: `\`${featured?.draw_id ?? "—"}\``, inline: true },
-          { name: "Finish", value: featured ? finishLabel({ material: featured.material_key, effect: featured.effect_key }) : "—", inline: true },
-          { name: "Pool", value: `${featured?.pool_name ?? "Danganronpa capsule"} · ${featured?.price ?? 80} Foil`, inline: true },
-          { name: "Odds for this copy", value: `${((featured?.probability_bps ?? 0) / 100).toFixed(2)}%`, inline: true },
-          { name: "New subject", value: featured?.new_subject ? "Yes" : "No — duplicate", inline: true },
-          { name: "Recorded", value: dualTime(featured?.drawn_at ?? new Date().toISOString()), inline: false },
+          {
+            name: "Finish",
+            value: featured
+              ? finishLabel({ material: featured.material_key, effect: featured.effect_key })
+              : "—",
+            inline: true,
+          },
+          {
+            name: "Pool",
+            value: `${featured?.pool_name ?? "Danganronpa capsule"} · ${featured?.price ?? 80} Foil`,
+            inline: true,
+          },
+          {
+            name: "Odds for this copy",
+            value: `${((featured?.probability_bps ?? 0) / 100).toFixed(2)}%`,
+            inline: true,
+          },
+          {
+            name: "New subject",
+            value: featured?.new_subject ? "Yes" : "No — duplicate",
+            inline: true,
+          },
+          {
+            name: "Recorded",
+            value: dualTime(featured?.drawn_at ?? new Date().toISOString()),
+            inline: false,
+          },
         ],
         footer: { text: `Foilbury · ${RUN_ID} · stage 4` },
         image: { url: "attachment://featured-card.png" },
       },
       files: featuredFront ? [{ name: "featured-card.png", path: featuredFront }] : [],
-      rows: [[web("Open this card in 3D", `/play/card/${featured?.instance_id ?? ""}`), ...nextLink(5)]],
+      rows: [
+        [web("Open this card in 3D", `/play/card/${featured?.instance_id ?? ""}`), ...nextLink(5)],
+      ],
     },
     {
       stage: 5,
       embed: {
         title: "Inspection · saved front and back",
-        description: "The saved front and back renders for the awarded copy. Discord shows the saved renders and readable details; the web album opens the signed-in 3D inspector — this is not native Discord 3D.",
+        description:
+          "The saved front and back renders for the awarded copy. Discord shows the saved renders and readable details; the web album opens the signed-in 3D inspector — this is not native Discord 3D.",
         color: 0x3b82f6,
         fields: [
           { name: "Card", value: featured?.card_name ?? "—", inline: true },
           { name: "Collection", value: collection.name, inline: true },
           { name: "Serial", value: `\`${featured?.serial ?? "—"}\``, inline: true },
-          { name: "Artwork origin", value: "Sourced character reference; card design and finishes are Foilbury originals. Not AI-generated.", inline: false },
+          {
+            name: "Artwork origin",
+            value:
+              "Sourced character reference; card design and finishes are Foilbury originals. Not AI-generated.",
+            inline: false,
+          },
         ],
         footer: { text: `Foilbury · ${RUN_ID} · stage 5` },
         image: { url: "attachment://front-back.png" },
@@ -1001,7 +1475,8 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
       stage: 6,
       embed: {
         title: `Supported finishes · ${featuredCard?.name ?? "catalogue comparison"}`,
-        description: "Plain, Silver, Gold and Holographic are real catalogue finishes. These are published examples for this subject; the demonstration collector owns one of these four, and this comparison does not imply ownership of the others.",
+        description:
+          "Plain, Silver, Gold and Holographic are real catalogue finishes. These are published examples for this subject; the demonstration collector owns one of these four, and this comparison does not imply ownership of the others.",
         color: 0xa855f7,
         fields: finishVariants.map((variant) => ({
           name: variant.label,
@@ -1021,10 +1496,18 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
         description: `Before this run the demonstration collector owned ${uniqueBefore}/${cardFiles.length} unique subjects. After ${state.draws.length} real openings it owns ${uniqueAfter}/${cardFiles.length}, with ${duplicates} duplicate ${duplicates === 1 ? "copy" : "copies"}. The completion target is the frozen release ${collection.release_version} roster, not a moving count.`,
         color: uniqueAfter === cardFiles.length ? 0x3f9d5a : 0x7c6b4f,
         fields: [
-          { name: "Unique subjects", value: `${uniqueBefore}/${cardFiles.length} → ${uniqueAfter}/${cardFiles.length}`, inline: true },
+          {
+            name: "Unique subjects",
+            value: `${uniqueBefore}/${cardFiles.length} → ${uniqueAfter}/${cardFiles.length}`,
+            inline: true,
+          },
           { name: "Owned copies", value: String(state.draws.length), inline: true },
           { name: "Duplicates", value: String(duplicates), inline: true },
-          { name: "Completion target", value: `Frozen release ${collection.release_version} · ${cardFiles.length} subjects`, inline: false },
+          {
+            name: "Completion target",
+            value: `Frozen release ${collection.release_version} · ${cardFiles.length} subjects`,
+            inline: false,
+          },
         ],
         footer: { text: `Foilbury · ${RUN_ID} · stage 7` },
         image: { url: "attachment://progress-after.png" },
@@ -1051,11 +1534,33 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
         color: 0x3f9d5a,
         fields: [
           { name: "Achievement", value: achievement?.name ?? "Three schools", inline: true },
-          { name: "Target", value: `${cardFiles.length}/${cardFiles.length} subjects`, inline: true },
-          { name: "Reward", value: achievement?.reward?.amount ? `+${achievement.reward.amount} Foil · credited once` : achievement?.reward_amount ? `+${achievement.reward_amount} Foil · credited once` : "Recorded in the reward ledger", inline: true },
+          {
+            name: "Target",
+            value: `${cardFiles.length}/${cardFiles.length} subjects`,
+            inline: true,
+          },
+          {
+            name: "Reward",
+            value: achievement?.reward?.amount
+              ? `+${achievement.reward.amount} Foil · credited once`
+              : achievement?.reward_amount
+                ? `+${achievement.reward_amount} Foil · credited once`
+                : "Recorded in the reward ledger",
+            inline: true,
+          },
           { name: "Final draw", value: `\`${completing?.draw_id ?? "—"}\``, inline: false },
-          { name: "Final card", value: `${completing?.card_name ?? "—"} — ${completing ? finishLabel({ material: completing.material_key, effect: completing.effect_key }) : ""} · \`${completing?.serial ?? "—"}\``, inline: false },
-          { name: "Earned", value: achievement?.earned_at ? dualTime(achievement.earned_at) : "Correlated from the committed draw", inline: false },
+          {
+            name: "Final card",
+            value: `${completing?.card_name ?? "—"} — ${completing ? finishLabel({ material: completing.material_key, effect: completing.effect_key }) : ""} · \`${completing?.serial ?? "—"}\``,
+            inline: false,
+          },
+          {
+            name: "Earned",
+            value: achievement?.earned_at
+              ? dualTime(achievement.earned_at)
+              : "Correlated from the committed draw",
+            inline: false,
+          },
         ],
         footer: { text: `Foilbury · ${RUN_ID} · stage 8` },
         image: { url: "attachment://completion.png" },
@@ -1074,8 +1579,16 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
         fields: mission
           ? [
               { name: "Mission", value: mission.title, inline: true },
-              { name: "First claim", value: `+${mission.first.amount} Foil · \`${mission.first.claim_id}\``, inline: false },
-              { name: "Replay", value: `\`${mission.replay.claim_id}\` · replayed ${mission.replay.replayed ? "yes" : "no"} · no additional credit`, inline: false },
+              {
+                name: "First claim",
+                value: `+${mission.first.amount} Foil · \`${mission.first.claim_id}\``,
+                inline: false,
+              },
+              {
+                name: "Replay",
+                value: `\`${mission.replay.claim_id}\` · replayed ${mission.replay.replayed ? "yes" : "no"} · no additional credit`,
+                inline: false,
+              },
             ]
           : [{ name: "Claim", value: "No claimable mission at publication time.", inline: false }],
         footer: { text: `Foilbury · ${RUN_ID} · stage 9` },
@@ -1087,13 +1600,22 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
       stage: 10,
       embed: {
         title: "Profile and achievements · member-safe summary",
-        description: "Counts are scoped to this server's configured collection. No wallet total, email, session or administrator control is shown. No NPC collector is configured in this Bot, so no synthetic spectator is presented.",
+        description:
+          "Counts are scoped to this server's configured collection. No wallet total, email, session or administrator control is shown. No NPC collector is configured in this Bot, so no synthetic spectator is presented.",
         color: 0x7c6b4f,
         fields: [
           { name: "Owned copies", value: String(state.draws.length), inline: true },
           { name: "Unique subjects", value: `${uniqueAfter}/${cardFiles.length}`, inline: true },
-          { name: "Completion milestone", value: achievement ? achievement.name : "Not evaluated", inline: true },
-          { name: "Scope", value: `${collection.name} · members audience · AI artwork ${state.ai_art_enabled ? "included" : "excluded"}`, inline: false },
+          {
+            name: "Completion milestone",
+            value: achievement ? achievement.name : "Not evaluated",
+            inline: true,
+          },
+          {
+            name: "Scope",
+            value: `${collection.name} · members audience · AI artwork ${state.ai_art_enabled ? "included" : "excluded"}`,
+            inline: false,
+          },
         ],
         footer: { text: `Foilbury · ${RUN_ID} · stage 10` },
         ...(banner ? { image: { url: "attachment://collection-banner.png" } } : {}),
@@ -1111,7 +1633,11 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
           { name: "Album", value: collection.name, inline: true },
           { name: "Progress", value: `${uniqueAfter}/${cardFiles.length}`, inline: true },
           { name: "Audience", value: "Members · verified channel", inline: true },
-          { name: "Share receipt", value: `Recorded against this message after delivery.`, inline: false },
+          {
+            name: "Share receipt",
+            value: `Recorded against this message after delivery.`,
+            inline: false,
+          },
         ],
         footer: { text: `Foilbury · ${RUN_ID} · stage 11` },
         image: { url: "attachment://completion.png" },
@@ -1123,7 +1649,8 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
       stage: 12,
       embed: {
         title: "Demonstration index · what ran",
-        description: "This is the end of the retained sequence. Every stage above is an ordinary bot message with a stable ID; reloading the channel preserves the order. The start link is in the first message and repeated below.",
+        description:
+          "This is the end of the retained sequence. Every stage above is an ordinary bot message with a stable ID; reloading the channel preserves the order. The start link is in the first message and repeated below.",
         color: 0xc9a227,
         fields: [
           {
@@ -1156,12 +1683,14 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
           },
           {
             name: "Unperformed",
-            value: "Independent second-account spectator observation and a real mobile client review remain open; this sequence does not claim them. The desktop channel read-back is the delivery proof.",
+            value:
+              "Independent second-account spectator observation and a real mobile client review remain open; this sequence does not claim them. The desktop channel read-back is the delivery proof.",
             inline: false,
           },
           {
             name: "Rollback",
-            value: "Worker rollback target and D1 backup are recorded in the release receipt; the demonstration messages are retained and are not deleted by rollback.",
+            value:
+              "Worker rollback target and D1 backup are recorded in the release receipt; the demonstration messages are retained and are not deleted by rollback.",
             inline: false,
           },
         ],
@@ -1171,11 +1700,215 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
       rows: [
         [
           state.stages[1]?.message_id
-            ? { type: 2, style: 5, label: "Back to the introduction", url: messageLink(state.stages[1].message_id) }
+            ? {
+                type: 2,
+                style: 5,
+                label: "Back to the introduction",
+                url: messageLink(state.stages[1].message_id),
+              }
             : web("Open the web album", "/play/collections"),
           web("Open the cabinet", "/play"),
         ],
       ],
+    },
+    {
+      stage: 13,
+      embed: {
+        title: "Missions · the real board, a real opening and a replayed claim",
+        description: missionBoard
+          ? `The daily board is the same one the player sees at /play/missions. A world visit, a front/back inspection and one ordinary capsule opening were completed through the player controls; each claim was then read back from the persisted board.`
+          : "The mission board was not read in this run; the stage records that honestly rather than inventing progress.",
+        color: 0x245c4b,
+        fields: missionBoard
+          ? [
+              {
+                name: "Today's board",
+                value: `${missionBoard.claimed_count}/${missionBoard.items.length} claimed · ${missionBoard.currency_symbol} ${missionBoard.earned_today} / ${missionBoard.cap} earned`,
+                inline: true,
+              },
+              {
+                name: "Ready to claim",
+                value: String(missionBoard.ready_count),
+                inline: true,
+              },
+              ...(missionDraw?.card_name
+                ? [
+                    {
+                      name: "Today's opening",
+                      value: `${missionDraw.card_name} — ${finishLabel({ material: missionDraw.material_key, effect: missionDraw.effect_key })} · \`${missionDraw.serial}\`\n−${missionDraw.price} Foil · pool revision ${missionDraw.pool_revision}`,
+                      inline: false,
+                    },
+                  ]
+                : []),
+              ...(missionReplay
+                ? [
+                    {
+                      name: "Claim replay",
+                      value: missionReplay.error
+                        ? `Replay could not be read: ${missionReplay.error}`
+                        : `\`${missionReplay.claim_id}\` · ${missionReplay.title} · replayed ${missionReplay.replayed ? "yes" : "no"} · earned ${missionReplay.earned_before} → ${missionReplay.earned_after} ${missionBoard.currency_symbol}`,
+                      inline: false,
+                    },
+                  ]
+                : []),
+              {
+                name: "Reset",
+                value: missionBoard.reset_local,
+                inline: false,
+              },
+            ]
+          : [{ name: "Board", value: "No persisted mission board was read.", inline: false }],
+        footer: { text: `Foilbury · ${RUN_ID} · stage 13` },
+        ...(imageFor(13).image ?? {}),
+      },
+      files: imageFor(13).files ?? [],
+      rows: [[web("Open missions", "/play/missions"), ...chapterIndexLink()]],
+    },
+    {
+      stage: 14,
+      embed: {
+        title: "Achievements · earned, in progress and still locked",
+        description: achievementBoard
+          ? "These are the real achievement states and reward receipts for the demonstration collector. Earned badges are permanent; a re-evaluation retries fulfilment without writing a second reward."
+          : "The achievement cabinet was not read in this run; no state is claimed here.",
+        color: 0x7c6b4f,
+        fields: achievementBoard
+          ? [
+              {
+                name: "Earned",
+                value:
+                  achievementBoard.earned
+                    .slice(0, 4)
+                    .map(
+                      (item) =>
+                        `${item.name}${item.reward_amount ? ` · +${item.reward_amount} Foil` : ""}`,
+                    )
+                    .join("\n") || "No earned badges.",
+                inline: false,
+              },
+              {
+                name: "In progress",
+                value:
+                  achievementBoard.in_progress
+                    .slice(0, 3)
+                    .map((item) => `${item.name} · ${item.progress}/${item.target}`)
+                    .join("\n") || "No in-progress achievements.",
+                inline: false,
+              },
+              {
+                name: "Still locked",
+                value: `${achievementBoard.locked_count} not yet earned · ${achievementBoard.total} visible definitions`,
+                inline: true,
+              },
+              {
+                name: "Re-evaluation",
+                value: achievementBoard.evaluation.error
+                  ? `Evaluation could not run: ${achievementBoard.evaluation.error}`
+                  : `Unlocks ${achievementBoard.evaluation.unlocks_before} → ${achievementBoard.evaluation.unlocks_after} · achievement Foil ${achievementBoard.evaluation.reward_foil_before} → ${achievementBoard.evaluation.reward_foil_after} · no duplicate award written.`,
+                inline: false,
+              },
+            ]
+          : [{ name: "Cabinet", value: "No persisted achievement state was read.", inline: false }],
+        footer: { text: `Foilbury · ${RUN_ID} · stage 14` },
+        ...(imageFor(14).image ?? {}),
+      },
+      files: imageFor(14).files ?? [],
+      rows: [[web("Open achievements", "/play/achievements"), ...chapterIndexLink()]],
+    },
+    {
+      stage: 15,
+      embed: {
+        title: "Collector identity · chosen look, exact featured copy and earned badges",
+        description:
+          "The collector composition is saved independently of the cards: portrait, banner, frame, avatar decoration, name treatment, effect, exact featured copy, shelf order and badge order. The composition below is the same one returned by the profile and by the recipient share.",
+        color: 0x3b82f6,
+        fields: profile
+          ? [
+              {
+                name: "Look",
+                value: `${profileLookLabel(profile.look)} · saved composition version ${profile.version}`,
+                inline: true,
+              },
+              {
+                name: "Composition",
+                value: profileSelection
+                  ? `${PROFILE_FRAME_LABELS[profileSelection.frame] ?? profileSelection.frame} frame · ${PROFILE_AVATAR_LABELS[profileSelection.avatarDecoration] ?? profileSelection.avatarDecoration} · ${PROFILE_NAME_LABELS[profileSelection.nameTreatment] ?? profileSelection.nameTreatment} · ${PROFILE_EFFECT_LABELS[profileSelection.effect] ?? profileSelection.effect}`
+                  : "Saved selection not read.",
+                inline: false,
+              },
+              {
+                name: "Portrait and banner",
+                value: profilePresentation
+                  ? `${profilePresentation.portrait?.label ?? "Monogram"} · ${profilePresentation.banner?.label ?? "No banner"}`
+                  : "Saved artwork not read.",
+                inline: false,
+              },
+              {
+                name: "Featured copy",
+                value: profilePresentation?.featured
+                  ? `${profilePresentation.featured.card_name} · ${profilePresentation.featured.variant_name}`
+                  : "No featured copy.",
+                inline: false,
+              },
+              {
+                name: "Shelf and badges",
+                value: profilePresentation
+                  ? `${(profilePresentation.favourites ?? []).map((item) => item.card_name).join(" · ") || "No shelf"} · ${(profilePresentation.badges ?? []).map((item) => item.name).join(" · ") || "No badges"}`
+                  : "No shelf or badges.",
+                inline: false,
+              },
+              {
+                name: "Return check",
+                value:
+                  "The saved profile and the recipient share resolve the same look, featured copy, shelf and badge order. Changing the look does not change ownership or past awards.",
+                inline: false,
+              },
+            ]
+          : [{ name: "Profile", value: "No saved composition was read.", inline: false }],
+        footer: { text: `Foilbury · ${RUN_ID} · stage 15` },
+        ...(imageFor(15).image ?? {}),
+      },
+      files: imageFor(15).files ?? [],
+      rows: [[web("Open my profile", "/play/profile"), ...chapterIndexLink()]],
+    },
+    {
+      stage: 16,
+      embed: {
+        title: "Deliberate share · the real collector-profile share service",
+        description:
+          "The demonstration collector used the normal Share profile control. The shared service created an audited, member-audience snapshot and the recipient view is shown below. This is not a direct database insert and does not transfer ownership.",
+        color: 0x3f9d5a,
+        fields: profileShare
+          ? [
+              {
+                name: "Share",
+                value: `${profileSharePreview?.label ?? "Collector profile"} · ${profileShare.audience ?? "member"} audience · ${profileShare.status}`,
+                inline: true,
+              },
+              {
+                name: "Created and expiry",
+                value: `${dualTime(profileShare.created_at)} · expires ${String(profileShare.expires_at).slice(0, 10)}`,
+                inline: false,
+              },
+              {
+                name: "Control",
+                value:
+                  "Share profile on /play/profile. The share service wrote the link and audit record; the script did not insert a Discord share receipt or compose a substitute profile.",
+                inline: false,
+              },
+              {
+                name: "Privacy",
+                value:
+                  "The snapshot omits wallet balance, email, account ID, private ledger and card serials. The private recipient link stays in the run state and is not republished in this channel.",
+                inline: false,
+              },
+            ]
+          : [{ name: "Share", value: "No profile share was created in this run.", inline: false }],
+        footer: { text: `Foilbury · ${RUN_ID} · stage 16` },
+        ...(imageFor(16).image ?? {}),
+      },
+      files: imageFor(16).files ?? [],
+      rows: [[web("Open the profile page", "/play/profile"), ...chapterIndexLink()]],
     },
   ];
 
@@ -1237,9 +1970,126 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
     console.log(`Stage ${stage.stage} → ${messageLink(message.id)}`);
   }
 
-  if (state.stages[1]?.message_id && state.stages[12]?.message_id) {
+  // The new chapters are retained ordinary messages. The final index is posted
+  // after them so every link is stable, then the earlier chapter index and the
+  // introduction are refreshed to point at the completed sequence.
+  const indexFields = () => [
+    {
+      name: "Stage index · 1–6",
+      value: Array.from({ length: 6 }, (_, index) => {
+        const stage = index + 1;
+        const link = stageLinks(stage);
+        return link ? `[${stage}](${link})` : `${stage}`;
+      }).join(" · "),
+      inline: false,
+    },
+    {
+      name: "Stage index · 7–12",
+      value: Array.from({ length: 6 }, (_, index) => {
+        const stage = index + 7;
+        const link = stageLinks(stage);
+        return link ? `[${stage}](${link})` : `${stage}`;
+      }).join(" · "),
+      inline: false,
+    },
+    {
+      name: "Stage index · 13–17",
+      value: Array.from({ length: 5 }, (_, index) => {
+        const stage = index + 13;
+        const link = stageLinks(stage);
+        return link ? `[${stage}](${link})` : `${stage}`;
+      }).join(" · "),
+      inline: false,
+    },
+    {
+      name: "Source events",
+      value: `${state.draws.length} original-run openings · ${uniqueAfter} unique subjects · ${duplicates} duplicates · ${missionBoard ? `${missionBoard.claimed_count}/${missionBoard.items.length} daily missions claimed` : "mission board not read"} · ${achievement?.name ?? "completion milestone"} with one reward · one deliberate profile share`,
+      inline: false,
+    },
+    {
+      name: "Identity",
+      value: `Build \`${(state.build.source_sha ?? "").slice(0, 12)}\` · Worker \`${(state.worker_version ?? "").slice(0, 12)}\` · scope \`${(state.scope_digest ?? "").slice(0, 16)}\` · schema 0029`,
+      inline: false,
+    },
+    {
+      name: "Unperformed",
+      value:
+        "Independent second-account spectator observation and a real mobile client review remain open; this sequence does not claim them. NPC cast and trading stages are delivered under #9 and are not claimed here until those stages are posted.",
+      inline: false,
+    },
+    {
+      name: "Rollback",
+      value: `Pre-change D1 backup \`${state.backup}\` with SHA-256 recorded beside it. Worker rollback is recorded in the release receipt; retained messages, owned cards, serials and ledger rows are not deleted by rollback.`,
+      inline: false,
+    },
+  ];
+  const finalStage = {
+    stage: FINAL_STAGE,
+    embed: {
+      title: "Conclusion and full chapter index",
+      description:
+        "This is the end of the retained sequence. Every chapter is an ordinary bot message with a stable ID; reloading the channel preserves the order. The introduction links here and this index links to every chapter.",
+      color: 0xc9a227,
+      fields: indexFields(),
+      footer: { text: `Foilbury · ${RUN_ID} · stage ${FINAL_STAGE}` },
+    },
+    files: [],
+    rows: [
+      [
+        state.stages[1]?.message_id
+          ? {
+              type: 2,
+              style: 5,
+              label: "Back to the introduction",
+              url: messageLink(state.stages[1].message_id),
+            }
+          : web("Open the web album", "/play/collections"),
+        web("Open the cabinet", "/play"),
+      ],
+    ],
+  };
+  const finalPayload = {
+    embeds: [finalStage.embed],
+    components: finalStage.rows.map((row) => ({ type: 1, components: row })),
+    allowed_mentions: { parse: [] },
+    nonce: sha(`${RUN_ID}:${FINAL_STAGE}`).slice(0, 25),
+    enforce_nonce: true,
+  };
+  assertDiscordPayload(finalPayload);
+  if (dryRun) {
+    console.log(`Stage ${FINAL_STAGE} validated: ${finalStage.embed.title}`);
+  } else {
+    const existingFinal = state.stages[FINAL_STAGE]?.message_id;
+    let finalMessage = null;
+    if (existingFinal) {
+      try {
+        finalMessage = await discord("GET", `/channels/${CHANNEL_ID}/messages/${existingFinal}`);
+      } catch (error) {
+        if (error.status !== 404) throw error;
+        delete state.stages[FINAL_STAGE];
+        saveState(state);
+      }
+    }
+    if (!finalMessage) {
+      finalMessage = await discord("POST", `/channels/${CHANNEL_ID}/messages`, finalPayload);
+    } else if (refreshStages.has(FINAL_STAGE)) {
+      finalMessage = await discord("PATCH", `/channels/${CHANNEL_ID}/messages/${existingFinal}`, {
+        ...finalPayload,
+        attachments: [],
+      });
+    }
+    state.stages[FINAL_STAGE] = {
+      message_id: finalMessage.id,
+      posted_at: finalMessage.timestamp,
+      title: finalStage.embed.title,
+    };
+    saveState(state);
+    console.log(`Stage ${FINAL_STAGE} → ${messageLink(finalMessage.id)}`);
+  }
+
+  if (state.stages[1]?.message_id && state.stages[FINAL_STAGE]?.message_id) {
     const intro = messageLink(state.stages[1].message_id);
-    const conclusion = messageLink(state.stages[12].message_id);
+    const conclusion = messageLink(state.stages[FINAL_STAGE].message_id);
     if (state.stages[11]?.message_id) {
       d1Write(
         `INSERT OR IGNORE INTO fb_discord_shares
@@ -1248,26 +2098,93 @@ async function publishStages({ state, collection, cardFiles, banner, rosterPath,
                  'demo_completion', ${quote(collection.id)}, ${quote(state.stages[11].message_id)}, ${quote(new Date().toISOString())});`,
       );
     }
-    const current = await discord("GET", `/channels/${CHANNEL_ID}/messages/${state.stages[1].message_id}`);
-    const embed = current.embeds?.[0];
-    if (embed && !JSON.stringify(embed).includes(conclusion)) {
-      const fields = (embed.fields ?? []).filter((field) => field.name !== "Conclusion");
-      fields.push({ name: "Conclusion", value: `[Jump to the index and results](${conclusion})`, inline: false });
-      await discord("PATCH", `/channels/${CHANNEL_ID}/messages/${state.stages[1].message_id}`, {
-        embeds: [{ ...embed, fields }],
+
+    const refreshIndex = async (stageNumber, title, description) => {
+      const existing = state.stages[stageNumber]?.message_id;
+      if (!existing) return;
+      const current = await discord("GET", `/channels/${CHANNEL_ID}/messages/${existing}`);
+      const embed = current.embeds?.[0];
+      if (!embed) return;
+      const fields = indexFields();
+      const nextEmbed = { ...embed, title, description, fields };
+      if (JSON.stringify(embed) === JSON.stringify(nextEmbed)) return;
+      if (dryRun) {
+        console.log(`Stage ${stageNumber} would be refreshed (dry run).`);
+        return;
+      }
+      const refreshed = await discord("PATCH", `/channels/${CHANNEL_ID}/messages/${existing}`, {
+        embeds: [nextEmbed],
       });
+      state.stages[stageNumber] = {
+        ...state.stages[stageNumber],
+        message_id: refreshed.id,
+        posted_at: refreshed.timestamp,
+        title,
+        refreshed_at: new Date().toISOString(),
+      };
+      saveState(state);
+      console.log(`Stage ${stageNumber} refreshed → ${messageLink(refreshed.id)}`);
+    };
+    await refreshIndex(
+      12,
+      `Chapter index · stages 1–${FINAL_STAGE}`,
+      "Every retained chapter is linked below. The introduction links to the final conclusion; the final conclusion links back to this chapter index.",
+    );
+
+    const currentIntro = await discord(
+      "GET",
+      `/channels/${CHANNEL_ID}/messages/${state.stages[1].message_id}`,
+    );
+    const introEmbed = currentIntro.embeds?.[0];
+    if (introEmbed) {
+      const fields = (introEmbed.fields ?? []).filter(
+        (field) => field.name !== "Conclusion" && field.name !== "Extension",
+      );
+      fields.push({
+        name: "Extension",
+        value:
+          "Collector identity, missions and achievements chapters were added on 2026/11/08. The original opening, completion and reward receipts above are unchanged.",
+        inline: false,
+      });
+      fields.push({
+        name: "Conclusion",
+        value: `[Jump to the index and results](${conclusion})`,
+        inline: false,
+      });
+      const nextEmbed = { ...introEmbed, fields };
+      if (JSON.stringify(introEmbed) !== JSON.stringify(nextEmbed)) {
+        if (dryRun) {
+          console.log("Stage 1 would be refreshed (dry run).");
+        } else {
+          await discord("PATCH", `/channels/${CHANNEL_ID}/messages/${state.stages[1].message_id}`, {
+            embeds: [nextEmbed],
+          });
+          console.log("Stage 1 refreshed with the extension and conclusion links.");
+        }
+      }
     }
-    state.conclusion_message_id = state.stages[12].message_id;
+    state.conclusion_message_id = state.stages[FINAL_STAGE].message_id;
     state.status = "completed";
     saveState(state);
     d1Write(
-      `UPDATE fb_discord_demo_runs SET status = 'completed', stages_json = ${quote(JSON.stringify(state.stages))}, updated_at = ${quote(new Date().toISOString())} WHERE id = ${quote(RUN_ID)};`,
+      `UPDATE fb_discord_demo_runs SET status = 'completed', stages_json = ${quote(JSON.stringify(state.stages))}, source_sha = ${quote(state.build.source_sha ?? "")}, worker_version = ${quote(state.worker_version ?? "")}, updated_at = ${quote(new Date().toISOString())} WHERE id = ${quote(RUN_ID)};`,
     );
-    console.log(JSON.stringify({
-      start: intro,
-      conclusion,
-      stages: Object.fromEntries(Object.entries(state.stages).map(([stage, value]) => [stage, messageLink(value.message_id)])),
-    }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          start: intro,
+          conclusion,
+          stages: Object.fromEntries(
+            Object.entries(state.stages).map(([stage, value]) => [
+              stage,
+              messageLink(value.message_id),
+            ]),
+          ),
+        },
+        null,
+        2,
+      ),
+    );
   }
 }
 

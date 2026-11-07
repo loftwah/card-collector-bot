@@ -81,6 +81,33 @@ describe("draw transaction", () => {
     expect(await walletBalance(player, player.user!.id)).toBe(430);
   });
 
+  it("does not present earlier unlocks as new rewards on a later draw", async () => {
+    await bootstrap();
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    await fixturePool(player);
+    const preview = await getPoolPreview(player, "test-pool");
+    const first = await executeDraw(player, {
+      pool: "test-pool",
+      expectedRevision: preview.revision,
+      expectedDistribution: preview.distribution_fingerprint,
+      idempotency: { key: "draw-repeat-001", digest: "draw-repeat-a" },
+    });
+    expect(first.credits_total).toBe(160);
+    expect(first.achievements.map((item) => item.id)).toEqual(["ach_first_card"]);
+
+    const second = await executeDraw(player, {
+      pool: "test-pool",
+      expectedRevision: preview.revision,
+      expectedDistribution: preview.distribution_fingerprint,
+      idempotency: { key: "draw-repeat-002", digest: "draw-repeat-b" },
+    });
+    expect(second.credits_total).toBe(0);
+    expect(second.achievements).toEqual([]);
+    expect(second.balance_after_debit).toBe(350);
+    expect(second.balance_after).toBe(350);
+    expect(await walletBalance(player, player.user!.id)).toBe(350);
+  });
+
   it("rejects a changed payload under the same operation key without charging", async () => {
     await bootstrap();
     const player = await ctxFor("cabinet", "player@foilbury.local");
