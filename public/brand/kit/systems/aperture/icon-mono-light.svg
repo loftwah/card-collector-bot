@@ -1,6 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Foilbury Aperture app icon"><g transform="translate(57.599999999999994 57.599999999999994) scale(1.55)">
-    <circle cx="128" cy="128" r="92" fill="none" stroke="#eff5f1" stroke-width="18"/>
-    <path d="M128 36a92 92 0 0 1 78 49l-78 43z" fill="#eff5f1"/>
-    <path d="M206 174a92 92 0 0 1-78 46v-95z" fill="#eff5f1"/>
-    <path d="M50 174a92 92 0 0 1 0-92l78 46z" fill="#eff5f1"/>
-    <circle cx="128" cy="128" r="24" fill="#eff5f1" stroke="#eff5f1" stroke-width="8"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" aria-label="Foilbury Aperture app icon" role="img" viewBox="0 0 512 512"><g transform="translate(57.599999999999994 57.599999999999994) scale(1.55)"><circle cx="128" cy="128" r="92" fill="none" stroke="#eff5f1" stroke-width="18"/><path fill="#eff5f1" d="M128 36a92 92 0 0 1 78 49l-78 43z"/><path fill="#eff5f1" d="M206 174a92 92 0 0 1-78 46v-95z"/><path fill="#eff5f1" d="M50 174a92 92 0 0 1 0-92l78 46z"/><circle cx="128" cy="128" r="24" fill="#eff5f1" stroke="#eff5f1" stroke-width="8"/></g></svg>
