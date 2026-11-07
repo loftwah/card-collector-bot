@@ -595,7 +595,7 @@ try {
   await visit(memberPage, {
     name: "Achievements",
     route: "/play/achievements",
-    waitFor: "text=Little proofs of time well spent.",
+    waitFor: "text=Earned badges",
     caption:
       "Earned badges and next milestones. Achievement progress is separate from the catalogue and survives later collection growth.",
     bullets: [
@@ -607,7 +607,7 @@ try {
   await visit(memberPage, {
     name: "Gift receipts",
     route: "/play/gifts",
-    waitFor: "text=A note in the post.",
+    waitFor: "text=Gift receipts",
     caption:
       "The member gift inbox: what arrived, who sent it, the value and when it was delivered.",
     bullets: [
@@ -619,7 +619,7 @@ try {
   await visit(memberPage, {
     name: "Preferences",
     route: "/play/preferences",
-    waitFor: "text=Make the cabinet yours.",
+    waitFor: "text=Collections in your capsules",
     caption:
       "Member preferences for reduced motion, sharing and presentation without changing ownership or odds.",
     bullets: [

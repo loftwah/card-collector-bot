@@ -38,6 +38,8 @@ export interface AchievementView extends AchievementDefinition {
   notification_state: string | null;
   unlock_id?: string | null;
   collection_logo_url?: string | null;
+  collection_name?: string | null;
+  collection_slug?: string | null;
   criteria: Record<string, unknown>;
   reward: Record<string, unknown>;
 }
@@ -561,13 +563,34 @@ export async function listAchievements(ctx: Ctx, userId?: string): Promise<Achie
     return Boolean(ctx.user);
   });
   const collectionIds = [...visibleCollections];
-  const logoRows = collectionIds.length
-    ? await all<{ id: string; logo_url: string | null }>(ctx.db, `SELECT id, logo_url FROM fb_collections WHERE id IN (${collectionIds.map(() => "?").join(",")})`, ...collectionIds)
+  const collectionRows = collectionIds.length
+    ? await all<{ id: string; logo_url: string | null; name: string; slug: string }>(
+        ctx.db,
+        `SELECT id, logo_url, name, slug FROM fb_collections WHERE id IN (${collectionIds.map(() => "?").join(",")})`,
+        ...collectionIds,
+      )
     : [];
-  const logos = new Map(logoRows.map((row) => [row.id, row.logo_url]));
-  const emblemFor = (definition: AchievementDefinition) => {
+  const collectionDetails = new Map(
+    collectionRows.map((row) => [
+      row.id,
+      { logo_url: row.logo_url, name: row.name, slug: row.slug },
+    ]),
+  );
+  const collectionIdFor = (definition: AchievementDefinition) => {
     const criteria = parseJson<Record<string, unknown>>(definition.criteria_json, {});
-    return typeof criteria.collection_id === "string" ? logos.get(criteria.collection_id) ?? null : null;
+    return typeof criteria.collection_id === "string" ? criteria.collection_id : "";
+  };
+  const emblemFor = (definition: AchievementDefinition) => {
+    const collectionId = collectionIdFor(definition);
+    return collectionId ? (collectionDetails.get(collectionId)?.logo_url ?? null) : null;
+  };
+  const sourceFor = (definition: AchievementDefinition) => {
+    const collectionId = collectionIdFor(definition);
+    return collectionId ? (collectionDetails.get(collectionId)?.name ?? null) : null;
+  };
+  const sourceSlugFor = (definition: AchievementDefinition) => {
+    const collectionId = collectionIdFor(definition);
+    return collectionId ? (collectionDetails.get(collectionId)?.slug ?? null) : null;
   };
   if (!targetUserId) {
     return visible.map((definition) => {
@@ -585,6 +608,8 @@ export async function listAchievements(ctx: Ctx, userId?: string): Promise<Achie
           null,
         ),
         collection_logo_url: emblemFor(definition),
+        collection_name: sourceFor(definition),
+        collection_slug: sourceSlugFor(definition),
       };
     });
   }
@@ -643,6 +668,8 @@ export async function listAchievements(ctx: Ctx, userId?: string): Promise<Achie
       ),
       unlock_id: unlock?.id ?? null,
       collection_logo_url: emblemFor(definition),
+      collection_name: sourceFor(definition),
+      collection_slug: sourceSlugFor(definition),
     };
   });
 }

@@ -130,10 +130,12 @@ progress, one primary opening action above the fold, and a saved profile look
 with a short collector note. The profile share snapshot carries the chosen look
 and note; it never carries the wallet, email, account ID or private ledger.
 
-The remaining member surfaces (missions, achievements, gifts, wishlist,
-preferences and account security), Studio, Platform and Discord still need the
-same screen-by-screen migration. The Stitch artwork is concept reference, not
-final collection art.
+The remaining member surfaces now use one page header and one panel vocabulary:
+missions, achievements, gifts, wishlist, preferences and account security.
+Account security sits inside the player shell, not behind the public header.
+Wishlist objects keep the 5:7 frame and their controls stay outside it. Studio,
+Platform and Discord still need the same screen-by-screen migration. The Stitch
+artwork is concept reference, not final collection art.
 
 ## Verification
 

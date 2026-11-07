@@ -1,0 +1,19 @@
+---
+interface Props {
+  title: string;
+  lede: string;
+}
+
+const { title, lede } = Astro.props;
+---
+
+<header class="member-head">
+  <div class="member-head__copy">
+    <h1 class="page-title">{title}</h1>
+    <p class="member-head__lede">{lede}</p>
+    <slot />
+  </div>
+  <div class="member-head__aside">
+    <slot name="aside" />
+  </div>
+</header>
