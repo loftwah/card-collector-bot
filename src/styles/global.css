@@ -4183,9 +4183,26 @@ html[data-motion="reduced"] .layered-card__effect {
   background: var(--panel);
 }
 
+.share-profile__hero::after {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  content: "";
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--panel) 92%, transparent) 0%,
+      color-mix(in srgb, var(--panel) 78%, transparent) 46%,
+      color-mix(in srgb, var(--panel) 18%, transparent) 78%,
+      transparent 100%
+    ),
+    linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--panel) 38%, transparent) 100%);
+}
+
 .share-profile__hero > :not(.profile-hero__banner) {
   position: relative;
-  z-index: 1;
+  z-index: 2;
 }
 
 .share-profile__name {

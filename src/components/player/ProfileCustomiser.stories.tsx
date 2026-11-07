@@ -10,6 +10,7 @@ const meta = {
   title: "Foilbury components/ProfileCustomiser",
   component: ProfileCustomiser,
   args: {
+    displayName: "Dean",
     initialLook: "quiet",
     initialBio: "Collecting quiet cards and loud covers.",
     looks: profileLooksFixture,

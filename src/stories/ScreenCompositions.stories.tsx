@@ -119,6 +119,7 @@ function ProfileComposition() {
           </div>
         </section>
         <ProfileCustomiser
+          displayName="Dean"
           initialLook="quiet"
           initialBio="Collecting quiet cards and loud covers."
           looks={profileLooksFixture}

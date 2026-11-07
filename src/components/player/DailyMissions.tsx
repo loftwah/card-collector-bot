@@ -56,9 +56,22 @@ export default function DailyMissions({ initial }: { initial: State }) {
   }
 
   const claimedCount = state.missions.filter((mission) => mission.claimed).length;
+  const readyCount = state.missions.filter((mission) => mission.claimable).length;
 
   return (
     <div className="grid gap-4">
+      <dl className="member-stats" aria-label="Mission summary">
+        <div className="member-stat">
+          <dt>Earned today</dt>
+          <dd>
+            {state.currency_symbol} {state.earned_today} <span>/ {state.cap}</span>
+          </dd>
+        </div>
+        <div className="member-stat">
+          <dt>Ready to claim</dt>
+          <dd>{readyCount}</dd>
+        </div>
+      </dl>
       {error ? <div className="error-box" role="alert">{error}</div> : null}
       {notice ? <div className="success-box" role="status">{notice}</div> : null}
 

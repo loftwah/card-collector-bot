@@ -64,12 +64,14 @@ function move<T>(items: T[], index: number, direction: -1 | 1): T[] {
 }
 
 function ProfilePreview({
+  displayName,
   draft,
   look,
   bio,
   options,
   mode,
 }: {
+  displayName: string;
   draft: ProfilePresentationSelection;
   look: string;
   bio: string;
@@ -86,7 +88,14 @@ function ProfilePreview({
   const favourites = selectedCopies(options, draft.favouriteInstanceIds).filter((copy) => copy.id !== featured?.id);
   const badges = selectedBadges(options, draft.badgeIds);
   const bannerUrl = banner?.bannerUrl ?? banner?.coverUrl ?? null;
-  const initials = "You";
+  const initials =
+    displayName
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "You";
 
   return (
     <div
@@ -111,7 +120,7 @@ function ProfilePreview({
             </span>
           )}
           <div className="min-w-0">
-            <p className="profile-preview__name">Your collector name</p>
+            <p className="profile-preview__name">{displayName}</p>
             <p className="profile-preview__meta">
               {look} · {featured ? "featured copy" : "no featured copy"}
             </p>
@@ -181,12 +190,14 @@ function ProfilePreview({
 }
 
 export default function ProfileCustomiser({
+  displayName,
   initialLook,
   initialBio,
   looks,
   presentation,
   options,
 }: {
+  displayName: string;
   initialLook: string;
   initialBio: string;
   looks: ProfileLookOption[];
@@ -690,7 +701,14 @@ export default function ProfileCustomiser({
               </button>
             </div>
           </div>
-          <ProfilePreview draft={draft} look={look} bio={bio} options={options} mode={previewMode} />
+          <ProfilePreview
+            displayName={displayName}
+            draft={draft}
+            look={look}
+            bio={bio}
+            options={options}
+            mode={previewMode}
+          />
           <p className="profile-customiser__hint">
             This preview uses your real name, saved artwork and owned copies. Nothing changes until you save.
           </p>
