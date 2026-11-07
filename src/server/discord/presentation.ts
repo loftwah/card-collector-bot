@@ -1899,9 +1899,13 @@ export function profileMessage(input: ProfileInput): DiscordCallback {
     .slice(0, 6);
   const fields: FieldInput[] = [];
   if (featured) {
+    const meta =
+      featured.finish && featured.finish !== featured.variant
+        ? `${featured.variant} · ${featured.finish}`
+        : featured.variant;
     fields.push({
       name: "Featured copy",
-      value: `**${featured.name}**\n${featured.variant} · ${featured.finish}`,
+      value: `**${featured.name}**\n${meta}`,
       inline: false,
     });
   }

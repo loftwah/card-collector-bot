@@ -55,6 +55,23 @@ describe("share privacy and lifecycle policy", () => {
     expect(cross.visible).toBe(false);
   });
 
+  it("omits the exact featured serial from a profile share snapshot", async () => {
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const fixture = await fixturePool(owner);
+    const instance = await makeInstance(owner, owner.user!.id, fixture, "FB-PRIVACY-PROFILE");
+    await runtime.DB.prepare("UPDATE fb_card_instances SET favourite = 1 WHERE id = ?")
+      .bind(instance)
+      .run();
+    await updatePreferences(owner, { sharingEnabled: true });
+    const profile = await createShareLink(owner, { kind: "profile", expiresInDays: 7 });
+    const member = await resolveShareView(player, profile.token);
+    expect(member.visible).toBe(true);
+    expect(JSON.stringify(member.payload)).not.toContain("FB-PRIVACY-PROFILE");
+    expect(JSON.stringify(member.payload)).not.toMatch(/"serial"/i);
+    expect(member.payload.presentation?.featured?.card_name).toBe("Test One");
+  });
+
   it("keeps a public snapshot safe while refusing private identifiers", async () => {
     const owner = await ctxFor("cabinet", "owner@foilbury.local");
     const fixture = await fixturePool(owner);

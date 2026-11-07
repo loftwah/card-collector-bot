@@ -15,6 +15,11 @@ const shareTitle = kind === "card" || kind === "latest" ? String(payload.card_na
 const pageTitle = active ? `${publicView ? shareTitle : "Member share"} · Foilbury` : "Share not found · Foilbury";
 const currentPublic = Boolean(collection && collection.view_audience === "public" && collection.public_approved_at);
 const finishLabel = String(payload.finish ?? "").replaceAll("diamond", "holographic");
+const cardMeta = (variant: string | undefined, finish: string | undefined) => {
+  const name = String(variant ?? "");
+  const material = String(finish ?? "");
+  return material && material !== name ? `${name} · ${material}` : name;
+};
 const publicHref = currentPublic && collection ? `/cabinet?collection=${collection.slug}` : collection ? `/play/collection?collection=${collection.slug}` : "/cabinet";
 const profileLook = ["quiet", "signal", "binder", "night"].includes(String(payload.profile_look ?? ""))
   ? String(payload.profile_look)
@@ -32,7 +37,6 @@ const sharePresentation =
           card_name?: string;
           variant_name?: string;
           finish?: string;
-          serial?: string;
           render_url?: string | null;
         } | null;
         favourites?: Array<{
@@ -172,10 +176,8 @@ const shareBadges = sharePresentation?.badges?.length
                   <span class="badge badge-signal">Featured exact copy</span>
                   <p class="share-profile__feature-name">{sharePresentation.featured.card_name}</p>
                   <p class="profile-card__meta">
-                    {sharePresentation.featured.variant_name}
-                    {sharePresentation.featured.finish ? ` · ${sharePresentation.featured.finish}` : ""}
+                    {cardMeta(sharePresentation.featured.variant_name, sharePresentation.featured.finish)}
                   </p>
-                  <p class="profile-card__serial">{sharePresentation.featured.serial}</p>
                 </div>
               </div>
             ) : null}
@@ -188,7 +190,7 @@ const shareBadges = sharePresentation?.badges?.length
                   </div>
                   <div class="profile-card__body">
                     <p class="profile-card__name">{card.card_name}</p>
-                    <p class="profile-card__meta">{card.variant_name}{card.finish ? ` · ${card.finish}` : ""}</p>
+                    <p class="profile-card__meta">{cardMeta(card.variant_name, card.finish)}</p>
                   </div>
                 </article>
               )) : <p class="text-sm text-[var(--muted)]">No pinned favourites in this snapshot.</p>}

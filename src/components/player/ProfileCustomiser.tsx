@@ -133,7 +133,9 @@ function ProfilePreview({
             <div className="profile-preview__copy">
               <p className="profile-preview__card-name">{featured.cardName}</p>
               <p className="profile-preview__card-meta">
-                {featured.variantName} · {featured.finish}
+                {featured.finish && featured.finish !== featured.variantName
+                  ? `${featured.variantName} · ${featured.finish}`
+                  : featured.variantName}
               </p>
               <p className="profile-preview__serial">{featured.serial}</p>
               <span className="badge badge-signal">Exact owned copy</span>
