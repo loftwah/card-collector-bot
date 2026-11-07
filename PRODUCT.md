@@ -65,7 +65,7 @@ Foilbury is a collectible-card cabinet. A player claims a free allowance, opens 
 - The production EmDash operator console is protected by Access and configured for the existing Dean account; a human authenticated editorial session is still required to exercise the native console.
 - A real second Discord guild installation and a second-person acceptance matrix require an authorised human participant. The channel visibility and spectator items remain BLOCKED in the preflight.
 - Production member card renders for the pre-existing 560 variants were generated with the previous composure; a bounded re-render/publication plan is prepared. Do not claim those old member renders are the new composure.
-- The Signal Fold identity is rejected. The player shell and home now follow the replacement direction; the remaining member, Studio, Platform and Discord surfaces still need to be migrated. The Loftwah guild icon was not changed and the server banner is blocked by the Boost entitlement. The bot profile banner remains a Developer Portal step.
+- The Signal Fold identity is rejected. The player shell, public surfaces and member surfaces now follow the replacement direction; Studio, Platform and Discord still need to be migrated. The Loftwah guild icon was not changed and the server banner is blocked by the Boost entitlement. The bot profile banner remains a Developer Portal step.
 - The multi-print proof has eight reviewed original-IP prints and a dedicated pool locally; production publication is the remaining release step. The wider collection-by-collection rollout is not complete.
 - Paid generation is now run for the reviewed original-IP print set only (fal.ai, about US$2.10). ElevenLabs and other billed providers remain intentionally unrun.
 

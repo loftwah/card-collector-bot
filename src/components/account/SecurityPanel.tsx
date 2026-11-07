@@ -22,6 +22,18 @@ function date(value: string | null) {
   return new Intl.DateTimeFormat("en-AU", { dateStyle: "medium", timeStyle: "short", timeZone: "Australia/Melbourne" }).format(new Date(value));
 }
 
+function authLabel(value: string) {
+  const labels: Record<string, string> = {
+    password: "Password",
+    magic_link: "Magic link",
+    passkey: "Passkey",
+    discord: "Discord",
+    access: "Cloudflare Access",
+    totp: "Authenticator",
+  };
+  return labels[value] ?? value.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
+}
+
 export default function SecurityPanel() {
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState("");
@@ -32,6 +44,7 @@ export default function SecurityPanel() {
   const [recovery, setRecovery] = useState<string[]>([]);
   const [newEmail, setNewEmail] = useState("");
   const [emailLink, setEmailLink] = useState("");
+  const [showAllSessions, setShowAllSessions] = useState(false);
 
   async function load() {
     try {
@@ -127,103 +140,242 @@ export default function SecurityPanel() {
     } catch (cause) { setError(describeError(cause)); } finally { setBusy(""); }
   }
 
-  if (!data) return <div className="surface-flat skeleton h-64" />;
+  if (!data) return <div className="member-panel skeleton h-64" role="status" aria-label="Loading account security" />;
+
+  const strong = data.assurance === "passkey" || data.assurance === "access" || data.assurance === "mfa";
+  const sessions = [...data.sessions].sort((a, b) => {
+    if (a.current !== b.current) return b.current - a.current;
+    return (b.last_seen_at ?? "").localeCompare(a.last_seen_at ?? "");
+  });
+  const visibleSessions = showAllSessions ? sessions : sessions.slice(0, 8);
+  const adminLinks = data.user.platform_admin || ["owner", "editor", "economy_admin"].includes(data.user.role);
 
   return (
-    <div className="grid gap-6">
+    <div className="grid gap-5">
       {error ? <div className="error-box" role="alert">{error}</div> : null}
       {message ? <div className="success-box" role="status">{message}</div> : null}
 
-      <section className="surface p-6">
-        <p className="eyebrow">Account</p>
-        <div className="mt-3 grid gap-4 sm:grid-cols-2">
-          <div><p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Display name</p><p className="mt-1 text-lg font-semibold">{data.user.displayName}</p></div>
-          <div><p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Role</p><p className="mt-1 text-lg font-semibold">{data.user.role_label}</p></div>
-          <div><p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Primary email</p><p className="mt-1 break-all">{data.user.email}</p><p className="mt-1 text-xs text-[var(--muted)]">{data.user.email_verified ? "Verified" : "Not verified"}</p></div>
-          <div><p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Cloudflare Access identity</p><p className="mt-1 break-all">{data.access.linked ? data.access.email : "Not linked"}</p><p className="mt-1 text-xs text-[var(--muted)]">{data.access.linked ? `Linked ${date(data.access.linked_at ?? null)}` : "Used only for administration; not a player login."}</p></div>
-        </div>
-        <details className="mt-5 border-t border-[var(--line)] pt-4">
-          <summary className="cursor-pointer font-mono text-[0.62rem] uppercase tracking-[0.1em] text-[var(--muted)]">Add or change the primary email</summary>
-          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--muted)]">A Discord-only account can use a non-routable placeholder address and still sign in. Adding a real email enables magic-link sign-in. The new address is attached only after you open a one-use link while signed in; it never merges another Foilbury account.</p>
-          <div className="mt-3 flex flex-wrap items-end gap-3">
-            <Field label="New email address"><Input type="email" value={newEmail} onChange={(event) => setNewEmail(event.target.value)} placeholder="you@example.com" autoComplete="email" /></Field>
-            <Button size="sm" variant="secondary" onClick={requestEmailChange} disabled={busy === "email" || !newEmail.includes("@")}>{busy === "email" ? <><Loader2 className="animate-spin" size={14} /> Sending…</> : "Send verification link"}</Button>
+      <section className="member-panel">
+        <div className="member-panel__head">
+          <div>
+            <h2 className="member-panel__title">Account</h2>
+            <p className="member-panel__note">
+              One identity, several ways in. Administration access is a separate boundary.
+            </p>
           </div>
-          {emailLink ? <a className="mt-2 inline-block text-xs underline underline-offset-4" href={emailLink}>Open the local verification link</a> : null}
-          <p className="mt-2 text-xs text-[var(--muted)]">Changing the primary email requires a recent passkey, authenticator or Cloudflare Access proof. Adding a passkey above also satisfies that step-up.</p>
-        </details>
-        <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-[var(--line)] pt-4">
-          <span className={`badge ${data.assurance === "passkey" || data.assurance === "access" || data.assurance === "mfa" ? "badge-rare" : ""}`}>Session assurance: {data.assurance ?? "unknown"}</span>
-          <a className="btn btn-secondary btn-sm" href="/logout">Sign out of Foilbury</a>
-          <a className="btn btn-ghost btn-sm" href="https://jolly-cake-2b85.cloudflareaccess.com/cdn-cgi/access/logout">Sign out of Cloudflare Access ↗</a>
+          <span className={`badge ${strong ? "badge-rare" : ""}`}>
+            Session assurance: {data.assurance ?? "unknown"}
+          </span>
         </div>
-      </section>
-
-      <section className="surface p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><p className="eyebrow">Passkeys</p><h2 className="display-sm mt-1 text-2xl">Fast, phishing-resistant sign-in.</h2><p className="mt-1 text-sm text-[var(--muted)]">Use this device, a security key or your platform authenticator. Passkeys also satisfy sensitive Bot actions.</p></div>
-          <Button size="sm" onClick={addPasskey} disabled={Boolean(busy)}>{busy === "passkey" ? <><Loader2 className="animate-spin" size={14} /> Waiting…</> : <><KeyRound size={14} /> Add a passkey</>}</Button>
-        </div>
-        <div className="mt-4 grid gap-2">
-          {data.passkeys.length === 0 ? <p className="text-sm text-[var(--muted)]">No passkeys yet. Add one before creating a Bot.</p> : null}
-          {data.passkeys.map((passkey) => (
-            <div key={passkey.id} className="flex flex-wrap items-center justify-between gap-3 border border-[var(--line)] px-4 py-3">
-              <div><p className="font-semibold">{passkey.name}</p><p className="text-xs text-[var(--muted)]">Added {date(passkey.created_at)} · Last used {date(passkey.last_used_at)}</p></div>
-              <Button size="sm" variant="secondary" onClick={() => removePasskey(passkey.id)} disabled={Boolean(busy)}><Trash2 size={14} /> Remove</Button>
+        <div className="member-panel__pad">
+          <dl className="security-dl">
+            <div>
+              <dt>Display name</dt>
+              <dd>{data.user.displayName}</dd>
             </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="surface p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><p className="eyebrow">Authenticator</p><h2 className="display-sm mt-1 text-2xl">A six-digit backup for strong actions.</h2><p className="mt-1 text-sm text-[var(--muted)]">Add a TOTP authenticator. Cloudflare Access remains the administrative boundary; this is your Foilbury step-up.</p></div>
-          {!data.totp.configured ? <Button size="sm" onClick={startTotp} disabled={Boolean(busy)}>{busy === "totp-start" ? "Starting…" : "Set up authenticator"}</Button> : <span className="badge badge-rare"><ShieldCheck size={13} /> Configured</span>}
-        </div>
-        {totp ? (
-          <div className="mt-4 border border-[var(--line)] p-4">
-            <p className="text-sm">Add this secret to your authenticator app, then enter the current code.</p>
-            <code className="mt-2 block break-all bg-[var(--paper-3)] px-3 py-2 font-mono text-sm">{totp.secret}</code>
-            <details className="mt-2"><summary className="cursor-pointer text-xs text-[var(--muted)]">Show otpauth link</summary><code className="mt-1 block break-all text-xs">{totp.otpauth_url}</code></details>
-            <div className="mt-3 flex flex-wrap items-end gap-2">
-              <Field label="Six-digit code"><Input inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(event) => setCode(event.target.value)} maxLength={6} /></Field>
-              <Button onClick={confirmTotp} disabled={busy === "totp-confirm" || code.length !== 6}>{busy === "totp-confirm" ? "Checking…" : "Confirm"}</Button>
+            <div>
+              <dt>Role</dt>
+              <dd>{data.user.role_label}</dd>
             </div>
+            <div>
+              <dt>Primary email</dt>
+              <dd>
+                {data.user.email}
+                <span className="mt-1 block text-xs font-normal text-[var(--muted)]">
+                  {data.user.email_verified ? "Verified" : "Not verified"}
+                </span>
+              </dd>
+            </div>
+            <div>
+              <dt>Administration identity</dt>
+              <dd>
+                {data.access.linked ? data.access.email : "Not linked"}
+                <span className="mt-1 block text-xs font-normal text-[var(--muted)]">
+                  {data.access.linked
+                    ? `Linked ${date(data.access.linked_at ?? null)}. Used only for administration.`
+                    : "Used only for administration; not a player login."}
+                </span>
+              </dd>
+            </div>
+          </dl>
+
+          <details className="mt-5 border-t border-[var(--line)] pt-4">
+            <summary className="cursor-pointer text-sm font-semibold">Add or change the primary email</summary>
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--muted)]">
+              A Discord-only account can use a non-routable placeholder address and still sign in.
+              Adding a real email enables magic-link sign-in. The new address is attached only after
+              you open a one-use link while signed in; it never merges another Foilbury account.
+            </p>
+            <div className="mt-3 flex flex-wrap items-end gap-3">
+              <Field label="New email address">
+                <Input type="email" value={newEmail} onChange={(event) => setNewEmail(event.target.value)} placeholder="you@example.com" autoComplete="email" />
+              </Field>
+              <Button size="sm" variant="secondary" onClick={requestEmailChange} disabled={busy === "email" || !newEmail.includes("@")}>
+                {busy === "email" ? <><Loader2 className="animate-spin" size={14} /> Sending…</> : "Send verification link"}
+              </Button>
+            </div>
+            {emailLink ? <a className="mt-2 inline-block text-xs underline underline-offset-4" href={emailLink}>Open the local verification link</a> : null}
+            <p className="mt-2 text-xs text-[var(--muted)]">
+              Changing the primary email requires a recent passkey, authenticator or Cloudflare Access
+              proof. Adding a passkey below also satisfies that step-up.
+            </p>
+          </details>
+
+          {adminLinks ? (
+            <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-[var(--line)] pt-4">
+              {data.user.platform_admin ? <a className="btn btn-secondary btn-sm" href="/platform-admin">Platform administration</a> : null}
+              {["owner", "editor", "economy_admin"].includes(data.user.role) ? <a className="btn btn-secondary btn-sm" href="/admin">Bot administration</a> : null}
+            </div>
+          ) : null}
+
+          <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-[var(--line)] pt-4">
+            <a className="btn btn-secondary btn-sm" href="/logout">Sign out of Foilbury</a>
+            <a className="btn btn-ghost btn-sm" href="https://jolly-cake-2b85.cloudflareaccess.com/cdn-cgi/access/logout">Sign out of Cloudflare Access ↗</a>
           </div>
-        ) : null}
-        {data.totp.configured ? (
-          <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-[var(--line)] pt-4">
-            <Field label="Confirm a strong action" hint="Enter a current authenticator code to upgrade this session."><Input inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(event) => setCode(event.target.value)} maxLength={6} /></Field>
-            <Button onClick={verifyStepUp} disabled={busy === "step-up" || code.length !== 6}>{busy === "step-up" ? "Checking…" : "Confirm code"}</Button>
-            <span className="text-xs text-[var(--muted)]">{data.recovery_codes_remaining} recovery codes remaining</span>
-          </div>
-        ) : null}
-        {recovery.length > 0 ? (
-          <div className="mt-4 border border-[var(--brass)] bg-[var(--paper-3)] p-4">
-            <p className="font-semibold">Save these recovery codes now.</p>
-            <div className="mt-2 grid grid-cols-2 gap-1 font-mono text-sm sm:grid-cols-5">{recovery.map((item) => <code key={item}>{item}</code>)}</div>
-          </div>
-        ) : null}
+        </div>
       </section>
 
-      <section className="surface p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><p className="eyebrow">Sessions</p><h2 className="display-sm mt-1 text-2xl">Know where the cabinet is open.</h2><p className="mt-1 text-sm text-[var(--muted)]">Revoke anything you do not recognise. Cloudflare Access sessions are managed separately at the Access logout link above.</p></div>
-          <Button size="sm" variant="secondary" onClick={revokeOthers} disabled={Boolean(busy)}><LogOut size={14} /> Revoke other sessions</Button>
+      <section className="member-panel">
+        <div className="member-panel__head">
+          <div>
+            <h2 className="member-panel__title">Passkeys</h2>
+            <p className="member-panel__note">
+              Fast, phishing-resistant sign-in. Passkeys also satisfy sensitive Bot actions.
+            </p>
+          </div>
+          <Button onClick={addPasskey} disabled={Boolean(busy)}>
+            {busy === "passkey" ? <><Loader2 className="animate-spin" size={14} /> Waiting…</> : <><KeyRound size={14} /> Add a passkey</>}
+          </Button>
         </div>
-        <div className="mt-4 grid gap-2">
-          {data.sessions.map((session) => (
-            <div key={session.id} className="flex flex-wrap items-center justify-between gap-3 border border-[var(--line)] px-4 py-3">
-              <div>
-                <p className="font-semibold">{session.current ? "This device" : session.auth_method.replaceAll("_", " ")}</p>
-                <p className="text-xs text-[var(--muted)]">Assurance {session.assurance} · Last seen {date(session.last_seen_at)} · Expires {date(session.expires_at)}</p>
-                {session.user_agent ? <p className="mt-1 max-w-xl truncate text-xs text-[var(--muted)]">{session.user_agent}</p> : null}
+        {data.passkeys.length === 0 ? (
+          <div className="member-panel__pad">
+            <p className="text-sm text-[var(--muted)]">No passkeys yet. Add one before creating a Bot.</p>
+          </div>
+        ) : (
+          <ul className="member-list">
+            {data.passkeys.map((passkey) => (
+              <li key={passkey.id} className="security-row">
+                <div>
+                  <p className="security-row__name">{passkey.name}</p>
+                  <p className="security-row__meta">Added {date(passkey.created_at)} · Last used {date(passkey.last_used_at)}</p>
+                </div>
+                <Button size="sm" variant="secondary" onClick={() => removePasskey(passkey.id)} disabled={Boolean(busy)}>
+                  <Trash2 size={14} /> Remove
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="member-panel">
+        <div className="member-panel__head">
+          <div>
+            <h2 className="member-panel__title">Authenticator</h2>
+            <p className="member-panel__note">
+              A six-digit backup for strong actions. Cloudflare Access remains the administrative
+              boundary; this is your Foilbury step-up.
+            </p>
+          </div>
+          {!data.totp.configured ? (
+            <Button onClick={startTotp} disabled={Boolean(busy)}>
+              {busy === "totp-start" ? "Starting…" : "Set up authenticator"}
+            </Button>
+          ) : (
+            <span className="badge badge-rare"><ShieldCheck size={13} /> Configured</span>
+          )}
+        </div>
+        <div className="member-panel__pad">
+          {totp ? (
+            <div className="rounded-[8px] border border-[var(--line)] p-4">
+              <p className="text-sm">Add this secret to your authenticator app, then enter the current code.</p>
+              <code className="mt-2 block break-all rounded-[6px] bg-[var(--panel-3)] px-3 py-2 font-mono text-sm">{totp.secret}</code>
+              <details className="mt-2">
+                <summary className="cursor-pointer text-xs text-[var(--muted)]">Show otpauth link</summary>
+                <code className="mt-1 block break-all text-xs">{totp.otpauth_url}</code>
+              </details>
+              <div className="mt-3 flex flex-wrap items-end gap-2">
+                <Field label="Six-digit code">
+                  <Input inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(event) => setCode(event.target.value)} maxLength={6} />
+                </Field>
+                <Button onClick={confirmTotp} disabled={busy === "totp-confirm" || code.length !== 6}>
+                  {busy === "totp-confirm" ? "Checking…" : "Confirm"}
+                </Button>
               </div>
-              {session.current || session.revoked_at ? <span className="badge">{session.current ? "Current" : "Revoked"}</span> : <Button size="sm" variant="secondary" onClick={() => revoke(session.id)} disabled={Boolean(busy)}>Revoke</Button>}
             </div>
-          ))}
+          ) : null}
+
+          {data.totp.configured ? (
+            <div className="flex flex-wrap items-end gap-2 border-t border-[var(--line)] pt-4">
+              <Field label="Confirm a strong action" hint="Enter a current authenticator code to upgrade this session.">
+                <Input inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(event) => setCode(event.target.value)} maxLength={6} />
+              </Field>
+              <Button onClick={verifyStepUp} disabled={busy === "step-up" || code.length !== 6}>
+                {busy === "step-up" ? "Checking…" : "Confirm code"}
+              </Button>
+              <span className="text-xs text-[var(--muted)]">{data.recovery_codes_remaining} recovery codes remaining</span>
+            </div>
+          ) : null}
+
+          {!totp && !data.totp.configured ? (
+            <p className="mt-3 text-sm text-[var(--muted)]">
+              No authenticator is configured. A passkey is enough for most accounts; an authenticator
+              adds a typed-code recovery path.
+            </p>
+          ) : null}
+
+          {recovery.length > 0 ? (
+            <div className="mt-4 rounded-[8px] border border-[var(--brass)] bg-[var(--panel-3)] p-4">
+              <p className="font-semibold">Save these recovery codes now.</p>
+              <div className="security-codes mt-2">{recovery.map((item) => <code key={item}>{item}</code>)}</div>
+            </div>
+          ) : null}
         </div>
-        <p className="mt-3 flex items-center gap-2 text-xs text-[var(--muted)]"><MonitorSmartphone size={13} /> Revoking an application session does not end your Cloudflare Access SSO session.</p>
+      </section>
+
+      <section className="member-panel">
+        <div className="member-panel__head">
+          <div>
+            <h2 className="member-panel__title">Sessions</h2>
+            <p className="member-panel__note">
+              Know where the cabinet is open. Revoke anything you do not recognise.
+            </p>
+          </div>
+          <Button size="sm" variant="secondary" onClick={revokeOthers} disabled={Boolean(busy)}>
+            <LogOut size={14} /> Revoke other sessions
+          </Button>
+        </div>
+        <ul className="member-list">
+          {visibleSessions.map((session) => (
+            <li key={session.id} className="security-row">
+              <div className="min-w-0">
+                <p className="security-row__name">{session.current ? "This device" : authLabel(session.auth_method)}</p>
+                <p className="security-row__meta">
+                  Assurance {session.assurance} · Last seen {date(session.last_seen_at)} · Expires {date(session.expires_at)}
+                </p>
+                {session.user_agent ? <p className="security-row__meta security-row__agent">{session.user_agent}</p> : null}
+              </div>
+              {session.current || session.revoked_at ? (
+                <span className="badge">{session.current ? "Current" : "Revoked"}</span>
+              ) : (
+                <Button size="sm" variant="secondary" onClick={() => revoke(session.id)} disabled={Boolean(busy)}>
+                  Revoke
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] px-5 py-3">
+          <p className="flex items-center gap-2 text-xs text-[var(--muted)]">
+            <MonitorSmartphone size={13} /> Revoking an application session does not end your Cloudflare
+            Access SSO session.
+          </p>
+          {sessions.length > 8 ? (
+            <Button size="sm" variant="ghost" onClick={() => setShowAllSessions((value) => !value)}>
+              {showAllSessions ? "Show fewer sessions" : `Show all ${sessions.length} sessions`}
+            </Button>
+          ) : null}
+        </div>
       </section>
     </div>
   );
