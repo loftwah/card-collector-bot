@@ -1,6 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 400">
-    <rect x="24" y="110" width="180" height="180" fill="#2ce3d3"/>
-    <path d="M68 150h108v26H98v22h54v26H98v50H68z" fill="#eff5f1"/>
-    <text x="250" y="262" font-family="Manrope, sans-serif" font-weight="800" font-size="178" letter-spacing="-8" fill="#eff5f1">FOILBURY</text>
-    <text x="256" y="316" font-family="ui-monospace, monospace" font-size="20" letter-spacing="9" fill="#eff5f1" opacity=".7">A COLLECTOR'S CABINET</text>
-  </svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 400"><rect width="180" height="180" x="24" y="110" fill="#2ce3d3"/><path fill="#eff5f1" d="M68 150h108v26H98v22h54v26H98v50H68z"/><text x="250" y="262" fill="#eff5f1" font-family="Manrope, sans-serif" font-size="178" font-weight="800" letter-spacing="-8">FOILBURY</text><text x="256" y="316" fill="#eff5f1" font-family="ui-monospace, monospace" font-size="20" letter-spacing="9" opacity=".7">A COLLECTOR&apos;S CABINET</text></svg>

@@ -1,5 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Foilbury Signal Fold mark"><rect width="256" height="256" fill="#07110f"/>
-    <path d="M48 52h160v38H96v30h82v38H96v58H48z" fill="#eff5f1"/>
-    <path d="M150 52h58v38h-58z" fill="#2ce3d3"/>
-    <path d="M150 120h58v38h-58z" fill="#c9f25f"/>
-    <path d="M48 176h102v-38H48z" fill="#2ce3d3" opacity="0.72"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" aria-label="Foilbury Signal Fold mark" role="img" viewBox="0 0 256 256"><rect width="256" height="256" fill="#07110f"/><path fill="#eff5f1" d="M48 52h160v38H96v30h82v38H96v58H48z"/><path fill="#2ce3d3" d="M150 52h58v38h-58z"/><path fill="#c9f25f" d="M150 120h58v38h-58z"/><path fill="#2ce3d3" d="M48 176h102v-38H48z" opacity=".72"/></svg>

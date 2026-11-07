@@ -13,6 +13,7 @@ export const profileLooksFixture = [
 const copies = [
   {
     id: "ins_01",
+    cardId: "crd_kestrel",
     cardName: "Kestrel",
     variantName: "Protocol 11",
     finish: "Plain",
@@ -23,6 +24,7 @@ const copies = [
   },
   {
     id: "ins_02",
+    cardId: "crd_ronin",
     cardName: "Ronin-9",
     variantName: "Neon Alley",
     finish: "Silver",
@@ -33,6 +35,7 @@ const copies = [
   },
   {
     id: "ins_03",
+    cardId: "crd_moss",
     cardName: "Moss",
     variantName: "Binder desk",
     finish: "Gold",
