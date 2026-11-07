@@ -38,6 +38,25 @@ Lead with the behaviour the owner can now use, the integrated source, the deploy
 
 Do not turn 'HTTP smoke passed' into product acceptance, a PR body into proof of the current deployment, or a draft into completion. An interrupted session needs an exact resumable checkpoint; work does not continue after the session ends. No percentage-complete claim from issue/test/asset counts.
 
+## Delivery showcase
+
+The owner's Woodhouse Discord channel is the human-facing delivery showcase. It
+is configured as `WOODHOUSE_DISCORD_CHANNEL` in `.env` (never commit the URL).
+After a coherent outcome reaches production, post one concise update with:
+
+- the exact issue(s) and pull request;
+- the source revision and deployed Worker version;
+- the live URL or Discord command/share to try;
+- one to four visible things to look for;
+- an honest `PRODUCTION_VERIFIED`, `IN_PROGRESS` or `BLOCKED` status and the
+  real residual.
+
+Use `pnpm showcase:post -- --title ... --summary ...` and the guidance in
+`docs/DELIVERY_SHOWCASE.md`. Do not post per commit or per test run. Never post
+secrets, private card art, member data or restricted screenshots. The showcase
+is not acceptance evidence; the release receipt and the exercised live journey
+remain the authority.
+
 ## Project context and skills
 
 Production: `https://foilbury.loftwah.com`. Canonical local origin: `http://localhost:5173`; confirm the actual server with the existing setup/doctor commands.
