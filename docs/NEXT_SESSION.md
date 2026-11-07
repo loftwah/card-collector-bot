@@ -60,6 +60,15 @@ achievement view now carries `collection_name` / `collection_slug`.
   ordered earned badges, version-fenced save and stale-tab recovery. The profile
   share snapshot carries the composition and exact featured copy. Focused
   preference/share tests and the real local 390/1440 journey pass.
+- **Production verified:** source `2347ee66730f98db9ab5534bed7fc66744125195`,
+  Worker `ab245dc5-cad6-44cc-ba6e-d5f887655274`, receipt
+  `.foilbury/evidence/release-receipt-2347ee66730f-712c5a92-724d-4560-89f4-2488a84e9261.json`.
+  The production D1 JSON backup was taken before the additive migration
+  (`.foilbury/backups/d1-2026-11-07T03-34-26-015Z.json`, 94 tables, 32,849 rows).
+  A one-use owner magic link exercised the signed-in profile at 390 and 1440,
+  saved and reloaded the independent composition and exact serial, passed axe
+  with no serious/critical findings, restored the owner's prior preferences and
+  favourite flags, and was deleted afterwards.
 
 ## Next outcomes, in order
 
@@ -73,7 +82,7 @@ achievement view now carries `collection_name` / `collection_slug`.
 2. **Storybook** — first component batch is configured and verified. Extend the catalogue as
    new reviewed components appear; do not rewrite Astro pages as React.
 3. **#42 full customiser** — the independent composition, exact featured copy, ordered shelf and
-   badges, compact/full preview, cancel/reset and stale-save recovery are implemented locally.
+   badges, compact/full preview, cancel/reset and stale-save recovery are in production.
    Remaining: locked/preview-only cosmetics, a dedicated share/export composer, and the final
    keyboard/touch reorder acceptance across the full #40 viewport matrix.
 4. **Remaining shells** — Studio, Platform and Discord still use the older direction.

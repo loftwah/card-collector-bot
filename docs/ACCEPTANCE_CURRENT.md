@@ -225,3 +225,32 @@ the built artifact (`sha256 161239ad…`, `7653fff1…`/`fd647612…`, `d7238c56
 Signed-out `/api/v1/admin/*` requests return the Access redirect, so they do not
 prove the new route guards. This is technical artifact evidence, not signed-in
 production acceptance.
+
+## 2026-11-07 — independent profile composition and Storybook
+
+- **Production:** source `2347ee66730f98db9ab5534bed7fc66744125195`, Worker
+  `ab245dc5-cad6-44cc-ba6e-d5f887655274`. Receipt:
+  `.foilbury/evidence/release-receipt-2347ee66730f-712c5a92-724d-4560-89f4-2488a84e9261.json`.
+- **Schema:** additive `0029_profile_presentation.sql` added
+  `profile_presentation_json` and `profile_presentation_version` to
+  `fb_player_preferences`. A production D1 JSON backup was taken first:
+  `.foilbury/backups/d1-2026-11-07T03-34-26-015Z.json` (94 tables, 32,849 rows,
+  SHA-256 `9fd5d3332c81cc8b1527e9fa974b70540d7456352ac2c37564d4bf5fa96f1c84`).
+  The previous Worker ignores both columns.
+- **Gates:** `pnpm check` 113 unit + 321 Worker; `pnpm build`; `pnpm test:ui`
+  54/54; `pnpm test:product` 57/57; Impeccable detector `[]`; Storybook static
+  build and built-catalogue render/axe checks passed.
+- **Live signed-in:** one-use owner magic link. At 390 and 1440 the profile page
+  had no horizontal overflow, the featured card kept 5:7 geometry (0.7127), and
+  axe found no serious/critical findings. The independent frame, avatar
+  decoration, name treatment and effect survived save and reload; the exact
+  featured copy was `Chiaki Nanami · FB-3-DE-4E3CB0`. The owner's prior
+  preferences and favourite flags were restored and the magic-link row was
+  deleted afterwards.
+- **Discord preflight (read-only):** 18 PASS / 0 FAIL / 4 BLOCKED — command
+  execution health, pin capability, spectator observation and authenticated
+  actor session. BLOCKED remains unperformed, not accepted.
+- **Remaining for #42:** locked/preview-only cosmetics, a dedicated
+  share/export composer, and the full keyboard/touch reorder acceptance across
+  the #40 viewport matrix. The Stitch state variants remain outstanding for
+  #92.
