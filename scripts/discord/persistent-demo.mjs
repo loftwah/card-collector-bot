@@ -1264,7 +1264,7 @@ async function publishStages({
     const image = newStageImages.get(stage);
     if (!image || !fs.existsSync(image.path)) return {};
     return {
-      image: { url: `attachment://${image.name}` },
+      embed: { image: { url: `attachment://${image.name}` } },
       files: [{ name: image.name, path: image.path }],
     };
   };
@@ -1759,7 +1759,7 @@ async function publishStages({
             ]
           : [{ name: "Board", value: "No persisted mission board was read.", inline: false }],
         footer: { text: `Foilbury · ${RUN_ID} · stage 13` },
-        ...(imageFor(13).image ?? {}),
+        ...(imageFor(13).embed ?? {}),
       },
       files: imageFor(13).files ?? [],
       rows: [[web("Open missions", "/play/missions"), ...chapterIndexLink()]],
@@ -1810,7 +1810,7 @@ async function publishStages({
             ]
           : [{ name: "Cabinet", value: "No persisted achievement state was read.", inline: false }],
         footer: { text: `Foilbury · ${RUN_ID} · stage 14` },
-        ...(imageFor(14).image ?? {}),
+        ...(imageFor(14).embed ?? {}),
       },
       files: imageFor(14).files ?? [],
       rows: [[web("Open achievements", "/play/achievements"), ...chapterIndexLink()]],
@@ -1839,7 +1839,7 @@ async function publishStages({
               {
                 name: "Portrait and banner",
                 value: profilePresentation
-                  ? `${profilePresentation.portrait?.label ?? "Monogram"} · ${profilePresentation.banner?.label ?? "No banner"}`
+                  ? `Portrait: ${profilePresentation.portrait?.label ?? "Monogram"}\nBanner: ${profilePresentation.banner?.label ?? "No banner"}`
                   : "Saved artwork not read.",
                 inline: false,
               },
@@ -1866,7 +1866,7 @@ async function publishStages({
             ]
           : [{ name: "Profile", value: "No saved composition was read.", inline: false }],
         footer: { text: `Foilbury · ${RUN_ID} · stage 15` },
-        ...(imageFor(15).image ?? {}),
+        ...(imageFor(15).embed ?? {}),
       },
       files: imageFor(15).files ?? [],
       rows: [[web("Open my profile", "/play/profile"), ...chapterIndexLink()]],
@@ -1905,7 +1905,7 @@ async function publishStages({
             ]
           : [{ name: "Share", value: "No profile share was created in this run.", inline: false }],
         footer: { text: `Foilbury · ${RUN_ID} · stage 16` },
-        ...(imageFor(16).image ?? {}),
+        ...(imageFor(16).embed ?? {}),
       },
       files: imageFor(16).files ?? [],
       rows: [[web("Open the profile page", "/play/profile"), ...chapterIndexLink()]],
@@ -2085,6 +2085,17 @@ async function publishStages({
     };
     saveState(state);
     console.log(`Stage ${FINAL_STAGE} → ${messageLink(finalMessage.id)}`);
+    const finalCurrent = await discord("GET", `/channels/${CHANNEL_ID}/messages/${finalMessage.id}`);
+    const finalEmbed = finalCurrent.embeds?.[0];
+    if (finalEmbed) {
+      const nextEmbed = { ...finalEmbed, fields: indexFields() };
+      if (JSON.stringify(finalEmbed) !== JSON.stringify(nextEmbed)) {
+        await discord("PATCH", `/channels/${CHANNEL_ID}/messages/${finalMessage.id}`, {
+          embeds: [nextEmbed],
+        });
+        console.log(`Stage ${FINAL_STAGE} refreshed with its own index link.`);
+      }
+    }
   }
 
   if (state.stages[1]?.message_id && state.stages[FINAL_STAGE]?.message_id) {
