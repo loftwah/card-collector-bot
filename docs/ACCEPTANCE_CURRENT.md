@@ -282,3 +282,16 @@ production acceptance.
 - **Still BLOCKED:** independent second-account spectator observation and a real
   mobile Discord client. NPC cast/trading stages remain part of #9 and are not
   claimed here.
+- **Content import:** Gonta Gokuhara and Kamui Gakupo are now in production.
+  Danganronpa and Vocaloid moved from release 5 to 6 (9 cards, 36 variants,
+  36/36 fronts and backs each); both capsules moved to revision 4 with 36
+  entries. Pre-import backup
+  `.foilbury/backups/prod-pre-gonta-gakupo-2026-11-08.json` (SHA-256
+  `4ecbe62d3573b41afd72e86f29fe16a266457d5e088b4031c94681c28534d99c`).
+  Aliases `Camui Gackpo`, `Gackpoid`, `Gonta` and `神威がくぽ` resolve to one
+  canonical card. Render proof and bounded rollback are recorded in
+  `docs/CONTENT_QUALITY_MATRIX.md`.
+- **Retained demo refresh:** after the import, stages 2, 3, 7, 8, 10, 11, 12 and
+  17 were refreshed in place. The demo collector is honestly shown at 8/9
+  current-release subjects; `Three schools` remains the frozen release-5 8/8
+  achievement. Read-back remains 17/17 PASS.
