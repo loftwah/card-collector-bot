@@ -90,7 +90,8 @@ describe("deliberate sharing", () => {
     const profile = await createShareLink(owner, { kind: "profile", expiresInDays: 7 });
     expect(profile.preview.presentation).toBeTruthy();
     expect(profile.preview.presentation.featured.card_name).toBe("Test One");
-    expect(profile.preview.presentation.featured.serial).toBe("SHARE-FEATURED");
+    expect(profile.preview.presentation.featured.serial).toBeUndefined();
+    expect(JSON.stringify(profile.preview)).not.toMatch(/SHARE-FEATURED|"serial"/i);
     expect(profile.preview.presentation.favourites.map((card: { card_name: string }) => card.card_name)).toEqual(["Test One", "Test One"]);
     expect(profile.preview.presentation.badges.map((badge: { name: string }) => badge.name)).toEqual(["Shared badge"]);
     expect(profile.preview.presentation.frame).toBe("signal");
