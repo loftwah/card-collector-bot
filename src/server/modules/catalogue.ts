@@ -5,6 +5,7 @@ import { newId, sha256Hex } from "../ids";
 import { auditStatement } from "../http";
 import { cardVisibilitySql, publicCollectionSql, viewerAccess } from "./visibility";
 import { botAllowsAiArt, isAiArtOrigin } from "./bots";
+import { normalizeCardName } from "./card-name-aliases";
 
 export interface CardRow {
   id: string;
@@ -167,9 +168,11 @@ export async function listCards(
     params.push(...visibility.params);
   }
   if (options.search) {
-    where.push("(cd.name LIKE ? OR cd.description LIKE ? OR cd.subtitle LIKE ?)");
+    where.push(
+      "(cd.name LIKE ? OR cd.description LIKE ? OR cd.subtitle LIKE ? OR EXISTS (SELECT 1 FROM fb_card_name_aliases na WHERE na.tenant_id = cd.tenant_id AND na.card_id = cd.id AND na.normalized = ?))",
+    );
     const query = `%${options.search}%`;
-    params.push(query, query, query);
+    params.push(query, query, query, normalizeCardName(options.search));
   }
   if (options.category) {
     where.push("cat.slug = ?");
