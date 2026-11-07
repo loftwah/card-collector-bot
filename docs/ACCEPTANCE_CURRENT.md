@@ -254,3 +254,31 @@ production acceptance.
   share/export composer, and the full keyboard/touch reorder acceptance across
   the #40 viewport matrix. The Stitch state variants remain outstanding for
   #92.
+
+## 2026-11-08 — retained Discord extension and profile fixes
+
+- **Production:** source `5e375e09f26abb4c8cc1b45481cdc6665e0f5f21`, Worker
+  `7f1a64b8-14a4-401a-bcba-53d05f88a388`, schema `0029`. Receipt:
+  `.foilbury/evidence/release-receipt-5e375e09f26a-8b77e21c-d9be-4864-8229-351dd6af3be9.json`.
+  The script-only follow-up is `3680086eff7244ea9a9927e2d5dc483e40b6c477`.
+- **Retained extension:** stages 13–17 added to the existing
+  `#card-collector-test` sequence, then the chapter index and introduction
+  refreshed. Discord API read-back: **17/17 PASS**, every required image HTTP
+  200 `image/png`, both indexes link every stage.
+- **Real production events:** one ordinary opening (Kyoko Kirigiri — Silver,
+  `FB-3-FO-EC577E`, −80 Foil), three daily mission claims (180/180), one claim
+  replay with the same ID and no extra credit, and a re-evaluation that kept 7
+  unlocks and 1,900 achievement Foil unchanged.
+- **Collector identity/share:** saved composition version 3 (Binder desk,
+  Hairline, Corner marks, Wide tracking, Soft sheen, featured Kyoko Kirigiri
+  Gold · Holographic, shelf and four badges) and a member-audience profile share
+  created through the normal Share profile control
+  (`shr_mw6ewp9c8w5m8at06zz46k16`). The private recipient link is not
+  republished.
+- **Repairs:** later draw receipts no longer present historical unlocks as new
+  rewards; the mission summary now updates after claims; the profile preview
+  renders the collector's real name; the preview and share heroes use a scrim so
+  baked banner lettering does not collide with the name.
+- **Still BLOCKED:** independent second-account spectator observation and a real
+  mobile Discord client. NPC cast/trading stages remain part of #9 and are not
+  claimed here.
