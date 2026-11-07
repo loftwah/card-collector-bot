@@ -77,6 +77,12 @@ import {
   updatePreferences,
 } from "../modules/economy";
 import {
+  PROFILE_AVATAR_DECORATIONS,
+  PROFILE_EFFECTS,
+  PROFILE_FRAMES,
+  PROFILE_NAME_TREATMENTS,
+} from "../modules/profile-presentation";
+import {
   assignPlatformRole,
   listPlatformPeople,
   listPlatformRoleAssignments,
@@ -644,6 +650,20 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
         sharingEnabled: z.boolean().optional(),
         profileLook: z.enum(["quiet", "signal", "binder", "night"]).optional(),
         profileBio: z.string().max(160).optional(),
+        profilePresentation: z
+          .object({
+            portrait: z.string().max(120),
+            banner: z.string().max(120),
+            frame: z.enum(PROFILE_FRAMES),
+            avatarDecoration: z.enum(PROFILE_AVATAR_DECORATIONS),
+            nameTreatment: z.enum(PROFILE_NAME_TREATMENTS),
+            effect: z.enum(PROFILE_EFFECTS),
+            featuredInstanceId: idSchema.nullable().optional(),
+            favouriteInstanceIds: z.array(idSchema).max(8).optional(),
+            badgeIds: z.array(z.string().max(80)).max(6).optional(),
+          })
+          .optional(),
+        profilePresentationVersion: z.number().int().positive().optional(),
       }),
     );
     return json(await updatePreferences(ctx, body));

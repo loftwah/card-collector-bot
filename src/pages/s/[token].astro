@@ -16,10 +16,63 @@ const pageTitle = active ? `${publicView ? shareTitle : "Member share"} · Foilb
 const currentPublic = Boolean(collection && collection.view_audience === "public" && collection.public_approved_at);
 const finishLabel = String(payload.finish ?? "").replaceAll("diamond", "holographic");
 const publicHref = currentPublic && collection ? `/cabinet?collection=${collection.slug}` : collection ? `/play/collection?collection=${collection.slug}` : "/cabinet";
-const profileLookLabels: Record<string, string> = { quiet: "Quiet archive", signal: "Signal room", binder: "Binder desk", night: "Night shelf" };
 const profileLook = ["quiet", "signal", "binder", "night"].includes(String(payload.profile_look ?? ""))
   ? String(payload.profile_look)
   : "quiet";
+const sharePresentation =
+  payload.presentation && typeof payload.presentation === "object"
+    ? (payload.presentation as {
+        portrait?: { kind?: string; label?: string; image_url?: string | null };
+        banner?: { kind?: string; label?: string; image_url?: string | null };
+        frame?: string;
+        avatar_decoration?: string;
+        name_treatment?: string;
+        effect?: string;
+        featured?: {
+          card_name?: string;
+          variant_name?: string;
+          finish?: string;
+          serial?: string;
+          render_url?: string | null;
+        } | null;
+        favourites?: Array<{
+          card_name?: string;
+          variant_name?: string;
+          finish?: string;
+          render_url?: string | null;
+        }>;
+        badges?: Array<{
+          name?: string;
+          category?: string;
+          art_key?: string;
+          collection_logo_url?: string | null;
+        }>;
+      })
+    : null;
+const sharePortrait = sharePresentation?.portrait?.image_url ?? null;
+const shareBanner = sharePresentation?.banner?.image_url ?? null;
+const shareFavourites = sharePresentation?.favourites?.length
+  ? sharePresentation.favourites
+  : (Array.isArray(payload.favourite_cards)
+      ? (payload.favourite_cards as Array<{ name?: string; variant_name?: string; render_url?: string | null }>)
+      : []
+    ).map((card) => ({
+      card_name: card.name,
+      variant_name: card.variant_name,
+      finish: String(payload.finish ?? ""),
+      render_url: card.render_url,
+    }));
+const shareBadges = sharePresentation?.badges?.length
+  ? sharePresentation.badges
+  : (Array.isArray(payload.badges)
+      ? (payload.badges as Array<{ name?: string; art_key?: string }>)
+      : []
+    ).map((badge) => ({
+      name: badge.name,
+      category: "earned",
+      art_key: badge.art_key,
+      collection_logo_url: null,
+    }));
 ---
 <BaseLayout title={pageTitle} description={publicView ? `${shareTitle} — an explicitly shared Foilbury snapshot.` : "A members-only Foilbury share. Sign in with an entitled account to view it."} noIndex>
   <section class="container py-12 md:py-16">
@@ -79,21 +132,63 @@ const profileLook = ["quiet", "signal", "binder", "night"].includes(String(paylo
         ) : null}
 
         {kind === "profile" ? (
-          <div class="share-profile" data-profile-look={profileLook}>
-            <div class="share-profile__meta">
-              <span class="badge">{profileLookLabels[profileLook]}</span>
-              <span class="badge">Collector snapshot</span>
+          <div
+            class="share-profile"
+            data-profile-look={profileLook}
+            data-profile-frame={sharePresentation?.frame ?? "none"}
+            data-avatar-decoration={sharePresentation?.avatar_decoration ?? "none"}
+            data-name-treatment={sharePresentation?.name_treatment ?? "plain"}
+            data-profile-effect={sharePresentation?.effect ?? "none"}
+          >
+            <div class="share-profile__hero">
+              {shareBanner ? <img class="profile-hero__banner" src={shareBanner} alt="" aria-hidden="true" /> : null}
+              <div class="profile-hero__identity">
+                {sharePortrait ? (
+                  <span class="profile-avatar profile-avatar--image" aria-hidden="true">
+                    <img src={sharePortrait} alt="" width="64" height="64" />
+                  </span>
+                ) : null}
+                <div class="min-w-0">
+                  <p class="share-profile__name">{payload.display_name ?? owner ?? "A collector"}</p>
+                  <p class="profile-hero__meta">
+                    {sharePresentation?.portrait?.label ? `${sharePresentation.portrait.label} · ` : ""}
+                    Collector snapshot
+                  </p>
+                </div>
+              </div>
+              {payload.profile_bio ? <p class="profile-hero__bio">{String(payload.profile_bio)}</p> : null}
             </div>
-            {payload.profile_bio ? <p class="profile-hero__bio">{String(payload.profile_bio)}</p> : null}
+
+            {sharePresentation?.featured ? (
+              <div class="share-profile__feature">
+                <div class="profile-card__object">
+                  {sharePresentation.featured.render_url ? (
+                    <img src={sharePresentation.featured.render_url} alt={`${sharePresentation.featured.card_name ?? "Card"} front`} width="300" height="420" />
+                  ) : (
+                    <div class="card-face-fallback">{(sharePresentation.featured.card_name ?? "?").charAt(0)}</div>
+                  )}
+                </div>
+                <div class="profile-card__body">
+                  <span class="badge badge-signal">Featured exact copy</span>
+                  <p class="share-profile__feature-name">{sharePresentation.featured.card_name}</p>
+                  <p class="profile-card__meta">
+                    {sharePresentation.featured.variant_name}
+                    {sharePresentation.featured.finish ? ` · ${sharePresentation.featured.finish}` : ""}
+                  </p>
+                  <p class="profile-card__serial">{sharePresentation.featured.serial}</p>
+                </div>
+              </div>
+            ) : null}
+
             <div class="profile-showcase share-profile__cards">
-              {Array.isArray(payload.favourite_cards) && payload.favourite_cards.length ? payload.favourite_cards.map((card: { name?: string; variant_name?: string; render_url?: string | null }) => (
+              {shareFavourites.length ? shareFavourites.map((card) => (
                 <article class="profile-card">
                   <div class="profile-card__object">
-                    {card.render_url ? <img src={card.render_url} alt="" loading="lazy" /> : <div class="card-face-fallback">{(card.name ?? "?").charAt(0)}</div>}
+                    {card.render_url ? <img src={card.render_url} alt="" loading="lazy" /> : <div class="card-face-fallback">{(card.card_name ?? "?").charAt(0)}</div>}
                   </div>
                   <div class="profile-card__body">
-                    <p class="profile-card__name">{card.name}</p>
-                    <p class="profile-card__meta">{card.variant_name}</p>
+                    <p class="profile-card__name">{card.card_name}</p>
+                    <p class="profile-card__meta">{card.variant_name}{card.finish ? ` · ${card.finish}` : ""}</p>
                   </div>
                 </article>
               )) : <p class="text-sm text-[var(--muted)]">No pinned favourites in this snapshot.</p>}
@@ -103,9 +198,24 @@ const profileLook = ["quiet", "signal", "binder", "night"].includes(String(paylo
               <div><dt>Favourites</dt><dd>{String(payload.favourites ?? 0)}</dd></div>
             </dl>
             <div class="profile-badges share-profile__badges">
-              {Array.isArray(payload.badges) ? payload.badges.map((badge: { name?: string }) => <div class="profile-badge"><p class="profile-badge__name">{badge.name}</p></div>) : null}
+              {shareBadges.length ? shareBadges.map((badge) => (
+                <div class="profile-badge">
+                  <AchievementBadge
+                    artKey={String(badge.art_key ?? "medal-collection")}
+                    name={String(badge.name ?? "Achievement")}
+                    category={String(badge.category ?? "milestone")}
+                    earned
+                    size={48}
+                    emblemUrl={badge.collection_logo_url ?? null}
+                  />
+                  <div class="min-w-0">
+                    <p class="profile-badge__name">{badge.name}</p>
+                    <p class="profile-badge__meta">{badge.category ?? "earned"}</p>
+                  </div>
+                </div>
+              )) : null}
             </div>
-            <p class="mt-4 text-xs leading-relaxed text-[var(--muted)]">Only pinned favourites, counts and opted-in badges appear. Wallet, email, account ID and private ledger never do.</p>
+            <p class="mt-4 text-xs leading-relaxed text-[var(--muted)]">Only the saved composition, featured exact copy, pinned favourites, counts and earned badges appear. Wallet, email, account ID and private ledger never do.</p>
           </div>
         ) : null}
 

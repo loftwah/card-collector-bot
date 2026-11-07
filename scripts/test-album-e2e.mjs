@@ -290,7 +290,7 @@ try {
     throw new Error(`The selected card must earn and pay its achievement: ${JSON.stringify(earned ?? memberAchievements)}.`);
   }
   await member.goto("/play/achievements", { waitUntil: "networkidle" });
-  await member.locator("article.is-earned").getByRole("heading", { level: 4, name: "Album proof complete", exact: true }).first().waitFor({ timeout: 20000 });
+  await member.getByRole("heading", { level: 3, name: "Album proof complete", exact: true }).first().waitFor({ timeout: 20000 });
   pass("achievement appears as earned for the member");
 
   await member.goto("/play/gifts", { waitUntil: "networkidle" });

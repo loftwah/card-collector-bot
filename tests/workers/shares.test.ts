@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createShareLink, revokeShareLink, updatePreferences } from "../../src/server/modules/economy";
-import { bootstrap, ctxFor, fixturePool, makeInstance } from "./helpers";
+import { bootstrap, ctxFor, fixturePool, makeInstance, runtime } from "./helpers";
+import { nowIso } from "../../src/server/db";
 
 describe("deliberate sharing", () => {
   it("requires explicit sharing consent and re-checks the captured audience", async () => {
@@ -41,6 +42,58 @@ describe("deliberate sharing", () => {
     const profile = await createShareLink(owner, { kind: "profile", expiresInDays: 7 });
     expect(profile.preview.profile_look).toBe("night");
     expect(profile.preview.profile_bio).toBe("Quiet shelves, loud cards.");
+    expect(JSON.stringify(profile.preview)).not.toMatch(/email|balance|ledger|account_id/i);
+  });
+
+  it("captures the saved composition, exact featured copy and shelf order without private identifiers", async () => {
+    await bootstrap();
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const fixture = await fixturePool(owner);
+    const first = await makeInstance(owner, owner.user!.id, fixture, "SHARE-FEATURED");
+    const second = await makeInstance(owner, owner.user!.id, fixture, "SHARE-SHELF");
+    const now = nowIso();
+    await runtime.DB.batch([
+      runtime.DB.prepare("UPDATE fb_collections SET logo_url = '/media/logo.png', banner_url = '/media/banner.png' WHERE id = 'col_test_public'"),
+      runtime.DB.prepare("UPDATE fb_card_instances SET favourite = 1 WHERE id IN (?, ?)").bind(first, second),
+      runtime.DB
+        .prepare(
+          `INSERT INTO fb_achievement_definitions
+          (id, scope, key, version, name, description, criteria_json, reward_json, visibility, art_key, category, sort, status, created_by, created_at, updated_at)
+         VALUES ('ach_share_profile', 'platform', 'share-profile', 1, 'Shared badge', 'Earned for the share fixture.', '{}', '{}', 'member', 'medal-first', 'milestone', 0, 'active', 'test', ?, ?)`,
+        )
+        .bind(now, now),
+      runtime.DB
+        .prepare(
+          `INSERT INTO fb_achievement_unlocks
+          (id, tenant_id, user_id, achievement_id, achievement_version, earned_at, reward_state, reward_amount, notification_state, created_at)
+         VALUES ('unl_share_profile', ?, ?, 'ach_share_profile', 1, ?, 'none', 0, 'suppressed', ?)`,
+        )
+        .bind(owner.tenant.id, owner.user!.id, now, now),
+    ]);
+    await updatePreferences(owner, {
+      sharingEnabled: true,
+      profileLook: "night",
+      profileBio: "Quiet shelves, loud cards.",
+      profilePresentationVersion: 1,
+      profilePresentation: {
+        portrait: "collection:col_test_public",
+        banner: "collection:col_test_public",
+        frame: "signal",
+        avatarDecoration: "ring",
+        nameTreatment: "wide",
+        effect: "sheen",
+        featuredInstanceId: first,
+        favouriteInstanceIds: [second, first],
+        badgeIds: ["ach_share_profile"],
+      },
+    });
+    const profile = await createShareLink(owner, { kind: "profile", expiresInDays: 7 });
+    expect(profile.preview.presentation).toBeTruthy();
+    expect(profile.preview.presentation.featured.card_name).toBe("Test One");
+    expect(profile.preview.presentation.featured.serial).toBe("SHARE-FEATURED");
+    expect(profile.preview.presentation.favourites.map((card: { card_name: string }) => card.card_name)).toEqual(["Test One", "Test One"]);
+    expect(profile.preview.presentation.badges.map((badge: { name: string }) => badge.name)).toEqual(["Shared badge"]);
+    expect(profile.preview.presentation.frame).toBe("signal");
     expect(JSON.stringify(profile.preview)).not.toMatch(/email|balance|ledger|account_id/i);
   });
 
