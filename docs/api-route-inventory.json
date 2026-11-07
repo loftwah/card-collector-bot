@@ -1,5 +1,5 @@
 {
-  "route_count": 168,
+  "route_count": 175,
   "direct_route_count": 21,
   "routes": [
     {
@@ -1004,9 +1004,12 @@
       "path": "/api/v1/npcs/:param",
       "guards": [
         "requireNpcRead",
-        "requireNpcManager"
+        "requireNpcManager",
+        "requireScope"
       ],
-      "auth_only": [],
+      "auth_only": [
+        "playerWrite"
+      ],
       "scopes": [],
       "roles": [],
       "schema": null,
@@ -1020,9 +1023,12 @@
       "path": "/api/v1/npcs/:param",
       "guards": [
         "requireNpcRead",
-        "requireNpcManager"
+        "requireNpcManager",
+        "requireScope"
       ],
-      "auth_only": [],
+      "auth_only": [
+        "playerWrite"
+      ],
       "scopes": [],
       "roles": [],
       "schema": "{ name?:string, bio?:string, avatarUrl?:string, presetKey?:string, goalCollectionId?:idSchema, poolSlug?:string, scheduleEnabled?:boolean, intervalMinutes?:number }",
@@ -1041,9 +1047,12 @@
       "path": "/api/v1/npcs/:param/actions",
       "guards": [
         "requireNpcRead",
-        "requireNpcManager"
+        "requireNpcManager",
+        "requireScope"
       ],
-      "auth_only": [],
+      "auth_only": [
+        "playerWrite"
+      ],
       "scopes": [],
       "roles": [],
       "schema": null,
@@ -1057,9 +1066,12 @@
       "path": "/api/v1/npcs/:param/compare",
       "guards": [
         "requireNpcRead",
-        "requireNpcManager"
+        "requireNpcManager",
+        "requireScope"
       ],
-      "auth_only": [],
+      "auth_only": [
+        "playerWrite"
+      ],
       "scopes": [],
       "roles": [],
       "schema": null,
@@ -1069,13 +1081,83 @@
       "studio_alias": false
     },
     {
+      "method": "GET",
+      "path": "/api/v1/npcs/:param/trade-offers",
+      "guards": [
+        "requireNpcRead",
+        "requireNpcManager",
+        "requireScope"
+      ],
+      "auth_only": [
+        "playerWrite"
+      ],
+      "scopes": [],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "npcTradeOffers"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/npcs/:param/trade-preview",
+      "guards": [
+        "requireNpcRead",
+        "requireNpcManager",
+        "requireScope"
+      ],
+      "auth_only": [
+        "playerWrite"
+      ],
+      "scopes": [
+        "trade:write"
+      ],
+      "roles": [],
+      "schema": "{ giveInstanceIds:array, takeInstanceIds:array }",
+      "calls": [
+        "max",
+        "min",
+        "previewNpcTrade"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/npcs/:param/trades",
+      "guards": [
+        "requireNpcRead",
+        "requireNpcManager",
+        "requireScope"
+      ],
+      "auth_only": [
+        "playerWrite"
+      ],
+      "scopes": [
+        "trade:write"
+      ],
+      "roles": [],
+      "schema": "{ giveInstanceIds:array, takeInstanceIds:array, idempotencyKey?:string }",
+      "calls": [
+        "max",
+        "min",
+        "optional",
+        "createNpcTrade",
+        "get"
+      ],
+      "studio_alias": false
+    },
+    {
       "method": "POST",
       "path": "/api/v1/npcs/:param/preview",
       "guards": [
         "requireNpcRead",
-        "requireNpcManager"
+        "requireNpcManager",
+        "requireScope"
       ],
-      "auth_only": [],
+      "auth_only": [
+        "playerWrite"
+      ],
       "scopes": [],
       "roles": [],
       "schema": null,
@@ -1089,9 +1171,12 @@
       "path": "/api/v1/npcs/:param/play",
       "guards": [
         "requireNpcRead",
-        "requireNpcManager"
+        "requireNpcManager",
+        "requireScope"
       ],
-      "auth_only": [],
+      "auth_only": [
+        "playerWrite"
+      ],
       "scopes": [],
       "roles": [],
       "schema": "{ idempotencyKey?:string } (optional)",
@@ -1108,9 +1193,12 @@
       "path": "/api/v1/npcs/:param/run",
       "guards": [
         "requireNpcRead",
-        "requireNpcManager"
+        "requireNpcManager",
+        "requireScope"
       ],
-      "auth_only": [],
+      "auth_only": [
+        "playerWrite"
+      ],
       "scopes": [],
       "roles": [],
       "schema": "{ count:number }",
@@ -1128,9 +1216,12 @@
       "path": "/api/v1/npcs/:param/pause",
       "guards": [
         "requireNpcRead",
-        "requireNpcManager"
+        "requireNpcManager",
+        "requireScope"
       ],
-      "auth_only": [],
+      "auth_only": [
+        "playerWrite"
+      ],
       "scopes": [],
       "roles": [],
       "schema": null,
@@ -1144,9 +1235,12 @@
       "path": "/api/v1/npcs/:param/resume",
       "guards": [
         "requireNpcRead",
-        "requireNpcManager"
+        "requireNpcManager",
+        "requireScope"
       ],
-      "auth_only": [],
+      "auth_only": [
+        "playerWrite"
+      ],
       "scopes": [],
       "roles": [],
       "schema": null,
@@ -1160,14 +1254,93 @@
       "path": "/api/v1/npcs/:param/retire",
       "guards": [
         "requireNpcRead",
-        "requireNpcManager"
+        "requireNpcManager",
+        "requireScope"
       ],
-      "auth_only": [],
+      "auth_only": [
+        "playerWrite"
+      ],
       "scopes": [],
       "roles": [],
       "schema": null,
       "calls": [
         "setNpcStatus"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/npc-trades",
+      "guards": [
+        "requireScope"
+      ],
+      "auth_only": [
+        "playerWrite"
+      ],
+      "scopes": [
+        "trade:write"
+      ],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "listNpcTrades"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/npc-trades/:param",
+      "guards": [
+        "requireScope"
+      ],
+      "auth_only": [
+        "playerWrite"
+      ],
+      "scopes": [
+        "trade:write"
+      ],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "getNpcTrade"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/npc-trades/:param/confirm",
+      "guards": [
+        "requireScope"
+      ],
+      "auth_only": [
+        "playerWrite"
+      ],
+      "scopes": [
+        "trade:write"
+      ],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "confirmNpcTrade"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/npc-trades/:param/cancel",
+      "guards": [
+        "requireScope"
+      ],
+      "auth_only": [
+        "playerWrite"
+      ],
+      "scopes": [
+        "trade:write"
+      ],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "cancelNpcTrade"
       ],
       "studio_alias": false
     },

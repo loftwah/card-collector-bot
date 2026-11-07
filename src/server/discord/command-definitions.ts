@@ -32,6 +32,16 @@ export const DISCORD_COMMANDS = [
         description: "Inspect a labelled NPC collector",
         options: [{ type: 3, name: "name", description: "NPC name or slug; omit to list the cast", required: false }],
       },
+      {
+        type: 1,
+        name: "trade",
+        description: "Trade exact owned copies with a labelled NPC collector",
+        options: [
+          { type: 3, name: "npc", description: "NPC name or slug", required: true },
+          { type: 3, name: "give", description: "Exact serial of your copy to give", required: true },
+          { type: 3, name: "take", description: "Exact serial of the NPC copy to request", required: true },
+        ],
+      },
       { type: 1, name: "help", description: "Explain Foilbury commands and next steps" },
       {
         type: 2,
@@ -110,6 +120,7 @@ export const HELP_TEXT = [
   "`/foilbury tour` — run the guided welcome, album, opening and sharing tour",
   "`/foilbury profile` — see your balance and daily status",
   "`/foilbury npc [name]` — inspect a labelled NPC collector and compare progress",
+  "`/foilbury trade npc:<name> give:<serial> take:<serial>` — hold, review and confirm an exact NPC exchange",
   "",
   "Admin commands: `/foilbury admin status|settings|pools|enable|disable|grant`.",
   "Admin commands require a Bot Owner or Bot Admin Foilbury account; server moderator is not platform authority.",

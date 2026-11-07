@@ -24,7 +24,14 @@ import {
   listPools,
 } from "../modules/pools";
 import { finishKey, listAchievements } from "../modules/achievements";
-import { compareNpc, listNpcProfiles } from "../modules/npcs";
+import { compareNpc, getNpc, listNpcProfiles } from "../modules/npcs";
+import {
+  cancelNpcTrade,
+  confirmNpcTrade,
+  createNpcTrade,
+  npcTradeOffers,
+  previewNpcTrade,
+} from "../modules/npc-trades";
 import { claimDailyMission, getDailyMissions } from "../modules/missions";
 import {
   achievementsOverviewMessage,
@@ -1104,6 +1111,7 @@ async function npcView(ctx: Ctx, query: string): Promise<DiscordCallback> {
     );
   }
   const comparison = await compareNpc(ctx, selected.id);
+  const offers = await npcTradeOffers(ctx, selected.id);
   return callback(
     {
       embeds: [
@@ -1118,12 +1126,192 @@ async function npcView(ctx: Ctx, query: string): Promise<DiscordCallback> {
             { name: "Recorded actions", value: String(selected.actions_count), inline: true },
             { name: "NPC album", value: `${selected.subjects} subjects · ${selected.cards} copies\n${selected.gold} Gold · ${selected.holographic} Holographic`, inline: true },
             { name: "Your album", value: `${comparison.viewer.subjects} subjects · ${comparison.viewer.cards} copies\n${comparison.viewer.gold} Gold · ${comparison.viewer.holographic} Holographic`, inline: true },
+            {
+              name: "Tradeable copies",
+              value:
+                offers.copies
+                  .slice(0, 6)
+                  .map((copy) => `${copy.card_name} · ${copy.variant_name} · \`${copy.serial}\``)
+                  .join("\n") || "No tradeable copies in an enabled collection.",
+              inline: false,
+            },
+            {
+              name: "Wants",
+              value:
+                offers.wants.missing_subjects.length
+                  ? `Missing subjects: ${offers.wants.missing_subjects.slice(0, 6).join(", ")}`
+                  : "No missing subjects in its current goal.",
+              inline: false,
+            },
+            {
+              name: "Trade",
+              value: `\`/foilbury trade npc:${selected.slug} give:<your serial> take:<its serial>\``,
+              inline: false,
+            },
             { name: "Honesty", value: "NPC · synthetic collector. Real draws, serials and ledger entries; never a human member or fabricated testimonial.", inline: false },
           ],
-          footer: { text: "Foilbury · on-demand NPC inspection" },
+          footer: { text: "Foilbury · on-demand NPC inspection and exchange" },
         },
       ],
-      components: components([[{ type: 2, style: 5, label: "Compare in the lounge", url: absoluteUrl(ctx.config.publicOrigin, "/play/rivals")! }]]),
+      components: components([
+        [
+          { type: 2, style: 5, label: "Open trade desk", url: absoluteUrl(ctx.config.publicOrigin, `/play/trades?npc=${selected.id}`)! },
+          { type: 2, style: 5, label: "Compare in the lounge", url: absoluteUrl(ctx.config.publicOrigin, "/play/rivals")! },
+        ],
+      ]),
+    },
+    true,
+  );
+}
+
+async function findTradeCopy(ctx: Ctx, userId: string, serial: string) {
+  return first<{ id: string; serial: string; card_name: string; variant_name: string }>(
+    ctx.db,
+    `SELECT ci.id, ci.serial, cd.name AS card_name, v.name AS variant_name
+       FROM fb_card_instances ci
+       JOIN fb_card_definitions cd ON cd.id = ci.card_id
+       JOIN fb_variants v ON v.id = ci.variant_id
+      WHERE ci.tenant_id = ? AND ci.user_id = ? AND ci.serial = ?
+        AND ci.status = 'owned' AND ci.locked = 0
+      LIMIT 1`,
+    ctx.tenant.id,
+    userId,
+    serial,
+  );
+}
+
+async function npcTradeCommand(
+  ctx: Ctx,
+  interaction: DiscordInteraction,
+  values: Record<string, string | number | boolean | undefined>,
+): Promise<DiscordCallback> {
+  const query = typeof values.npc === "string" ? values.npc.trim().toLowerCase() : "";
+  const giveSerial = typeof values.give === "string" ? values.give.trim() : "";
+  const takeSerial = typeof values.take === "string" ? values.take.trim() : "";
+  if (!query || !giveSerial || !takeSerial) {
+    throw new ApiError(422, "npc_trade_options", "Choose an NPC by name or slug and provide both exact serials.");
+  }
+  const profiles = await listNpcProfiles(ctx);
+  const selected = profiles.find(
+    (npc) => npc.id.toLowerCase() === query || npc.slug.toLowerCase() === query || npc.name.toLowerCase().includes(query),
+  );
+  if (!selected) throw new ApiError(404, "npc_not_found", "That NPC collector is not active in this Bot.");
+  const npc = await getNpc(ctx, selected.id);
+  const give = await findTradeCopy(ctx, ctx.user!.id, giveSerial);
+  if (!give) throw new ApiError(404, "trade_give_not_found", `No owned, unlocked copy with serial ${giveSerial} was found. Use the serial from /foilbury collection.`);
+  const take = await findTradeCopy(ctx, npc.row.user_id, takeSerial);
+  if (!take) throw new ApiError(404, "trade_take_not_found", `The collector has no tradeable copy with serial ${takeSerial}. Use /foilbury npc name:${selected.slug}.`);
+  const preview = await previewNpcTrade(ctx, {
+    npcId: selected.id,
+    giveInstanceIds: [give.id],
+    takeInstanceIds: [take.id],
+  });
+  const exact = [
+    { name: "You give", value: `${give.card_name} · ${give.variant_name}\n\`${give.serial}\``, inline: true },
+    { name: "You receive", value: `${take.card_name} · ${take.variant_name}\n\`${take.serial}\``, inline: true },
+  ];
+  if (preview.decision !== "accept") {
+    return callback(
+      {
+        embeds: [
+          {
+            title: `${selected.name} declines`,
+            description: preview.reason,
+            color: 0x8a8f98,
+            fields: exact,
+            footer: { text: "NPC · synthetic collector · no copies moved" },
+          },
+        ],
+        components: components([
+          [
+            { type: 2, style: 5, label: "Open trade desk", url: absoluteUrl(ctx.config.publicOrigin, `/play/trades?npc=${selected.id}`)! },
+            { type: 2, style: 5, label: "Inspect the collector", url: absoluteUrl(ctx.config.publicOrigin, "/play/rivals")! },
+          ],
+        ]),
+      },
+      true,
+    );
+  }
+  const created = await createNpcTrade(ctx, {
+    npcId: selected.id,
+    giveInstanceIds: [give.id],
+    takeInstanceIds: [take.id],
+    idempotencyKey: `discord-npc-trade:${interaction.id}`,
+  });
+  return callback(
+    {
+      embeds: [
+        {
+          title: `${selected.name} accepts · exact offer held`,
+          description: "The collector's deterministic decision accepted this exchange. Both exact copies are reserved; nothing has moved yet. Confirm to complete the trade or cancel to release them.",
+          color: 0x00c8b8,
+          fields: [
+            ...exact,
+            { name: "Decision", value: preview.reason, inline: false },
+            { name: "Expires", value: formatDiscordTimestamp(created.trade.expires_at), inline: true },
+            { name: "Trade", value: `\`${created.trade.id}\``, inline: true },
+            { name: "Honesty", value: "NPC · synthetic collector. The decision is deterministic, based on its recorded holdings, goals and preset; no AI inference or human impersonation.", inline: false },
+          ],
+          footer: { text: "Foilbury · NPC exchange · reserved copies do not transfer until confirm" },
+        },
+      ],
+      components: components([
+        [
+          button("Confirm exchange", `foilbury:npc-confirm:${created.trade.id}`, 3),
+          button("Cancel offer", `foilbury:npc-cancel:${created.trade.id}`, 2),
+          { type: 2, style: 5, label: "Open trade desk", url: absoluteUrl(ctx.config.publicOrigin, `/play/trades?npc=${selected.id}`)! },
+        ],
+      ]),
+    },
+    true,
+  );
+}
+
+async function npcTradeConfirm(ctx: Ctx, tradeId: string): Promise<DiscordCallback> {
+  const result = await confirmNpcTrade(ctx, tradeId);
+  const items = result.trade.items;
+  const gave = items.filter((item) => item.side === "proposer");
+  const received = items.filter((item) => item.side === "recipient");
+  return callback(
+    {
+      embeds: [
+        {
+          title: `Exchange complete · ${result.decision.npc_name}`,
+          description: "The exact copies moved atomically. Serials and instance history are preserved; the NPC remains a labelled synthetic collector.",
+          color: 0x3f9d5a,
+          fields: [
+            { name: "You gave", value: gave.map((item) => `${item.card_name} · ${item.variant_name}\n\`${item.serial}\``).join("\n") || "—", inline: true },
+            { name: "You received", value: received.map((item) => `${item.card_name} · ${item.variant_name}\n\`${item.serial}\``).join("\n") || "—", inline: true },
+            { name: "Decision", value: result.decision.reason, inline: false },
+            { name: "Trade", value: `\`${result.trade.id}\` · ${result.trade.status}`, inline: false },
+          ],
+          footer: { text: "Foilbury · NPC exchange · serials preserved · no fabricated human activity" },
+        },
+      ],
+      components: components([
+        [
+          { type: 2, style: 5, label: "Open my trades", url: absoluteUrl(ctx.config.publicOrigin, "/play/trades")! },
+          { type: 2, style: 5, label: "Inspect the collector", url: absoluteUrl(ctx.config.publicOrigin, "/play/rivals")! },
+        ],
+      ]),
+    },
+    true,
+  );
+}
+
+async function npcTradeCancel(ctx: Ctx, tradeId: string): Promise<DiscordCallback> {
+  const result = await cancelNpcTrade(ctx, tradeId);
+  return callback(
+    {
+      embeds: [
+        {
+          title: "NPC offer cancelled",
+          description: "The exact copies were released from reservation. Nothing moved and no serial changed ownership.",
+          color: 0x8a8f98,
+          fields: [{ name: "Trade", value: `\`${result.trade.id}\` · ${result.trade.status}`, inline: false }],
+        },
+      ],
+      components: components([[{ type: 2, style: 5, label: "Open my trades", url: absoluteUrl(ctx.config.publicOrigin, "/play/trades")! }]]),
     },
     true,
   );
@@ -2591,6 +2779,8 @@ export async function runCommand(
       return profile(ctx, installation, undefined, interaction.channel_id);
     case "npc":
       return npcView(ctx, typeof values.name === "string" ? values.name : "");
+    case "trade":
+      return npcTradeCommand(ctx, interaction, values);
     case "help":
       return help(ctx);
     case "admin:status":
@@ -2755,6 +2945,12 @@ export async function runComponent(
     if (action === "details")
       return cardDetails(ctx, cardId, installation, undefined, interaction.channel_id);
     throw new ApiError(404, "card_component_unknown", "That card control is not recognised.");
+  }
+  if (customId.startsWith("foilbury:npc-confirm:")) {
+    return npcTradeConfirm(ctx, customId.slice("foilbury:npc-confirm:".length));
+  }
+  if (customId.startsWith("foilbury:npc-cancel:")) {
+    return npcTradeCancel(ctx, customId.slice("foilbury:npc-cancel:".length));
   }
   if (customId.startsWith("foilbury:confirm:")) {
     return executeConfirmation(ctx, interaction, customId.slice("foilbury:confirm:".length));

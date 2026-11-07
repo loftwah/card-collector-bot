@@ -169,6 +169,43 @@ export async function acceptTrade(ctx: Ctx, tradeId: string) {
   const side = user.id === trade.proposer_id ? "proposer" : "recipient";
   const other = side === "proposer" ? trade.recipient_id : trade.proposer_id;
   if (user.id !== trade.proposer_id && user.id !== trade.recipient_id) throw new ApiError(403, "not_a_party", "You are not a party to this trade.");
+  const npc = await first<{ id: string; status: string; bot_id: string | null }>(
+    ctx.db,
+    "SELECT id, status, bot_id FROM fb_npc_collectors WHERE tenant_id = ? AND user_id = ?",
+    ctx.tenant.id,
+    trade.recipient_id,
+  );
+  if (npc) {
+    const bot = await first<{ id: string; status: string }>(
+      ctx.db,
+      "SELECT id, status FROM fb_bots WHERE tenant_id = ? AND id = ?",
+      ctx.tenant.id,
+      npc.bot_id,
+    );
+    if (npc.status !== "active" || !bot || bot.status !== "active") {
+      throw new ApiError(409, "npc_trade_unavailable", "The NPC collector or its Bot is paused; nothing was transferred.");
+    }
+    const availability = await all<{ card_name: string; enabled_count: number }>(
+      ctx.db,
+      `SELECT cd.name AS card_name,
+              SUM(CASE WHEN bc.enabled = 1 AND c.status = 'published' AND c.archived_at IS NULL THEN 1 ELSE 0 END) AS enabled_count
+         FROM fb_trade_items ti
+         JOIN fb_card_instances ci ON ci.id = ti.instance_id AND ci.tenant_id = ti.tenant_id
+         JOIN fb_card_definitions cd ON cd.id = ci.card_id
+         JOIN fb_collection_cards cc ON cc.card_id = ci.card_id
+         JOIN fb_collections c ON c.id = cc.collection_id
+         LEFT JOIN fb_bot_collections bc ON bc.bot_id = ? AND bc.collection_id = c.id
+        WHERE ti.trade_id = ? AND ti.tenant_id = ?
+        GROUP BY ci.card_id, cd.name`,
+      bot.id,
+      trade.id,
+      ctx.tenant.id,
+    );
+    const disabled = availability.find((row) => Number(row.enabled_count) === 0);
+    if (disabled) {
+      throw new ApiError(409, "npc_trade_unavailable", `${disabled.card_name}'s collection is disabled for this Bot; nothing was transferred.`);
+    }
+  }
   const existing = await first<{ user_id: string }>(
     ctx.db,
     "SELECT user_id FROM fb_trade_acceptances WHERE trade_id = ? AND tenant_id = ? AND revision = ? AND user_id = ?",

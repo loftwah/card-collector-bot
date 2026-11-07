@@ -2611,6 +2611,51 @@ html[data-motion="reduced"] .layered-card__effect {
   padding-right: 0.15rem;
 }
 
+.npc-trade-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (min-width: 760px) {
+  .npc-trade-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+.npc-trade-profile,
+.npc-trade-wants {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.npc-trade-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.npc-trade-decision,
+.npc-trade-result {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+
+.npc-trade-decision.is-accept {
+  border-color: var(--success);
+}
+
+.npc-trade-decision.is-decline {
+  border-color: var(--danger);
+}
+
+.npc-trade-result {
+  border-color: var(--success);
+}
+
 .trade-copy {
   display: flex;
   min-width: 0;
