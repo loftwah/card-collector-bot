@@ -1193,6 +1193,46 @@ describe("Discord HTTP interactions", () => {
     expect(serialised).not.toContain(player.user!.email);
   });
 
+  it("scopes the profile to the invoking channel, not the installation topic key", async () => {
+    const player = await ctxFor("cabinet", "owner@foilbury.local");
+    const fixture = await fixturePool(player);
+    const collection = await createCollection(player, {
+      name: "Profile Members",
+      scope: "global",
+      status: "published",
+      viewAudience: "members",
+    });
+    await addCollectionCards(player, collection.id, [fixture.cardId]);
+    await runtime.DB.prepare(
+      "DELETE FROM fb_collection_cards WHERE collection_id = 'col_test_public'",
+    ).run();
+    await runtime.DB.prepare(
+      "INSERT OR REPLACE INTO fb_bot_collections (bot_id, collection_id, enabled, updated_at) SELECT b.id, ?, 1, ? FROM fb_bots b WHERE b.tenant_id = ?",
+    )
+      .bind(collection.id, new Date().toISOString(), player.tenant.id)
+      .run();
+    await send(interaction(command("profile"), { id: "profile-scope-identity" }));
+    const identity = await runtime.DB.prepare(
+      "SELECT user_id FROM fb_discord_identities WHERE discord_user_id = ?",
+    )
+      .bind(DISCORD_USER_ID)
+      .first<{ user_id: string }>();
+    await makeInstance(player, identity!.user_id, fixture, "FB-PROFILE-SCOPE");
+    await runtime.DB.prepare(
+      "UPDATE fb_discord_installations SET channel_key = 'topic-policy-key', channel_audience_json = ? WHERE id = 'dci_test'",
+    )
+      .bind(JSON.stringify({ [CHANNEL_ID]: "members" }))
+      .run();
+    const profile = await send(interaction(command("profile"), { id: "profile-channel-scope" }));
+    const embed = profile.payload.data?.embeds?.[0] as
+      | { fields?: Array<{ name: string; value: string }> }
+      | undefined;
+    expect(embed?.fields?.find((field) => field.name === "Owned cards")?.value).toBe("1");
+    expect(embed?.fields?.find((field) => field.name === "Featured copy")?.value).toContain(
+      "Test One",
+    );
+  });
+
   it("selects the server's enabled album without a hard-coded slug", async () => {
     const player = await ctxFor("cabinet", "player@foilbury.local");
     await fixturePool(player);
