@@ -2,6 +2,7 @@ import { ApiError, type Ctx } from "../context";
 import { all, first, nowIso } from "../db";
 import { newId } from "../ids";
 import { audit, auditStatement } from "../http";
+import { normalizeCardName } from "./card-name-aliases";
 
 export interface InventoryRow {
   id: string;
@@ -108,9 +109,11 @@ function inventoryFilter(ctx: Ctx, options: InventoryQuery) {
   }
   if (options.favourite) where.push("ci.favourite = 1");
   if (options.search) {
-    where.push("(cd.name LIKE ? OR v.name LIKE ? OR cd.description LIKE ?)");
+    where.push(
+      "(cd.name LIKE ? OR v.name LIKE ? OR cd.description LIKE ? OR EXISTS (SELECT 1 FROM fb_card_name_aliases na WHERE na.tenant_id = cd.tenant_id AND na.card_id = cd.id AND na.normalized = ?))",
+    );
     const search = `%${options.search}%`;
-    params.push(search, search, search);
+    params.push(search, search, search, normalizeCardName(options.search));
   }
   if (options.setSlug) {
     where.push(
