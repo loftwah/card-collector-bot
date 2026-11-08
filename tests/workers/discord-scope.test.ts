@@ -2,7 +2,15 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { handleDiscordInteraction } from "../../src/server/discord/handler";
 import { signDiscordRequest } from "../../src/server/discord/signature";
 import type { DiscordEnv } from "../../src/server/discord/types";
-import { bootstrap, ctxFor, fixturePool, makeInstance, runtime, setBalance, walletBalance } from "./helpers";
+import {
+  bootstrap,
+  ctxFor,
+  fixturePool,
+  makeInstance,
+  runtime,
+  setBalance,
+  walletBalance,
+} from "./helpers";
 import { addCollectionCards, createCollection } from "../../src/server/modules/collections";
 import { createNpc } from "../../src/server/modules/npcs";
 import { npcTradeOffers } from "../../src/server/modules/npc-trades";
@@ -68,6 +76,13 @@ function command(name: string, options: Array<Record<string, unknown>> = []) {
   };
 }
 
+function revealButton(originalInteractionId: string) {
+  return interaction(
+    { custom_id: `foilbury:reveal:${originalInteractionId}`, component_type: 2 },
+    { id: `reveal-${originalInteractionId}`, type: 3 },
+  );
+}
+
 async function send(body: Record<string, unknown>) {
   const raw = JSON.stringify(body);
   const timestamp = String(Math.floor(Date.now() / 1000));
@@ -86,7 +101,11 @@ async function send(body: Record<string, unknown>) {
     type?: number;
     data?: {
       content?: string;
-      embeds?: Array<{ title?: string; description?: string; fields?: Array<{ name: string; value: string }> }>;
+      embeds?: Array<{
+        title?: string;
+        description?: string;
+        fields?: Array<{ name: string; value: string }>;
+      }>;
       flags?: number;
       components?: Array<{ components?: Array<{ custom_id?: string; label?: string }> }>;
     };
@@ -171,7 +190,9 @@ describe("Discord configured-server scope", () => {
     const welcome = await send(interaction(command("tour")));
     expect(JSON.stringify(welcome.data)).toContain("This server has no eligible collection");
     expect(JSON.stringify(welcome.data)).not.toContain("Test Public");
-    const open = await send(interaction(command("open", [{ name: "pool", type: 3, value: "test-pool" }])));
+    const open = await send(
+      interaction(command("open", [{ name: "pool", type: 3, value: "test-pool" }])),
+    );
     expect(JSON.stringify(open.data)).not.toContain("Test One");
     expect(await draws()).toBe(0);
   });
@@ -211,7 +232,9 @@ describe("Discord configured-server scope", () => {
       }),
     );
     expect(allowed.data?.flags).toBe(64);
-    expect(JSON.stringify(allowed.data)).toContain("Test One");
+    expect(JSON.stringify(allowed.data)).toContain("sealed");
+    const revealed = await send(revealButton("scope-members-allowed"));
+    expect(JSON.stringify(revealed.data)).toContain("Test One");
     expect(await draws()).toBe(1);
   });
 
@@ -225,8 +248,7 @@ describe("Discord configured-server scope", () => {
       goalCollectionId: "col_test_public",
       startingBalance: 0,
     });
-    const npcRow = await runtime.DB
-      .prepare("SELECT user_id FROM fb_npc_collectors WHERE id = ?")
+    const npcRow = await runtime.DB.prepare("SELECT user_id FROM fb_npc_collectors WHERE id = ?")
       .bind(npc.id)
       .first<{ user_id: string }>();
     await makeInstance(owner, npcRow!.user_id, fixture, "NPC-SCOPE-1");
@@ -267,9 +289,7 @@ describe("Discord configured-server scope", () => {
     expect(off.data?.flags).toBe(64);
     expect(JSON.stringify(off.data)).toMatch(/AI-assisted artwork|no eligible/i);
     expect(await draws()).toBe(0);
-    await runtime.DB.prepare(
-      "UPDATE fb_bots SET ai_art_enabled = 1 WHERE tenant_id = ?",
-    )
+    await runtime.DB.prepare("UPDATE fb_bots SET ai_art_enabled = 1 WHERE tenant_id = ?")
       .bind(player.tenant.id)
       .run();
     const on = await send(
@@ -278,7 +298,9 @@ describe("Discord configured-server scope", () => {
       }),
     );
     expect(on.data?.flags).toBe(64);
-    expect(JSON.stringify(on.data)).toContain("Test One");
+    expect(JSON.stringify(on.data)).toContain("sealed");
+    const revealed = await send(revealButton("ai-on"));
+    expect(JSON.stringify(revealed.data)).toContain("Test One");
     expect(await draws()).toBe(1);
   });
 

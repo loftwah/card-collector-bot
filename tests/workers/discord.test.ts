@@ -16,7 +16,9 @@ const GUILD_ID = "997734945206313041";
 const CHANNEL_ID = "1566700752385081355";
 const DISCORD_USER_ID = "707281352818425929";
 
-function expectUniqueComponentIds(payload: { components?: Array<{ components?: Array<{ custom_id?: string }> }> }) {
+function expectUniqueComponentIds(payload: {
+  components?: Array<{ components?: Array<{ custom_id?: string }> }>;
+}) {
   const ids = (payload.components ?? [])
     .flatMap((row) => row.components ?? [])
     .map((component) => component.custom_id)
@@ -117,6 +119,13 @@ function command(name: string, options: Array<Record<string, unknown>> = []) {
   };
 }
 
+function revealButton(originalInteractionId: string) {
+  return interaction(
+    { custom_id: `foilbury:reveal:${originalInteractionId}`, component_type: 2 },
+    { id: `reveal-${originalInteractionId}`, type: 3 },
+  );
+}
+
 async function install() {
   const player = await ctxFor("cabinet", "player@foilbury.local");
   await runtime.DB.prepare(
@@ -194,7 +203,15 @@ describe("Discord HTTP interactions", () => {
     });
     const first = await send(body);
     expect(first.payload.type).toBe(4);
-    expect(first.payload.data?.embeds?.[0]?.title).toContain("Test One");
+    expect(first.payload.data?.flags).toBe(64);
+    expect(first.payload.data?.embeds?.[0]?.title).toContain("sealed");
+    expect(JSON.stringify(first.payload.data)).not.toContain("Test One");
+
+    const revealed = await send(revealButton("draw-1"));
+    expect(revealed.payload.type).toBe(4);
+    expect(revealed.payload.data?.flags).toBe(64);
+    expect(revealed.payload.data?.embeds?.[0]?.title).toContain("Test One");
+    expect(JSON.stringify(revealed.payload)).toContain("attachment://foilbury-reveal-card.webp");
     const draw = await runtime.DB.prepare(
       "SELECT d.instance_id, d.receipt_json, ci.user_id, ci.serial FROM fb_draws d JOIN fb_card_instances ci ON ci.id = d.instance_id WHERE d.idempotency_key = ?",
     )
@@ -209,7 +226,8 @@ describe("Discord HTTP interactions", () => {
     expect(draw?.user_id).toBe(identity?.user_id);
 
     const replay = await send(body);
-    expect(replay.payload.data?.embeds?.[0]?.title).toContain("Test One");
+    expect(replay.payload.data?.embeds?.[0]?.title).toContain("sealed");
+    expect(JSON.stringify(replay.payload.data)).not.toContain("Test One");
     const draws = await runtime.DB.prepare(
       "SELECT COUNT(*) AS count FROM fb_draws WHERE idempotency_key = ?",
     )
@@ -265,9 +283,17 @@ describe("Discord HTTP interactions", () => {
     );
     const openFields = open.payload.data?.embeds?.[0]?.fields?.map((field) => field.name) ?? [];
     expect(openFields).toEqual(
-      expect.arrayContaining(["Opening debit", "Settled balance", "Serial"]),
+      expect.arrayContaining(["Capsule", "Opening", "When you are ready"]),
     );
     expect(open.payload.data?.flags).toBe(64);
+
+    const revealed = await send(revealButton("presentation-open"));
+    const revealedFields =
+      revealed.payload.data?.embeds?.[0]?.fields?.map((field) => field.name) ?? [];
+    expect(revealedFields).toEqual(
+      expect.arrayContaining(["Opening debit", "Settled balance", "Serial", "This copy"]),
+    );
+    expect(revealed.payload.data?.flags).toBe(64);
 
     const card = await send(
       interaction(command("card", [{ name: "query", type: 3, value: "Test One" }]), {
@@ -279,7 +305,9 @@ describe("Discord HTTP interactions", () => {
     );
     expect(JSON.stringify(card.payload.data)).toContain("View back");
 
-    const collection = await send(interaction(command("collection"), { id: "presentation-collection" }));
+    const collection = await send(
+      interaction(command("collection"), { id: "presentation-collection" }),
+    );
     expect(collection.payload.data?.embeds?.[0]?.title).toBe("Your cabinet");
     expect(JSON.stringify(collection.payload.data)).toContain("Open cabinet on the web");
 
@@ -305,11 +333,12 @@ describe("Discord HTTP interactions", () => {
   it("shows the same awarded instance in a later collection lookup", async () => {
     const player = await ctxFor("cabinet", "player@foilbury.local");
     await fixturePool(player);
-    const draw = await send(
+    await send(
       interaction(command("open", [{ name: "pool", type: 3, value: "test-pool" }]), {
         id: "draw-collection",
       }),
     );
+    const draw = await send(revealButton("draw-collection"));
     const title = draw.payload.data?.embeds?.[0]?.title ?? "";
     const collection = await send(interaction(command("collection"), { id: "collection-1" }));
     const text = JSON.stringify(collection.payload.data);
@@ -331,42 +360,75 @@ describe("Discord HTTP interactions", () => {
   it("opens the default capsule without a pool argument", async () => {
     await fixturePool(await ctxFor("cabinet", "player@foilbury.local"));
     const now = new Date().toISOString();
-    const fixture = await runtime.DB.prepare("SELECT variant_id FROM fb_pool_entries WHERE pool_id = 'pool_test_open' LIMIT 1").first<{ variant_id: string }>();
+    const fixture = await runtime.DB.prepare(
+      "SELECT variant_id FROM fb_pool_entries WHERE pool_id = 'pool_test_open' LIMIT 1",
+    ).first<{ variant_id: string }>();
     await runtime.DB.batch([
-      runtime.DB.prepare("INSERT INTO fb_pools (id, tenant_id, slug, name, description, status, revision, price, created_at, updated_at, published_at) VALUES ('pool_default_cabinet', (SELECT tenant_id FROM fb_pools WHERE id = 'pool_test_open'), 'cabinet-draw', 'Cabinet draw', 'Default capsule', 'active', 1, 80, ?, ?, ?)").bind(now, now, now),
-      runtime.DB.prepare("INSERT INTO fb_pool_entries (id, tenant_id, pool_id, pool_revision, variant_id, weight, enabled, created_at) VALUES ('poe_default', (SELECT tenant_id FROM fb_pools WHERE id = 'pool_test_open'), 'pool_default_cabinet', 1, ?, 100, 1, ?)").bind(fixture!.variant_id, now),
+      runtime.DB.prepare(
+        "INSERT INTO fb_pools (id, tenant_id, slug, name, description, status, revision, price, created_at, updated_at, published_at) VALUES ('pool_default_cabinet', (SELECT tenant_id FROM fb_pools WHERE id = 'pool_test_open'), 'cabinet-draw', 'Cabinet draw', 'Default capsule', 'active', 1, 80, ?, ?, ?)",
+      ).bind(now, now, now),
+      runtime.DB.prepare(
+        "INSERT INTO fb_pool_entries (id, tenant_id, pool_id, pool_revision, variant_id, weight, enabled, created_at) VALUES ('poe_default', (SELECT tenant_id FROM fb_pools WHERE id = 'pool_test_open'), 'pool_default_cabinet', 1, ?, 100, 1, ?)",
+      ).bind(fixture!.variant_id, now),
     ]);
     const opened = await send(interaction(command("open"), { id: "default-open" }));
     expect(opened.response.status).toBe(200);
-    expect(JSON.stringify(opened.payload.data)).toContain("Test One");
-    const draw = await runtime.DB.prepare("SELECT price, pool_id FROM fb_draws WHERE idempotency_key = 'discord:default-open:open'").first<{ price: number; pool_id: string }>();
+    expect(JSON.stringify(opened.payload.data)).toContain("sealed");
+    expect(JSON.stringify(opened.payload.data)).not.toContain("Test One");
+    const revealed = await send(revealButton("default-open"));
+    expect(JSON.stringify(revealed.payload.data)).toContain("Test One");
+    const draw = await runtime.DB.prepare(
+      "SELECT price, pool_id FROM fb_draws WHERE idempotency_key = 'discord:default-open:open'",
+    ).first<{ price: number; pool_id: string }>();
     expect(draw).toMatchObject({ price: 80, pool_id: "pool_default_cabinet" });
   });
 
   it("offers real eligible capsules when the default is empty", async () => {
     await fixturePool(await ctxFor("cabinet", "player@foilbury.local"));
     const now = new Date().toISOString();
-    await runtime.DB.prepare("INSERT INTO fb_pools (id, tenant_id, slug, name, description, status, revision, price, created_at, updated_at, published_at) VALUES ('pool_empty_default', (SELECT tenant_id FROM fb_pools WHERE id = 'pool_test_open'), 'cabinet-draw', 'Cabinet draw', 'Default capsule with no entries', 'active', 1, 80, ?, ?, ?)").bind(now, now, now).run();
+    await runtime.DB.prepare(
+      "INSERT INTO fb_pools (id, tenant_id, slug, name, description, status, revision, price, created_at, updated_at, published_at) VALUES ('pool_empty_default', (SELECT tenant_id FROM fb_pools WHERE id = 'pool_test_open'), 'cabinet-draw', 'Cabinet draw', 'Default capsule with no entries', 'active', 1, 80, ?, ?, ?)",
+    )
+      .bind(now, now, now)
+      .run();
     const picker = await send(interaction(command("open"), { id: "default-empty" }));
     expect(JSON.stringify(picker.payload.data)).toContain("Choose a capsule");
-    const ids = (picker.payload.data?.components ?? []).flatMap((row) => row.components ?? []).map((component) => component.custom_id);
+    const ids = (picker.payload.data?.components ?? [])
+      .flatMap((row) => row.components ?? [])
+      .map((component) => component.custom_id);
     expect(ids).toContain("foilbury:open:test-pool");
     expect(picker.payload.data?.flags).toBe(64);
-    const draws = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_draws").first<{ count: number }>();
+    const draws = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_draws").first<{
+      count: number;
+    }>();
     expect(draws?.count ?? 0).toBe(0);
   });
 
   it("explains insufficient funds with a daily-claim next step", async () => {
     const player = await fixturePool(await ctxFor("cabinet", "player@foilbury.local"));
     await send(interaction(command("profile"), { id: "funds-profile" }));
-    const identity = await runtime.DB.prepare("SELECT user_id FROM fb_discord_identities WHERE discord_user_id = ?").bind(DISCORD_USER_ID).first<{ user_id: string }>();
+    const identity = await runtime.DB.prepare(
+      "SELECT user_id FROM fb_discord_identities WHERE discord_user_id = ?",
+    )
+      .bind(DISCORD_USER_ID)
+      .first<{ user_id: string }>();
     expect(identity?.user_id).toBeTruthy();
     const playerCtx = await ctxFor("cabinet", "player@foilbury.local");
-    await setBalance({ ...playerCtx, user: { ...playerCtx.user!, id: identity!.user_id } }, identity!.user_id, 0);
-    const failed = await send(interaction(command("open", [{ name: "pool", type: 3, value: "test-pool" }]), { id: "no-funds" }));
+    await setBalance(
+      { ...playerCtx, user: { ...playerCtx.user!, id: identity!.user_id } },
+      identity!.user_id,
+      0,
+    );
+    const failed = await send(
+      interaction(command("open", [{ name: "pool", type: 3, value: "test-pool" }]), {
+        id: "no-funds",
+      }),
+    );
     expect(JSON.stringify(failed.payload.data)).toContain("Not enough Foil");
     expect(JSON.stringify(failed.payload.data)).toContain("/foilbury daily");
-    const draws = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_draws").first<{ count: number }>();
+    const draws = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_draws").first<{
+      count: number;
+    }>();
     expect(draws?.count ?? 0).toBe(0);
     expect(player.variantId).toBeTruthy();
   });
@@ -412,7 +474,7 @@ describe("Discord HTTP interactions", () => {
     expect(allowed.payload.data?.embeds?.[0]?.title).toContain("Bot status");
   });
 
-  it("defers privately and delivers the committed reveal through the private original", async () => {
+  it("defers privately and delivers the sealed opening through the private original", async () => {
     const player = await ctxFor("cabinet", "player@foilbury.local");
     await fixturePool(player);
     await runtime.MEDIA.put("test/render.webp", new Uint8Array([82, 73, 70, 70, 1, 2, 3]));
@@ -455,15 +517,22 @@ describe("Discord HTTP interactions", () => {
     const original = transport.original("test-interaction-token")!;
     expect(original.visibility).toBe("ephemeral");
     expect(original.loading).toBe(false);
-    expect(original.files).toBe(1);
-    expect(JSON.stringify(original.payload)).toContain("Test One");
-    expect(JSON.stringify(original.payload)).toContain("attachment://foilbury-reveal-card.webp");
-    expect(JSON.stringify(original.payload)).toContain('"width":750');
-    // A private reveal must not create a channel-visible follow-up.
+    expect(original.files).toBe(0);
+    expect(JSON.stringify(original.payload)).toContain("sealed");
+    expect(JSON.stringify(original.payload)).toContain("Reveal card");
+    expect(JSON.stringify(original.payload)).not.toContain("Test One");
+    expect(JSON.stringify(original.payload)).toContain("/brand/card-back.webp");
+    // A private opening must not create a channel-visible follow-up.
     expect(transport.publicMessages()).toHaveLength(0);
     expect(transport.requests.map((entry) => `${entry.method} ${entry.target}`)).toEqual([
       "PATCH original",
     ]);
+
+    const revealed = await send(revealButton("deferred-draw"));
+    expect(revealed.payload.type).toBe(4);
+    expect(revealed.payload.data?.flags).toBe(64);
+    expect(JSON.stringify(revealed.payload)).toContain("Test One");
+    expect(JSON.stringify(revealed.payload)).toContain("attachment://foilbury-reveal-card.webp");
     const record = await runtime.DB.prepare(
       "SELECT status, error_code, delivery_visibility, receipt_json FROM fb_discord_interactions WHERE interaction_id = ?",
     )
@@ -553,7 +622,9 @@ describe("Discord HTTP interactions", () => {
       viewAudience: "members",
     });
     await addCollectionCards(owner, collection.id, [fixture.cardId]);
-    await runtime.DB.prepare("DELETE FROM fb_collection_cards WHERE collection_id = 'col_test_public'").run();
+    await runtime.DB.prepare(
+      "DELETE FROM fb_collection_cards WHERE collection_id = 'col_test_public'",
+    ).run();
     await runtime.DB.prepare(
       "INSERT OR REPLACE INTO fb_bot_collections (bot_id, collection_id, enabled, updated_at) SELECT b.id, ?, 1, ? FROM fb_bots b WHERE b.tenant_id = ?",
     )
@@ -600,9 +671,13 @@ describe("Discord HTTP interactions", () => {
     expect(ackFlags).toBe(64);
     expect(transport.original("test-interaction-token")!.visibility).toBe("ephemeral");
     expect(transport.publicMessages()).toHaveLength(0);
-    expect(JSON.stringify(transport.original("test-interaction-token")!.payload)).toContain(
+    expect(JSON.stringify(transport.original("test-interaction-token")!.payload)).not.toContain(
       "Test One",
     );
+    const revealed = await send(revealButton("deferred-private"));
+    expect(revealed.payload.type).toBe(4);
+    expect(revealed.payload.data?.flags).toBe(64);
+    expect(JSON.stringify(revealed.payload.data)).toContain("Test One");
   });
 
   it("retries a rate-limited original edit and never logs the interaction token", async () => {
@@ -761,7 +836,7 @@ describe("Discord HTTP interactions", () => {
       globalThis.fetch = originalFetch;
     }
     const retried = retryTransport.original("test-interaction-token")!;
-    expect(JSON.stringify(retried.payload)).toContain("recorded result");
+    expect(JSON.stringify(retried.payload)).toContain("Recorded result");
     expect(JSON.stringify(retried.payload)).toContain("No second pull");
     const drawsAfter = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_draws").first<{
       count: number;
@@ -807,6 +882,29 @@ describe("Discord HTTP interactions", () => {
         waitUntil: (promise) => pending.push(promise),
       });
       await Promise.all(pending);
+
+      const revealRaw = JSON.stringify(revealButton("missing-render"));
+      const revealTimestamp = String(Math.floor(Date.now() / 1000));
+      const revealSignature = await signDiscordRequest({
+        body: revealRaw,
+        timestamp: revealTimestamp,
+        privateKey,
+      });
+      const revealRequest = new Request("https://foilbury.test/api/discord/interactions", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-signature-ed25519": revealSignature,
+          "x-signature-timestamp": revealTimestamp,
+        },
+        body: revealRaw,
+      });
+      const revealPending: Promise<unknown>[] = [];
+      await handleDiscordInteraction(revealRequest, env(), {
+        publicKey: publicKeyHex,
+        waitUntil: (promise) => revealPending.push(promise),
+      });
+      await Promise.all(revealPending);
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -941,17 +1039,72 @@ describe("Discord HTTP interactions", () => {
 
   it("directs Discord grants to strongly authenticated Studio and rejects old buttons", async () => {
     await send(interaction(command("daily"), { id: "grant-player-create" }));
-    const identity = await runtime.DB.prepare("SELECT user_id,tenant_id FROM fb_discord_identities WHERE discord_user_id = ?").bind(DISCORD_USER_ID).first<{user_id:string;tenant_id:string}>();
-    await runtime.DB.prepare("UPDATE fb_memberships SET role = 'owner' WHERE user_id = ?").bind(identity!.user_id).run();
-    const before = await runtime.DB.prepare("SELECT balance FROM fb_wallets WHERE tenant_id=? AND user_id=?").bind(identity!.tenant_id,identity!.user_id).first<{balance:number}>();
-    const requested = await send(interaction(command("admin", [{name:"grant",type:1,options:[{name:"user",type:3,value:DISCORD_USER_ID},{name:"amount",type:4,value:100},{name:"reason",type:3,value:"test grant"}]}]), {id:"grant-request"}));
-    expect(requested.payload.data?.embeds?.[0]?.description).toMatch(/strong authentication.*Studio/i);
-    expect(requested.payload.data?.components?.[0]?.components.map((item) => item.label)).toEqual(["Open Studio", "Account security"]);
-    expect((await runtime.DB.prepare("SELECT COUNT(*) AS n FROM fb_discord_confirmations WHERE action='wallet.grant'").first<{n:number}>())?.n).toBe(0);
-    await runtime.DB.prepare("INSERT INTO fb_discord_confirmations (id,tenant_id,discord_user_id,action,payload_json,expires_at,created_at) VALUES ('old-grant',?,?,'wallet.grant',?,?,?)").bind(identity!.tenant_id,DISCORD_USER_ID,JSON.stringify({targetUserId:identity!.user_id,amount:100,reason:'test grant'}),new Date(Date.now()+60000).toISOString(),new Date().toISOString()).run();
-    const old = await send(interaction({custom_id:'foilbury:confirm:old-grant',component_type:2},{id:'old-grant-click',type:3}));
+    const identity = await runtime.DB.prepare(
+      "SELECT user_id,tenant_id FROM fb_discord_identities WHERE discord_user_id = ?",
+    )
+      .bind(DISCORD_USER_ID)
+      .first<{ user_id: string; tenant_id: string }>();
+    await runtime.DB.prepare("UPDATE fb_memberships SET role = 'owner' WHERE user_id = ?")
+      .bind(identity!.user_id)
+      .run();
+    const before = await runtime.DB.prepare(
+      "SELECT balance FROM fb_wallets WHERE tenant_id=? AND user_id=?",
+    )
+      .bind(identity!.tenant_id, identity!.user_id)
+      .first<{ balance: number }>();
+    const requested = await send(
+      interaction(
+        command("admin", [
+          {
+            name: "grant",
+            type: 1,
+            options: [
+              { name: "user", type: 3, value: DISCORD_USER_ID },
+              { name: "amount", type: 4, value: 100 },
+              { name: "reason", type: 3, value: "test grant" },
+            ],
+          },
+        ]),
+        { id: "grant-request" },
+      ),
+    );
+    expect(requested.payload.data?.embeds?.[0]?.description).toMatch(
+      /strong authentication.*Studio/i,
+    );
+    expect(requested.payload.data?.components?.[0]?.components.map((item) => item.label)).toEqual([
+      "Open Studio",
+      "Account security",
+    ]);
+    expect(
+      (
+        await runtime.DB.prepare(
+          "SELECT COUNT(*) AS n FROM fb_discord_confirmations WHERE action='wallet.grant'",
+        ).first<{ n: number }>()
+      )?.n,
+    ).toBe(0);
+    await runtime.DB.prepare(
+      "INSERT INTO fb_discord_confirmations (id,tenant_id,discord_user_id,action,payload_json,expires_at,created_at) VALUES ('old-grant',?,?,'wallet.grant',?,?,?)",
+    )
+      .bind(
+        identity!.tenant_id,
+        DISCORD_USER_ID,
+        JSON.stringify({ targetUserId: identity!.user_id, amount: 100, reason: "test grant" }),
+        new Date(Date.now() + 60000).toISOString(),
+        new Date().toISOString(),
+      )
+      .run();
+    const old = await send(
+      interaction(
+        { custom_id: "foilbury:confirm:old-grant", component_type: 2 },
+        { id: "old-grant-click", type: 3 },
+      ),
+    );
     expect(old.payload.data?.embeds?.[0]?.description).toMatch(/strong authentication.*Studio/i);
-    const after=await runtime.DB.prepare("SELECT balance FROM fb_wallets WHERE tenant_id=? AND user_id=?").bind(identity!.tenant_id,identity!.user_id).first<{balance:number}>();
+    const after = await runtime.DB.prepare(
+      "SELECT balance FROM fb_wallets WHERE tenant_id=? AND user_id=?",
+    )
+      .bind(identity!.tenant_id, identity!.user_id)
+      .first<{ balance: number }>();
     expect(after?.balance).toBe(before?.balance);
   });
 
@@ -965,7 +1118,9 @@ describe("Discord HTTP interactions", () => {
       ),
     );
     expect(click.payload.type).toBe(4);
-    expect(click.payload.data?.embeds?.[0]?.title).toContain("Test One");
+    expect(click.payload.data?.embeds?.[0]?.title).toContain("sealed");
+    const revealed = await send(revealButton("button-draw"));
+    expect(revealed.payload.data?.embeds?.[0]?.title).toContain("Test One");
     const unknown = await send(
       interaction(
         { custom_id: "foilbury:not-a-real-button", component_type: 2 },
@@ -987,9 +1142,18 @@ describe("Discord HTTP interactions", () => {
       .bind(identity?.user_id)
       .run();
     const tenant = await ctxFor("cabinet", "owner@foilbury.local");
-    await runtime.DB.prepare("INSERT INTO fb_discord_confirmations (id,tenant_id,discord_user_id,action,payload_json,expires_at,created_at) VALUES ('revoked-old-grant',?,?,'wallet.grant',?,?,?)")
-      .bind(tenant.tenant.id, DISCORD_USER_ID, JSON.stringify({targetUserId:identity!.user_id,amount:100,reason:'revocation test'}),new Date(Date.now()+60000).toISOString(),new Date().toISOString()).run();
-    const confirmation = { id: 'revoked-old-grant' };
+    await runtime.DB.prepare(
+      "INSERT INTO fb_discord_confirmations (id,tenant_id,discord_user_id,action,payload_json,expires_at,created_at) VALUES ('revoked-old-grant',?,?,'wallet.grant',?,?,?)",
+    )
+      .bind(
+        tenant.tenant.id,
+        DISCORD_USER_ID,
+        JSON.stringify({ targetUserId: identity!.user_id, amount: 100, reason: "revocation test" }),
+        new Date(Date.now() + 60000).toISOString(),
+        new Date().toISOString(),
+      )
+      .run();
+    const confirmation = { id: "revoked-old-grant" };
     const revokedAt = new Date().toISOString();
     const balanceBefore = await runtime.DB.prepare(
       "SELECT balance FROM fb_wallets WHERE user_id = ?",
@@ -1099,9 +1263,9 @@ describe("Discord HTTP interactions", () => {
     expect(JSON.stringify(publicReveal.payload.data)).toMatch(
       /not enabled for this channel|no eligible cards|has no eligible collection/i,
     );
-    const drawsBefore = await runtime.DB.prepare(
-      "SELECT COUNT(*) AS count FROM fb_draws",
-    ).first<{ count: number }>();
+    const drawsBefore = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_draws").first<{
+      count: number;
+    }>();
     expect(drawsBefore?.count).toBe(0);
 
     const share = await send(
@@ -1119,11 +1283,14 @@ describe("Discord HTTP interactions", () => {
     )
       .bind(JSON.stringify({ [CHANNEL_ID]: "members" }))
       .run();
-    const memberReveal = await send(
+    const memberSeal = await send(
       interaction(command("open", [{ name: "pool", type: 3, value: "test-pool" }]), {
         id: "restricted-member-reveal",
       }),
     );
+    expect(memberSeal.payload.data?.flags).toBe(64);
+    expect(memberSeal.payload.data?.embeds?.[0]?.title).toContain("sealed");
+    const memberReveal = await send(revealButton("restricted-member-reveal"));
     // The reveal stays private even when the channel audience would allow a
     // share. Posting is a separate, explicit Share to channel action.
     expect(memberReveal.payload.data?.flags).toBe(64);
@@ -1225,8 +1392,7 @@ describe("Discord HTTP interactions", () => {
       .run();
     const profile = await send(interaction(command("profile"), { id: "profile-channel-scope" }));
     const embed = profile.payload.data?.embeds?.[0] as
-      | { fields?: Array<{ name: string; value: string }> }
-      | undefined;
+      { fields?: Array<{ name: string; value: string }> } | undefined;
     expect(embed?.fields?.find((field) => field.name === "Owned cards")?.value).toBe("1");
     expect(embed?.fields?.find((field) => field.name === "Featured copy")?.value).toContain(
       "Test One",
@@ -1292,38 +1458,85 @@ describe("Discord HTTP interactions", () => {
 
   it("shows daily missions and claims exactly once from a button", async () => {
     await send(interaction(command("profile"), { id: "mission-profile" }));
-    const identity = await runtime.DB.prepare("SELECT user_id FROM fb_discord_identities WHERE discord_user_id = ?").bind(DISCORD_USER_ID).first<{ user_id: string }>();
+    const identity = await runtime.DB.prepare(
+      "SELECT user_id FROM fb_discord_identities WHERE discord_user_id = ?",
+    )
+      .bind(DISCORD_USER_ID)
+      .first<{ user_id: string }>();
     const tenantId = (await ctxFor("cabinet", "player@foilbury.local")).tenant.id;
     await runtime.DB.prepare(
       "INSERT INTO fb_domain_events (id, tenant_id, user_id, event_type, object_type, object_id, dedupe_key, payload_json, created_at) VALUES ('evt_mission_explore', ?, ?, 'collection.explored', 'collection', 'col_test_public', ?, '{}', ?)",
-    ).bind(tenantId, identity!.user_id, `mission-explore:${identity!.user_id}`, new Date().toISOString()).run();
+    )
+      .bind(
+        tenantId,
+        identity!.user_id,
+        `mission-explore:${identity!.user_id}`,
+        new Date().toISOString(),
+      )
+      .run();
     const view = await send(interaction(command("missions"), { id: "missions-view" }));
     expect(view.payload.data?.embeds?.[0]?.title).toContain("Daily missions");
     expect(view.payload.data?.flags).toBe(64);
-    const claimButton = (view.payload.data?.components ?? []).flatMap((row) => row.components ?? []).find((component) => component.custom_id === "foilbury:mission:claim:explore");
+    const claimButton = (view.payload.data?.components ?? [])
+      .flatMap((row) => row.components ?? [])
+      .find((component) => component.custom_id === "foilbury:mission:claim:explore");
     expect(claimButton).toBeTruthy();
-    const before = await runtime.DB.prepare("SELECT balance FROM fb_wallets WHERE tenant_id = ? AND user_id = ?").bind(tenantId, identity!.user_id).first<{ balance: number }>();
-    const claimed = await send(interaction({ custom_id: "foilbury:mission:claim:explore", component_type: 2 }, { id: "mission-claim", type: 3 }));
+    const before = await runtime.DB.prepare(
+      "SELECT balance FROM fb_wallets WHERE tenant_id = ? AND user_id = ?",
+    )
+      .bind(tenantId, identity!.user_id)
+      .first<{ balance: number }>();
+    const claimed = await send(
+      interaction(
+        { custom_id: "foilbury:mission:claim:explore", component_type: 2 },
+        { id: "mission-claim", type: 3 },
+      ),
+    );
     expect(JSON.stringify(claimed.payload.data)).toContain("Foil credited");
-    const after = await runtime.DB.prepare("SELECT balance FROM fb_wallets WHERE tenant_id = ? AND user_id = ?").bind(tenantId, identity!.user_id).first<{ balance: number }>();
+    const after = await runtime.DB.prepare(
+      "SELECT balance FROM fb_wallets WHERE tenant_id = ? AND user_id = ?",
+    )
+      .bind(tenantId, identity!.user_id)
+      .first<{ balance: number }>();
     expect(after!.balance).toBe(before!.balance + 60);
-    const replay = await send(interaction({ custom_id: "foilbury:mission:claim:explore", component_type: 2 }, { id: "mission-claim-replay", type: 3 }));
+    const replay = await send(
+      interaction(
+        { custom_id: "foilbury:mission:claim:explore", component_type: 2 },
+        { id: "mission-claim-replay", type: 3 },
+      ),
+    );
     expect(JSON.stringify(replay.payload.data)).toContain("Foil credited");
-    const afterReplay = await runtime.DB.prepare("SELECT balance FROM fb_wallets WHERE tenant_id = ? AND user_id = ?").bind(tenantId, identity!.user_id).first<{ balance: number }>();
+    const afterReplay = await runtime.DB.prepare(
+      "SELECT balance FROM fb_wallets WHERE tenant_id = ? AND user_id = ?",
+    )
+      .bind(tenantId, identity!.user_id)
+      .first<{ balance: number }>();
     expect(afterReplay!.balance).toBe(after!.balance);
-    const claims = await runtime.DB.prepare("SELECT COUNT(*) AS count FROM fb_reward_claims WHERE tenant_id = ? AND user_id = ? AND rule_key LIKE '%:explore'").bind(tenantId, identity!.user_id).first<{ count: number }>();
+    const claims = await runtime.DB.prepare(
+      "SELECT COUNT(*) AS count FROM fb_reward_claims WHERE tenant_id = ? AND user_id = ? AND rule_key LIKE '%:explore'",
+    )
+      .bind(tenantId, identity!.user_id)
+      .first<{ count: number }>();
     expect(claims?.count).toBe(1);
   });
 
   it("shows a labelled NPC profile and comparison on demand", async () => {
     const owner = await ctxFor("cabinet", "owner@foilbury.local");
     await fixturePool(owner);
-    const npc = await createNpc(owner, { name: "Discord Rival", presetKey: "variety_collector", bio: "A clearly synthetic collector used only for the Discord inspection test." });
+    const npc = await createNpc(owner, {
+      name: "Discord Rival",
+      presetKey: "variety_collector",
+      bio: "A clearly synthetic collector used only for the Discord inspection test.",
+    });
     const listed = await send(interaction(command("npc"), { id: "npc-list" }));
     expect(listed.payload.data?.embeds?.[0]?.title).toContain("NPC collectors");
     expect(JSON.stringify(listed.payload.data)).toContain("Discord Rival");
     expect(JSON.stringify(listed.payload.data)).toContain("synthetic collector");
-    const detail = await send(interaction(command("npc", [{ name: "name", type: 3, value: npc.slug }]), { id: "npc-detail" }));
+    const detail = await send(
+      interaction(command("npc", [{ name: "name", type: 3, value: npc.slug }]), {
+        id: "npc-detail",
+      }),
+    );
     expect(detail.payload.data?.embeds?.[0]?.title).toContain("Discord Rival");
     expect(JSON.stringify(detail.payload.data)).toContain("NPC");
     expect(JSON.stringify(detail.payload.data)).toContain("Your album");
@@ -1383,8 +1596,11 @@ describe("Discord HTTP interactions", () => {
     }>();
     expect(after?.count).toBe((before?.count ?? 0) + 1);
     expect([4, 7]).toContain(draw.payload.type);
-    expect(draw.payload.data?.embeds?.[0]?.title).toContain("Test One");
-    expect(JSON.stringify(draw.payload)).toContain("foilbury-reveal-card.webp");
+    expect(draw.payload.data?.embeds?.[0]?.title).toContain("sealed");
+    expect(JSON.stringify(draw.payload)).not.toContain("Test One");
+    const reveal = await send(revealButton("tour-journey-draw"));
+    expect(reveal.payload.data?.embeds?.[0]?.title).toContain("Test One");
+    expect(JSON.stringify(reveal.payload)).toContain("foilbury-reveal-card.webp");
     const drawRow = await runtime.DB.prepare(
       "SELECT d.id, d.instance_id, ci.serial FROM fb_draws d JOIN fb_card_instances ci ON ci.id = d.instance_id ORDER BY d.rowid DESC LIMIT 1",
     ).first<{ id: string; instance_id: string; serial: string }>();

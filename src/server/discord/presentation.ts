@@ -16,10 +16,11 @@ import type {
  * response; a channel response is only possible when the caller states the
  * card/album audience, the verified channel audience and explicit approval.
  *
- * Visual vocabulary: deep aqua, electric aqua, ice, signal lime and ink from
- * DESIGN.md. Colour is always a second channel; titles, labels and status text
- * carry the meaning. No emoji-only semantics and no second card renderer: card
- * images are the saved published renders, attached with safe filenames.
+ * Visual vocabulary: the neutral canvas/surface system and periwinkle action
+ * accent from DESIGN.md. Colour is always a second channel; titles, labels and
+ * status text carry the meaning. No emoji-only semantics and no second card
+ * renderer: card images are the saved published renders, attached with safe
+ * filenames.
  */
 
 export const DISCORD_LIMITS = {
@@ -41,21 +42,32 @@ export const DISCORD_LIMITS = {
   messageContent: 2000,
 } as const;
 
-export const FOILBURY_PALETTE = {
-  deepAqua: 0x044e4a,
-  electricAqua: 0x00a99c,
-  ice: 0xc8f4ee,
-  lime: 0xc9f25f,
-  ink: 0x07110f,
-  bone: 0xeff5f1,
+/**
+ * The repaired neutral/periwinkle direction from DESIGN.md. Discord only takes
+ * one accent integer per embed, so colour is a second channel behind the title,
+ * rarity, finish and status text. These are the app tokens, not the rejected
+ * Signal Fold aqua/lime palette.
+ */
+export const DISCORD_PALETTE = {
+  canvas: 0x11141b,
+  surface: 0x1a1f2a,
+  raised: 0x242b39,
+  text: 0xf4f6fc,
+  muted: 0xb6bece,
+  border: 0x65738e,
+  action: 0xa8b8ff,
+  focus: 0xc5d0ff,
+  success: 0x8fe0bb,
+  warning: 0xf2cb85,
+  danger: 0xffadb7,
 } as const;
 
-export type FoilburyAccent = (typeof FOILBURY_PALETTE)[keyof typeof FOILBURY_PALETTE];
+export type DiscordAccent = (typeof DISCORD_PALETTE)[keyof typeof DISCORD_PALETTE];
 
 export type Audience = "public" | "members" | "private";
 
 const AUDIENCE_RANK: Record<Audience, number> = { public: 0, members: 1, private: 2 };
-const PALETTE_VALUES = new Set<number>(Object.values(FOILBURY_PALETTE));
+const PALETTE_VALUES = new Set<number>(Object.values(DISCORD_PALETTE));
 
 export type PresentationErrorCode =
   | "discord_limit"
@@ -180,9 +192,9 @@ function assertIsoTimestamp(value: string, path: string): string {
   return value;
 }
 
-function assertFoilburyAccent(value: number): number {
+function assertDiscordAccent(value: number): number {
   if (!PALETTE_VALUES.has(value)) {
-    fail("invalid_input", "accent", "Use a Foilbury Signal palette colour.");
+    fail("invalid_input", "accent", "Use a Foilbury palette colour.");
   }
   return value;
 }
@@ -286,7 +298,10 @@ function assertPublicUrl(
   // The web route re-authorises the viewer; account, tenant, draw and user ids
   // remain rejected. Visible copy never gets this exception.
   const checked = options.allowResourceObjectIds
-    ? raw.replace(/\b(?:ins|crd|col|var|edt|pool|rnd|poe|ast|ach|unl|obx|gft|job|set|cat|tag|lk)_[A-Za-z0-9_-]{4,}\b/g, "[resource]")
+    ? raw.replace(
+        /\b(?:ins|crd|col|var|edt|pool|rnd|poe|ast|ach|unl|obx|gft|job|set|cat|tag|lk)_[A-Za-z0-9_-]{4,}\b/g,
+        "[resource]",
+      )
     : raw;
   assertNoPrivateIdentifiers(checked, path);
   let parsed: URL;
@@ -296,7 +311,6 @@ function assertPublicUrl(
     fail("invalid_url", path, "Expected a valid absolute URL.");
   }
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    console.error("DEBUG invalid url", path, raw, parsed.protocol);
     fail("invalid_url", path, "Only http(s) links may be used in Discord buttons.");
   }
   if (parsed.username || parsed.password) {
@@ -364,7 +378,7 @@ export function buildEmbed(input: EmbedInput): DiscordEmbed {
     input.footer === undefined
       ? undefined
       : clipText(visibleText(input.footer, "embed.footer"), DISCORD_LIMITS.footer);
-  const accent = assertFoilburyAccent(input.accent ?? FOILBURY_PALETTE.deepAqua);
+  const accent = assertDiscordAccent(input.accent ?? DISCORD_PALETTE.surface);
   const image = input.image ? buildEmbedImage(input.image) : undefined;
   const timestamp =
     input.timestamp === undefined
@@ -911,7 +925,7 @@ export function welcomeMessage(input: WelcomeInput): DiscordCallback {
     embed: {
       title: "Welcome to Foilbury",
       description: `**Welcome, ${displayName}.** A collector's cabinet in **${scopeName}**. Claim the free allowance, choose a capsule, and keep the copy. Nothing is charged until you press an open button.`,
-      accent: FOILBURY_PALETTE.electricAqua,
+      accent: DISCORD_PALETTE.action,
       fields: [
         { name: "Your balance", value: `${balance} ${symbol}`, inline: true },
         { name: "Daily allowance", value: daily, inline: true },
@@ -966,7 +980,7 @@ export function dailyClaimMessage(input: DailyClaimInput): DiscordCallback {
       description: input.replayed
         ? "This is the recorded result of the original request. No second credit was made."
         : "The allowance is shared by this Bot across Discord, the website and the API.",
-      accent: FOILBURY_PALETTE.lime,
+      accent: DISCORD_PALETTE.success,
       fields: [
         { name: "Credited", value: `+${amount} ${symbol}`, inline: true },
         { name: "Settled balance", value: `${balance} ${symbol}`, inline: true },
@@ -1093,7 +1107,7 @@ export function capsulePickerMessage(input: CapsulePickerInput): DiscordCallback
       title: "Choose a capsule",
       description:
         "Each capsule shows its ordinary price and the real odds of its eligible cards. Viewing this picker charges nothing; opening spends the listed price only when you press an open button.",
-      accent: FOILBURY_PALETTE.electricAqua,
+      accent: DISCORD_PALETTE.action,
       fields: [
         ...shown.map((choice) => ({
           name: choice.name,
@@ -1160,6 +1174,15 @@ export interface RevealReceiptDomainFields {
 export interface RevealReceiptInput extends RevealReceiptDomainFields {
   rarity_name?: string | null;
   scope_name?: string;
+  /** Owned-result feedback. Omit when the caller cannot prove it. */
+  new_subject?: boolean;
+  new_finish?: boolean;
+  owned_copies?: number;
+  wishlist_hit?: boolean;
+  collection_name?: string | null;
+  collection_owned?: number;
+  collection_total?: number;
+  settlement_pending?: boolean;
   audience: Audience;
   channel_audience?: Audience;
   channel_approved?: boolean;
@@ -1187,9 +1210,73 @@ function publicRenderUrl(input: RevealReceiptInput): string | undefined {
   return undefined;
 }
 
-export function revealReceiptMessage(input: RevealReceiptInput): DiscordCallback {
-  const cardName = visibleText(input.card_name, "card_name");
+export interface SealedRevealInput {
+  pool_name: string;
+  price: number;
+  currency_symbol: string;
+  /** A public saved card back. The result render is never used here. */
+  back_url: string;
+  reveal_custom_id: string;
+  collection_custom_id?: string;
+  album_url?: string;
+  scope_name?: string;
+}
+
+/**
+ * The anticipation stage. Discord cannot animate a sealed pack, so the pacing
+ * comes from a deliberate human action: the committed draw is acknowledged
+ * face-down, and the player chooses when to reveal it. No field, title, image,
+ * filename or custom id here identifies the result.
+ */
+export function sealedRevealMessage(input: SealedRevealInput): DiscordCallback {
   const poolName = visibleText(input.pool_name, "pool_name");
+  const symbol = assertCurrencySymbol(input.currency_symbol);
+  const price = assertNonNegative(input.price, "price");
+  const backUrl = assertPublicUrl(input.back_url, "back_url");
+  return buildMessage({
+    visibility: "private",
+    embed: {
+      title: `${poolName} · sealed`,
+      description:
+        "Your capsule is open and the card is already yours. Take a breath, then reveal it. The result is committed and cannot change.",
+      accent: DISCORD_PALETTE.surface,
+      fields: [
+        { name: "Capsule", value: poolName, inline: true },
+        { name: "Opening", value: `−${price} ${symbol}`, inline: true },
+        {
+          name: "When you are ready",
+          value:
+            "Press **Reveal card**. This stays face-down until you do. Revealing again is free and never draws or charges a second copy.",
+          inline: false,
+        },
+      ],
+      footer: `Foilbury · sealed opening${input.scope_name ? ` · ${visibleText(input.scope_name, "scope_name")}` : ""}`,
+      image: { url: backUrl, width: 750, height: 1050 },
+    },
+    rows: [
+      [
+        { label: "Reveal card", customId: input.reveal_custom_id, style: 1 },
+        ...(input.collection_custom_id
+          ? [{ label: "Collection", customId: input.collection_custom_id, style: 2 } as ButtonInput]
+          : []),
+        ...(input.album_url ? [{ label: "Open album", url: input.album_url } as ButtonInput] : []),
+      ],
+    ],
+  });
+}
+
+function safeVisibleText(value: string, fallback: string, path: string): string {
+  try {
+    return visibleText(value, path);
+  } catch (error) {
+    if (error instanceof PresentationError && error.code === "private_identifier") return fallback;
+    throw error;
+  }
+}
+
+export function revealReceiptMessage(input: RevealReceiptInput): DiscordCallback {
+  const cardName = safeVisibleText(input.card_name, "Your card", "card_name");
+  const poolName = safeVisibleText(input.pool_name, "Capsule", "pool_name");
   const serial = visibleText(input.serial, "serial");
   const symbol = assertCurrencySymbol(input.currency.symbol);
   const price = assertNonNegative(input.price, "price");
@@ -1209,11 +1296,56 @@ export function revealReceiptMessage(input: RevealReceiptInput): DiscordCallback
     input.balance_after_debit === undefined
       ? null
       : assertNonNegative(input.balance_after_debit, "balance_after_debit");
-  const credits = input.credits_total === undefined ? 0 : assertNonNegative(input.credits_total, "credits_total");
+  const credits =
+    input.credits_total === undefined ? 0 : assertNonNegative(input.credits_total, "credits_total");
+  const ownedCopies =
+    input.owned_copies === undefined
+      ? null
+      : Math.floor(assertNonNegative(input.owned_copies, "owned_copies"));
+  const collectionTotal =
+    input.collection_total === undefined
+      ? null
+      : Math.floor(assertNonNegative(input.collection_total, "collection_total"));
+  const collectionOwned =
+    input.collection_owned === undefined
+      ? null
+      : Math.floor(assertNonNegative(input.collection_owned, "collection_owned"));
+  const copyFeedback: string[] = [];
+  if (input.new_subject) {
+    copyFeedback.push(input.new_finish ? "New subject and finish" : "New subject");
+  } else if (input.new_finish) {
+    copyFeedback.push("New finish");
+  } else if (ownedCopies !== null) {
+    copyFeedback.push(`Duplicate · ${ownedCopies} owned`);
+  }
+  if (input.wishlist_hit) copyFeedback.push("Wishlist card");
+  const collectionName = input.collection_name
+    ? safeVisibleText(input.collection_name, "Collection", "collection_name")
+    : null;
+  const collectionProgress =
+    collectionTotal !== null && collectionOwned !== null
+      ? `${Math.min(collectionOwned, collectionTotal)}/${collectionTotal} collected${
+          collectionOwned >= collectionTotal ? " · complete" : ""
+        }`
+      : null;
   const fields: FieldInput[] = [
     { name: "Rarity", value: input.rarity_name || "Unclassified", inline: true },
     { name: "Finish", value: finish, inline: true },
     { name: "Serial", value: `\`${serial}\``, inline: true },
+    ...(copyFeedback.length
+      ? [{ name: "This copy", value: copyFeedback.join(" · "), inline: true } as FieldInput]
+      : []),
+    ...(collectionName
+      ? [
+          {
+            name: "Collection",
+            value: collectionProgress
+              ? `${collectionName} · ${collectionProgress}`
+              : collectionName,
+            inline: true,
+          } as FieldInput,
+        ]
+      : []),
     { name: "Opened from", value: `${poolName} · ${price} ${symbol}`, inline: true },
     { name: "Opening debit", value: `−${price} ${symbol}`, inline: true },
     ...(debitBalance === null
@@ -1232,8 +1364,30 @@ export function revealReceiptMessage(input: RevealReceiptInput): DiscordCallback
           },
         ]
       : []),
-    { name: "Settled balance", value: `${balance} ${symbol}`, inline: true },
-    { name: "Odds", value: `${(probability / 100).toFixed(2)}% for this copy`, inline: false },
+    {
+      name: input.settlement_pending ? "Balance" : "Settled balance",
+      value: `${balance} ${symbol}`,
+      inline: true,
+    },
+    ...(probability > 0
+      ? [
+          {
+            name: "Odds",
+            value: `${(probability / 100).toFixed(2)}% for this copy`,
+            inline: false,
+          } as FieldInput,
+        ]
+      : []),
+    ...(input.settlement_pending
+      ? [
+          {
+            name: "Still confirming",
+            value:
+              "The draw, serial and opening debit are recorded. Reward credits are still being confirmed and will never be paid twice.",
+            inline: false,
+          } as FieldInput,
+        ]
+      : []),
   ];
   if (!canShare) {
     fields.push({
@@ -1274,9 +1428,7 @@ export function revealReceiptMessage(input: RevealReceiptInput): DiscordCallback
     ],
   ];
   if (canShare && input.share_custom_id) {
-    rows.push([
-      { label: "Share to channel", customId: input.share_custom_id, style: 1 },
-    ]);
+    rows.push([{ label: "Share to channel", customId: input.share_custom_id, style: 1 }]);
   }
   return buildMessage({
     visibility: input.force_private === true ? "private" : canShare ? "channel" : "private",
@@ -1287,7 +1439,7 @@ export function revealReceiptMessage(input: RevealReceiptInput): DiscordCallback
     embed: {
       title: `${cardName} — ${finish}`,
       description: `Pulled from **${poolName}**. This copy is in your cabinet immediately. **Open again** is a new, priced pull; this receipt is committed and cannot re-draw.`,
-      accent: FOILBURY_PALETTE.deepAqua,
+      accent: DISCORD_PALETTE.surface,
       fields,
       footer: `Foilbury · committed receipt${input.scope_name ? ` · ${visibleText(input.scope_name, "scope_name")}` : ""}`,
       timestamp: drawnAt,
@@ -1344,7 +1496,9 @@ export function cabinetSummaryMessage(input: CabinetSummaryInput): DiscordCallba
     name: visibleText(item.name, "cabinet.item.name"),
     print: item.print ? visibleText(item.print, "cabinet.item.print", { required: false }) : null,
     variant: visibleText(item.variant, "cabinet.item.variant"),
-    rarity: item.rarity ? visibleText(item.rarity, "cabinet.item.rarity", { required: false }) : null,
+    rarity: item.rarity
+      ? visibleText(item.rarity, "cabinet.item.rarity", { required: false })
+      : null,
     serial: visibleText(item.serial, "cabinet.item.serial"),
   }));
   return buildMessage({
@@ -1359,13 +1513,19 @@ export function cabinetSummaryMessage(input: CabinetSummaryInput): DiscordCallba
                 (item) =>
                   `• **${item.name}**${item.print ? ` — ${item.print}` : ""} · ${item.variant}${item.rarity ? ` · ${item.rarity}` : ""} · \`${item.serial}\``,
               )
-              .join("\n")}${input.scopeNotice ? `\n\n${visibleText(input.scopeNotice, "cabinet.scopeNotice")}` : ""}`,
-      accent: FOILBURY_PALETTE.deepAqua,
+              .join(
+                "\n",
+              )}${input.scopeNotice ? `\n\n${visibleText(input.scopeNotice, "cabinet.scopeNotice")}` : ""}`,
+      accent: DISCORD_PALETTE.surface,
       fields: [
         { name: "Owned", value: String(owned), inline: true },
         { name: "Unique", value: String(unique), inline: true },
         { name: "Duplicates", value: String(duplicates), inline: true },
-        { name: "Balance", value: `${assertNonNegative(input.balance, "balance")} ${symbol}`, inline: true },
+        {
+          name: "Balance",
+          value: `${assertNonNegative(input.balance, "balance")} ${symbol}`,
+          inline: true,
+        },
         { name: "Scope", value: visibleText(input.scopeName, "scopeName"), inline: true },
         {
           name: "More",
@@ -1429,7 +1589,7 @@ export function cardFaceMessage(input: CardFaceInput): DiscordCallback {
     embed: {
       title: `${cardName} — ${finish}`,
       description: input.description,
-      accent: FOILBURY_PALETTE.deepAqua,
+      accent: DISCORD_PALETTE.surface,
       fields,
       footer: "Private member view · viewing never spends Foil or awards another copy",
       ...(input.render.width !== undefined && input.render.height !== undefined
@@ -1556,7 +1716,7 @@ export function albumProgressMessage(input: AlbumProgressInput): DiscordCallback
         : total === 0
           ? "This album has no published subjects yet. Nothing is missing and nothing is awarded until the roster is published."
           : `**${owned}/${total} unique subjects.** Missing binder slots are listed by name; finish mastery is tracked separately from roster completion.`,
-      accent: complete ? FOILBURY_PALETTE.lime : FOILBURY_PALETTE.electricAqua,
+      accent: complete ? DISCORD_PALETTE.success : DISCORD_PALETTE.action,
       fields,
       footer: `${scopeName} · unique subjects, not finish mastery · no card was granted by viewing`,
     },
@@ -1646,10 +1806,10 @@ export function achievementMessage(input: AchievementInput): DiscordCallback {
       description: input.description,
       accent:
         input.state === "earned"
-          ? FOILBURY_PALETTE.lime
+          ? DISCORD_PALETTE.success
           : input.state === "locked"
-            ? FOILBURY_PALETTE.ice
-            : FOILBURY_PALETTE.electricAqua,
+            ? DISCORD_PALETTE.raised
+            : DISCORD_PALETTE.action,
       fields,
       footer: "Earned badges are never removed. Rewards are credited once.",
     },
@@ -1675,9 +1835,7 @@ export interface AchievementsOverviewInput {
   achievementsUrl: string;
 }
 
-export function achievementsOverviewMessage(
-  input: AchievementsOverviewInput,
-): DiscordCallback {
+export function achievementsOverviewMessage(input: AchievementsOverviewInput): DiscordCallback {
   const symbol = assertCurrencySymbol(input.currencySymbol);
   const items = input.items.map((item) => ({
     ...item,
@@ -1701,7 +1859,7 @@ export function achievementsOverviewMessage(
       description: earned.length
         ? `You have earned **${earned.length}** of ${items.length}. Rewards are credited once and never removed when a collection grows.`
         : "Your first card is the first badge. Every milestone below uses your committed collection history.",
-      accent: FOILBURY_PALETTE.lime,
+      accent: DISCORD_PALETTE.success,
       fields: [
         {
           name: "Earned",
@@ -1832,7 +1990,7 @@ export function missionProgressMessage(input: MissionProgressInput): DiscordCall
       ]
         .filter(Boolean)
         .join("\n"),
-      accent: allSettled ? FOILBURY_PALETTE.lime : FOILBURY_PALETTE.electricAqua,
+      accent: allSettled ? DISCORD_PALETTE.success : DISCORD_PALETTE.action,
       fields: [
         ...missions.slice(0, 5).map((mission) => ({
           name: `${mission.title} · +${mission.reward} ${symbol}`,
@@ -1965,8 +2123,7 @@ export function profileMessage(input: ProfileInput): DiscordCallback {
   primary.push({ label: "View showcase", url: input.profileUrl });
   if (primary.length) rows.push(primary);
   const secondary: ButtonInput[] = [];
-  if (input.customiseUrl)
-    secondary.push({ label: "Customise", url: input.customiseUrl });
+  if (input.customiseUrl) secondary.push({ label: "Customise", url: input.customiseUrl });
   if (input.shareCustomId)
     secondary.push({ label: "Share preview", customId: input.shareCustomId, style: 2 });
   if (secondary.length) rows.push(secondary);
@@ -1975,7 +2132,7 @@ export function profileMessage(input: ProfileInput): DiscordCallback {
     embed: {
       title: displayName,
       description: `Collector in **${scopeName}**${look ? ` · ${look}` : ""}${input.isBotAdmin ? " · Bot administration available" : ""}.`,
-      accent: FOILBURY_PALETTE.deepAqua,
+      accent: DISCORD_PALETTE.surface,
       fields,
       ...(input.imageAttachment
         ? { image: { attachment: input.imageAttachment, width: 750, height: 1050 } }
@@ -2092,7 +2249,7 @@ export function sharePromptMessage(input: SharePromptInput): DiscordCallback {
     embed: {
       title: "Share deliberately",
       description: `**${displayName}**, a shared post is visible to everyone who can read **${channelLabel}**. You choose one item at a time; dismissing this prompt shares nothing.`,
-      accent: FOILBURY_PALETTE.deepAqua,
+      accent: DISCORD_PALETTE.surface,
       fields,
       footer: "Explicit consent · audience checked before posting",
     },
@@ -2170,7 +2327,7 @@ export function stateMessage(input: StateInput): DiscordCallback {
     embed: {
       title: input.title ?? STATE_TITLES[input.kind],
       description: input.message,
-      accent: input.kind === "empty" ? FOILBURY_PALETTE.ice : FOILBURY_PALETTE.ink,
+      accent: input.kind === "empty" ? DISCORD_PALETTE.raised : DISCORD_PALETTE.danger,
       fields,
       footer: STATE_FOOTERS[input.kind],
     },
@@ -2523,7 +2680,7 @@ function contactSheetImage(embed: DiscordEmbed): string {
 }
 
 function contactSheetEmbed(embed: DiscordEmbed): string {
-  const accent = paletteHex(embed.color ?? FOILBURY_PALETTE.deepAqua);
+  const accent = paletteHex(embed.color ?? DISCORD_PALETTE.surface);
   const fields = embed.fields?.length
     ? `<div class="fields">${embed.fields
         .map(

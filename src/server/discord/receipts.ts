@@ -1,5 +1,6 @@
 import { all, first, nowIso } from "../db";
 import type { DrawReceipt } from "./draw-types";
+import { DISCORD_PALETTE } from "./presentation";
 import { redactDiscordText } from "./redaction";
 import type { DiscordEmbed, DiscordMessage } from "./types";
 
@@ -38,10 +39,17 @@ export interface DiscordDrawReceipt {
   variant_name: string;
   serial: string;
   pool_name: string;
+  pool_slug?: string;
   price: number;
   currency_symbol: string;
   balance_after: number;
   balance_after_debit?: number;
+  new_subject?: boolean;
+  new_finish?: boolean;
+  owned_copies?: number;
+  probability_bps?: number;
+  material_key?: string;
+  effect_key?: string | null;
   credits_total?: number;
   achievement_credits?: DiscordDrawCredit[];
   settlement_status?: DrawSettlementStatus;
@@ -64,10 +72,17 @@ export function drawReceiptFromResult(result: DrawReceipt): DiscordDrawReceipt {
     variant_name: result.variant_name,
     serial: result.serial,
     pool_name: result.pool_name,
+    pool_slug: result.pool_slug,
     price: result.price,
     currency_symbol: result.currency.symbol,
     balance_after: result.balance_after,
     balance_after_debit: result.balance_after_debit,
+    new_subject: result.new_subject,
+    new_finish: result.new_finish,
+    owned_copies: result.owned_copies,
+    probability_bps: result.probability_bps,
+    material_key: result.material_key,
+    effect_key: result.effect_key,
     credits_total: result.credits_total,
     achievement_credits: result.achievement_credits,
     settlement_status: result.settlement_status,
@@ -433,8 +448,28 @@ function normaliseReceipt(
     variant_name: base?.variant_name || parsed.variant_name || row.variant_name,
     serial: row.serial,
     pool_name: base?.pool_name || parsed.pool_name || row.pool_name,
+    ...(base?.pool_slug || typeof parsed.pool_slug === "string"
+      ? { pool_slug: base?.pool_slug || (parsed.pool_slug as string) }
+      : {}),
     price: numberOrNull(parsed.price) ?? row.price,
     currency_symbol: currencySymbol,
+    new_subject:
+      base?.new_subject ??
+      (typeof parsed.new_subject === "boolean" ? parsed.new_subject : undefined),
+    new_finish:
+      base?.new_finish ?? (typeof parsed.new_finish === "boolean" ? parsed.new_finish : undefined),
+    owned_copies:
+      base?.owned_copies ??
+      (typeof parsed.owned_copies === "number" ? parsed.owned_copies : undefined),
+    probability_bps:
+      base?.probability_bps ??
+      (typeof parsed.probability_bps === "number" ? parsed.probability_bps : undefined),
+    ...(base?.material_key || typeof parsed.material_key === "string"
+      ? { material_key: base?.material_key || (parsed.material_key as string) }
+      : {}),
+    ...(base?.effect_key !== undefined || parsed.effect_key !== undefined
+      ? { effect_key: base?.effect_key ?? (parsed.effect_key as string | null) }
+      : {}),
     balance_after:
       typeof base?.balance_after === "number" ? base.balance_after : settlement.balance_after,
     ...(base?.balance_after_debit !== undefined
@@ -552,7 +587,7 @@ export function drawRecoveryMessage(input: {
           input.reason,
           "Do not open again to recover this result. Use View cabinet, or Re-send receipt to retry only the display of this same card.",
         ].join("\n\n"),
-        color: 0xd97757,
+        color: DISCORD_PALETTE.danger,
         fields: [
           { name: "Serial", value: `\`${receipt.serial}\``, inline: true },
           {
