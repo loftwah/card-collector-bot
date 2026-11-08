@@ -3,7 +3,7 @@ import { audienceRank as domainAudienceRank } from "../../src/server/modules/vis
 import {
   CONTACT_SHEET_DISCLAIMER,
   DISCORD_LIMITS,
-  FOILBURY_PALETTE,
+  DISCORD_PALETTE,
   PresentationError,
   REVEAL_RECEIPT_FIELDS,
   achievementMessage,
@@ -26,6 +26,7 @@ import {
   missionProgressMessage,
   profileMessage,
   revealReceiptMessage,
+  sealedRevealMessage,
   safeAttachmentFilename,
   sharePromptMessage,
   stateFromError,
@@ -155,7 +156,7 @@ describe("welcome template", () => {
             title: "Welcome to Foilbury",
             description:
               "**Welcome, Dean.** A collector's cabinet in **Foilbury Cabinet**. Claim the free allowance, choose a capsule, and keep the copy. Nothing is charged until you press an open button.",
-            color: FOILBURY_PALETTE.electricAqua,
+            color: DISCORD_PALETTE.action,
             fields: [
               { name: "Your balance", value: "320 ✦", inline: true },
               { name: "Daily allowance", value: "Ready now", inline: true },
@@ -262,7 +263,12 @@ describe("Discord limits", () => {
             {
               type: 1,
               components: [
-                { type: 2, style: 1, label: "Start with an album", custom_id: "foilbury:tour:albums" },
+                {
+                  type: 2,
+                  style: 1,
+                  label: "Start with an album",
+                  custom_id: "foilbury:tour:albums",
+                },
               ],
             },
             {
@@ -507,6 +513,88 @@ describe("reveal receipt parity", () => {
     const callback = reveal({ audience: "public", channel_approved: false });
     expect(privateResponse(callback)).toBe(true);
     expect(fieldValue(callback, "Private reveal")).toContain("has not been verified");
+  });
+
+  it("shows owned-result feedback without leaking the result before the reveal", () => {
+    const callback = reveal({
+      new_subject: true,
+      new_finish: true,
+      owned_copies: 1,
+      wishlist_hit: true,
+      collection_name: "Cabinet",
+      collection_owned: 3,
+      collection_total: 8,
+    });
+    expect(fieldValue(callback, "This copy")).toBe("New subject and finish · Wishlist card");
+    expect(fieldValue(callback, "Collection")).toBe("Cabinet · 3/8 collected");
+
+    const duplicate = reveal({
+      new_subject: false,
+      new_finish: false,
+      owned_copies: 2,
+    });
+    expect(fieldValue(duplicate, "This copy")).toBe("Duplicate · 2 owned");
+  });
+
+  it("does not present a pending settlement as a settled balance", () => {
+    const callback = reveal({ settlement_pending: true });
+    expect(fieldValue(callback, "Balance")).toBe("390 ✦");
+    expect(fieldValue(callback, "Settled balance")).toBe("");
+    expect(fieldValue(callback, "Still confirming")).toContain("will never be paid twice");
+  });
+
+  it("sanitises a card name that looks like a private identifier", () => {
+    const callback = reveal({ card_name: "usr_secret123" });
+    expect(firstEmbed(callback).title).toBe("Your card — Plain");
+    expect(JSON.stringify(callback.data)).not.toContain("usr_secret123");
+  });
+});
+
+describe("sealed reveal", () => {
+  const sealedInput = {
+    pool_name: "Cabinet Draw",
+    price: 80,
+    currency_symbol: "✦",
+    back_url: "https://foilbury.test/brand/card-back.webp",
+    reveal_custom_id: "foilbury:reveal:interaction-123",
+    collection_custom_id: "foilbury:collection",
+    album_url: "https://foilbury.test/play/collection",
+    scope_name: "Foilbury Cabinet",
+  };
+
+  it("shows the card back and never the committed result", () => {
+    const callback = sealedRevealMessage(sealedInput);
+    const embed = firstEmbed(callback);
+    expect(embed.title).toBe("Cabinet Draw · sealed");
+    expect(embed.image).toEqual({
+      url: "https://foilbury.test/brand/card-back.webp",
+      width: 750,
+      height: 1050,
+    });
+    expect(privateResponse(callback)).toBe(true);
+    expect(embed.fields?.map((field) => field.name)).toEqual([
+      "Capsule",
+      "Opening",
+      "When you are ready",
+    ]);
+    const serialised = JSON.stringify(callback.data);
+    for (const secret of ["Pippa", "FB-1-DE-513D6B", "Holographic", "foilbury-reveal-card.webp"]) {
+      expect(serialised).not.toContain(secret);
+    }
+    expect(callback.data?.components?.[0]?.components.map((button) => button.label)).toEqual([
+      "Reveal card",
+      "Collection",
+      "Open album",
+    ]);
+    expect(callback.data?.components?.[0]?.components[0]?.custom_id).toBe(
+      "foilbury:reveal:interaction-123",
+    );
+  });
+
+  it("rejects a back image that is not a public URL", () => {
+    expect(() => sealedRevealMessage({ ...sealedInput, back_url: "card-back.webp" })).toThrowError(
+      PresentationError,
+    );
   });
 });
 
@@ -778,7 +866,7 @@ describe("card faces and albums", () => {
       shareCustomId: "foilbury:tourshare:completion:three",
     });
     expect(firstEmbed(complete).title).toBe("Three Killing Games · complete");
-    expect(firstEmbed(complete).color).toBe(FOILBURY_PALETTE.lime);
+    expect(firstEmbed(complete).color).toBe(DISCORD_PALETTE.success);
     expect(
       complete.data?.components?.[0]?.components.some(
         (button) => button.label === "Share completion",
@@ -821,7 +909,7 @@ describe("achievement and mission progress", () => {
     expect(fieldValue(callback, "Status")).toBe("Earned");
     expect(fieldValue(callback, "Progress")).toBe("8/8");
     expect(fieldValue(callback, "Reward")).toBe("+640 ✦");
-    expect(firstEmbed(callback).color).toBe(FOILBURY_PALETTE.lime);
+    expect(firstEmbed(callback).color).toBe(DISCORD_PALETTE.success);
     expect(
       callback.data?.components?.[0]?.components.some(
         (button) => button.label === "Share achievement",

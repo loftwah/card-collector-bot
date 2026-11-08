@@ -18,9 +18,13 @@ export interface DrawReceipt {
   render_url: string | null;
   serial: string;
   pool_name: string;
+  pool_slug?: string;
   price: number;
   currency: { name: string; symbol: string };
   balance_after: number;
+  new_subject?: boolean;
+  new_finish?: boolean;
+  owned_copies?: number;
   balance_after_debit?: number;
   current_balance?: number;
   credits_total?: number;

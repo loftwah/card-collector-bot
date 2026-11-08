@@ -364,8 +364,9 @@ describe("Discord draw commit recovery", () => {
   it("recovers from the draw row when the receipt write fails after the commit", async () => {
     const player = await ctxFor("cabinet", "player@foilbury.local");
     await fixturePool(player);
-    // Force the normal reveal builder to fail after the draw, so the handler
-    // must recover from the draw row rather than only the interaction receipt.
+    // The card name looks like a private identifier. Presentation must never
+    // echo it, and recovery must still work from the durable draw row when the
+    // interaction receipt write failed.
     await runtime.DB.prepare(
       "UPDATE fb_card_definitions SET name = 'usr_secret123' WHERE id = 'crd_test_card'",
     ).run();
@@ -392,9 +393,9 @@ describe("Discord draw commit recovery", () => {
     const draw = await committedDraw(interactionId);
     const original = transport.original("test-interaction-token")!;
     const payload = JSON.stringify(original.payload);
-    expect(payload).toContain("Draw completed — display interrupted");
-    expect(payload).toContain("did");
-    expect(payload).toContain(draw.serial);
+    expect(payload).toContain("sealed");
+    expect(payload).toContain("Reveal card");
+    expect(payload).not.toContain(draw.serial);
     expect(payload).not.toContain("nothing changed");
 
     const record = await runtime.DB.prepare(
@@ -411,7 +412,7 @@ describe("Discord draw commit recovery", () => {
     const redelivery = new DiscordTransport();
     await redeliver(interactionId, redelivery);
     const resent = JSON.stringify(redelivery.original("redeliver-token")!.payload);
-    expect(resent).toContain("recorded result");
+    expect(resent).toContain("Recorded result");
     expect(resent).toContain("No second pull");
     expect(resent).toContain(draw.serial);
     await committedDraw(interactionId);
@@ -460,10 +461,8 @@ describe("Discord draw commit recovery", () => {
     expect(errors.join("\n")).toContain("achievement reward failed");
     expect(errors.join("\n")).toContain("Injected settlement read-back failure");
     const original = JSON.stringify(transport.original("test-interaction-token")!.payload);
-    expect(original).toContain("Test One");
-    expect(original).toContain("Reward credited");
-    expect(original).toContain("Settled balance");
-    expect(original).toContain("430");
+    expect(original).toContain("sealed");
+    expect(original).not.toContain("Test One");
     expect(original).not.toContain("nothing changed");
 
     const draw = await committedDraw(interactionId);
@@ -482,7 +481,10 @@ describe("Discord draw commit recovery", () => {
     await redeliver(interactionId, redelivery);
     const resent = JSON.stringify(redelivery.original("redeliver-token")!.payload);
     expect(resent).toContain(draw.serial);
-    expect(resent).toContain("Settled rewards");
+    expect(resent).toContain("Test One");
+    expect(resent).toContain("Reward credited");
+    expect(resent).toContain("Settled balance");
+    expect(resent).toContain("430");
     await committedDraw(interactionId);
     await assertRewardSettledOnce();
 
@@ -530,8 +532,8 @@ describe("Discord draw commit recovery", () => {
     expect(errors.join("\n")).toContain('"attempt":2');
     expect(errors.join("\n")).not.toContain("test-interaction-token");
     const first = JSON.stringify(transport.original("test-interaction-token")!.payload);
-    expect(first).toContain("Test One");
-    expect(first).toContain(draw.serial);
+    expect(first).toContain("sealed");
+    expect(first).not.toContain(draw.serial);
     const record = await runtime.DB.prepare(
       "SELECT receipt_json FROM fb_discord_interactions WHERE interaction_id = ?",
     )
@@ -543,6 +545,7 @@ describe("Discord draw commit recovery", () => {
     await redeliver(interactionId, redelivery);
     const resent = JSON.stringify(redelivery.original("redeliver-token")!.payload);
     expect(resent).toContain(draw.serial);
+    expect(resent).toContain("Recorded result");
     expect(resent).toContain("No second pull");
     await committedDraw(interactionId);
     await assertRewardSettledOnce();
@@ -572,18 +575,21 @@ describe("Discord draw commit recovery", () => {
     const draw = await committedDraw(interactionId);
     const firstPayload = transport.original("test-interaction-token")!.payload;
     const first = JSON.stringify(firstPayload);
-    expect(first).toContain("Test One");
-    expect(first).toContain(draw.serial);
+    expect(first).toContain("sealed");
+    expect(first).not.toContain(draw.serial);
     expect(first).not.toContain("attachment://");
     expect(transport.original("test-interaction-token")!.files).toBe(0);
 
+    // The recorded render lookup fails for this reveal. The exact card, serial
+    // and debit must still be presented, with an honest artwork follow-up.
     const redelivery = new DiscordTransport();
-    await redeliver(interactionId, redelivery);
+    await redeliver(interactionId, redelivery, "redeliver-token", faults.db);
     const resend = redelivery.original("redeliver-token")!;
     const resent = JSON.stringify(resend.payload);
     expect(resent).toContain(draw.serial);
-    expect(resent).toContain("recorded result");
-    expect(resend.files).toBe(1);
+    expect(resent).toContain("Recorded result");
+    expect(resent).toContain("Artwork follow-up");
+    expect(resend.files).toBe(0);
     await committedDraw(interactionId);
     await assertRewardSettledOnce();
   });
@@ -691,7 +697,7 @@ describe("Discord draw commit recovery", () => {
     await redeliver(interactionId, redelivery);
     const resent = JSON.stringify(redelivery.original("redeliver-token")!.payload);
     expect(resent).toContain(draw.serial);
-    expect(resent).toContain("recorded result");
+    expect(resent).toContain("Recorded result");
     await committedDraw(interactionId);
     await assertRewardSettledOnce();
 

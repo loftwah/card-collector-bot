@@ -11,13 +11,9 @@ const CHANNEL_ID = "1566700752385081355";
 const DISCORD_USER_ID = "707281352818425929";
 
 async function privateKey(): Promise<CryptoKey> {
-  return crypto.subtle.importKey(
-    "jwk",
-    TEST_DISCORD_PRIVATE_JWK,
-    { name: "Ed25519" },
-    false,
-    ["sign"],
-  );
+  return crypto.subtle.importKey("jwk", TEST_DISCORD_PRIVATE_JWK, { name: "Ed25519" }, false, [
+    "sign",
+  ]);
 }
 
 async function signedRequest(body: Record<string, unknown>): Promise<Request> {
@@ -85,7 +81,28 @@ function interaction(id: string) {
     data: {
       name: "foilbury",
       type: 1,
-      options: [{ name: "open", type: 1, options: [{ name: "pool", type: 3, value: "test-pool" }] }],
+      options: [
+        { name: "open", type: 1, options: [{ name: "pool", type: 3, value: "test-pool" }] },
+      ],
+    },
+  };
+}
+
+function revealInteraction(id: string, originalInteractionId: string) {
+  return {
+    id,
+    application_id: APPLICATION_ID,
+    type: 3,
+    token: "production-path-reveal-token",
+    guild_id: GUILD_ID,
+    channel_id: CHANNEL_ID,
+    member: {
+      user: { id: DISCORD_USER_ID, username: "dean", global_name: "Dean" },
+      roles: [],
+    },
+    data: {
+      custom_id: `foilbury:reveal:${originalInteractionId}`,
+      component_type: 2,
     },
   };
 }
@@ -117,8 +134,29 @@ describe("production Worker entry", () => {
     const original = transport.original("production-path-token");
     expect(original?.loading).toBe(false);
     expect(original?.visibility).toBe("ephemeral");
-    expect(JSON.stringify(original?.payload)).toContain("Test One");
+    expect(JSON.stringify(original?.payload)).toContain("sealed");
+    expect(JSON.stringify(original?.payload)).not.toContain("Test One");
     expect(transport.publicMessages()).toHaveLength(0);
+
+    const revealTransport = new DiscordTransport();
+    globalThis.fetch = revealTransport.fetch as typeof fetch;
+    try {
+      const response = await SELF.fetch(
+        await signedRequest(revealInteraction("worker-entry-reveal", "worker-entry-draw")),
+      );
+      expect(response.status).toBe(200);
+      const ack = (await response.json()) as { type: number; data?: { flags?: number } };
+      expect(ack).toEqual({ type: 5, data: { flags: 64 } });
+      revealTransport.acknowledge("production-path-reveal-token", ack.data?.flags);
+      await waitForTerminal("worker-entry-reveal");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    const revealed = revealTransport.original("production-path-reveal-token");
+    expect(revealed?.loading).toBe(false);
+    expect(revealed?.visibility).toBe("ephemeral");
+    expect(JSON.stringify(revealed?.payload)).toContain("Test One");
+    expect(JSON.stringify(revealed?.payload)).toContain("attachment://foilbury-reveal-card.webp");
 
     const receipt = await runtime.DB.prepare(
       "SELECT status, error_code, receipt_json FROM fb_discord_interactions WHERE interaction_id = ?",

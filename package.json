@@ -22,6 +22,7 @@
     "format:check": "prettier --check .",
     "test": "vitest run --config vitest.config.ts && vitest run --config vitest.workers.config.ts",
     "test:unit": "vitest run --config vitest.config.ts",
+    "test:reveal": "TSX_TSCONFIG_PATH=tests/tsconfig.react-test.json node --import tsx --test tests/scripts/draw-reveal-presentation.test.ts",
     "test:workers": "vitest run --config vitest.workers.config.ts",
     "test:production-path": "pnpm build && vitest run --config vitest.production-path.config.ts",
     "test:e2e": "node scripts/test-e2e.mjs",

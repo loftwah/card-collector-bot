@@ -191,7 +191,7 @@ function changedOddsCopy(change: PreviewChange, receiptKnown: boolean): string {
   return `Your saved request used ${previous}. The live capsule is now ${current}.${distribution} We will not rebind the saved request to the new odds.`;
 }
 
-function DrawReceiptPanel({
+export function DrawReceiptPanel({
   receipt,
   phase,
   visible,
@@ -223,7 +223,9 @@ function DrawReceiptPanel({
       <div className="draw-reveal__stage">
         <div className="draw-reveal__beam" aria-hidden="true"></div>
         <div className="draw-reveal__card">
-          {receipt.render_url ? (
+          {!visible ? (
+            <img src="/brand/card-back.webp" alt="A face-down Foilbury card" decoding="sync" />
+          ) : receipt.render_url ? (
             <img
               src={receipt.render_url}
               alt={`${receipt.card_name} — ${
@@ -238,127 +240,133 @@ function DrawReceiptPanel({
         {waitingForReveal ? (
           <div className="draw-reveal__wait">
             <span>
-              {phase.status === "committed"
-                ? "Receipt committed. Revealing your card…"
-                : "Replaying the reveal…"}
+              {phase.status === "committed" ? "Your card is waiting…" : "Replaying the reveal…"}
             </span>
             <button type="button" className="btn btn-secondary" onClick={onShowNow}>
-              Show result now
+              Reveal card
             </button>
           </div>
         ) : null}
       </div>
       <div className="draw-reveal__receipt">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="studio-kicker">
-              {receipt.replayed
-                ? "Recorded result · replayed safely"
-                : phase.source === "reconcile"
-                  ? "Recovered draw receipt"
-                  : "Committed draw receipt"}
+        {!visible ? (
+          <>
+            <p className="studio-kicker">{receipt.replayed ? "Your saved card" : "Your opening"}</p>
+            <p className="mt-2 text-sm text-[var(--muted)]">
+              Your card is face-down and already saved. Reveal it when you are ready; the result
+              cannot change and revealing it again is free.
             </p>
-            <h3 className="display-sm mt-1 text-3xl uppercase">{receipt.card_name}</h3>
-            <p className="text-sm text-[var(--brass)]">
-              {editionPrintTitle(receipt.edition_name)
-                ? `${editionPrintTitle(receipt.edition_name)} · `
-                : ""}
-              {receipt.variant_name} · {receipt.serial}
-            </p>
-          </div>
-          {phase.status === "revealed" ? (
-            <div className="flex flex-wrap gap-2">
-              <button type="button" className="btn btn-secondary" onClick={onReplay}>
-                <RotateCcw size={14} /> Replay
-              </button>
-              <button type="button" className="btn btn-secondary" onClick={onToggleVisible}>
-                {visible ? <EyeOff size={14} /> : <Eye size={14} />} {visible ? "Hide" : "Show"}
-              </button>
-              <button type="button" className="btn btn-secondary" onClick={onOpenAnother}>
-                <Sparkles size={14} /> Open another
-              </button>
+            {phase.status === "revealed" ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" className="btn btn-secondary" onClick={onReplay}>
+                  <RotateCcw size={14} /> Replay
+                </button>
+                <button type="button" className="btn btn-secondary" onClick={onToggleVisible}>
+                  <Eye size={14} /> Show
+                </button>
+                <button type="button" className="btn btn-secondary" onClick={onOpenAnother}>
+                  <Sparkles size={14} /> Open another
+                </button>
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="studio-kicker">
+                  {receipt.replayed
+                    ? "Your saved card"
+                    : phase.source === "reconcile"
+                      ? "Recovered opening"
+                      : "Your card"}
+                </p>
+                <h3 className="display-sm mt-1 text-3xl uppercase">{receipt.card_name}</h3>
+                <p className="text-sm text-[var(--brass)]">
+                  {editionPrintTitle(receipt.edition_name)
+                    ? `${editionPrintTitle(receipt.edition_name)} · `
+                    : ""}
+                  {receipt.variant_name} · {receipt.serial}
+                </p>
+              </div>
+              {phase.status === "revealed" ? (
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className="btn btn-secondary" onClick={onReplay}>
+                    <RotateCcw size={14} /> Replay
+                  </button>
+                  <button type="button" className="btn btn-secondary" onClick={onToggleVisible}>
+                    <EyeOff size={14} /> Hide
+                  </button>
+                  <button type="button" className="btn btn-secondary" onClick={onOpenAnother}>
+                    <Sparkles size={14} /> Open another
+                  </button>
+                </div>
+              ) : null}
             </div>
-          ) : null}
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <span className={cn("badge", receipt.new_subject && "badge-signal")}>
-            {receipt.new_subject ? "New subject" : `Duplicate · ${receipt.owned_copies} owned`}
-          </span>
-          <span className={cn("badge", receipt.new_finish && "badge-signal")}>
-            {receipt.new_finish ? "New finish" : "Finish already held"}
-          </span>
-          <span className="badge">Opening −✦ {receipt.price}</span>
-          {receipt.balance_after_debit !== undefined ? (
-            <span className="badge">After debit ✦ {receipt.balance_after_debit}</span>
-          ) : null}
-          {(receipt.credits_total ?? 0) > 0 ? (
-            <span className="badge badge-signal">Reward +✦ {receipt.credits_total}</span>
-          ) : null}
-          {receipt.balance_after !== undefined ? (
-            <span className="badge">Settled balance ✦ {receipt.balance_after}</span>
-          ) : null}
-          <span className="badge">{pct(receipt.probability_bps)} shown chance</span>
-        </div>
-        <div
-          className={cn(
-            "mt-4 overflow-hidden transition-all duration-500",
-            visible ? "max-h-[38rem] opacity-100" : "max-h-0 opacity-0",
-          )}
-          aria-hidden={!visible}
-          inert={!visible}
-        >
-          <p className="text-sm text-[var(--muted)]">
-            This exact copy was selected from pool revision {receipt.pool_revision}. The result was
-            committed before this animation. A retry or reload reads the same receipt and can never
-            reroll or charge twice.
-          </p>
-          {receipt.achievements?.length ? (
-            <div className="mt-3 border border-[var(--signal)] bg-[var(--ice)]/30 p-3">
-              <p className="studio-stat__label">Unlocked with this draw</p>
-              <ul className="mt-1 grid gap-1 text-sm">
-                {receipt.achievements.slice(0, 4).map((achievement) => (
-                  <li key={achievement.id}>
-                    <strong>{achievement.name}</strong>
-                    {achievement.reward_state === "failed"
-                      ? " · reward pending retry (not yet credited)"
-                      : achievement.reward_state &&
-                          achievement.reward_state !== "granted" &&
-                          achievement.reward_amount > 0
-                        ? " · reward not yet credited"
-                        : achievement.reward_amount
-                          ? ` · +${achievement.reward_amount} Foil`
-                          : " · cosmetic badge"}
-                  </li>
-                ))}
-                {receipt.achievements.length > 4 ? (
-                  <li className="text-xs text-[var(--muted)]">
-                    +{receipt.achievements.length - 4} more in the achievement cabinet
-                  </li>
-                ) : null}
-              </ul>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className={cn("badge", receipt.new_subject && "badge-signal")}>
+                {receipt.new_subject ? "New subject" : `Duplicate · ${receipt.owned_copies} owned`}
+              </span>
+              <span className={cn("badge", receipt.new_finish && "badge-signal")}>
+                {receipt.new_finish ? "New finish" : "Finish already held"}
+              </span>
+              <span className="badge">Opening −✦ {receipt.price}</span>
+              {receipt.balance_after_debit !== undefined ? (
+                <span className="badge">After debit ✦ {receipt.balance_after_debit}</span>
+              ) : null}
+              {(receipt.credits_total ?? 0) > 0 ? (
+                <span className="badge badge-signal">Reward +✦ {receipt.credits_total}</span>
+              ) : null}
+              {receipt.balance_after !== undefined ? (
+                <span className="badge">Settled balance ✦ {receipt.balance_after}</span>
+              ) : null}
+              <span className="badge">{pct(receipt.probability_bps)} shown chance</span>
             </div>
-          ) : null}
-          <p className="mt-2 font-mono text-[0.56rem] break-all text-[var(--muted)]">
-            draw proof {receipt.random_commitment.slice(0, 32)}…
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <a className="btn btn-primary" href={`/play/card/${receipt.instance_id}`}>
-              Inspect this copy <ArrowRight size={14} />
-            </a>
-            <ShareLinkButton
-              kind="latest"
-              targetId={receipt.instance_id}
-              label="Share latest pull"
-              size="md"
-            />
-          </div>
-        </div>
-        {!visible && phase.status === "revealed" ? (
-          <p className="mt-3 text-sm text-[var(--muted)]">
-            The card is already saved in your album. Show it, replay the moment, or inspect it later
-            — nothing is lost.
-          </p>
-        ) : null}
+            <div className="mt-4">
+              <p className="text-sm text-[var(--muted)]">
+                This is the exact copy your opening produced. Replaying the moment is free and never
+                rerolls the card or charges again.
+              </p>
+              {receipt.achievements?.length ? (
+                <div className="mt-3 border border-[var(--signal)] bg-[var(--ice)]/30 p-3">
+                  <p className="studio-stat__label">Unlocked with this draw</p>
+                  <ul className="mt-1 grid gap-1 text-sm">
+                    {receipt.achievements.slice(0, 4).map((achievement) => (
+                      <li key={achievement.id}>
+                        <strong>{achievement.name}</strong>
+                        {achievement.reward_state === "failed"
+                          ? " · reward pending retry (not yet credited)"
+                          : achievement.reward_state &&
+                              achievement.reward_state !== "granted" &&
+                              achievement.reward_amount > 0
+                            ? " · reward not yet credited"
+                            : achievement.reward_amount
+                              ? ` · +${achievement.reward_amount} Foil`
+                              : " · cosmetic badge"}
+                      </li>
+                    ))}
+                    {receipt.achievements.length > 4 ? (
+                      <li className="text-xs text-[var(--muted)]">
+                        +{receipt.achievements.length - 4} more in the achievement cabinet
+                      </li>
+                    ) : null}
+                  </ul>
+                </div>
+              ) : null}
+              <div className="mt-4 flex flex-wrap gap-2">
+                <a className="btn btn-primary" href={`/play/card/${receipt.instance_id}`}>
+                  Inspect this copy <ArrowRight size={14} />
+                </a>
+                <ShareLinkButton
+                  kind="latest"
+                  targetId={receipt.instance_id}
+                  label="Share latest pull"
+                  size="md"
+                />
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -1148,410 +1156,414 @@ export default function DrawStudio({
 
       <div className="draw-studio__layout">
         <aside className="draw-studio__aside">
-        <div className="surface-flat p-5">
-          <label className="field">
-            <span className="label">Choose a capsule</span>
-            <select
-              className="select"
-              value={state.selection.pool}
-              onChange={(event) => choosePool(state, event.target.value)}
-              aria-label="Choose a capsule"
-              disabled={locked}
-            >
-              <optgroup label="Everyday">
-                {pools
-                  .filter((pool) => pool.slug === "cabinet-draw")
-                  .map((pool) => (
-                    <option key={pool.id} value={pool.slug}>
-                      {pool.name} · ✦ {pool.price}
-                    </option>
-                  ))}
-              </optgroup>
-              <optgroup label="Collections">
-                {pools
-                  .filter((pool) => pool.slug !== "cabinet-draw")
-                  .map((pool) => (
-                    <option key={pool.id} value={pool.slug}>
-                      {pool.name} · ✦ {pool.price}
-                    </option>
-                  ))}
-              </optgroup>
-              {showRecoveryOption ? (
-                <optgroup label={operation ? "Recovering" : "Unavailable"}>
-                  <option value={state.selection.pool}>
-                    {state.selection.pool} · {operation ? "saved opening" : "unavailable"}
-                  </option>
-                </optgroup>
-              ) : null}
-            </select>
-          </label>
-          {(() => {
-            if (!selectedPool) {
-              return operation ? (
-                <div className="mt-4 border-t border-[var(--line)] pt-3">
-                  <p className="font-semibold">Recovering {operation.payload.pool}</p>
-                  <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">
-                    This capsule is no longer in the live list. Your saved request is still checked
-                    against its original receipt. Nothing new is charged.
-                  </p>
-                </div>
-              ) : null;
-            }
-            return (
-              <div className="mt-4 border-t border-[var(--line)] pt-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-semibold">{selectedPool.name}</p>
-                  <span className="shrink-0 font-mono text-sm text-[var(--brass)]">
-                    ✦ {selectedPool.price}
-                  </span>
-                </div>
-                {selectedPool.eligibleCount !== undefined ? (
-                  <p className="mt-1 text-xs text-[var(--muted)]">
-                    {selectedPool.eligibleCount} eligible card
-                    {selectedPool.eligibleCount === 1 ? "" : "s"} for you
-                  </p>
-                ) : null}
-                <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">
-                  {selectedPool.description}
-                </p>
-              </div>
-            );
-          })()}
-        </div>
-
-        <div className="surface-flat p-5">
-          <p className="eyebrow">Where you are opening</p>
-          <label className="field mt-3">
-            <span className="label">Community filter</span>
-            <select
-              value={state.selection.channel}
-              onChange={(event) => chooseChannel(state, event.target.value)}
-              className="select"
-              disabled={locked}
-            >
-              <option value="">Public cabinet</option>
-              <option value="family-table">Family table · hides horror-tagged cards</option>
-            </select>
-          </label>
-          <p className="mt-2 text-xs leading-relaxed text-[var(--muted)]">
-            A community filter can only hide cards. Your own preferences can hide more. Neither
-            makes the remaining cards more likely than the odds shown.
-          </p>
-        </div>
-
-        <div className="border border-[var(--line)] p-5">
-          <p className="eyebrow">Collection draw preferences</p>
-          <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
-            Turn collections and content filters on or off before you choose a capsule. Preferences
-            only change future eligibility; they never change a committed card.
-          </p>
-          <a className="btn btn-secondary btn-sm mt-3" href="/play/preferences">
-            Open preferences
-          </a>
-        </div>
-      </aside>
-
-      <div
-        ref={oddsPanelRef}
-        className="min-w-0"
-        style={
-          state.phase.status === "loading"
-            ? { minHeight: lastOddsHeightRef.current || 224 }
-            : undefined
-        }
-      >
-        {storageWarning ? (
-          <div className="notice mb-5 text-sm" role="status">
-            {storageWarning}
-          </div>
-        ) : null}
-
-        {state.phase.status === "blocked" && previewError ? (
-          <div className="error-box mb-5" role="alert" tabIndex={-1} ref={statusRef}>
-            <p>{state.phase.message}</p>
-            {state.notice ? <p className="mt-1 text-sm">{state.notice}</p> : null}
-            <div className="mt-2 flex flex-wrap gap-2">
-              {state.phase.reason === "signed_out" ? (
-                <a className="btn btn-secondary" href={SIGN_IN_HREF}>
-                  Sign in to continue
-                </a>
-              ) : (
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => retryPreview(state.selection)}
-                >
-                  Retry this capsule preview
-                </button>
-              )}
-            </div>
-          </div>
-        ) : null}
-
-        {state.phase.status === "blocked" && previewBlocked ? (
-          <div className="notice mb-5 text-sm" role="status">
-            {state.phase.message}
-          </div>
-        ) : null}
-
-        {state.phase.status === "unknown" ? (
-          <div className="error-box mb-5" role="alert" tabIndex={-1} ref={statusRef}>
-            <p className="font-semibold">
-              {state.phase.reason === "signed_out"
-                ? "Sign in again to confirm this opening."
-                : state.phase.reason === "conflict"
-                  ? "This saved request needs support."
-                  : "Your opening is not confirmed yet."}
-            </p>
-            <p className="mt-1">{state.phase.message}</p>
-            <p className="mt-2 text-sm">
-              {state.phase.reason === "conflict"
-                ? "Do not start another opening. The same key and payload cannot be safely reconciled from this session."
-                : "We kept the exact request key, capsule revision, distribution and price. Checking again cannot reroll the card or charge twice."}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {state.phase.reason === "signed_out" ? (
-                <a className="btn btn-secondary" href={SIGN_IN_HREF}>
-                  Sign in to recover
-                </a>
-              ) : null}
-              {state.phase.retryable ? (
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => checkAgain(state, scopeKey)}
-                >
-                  Check again
-                </button>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-
-        {state.phase.status === "reconciling" ? (
-          <div
-            className="notice mb-5 text-sm"
-            role="status"
-            aria-live="polite"
-            tabIndex={-1}
-            ref={statusRef}
-          >
-            <p className="font-semibold">Checking whether this opening completed…</p>
-            <p className="mt-1 text-sm">
-              We are replaying the original request with its saved operation key. If the receipt
-              exists, it is returned unchanged; if the request never arrived, that same approved
-              opening completes once. It cannot reroll the card, change the price or debit twice.
-            </p>
-          </div>
-        ) : null}
-
-        {state.phase.status === "submitting" ? (
-          <div className="notice mb-5 text-sm" role="status" aria-live="polite">
-            Committing your opening. The receipt is saved before the reveal; keep this page open if
-            the connection drops.
-          </div>
-        ) : null}
-
-        {state.notice &&
-        state.phase.status !== "blocked" &&
-        state.phase.status !== "unknown" &&
-        state.phase.status !== "reconciling" ? (
-          <div className="notice mb-5 text-sm" role="status">
-            {state.notice}
-          </div>
-        ) : null}
-
-        {state.phase.status === "loading" && !preview ? (
-          <div role="status" aria-live="polite" className="w-full">
-            <p className="text-sm text-[var(--muted)]">Loading the selected capsule’s odds…</p>
-            <div
-              className="draw-odds-placeholder mt-4 overflow-hidden border border-[var(--line)] p-3"
-              style={{ height: Math.max(80, (lastOddsHeightRef.current || 224) - 100) }}
-              aria-hidden="true"
-            >
-              {[0, 1, 2].map((row) => (
-                <div key={row} className="flex items-center gap-3 border-b border-[var(--line)] py-3">
-                  <span className="skeleton h-3 flex-1"></span>
-                  <span className="skeleton h-3 w-1/5"></span>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        {preview ? (
-          <>
-            <div
-              className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--line)] pb-5"
-              aria-busy={state.phase.status === "loading"}
-            >
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="display-sm text-3xl">Transparent draw odds</h2>
-                  <span className="badge">Revision {preview.revision}</span>
-                </div>
-                <p className="mt-2 max-w-xl text-sm text-[var(--muted)]">
-                  Every eligible copy is listed with its actual chance. Nothing is reweighted after
-                  you commit.
-                </p>
-                {state.phase.status === "loading" ? (
-                  <p className="mt-2 text-xs text-[var(--muted)]" role="status">
-                    Refreshing the live odds…
-                  </p>
-                ) : null}
-              </div>
-              <div className="text-right">
-                <p className="eyebrow">Eligible</p>
-                <p className="display-sm mt-1 text-3xl">{preview.eligible_count}</p>
-                <p className="text-xs text-[var(--muted)]">{cardCount} identities</p>
-              </div>
-            </div>
-
-            <div className="draw-finish-odds" aria-label="Chance by finish">
-              {(
-                [
-                  ["Plain", finishOdds.plain],
-                  ["Silver", finishOdds.silver],
-                  ["Gold", finishOdds.gold],
-                  ["Holographic", finishOdds.holographic],
-                ] as const
-              ).map(([label, bps]) => (
-                <div key={label} className="draw-finish-odds__item">
-                  <span>{label}</span>
-                  <strong>{pct(bps)}</strong>
-                </div>
-              ))}
-            </div>
-            <p className="mt-2 text-xs text-[var(--muted)]">
-              Chance by finish across every eligible copy. One opening returns one card.
-            </p>
-
-            {preview.filters.player_hidden_collection_ids.length ? (
-              <div className="notice mt-4 text-sm">
-                You turned off {preview.filters.player_hidden_collection_ids.length} collection
-                {preview.filters.player_hidden_collection_ids.length === 1 ? "" : "s"} for your
-                draws. Their cards are removed from this distribution.{" "}
-                <a className="underline underline-offset-4" href="/play/preferences">
-                  Change collection preferences
-                </a>
-                .
-              </div>
-            ) : null}
-            {preview.filters.excluded_tags.length ? (
-              <div className="notice mt-4 text-sm">
-                Excluded by the active policy or your preferences:{" "}
-                {preview.filters.excluded_tags.join(", ")}. The probabilities below are recalculated
-                from the remaining pool.
-              </div>
-            ) : null}
-            {preview.filters.unfiled_count > 0 ? (
-              <p className="mt-3 text-xs text-[var(--muted)]">
-                {preview.filters.unfiled_count} eligible card
-                {preview.filters.unfiled_count === 1 ? " is" : "s are"} not filed in a collection
-                and remain in the capsule. They are never silently removed by collection
-                preferences.
-              </p>
-            ) : null}
-
-            {state.previewChange ? (
-              <div className="notice mt-4 text-sm" role="status">
-                <p className="font-semibold">The odds changed while this request was saved.</p>
-                <p className="mt-1">
-                  {changedOddsCopy(
-                    state.previewChange,
-                    state.phase.status === "committed" || state.phase.status === "revealed",
-                  )}
-                </p>
-                {state.previewChange.priceChanged ? (
-                  <p className="mt-1 font-mono text-xs">
-                    Price: ✦ {state.previewChange.previousPrice} → ✦{" "}
-                    {state.previewChange.currentPrice}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
-
-            {empty && !operation && !receipt ? (
-              <div className="empty mt-5">
-                <div>
-                  <p className="display-sm text-2xl">This pool is empty for this context.</p>
-                  <p className="mt-2 text-sm">
-                    {preview.filters.empty_reason ?? "No eligible cards."} Nothing will be charged.
-                  </p>
-                </div>
-              </div>
-            ) : null}
-
-            <div className="mt-6">
-              <div className="flex items-center justify-between gap-3">
-                <p className="eyebrow">Actual chance before you open</p>
-              </div>
-              <div
-                className="mt-3 max-h-[30rem] overflow-auto border border-[var(--line)]"
-                role="region"
-                aria-label="Full odds table"
-                tabIndex={0}
+          <div className="surface-flat p-5">
+            <label className="field">
+              <span className="label">Choose a capsule</span>
+              <select
+                className="select"
+                value={state.selection.pool}
+                onChange={(event) => choosePool(state, event.target.value)}
+                aria-label="Choose a capsule"
+                disabled={locked}
               >
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Card</th>
-                      <th>Finish</th>
-                      <th className="text-right">Chance</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedEntries.map((entry) => (
-                      <tr key={entry.variant_id}>
-                        <td className="font-medium">
-                          {entry.card_name}
-                          {editionPrintTitle(entry.edition_name) ? (
-                            <span className="block text-[0.62rem] font-normal text-[var(--brass)]">
-                              {editionPrintTitle(entry.edition_name)}
-                            </span>
-                          ) : null}
-                          {entry.collections.length ? (
-                            <span className="block text-[0.62rem] font-normal text-[var(--muted)]">
-                              {entry.collections.map((collection) => collection.name).join(" · ")}
-                            </span>
-                          ) : (
-                            <span className="block text-[0.62rem] font-normal text-[var(--muted)]">
-                              Unfiled
-                            </span>
-                          )}
-                        </td>
-                        <td className="text-[var(--muted)]">
-                          {entry.material_key === "diamond" ? "Holographic" : entry.variant_name}
-                        </td>
-                        <td className="text-right font-mono text-xs">
-                          {pct(entry.probability_bps)}
-                        </td>
-                      </tr>
+                <optgroup label="Everyday">
+                  {pools
+                    .filter((pool) => pool.slug === "cabinet-draw")
+                    .map((pool) => (
+                      <option key={pool.id} value={pool.slug}>
+                        {pool.name} · ✦ {pool.price}
+                      </option>
                     ))}
-                  </tbody>
-                </table>
+                </optgroup>
+                <optgroup label="Collections">
+                  {pools
+                    .filter((pool) => pool.slug !== "cabinet-draw")
+                    .map((pool) => (
+                      <option key={pool.id} value={pool.slug}>
+                        {pool.name} · ✦ {pool.price}
+                      </option>
+                    ))}
+                </optgroup>
+                {showRecoveryOption ? (
+                  <optgroup label={operation ? "Recovering" : "Unavailable"}>
+                    <option value={state.selection.pool}>
+                      {state.selection.pool} · {operation ? "saved opening" : "unavailable"}
+                    </option>
+                  </optgroup>
+                ) : null}
+              </select>
+            </label>
+            {(() => {
+              if (!selectedPool) {
+                return operation ? (
+                  <div className="mt-4 border-t border-[var(--line)] pt-3">
+                    <p className="font-semibold">Recovering {operation.payload.pool}</p>
+                    <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">
+                      This capsule is no longer in the live list. Your saved request is still
+                      checked against its original receipt. Nothing new is charged.
+                    </p>
+                  </div>
+                ) : null;
+              }
+              return (
+                <div className="mt-4 border-t border-[var(--line)] pt-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-semibold">{selectedPool.name}</p>
+                    <span className="shrink-0 font-mono text-sm text-[var(--brass)]">
+                      ✦ {selectedPool.price}
+                    </span>
+                  </div>
+                  {selectedPool.eligibleCount !== undefined ? (
+                    <p className="mt-1 text-xs text-[var(--muted)]">
+                      {selectedPool.eligibleCount} eligible card
+                      {selectedPool.eligibleCount === 1 ? "" : "s"} for you
+                    </p>
+                  ) : null}
+                  <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">
+                    {selectedPool.description}
+                  </p>
+                </div>
+              );
+            })()}
+          </div>
+
+          <div className="surface-flat p-5">
+            <p className="eyebrow">Where you are opening</p>
+            <label className="field mt-3">
+              <span className="label">Community filter</span>
+              <select
+                value={state.selection.channel}
+                onChange={(event) => chooseChannel(state, event.target.value)}
+                className="select"
+                disabled={locked}
+              >
+                <option value="">Public cabinet</option>
+                <option value="family-table">Family table · hides horror-tagged cards</option>
+              </select>
+            </label>
+            <p className="mt-2 text-xs leading-relaxed text-[var(--muted)]">
+              A community filter can only hide cards. Your own preferences can hide more. Neither
+              makes the remaining cards more likely than the odds shown.
+            </p>
+          </div>
+
+          <div className="border border-[var(--line)] p-5">
+            <p className="eyebrow">Collection draw preferences</p>
+            <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
+              Turn collections and content filters on or off before you choose a capsule.
+              Preferences only change future eligibility; they never change a committed card.
+            </p>
+            <a className="btn btn-secondary btn-sm mt-3" href="/play/preferences">
+              Open preferences
+            </a>
+          </div>
+        </aside>
+
+        <div
+          ref={oddsPanelRef}
+          className="min-w-0"
+          style={
+            state.phase.status === "loading"
+              ? { minHeight: lastOddsHeightRef.current || 224 }
+              : undefined
+          }
+        >
+          {storageWarning ? (
+            <div className="notice mb-5 text-sm" role="status">
+              {storageWarning}
+            </div>
+          ) : null}
+
+          {state.phase.status === "blocked" && previewError ? (
+            <div className="error-box mb-5" role="alert" tabIndex={-1} ref={statusRef}>
+              <p>{state.phase.message}</p>
+              {state.notice ? <p className="mt-1 text-sm">{state.notice}</p> : null}
+              <div className="mt-2 flex flex-wrap gap-2">
+                {state.phase.reason === "signed_out" ? (
+                  <a className="btn btn-secondary" href={SIGN_IN_HREF}>
+                    Sign in to continue
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => retryPreview(state.selection)}
+                  >
+                    Retry this capsule preview
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {state.phase.status === "blocked" && previewBlocked ? (
+            <div className="notice mb-5 text-sm" role="status">
+              {state.phase.message}
+            </div>
+          ) : null}
+
+          {state.phase.status === "unknown" ? (
+            <div className="error-box mb-5" role="alert" tabIndex={-1} ref={statusRef}>
+              <p className="font-semibold">
+                {state.phase.reason === "signed_out"
+                  ? "Sign in again to confirm this opening."
+                  : state.phase.reason === "conflict"
+                    ? "This saved request needs support."
+                    : "Your opening is not confirmed yet."}
+              </p>
+              <p className="mt-1">{state.phase.message}</p>
+              <p className="mt-2 text-sm">
+                {state.phase.reason === "conflict"
+                  ? "Do not start another opening. The same key and payload cannot be safely reconciled from this session."
+                  : "We kept the exact request key, capsule revision, distribution and price. Checking again cannot reroll the card or charge twice."}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {state.phase.reason === "signed_out" ? (
+                  <a className="btn btn-secondary" href={SIGN_IN_HREF}>
+                    Sign in to recover
+                  </a>
+                ) : null}
+                {state.phase.retryable ? (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => checkAgain(state, scopeKey)}
+                  >
+                    Check again
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          {state.phase.status === "reconciling" ? (
+            <div
+              className="notice mb-5 text-sm"
+              role="status"
+              aria-live="polite"
+              tabIndex={-1}
+              ref={statusRef}
+            >
+              <p className="font-semibold">Checking whether this opening completed…</p>
+              <p className="mt-1 text-sm">
+                We are replaying the original request with its saved operation key. If the receipt
+                exists, it is returned unchanged; if the request never arrived, that same approved
+                opening completes once. It cannot reroll the card, change the price or debit twice.
+              </p>
+            </div>
+          ) : null}
+
+          {state.phase.status === "submitting" ? (
+            <div className="notice mb-5 text-sm" role="status" aria-live="polite">
+              Committing your opening. The receipt is saved before the reveal; keep this page open
+              if the connection drops.
+            </div>
+          ) : null}
+
+          {state.notice &&
+          state.phase.status !== "blocked" &&
+          state.phase.status !== "unknown" &&
+          state.phase.status !== "reconciling" ? (
+            <div className="notice mb-5 text-sm" role="status">
+              {state.notice}
+            </div>
+          ) : null}
+
+          {state.phase.status === "loading" && !preview ? (
+            <div role="status" aria-live="polite" className="w-full">
+              <p className="text-sm text-[var(--muted)]">Loading the selected capsule’s odds…</p>
+              <div
+                className="draw-odds-placeholder mt-4 overflow-hidden border border-[var(--line)] p-3"
+                style={{ height: Math.max(80, (lastOddsHeightRef.current || 224) - 100) }}
+                aria-hidden="true"
+              >
+                {[0, 1, 2].map((row) => (
+                  <div
+                    key={row}
+                    className="flex items-center gap-3 border-b border-[var(--line)] py-3"
+                  >
+                    <span className="skeleton h-3 flex-1"></span>
+                    <span className="skeleton h-3 w-1/5"></span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {preview ? (
+            <>
+              <div
+                className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--line)] pb-5"
+                aria-busy={state.phase.status === "loading"}
+              >
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="display-sm text-3xl">Transparent draw odds</h2>
+                    <span className="badge">Revision {preview.revision}</span>
+                  </div>
+                  <p className="mt-2 max-w-xl text-sm text-[var(--muted)]">
+                    Every eligible copy is listed with its actual chance. Nothing is reweighted
+                    after you commit.
+                  </p>
+                  {state.phase.status === "loading" ? (
+                    <p className="mt-2 text-xs text-[var(--muted)]" role="status">
+                      Refreshing the live odds…
+                    </p>
+                  ) : null}
+                </div>
+                <div className="text-right">
+                  <p className="eyebrow">Eligible</p>
+                  <p className="display-sm mt-1 text-3xl">{preview.eligible_count}</p>
+                  <p className="text-xs text-[var(--muted)]">{cardCount} identities</p>
+                </div>
+              </div>
+
+              <div className="draw-finish-odds" aria-label="Chance by finish">
+                {(
+                  [
+                    ["Plain", finishOdds.plain],
+                    ["Silver", finishOdds.silver],
+                    ["Gold", finishOdds.gold],
+                    ["Holographic", finishOdds.holographic],
+                  ] as const
+                ).map(([label, bps]) => (
+                  <div key={label} className="draw-finish-odds__item">
+                    <span>{label}</span>
+                    <strong>{pct(bps)}</strong>
+                  </div>
+                ))}
               </div>
               <p className="mt-2 text-xs text-[var(--muted)]">
-                This is the live capsule. If it changes before you open, you will be asked to review
-                the new odds. Empty pools never charge.
+                Chance by finish across every eligible copy. One opening returns one card.
               </p>
-            </div>
 
-            <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-[var(--line)] pt-4 font-mono text-[0.58rem] tracking-[0.1em] text-[var(--muted)] uppercase">
-              <span>
-                <Sparkles
-                  size={12}
-                  className="mr-1 inline text-[var(--brass)]"
-                  aria-hidden="true"
-                />
-                One capsule, one card
-              </span>
-              <span>Your result is saved if the connection drops</span>
-              <span>No purchase or cash-out</span>
-              <span>A retry never charges twice</span>
-            </div>
-          </>
-        ) : null}
+              {preview.filters.player_hidden_collection_ids.length ? (
+                <div className="notice mt-4 text-sm">
+                  You turned off {preview.filters.player_hidden_collection_ids.length} collection
+                  {preview.filters.player_hidden_collection_ids.length === 1 ? "" : "s"} for your
+                  draws. Their cards are removed from this distribution.{" "}
+                  <a className="underline underline-offset-4" href="/play/preferences">
+                    Change collection preferences
+                  </a>
+                  .
+                </div>
+              ) : null}
+              {preview.filters.excluded_tags.length ? (
+                <div className="notice mt-4 text-sm">
+                  Excluded by the active policy or your preferences:{" "}
+                  {preview.filters.excluded_tags.join(", ")}. The probabilities below are
+                  recalculated from the remaining pool.
+                </div>
+              ) : null}
+              {preview.filters.unfiled_count > 0 ? (
+                <p className="mt-3 text-xs text-[var(--muted)]">
+                  {preview.filters.unfiled_count} eligible card
+                  {preview.filters.unfiled_count === 1 ? " is" : "s are"} not filed in a collection
+                  and remain in the capsule. They are never silently removed by collection
+                  preferences.
+                </p>
+              ) : null}
+
+              {state.previewChange ? (
+                <div className="notice mt-4 text-sm" role="status">
+                  <p className="font-semibold">The odds changed while this request was saved.</p>
+                  <p className="mt-1">
+                    {changedOddsCopy(
+                      state.previewChange,
+                      state.phase.status === "committed" || state.phase.status === "revealed",
+                    )}
+                  </p>
+                  {state.previewChange.priceChanged ? (
+                    <p className="mt-1 font-mono text-xs">
+                      Price: ✦ {state.previewChange.previousPrice} → ✦{" "}
+                      {state.previewChange.currentPrice}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {empty && !operation && !receipt ? (
+                <div className="empty mt-5">
+                  <div>
+                    <p className="display-sm text-2xl">This pool is empty for this context.</p>
+                    <p className="mt-2 text-sm">
+                      {preview.filters.empty_reason ?? "No eligible cards."} Nothing will be
+                      charged.
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="mt-6">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="eyebrow">Actual chance before you open</p>
+                </div>
+                <div
+                  className="mt-3 max-h-[30rem] overflow-auto border border-[var(--line)]"
+                  role="region"
+                  aria-label="Full odds table"
+                  tabIndex={0}
+                >
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Card</th>
+                        <th>Finish</th>
+                        <th className="text-right">Chance</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedEntries.map((entry) => (
+                        <tr key={entry.variant_id}>
+                          <td className="font-medium">
+                            {entry.card_name}
+                            {editionPrintTitle(entry.edition_name) ? (
+                              <span className="block text-[0.62rem] font-normal text-[var(--brass)]">
+                                {editionPrintTitle(entry.edition_name)}
+                              </span>
+                            ) : null}
+                            {entry.collections.length ? (
+                              <span className="block text-[0.62rem] font-normal text-[var(--muted)]">
+                                {entry.collections.map((collection) => collection.name).join(" · ")}
+                              </span>
+                            ) : (
+                              <span className="block text-[0.62rem] font-normal text-[var(--muted)]">
+                                Unfiled
+                              </span>
+                            )}
+                          </td>
+                          <td className="text-[var(--muted)]">
+                            {entry.material_key === "diamond" ? "Holographic" : entry.variant_name}
+                          </td>
+                          <td className="text-right font-mono text-xs">
+                            {pct(entry.probability_bps)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="mt-2 text-xs text-[var(--muted)]">
+                  This is the live capsule. If it changes before you open, you will be asked to
+                  review the new odds. Empty pools never charge.
+                </p>
+              </div>
+
+              <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-[var(--line)] pt-4 font-mono text-[0.58rem] tracking-[0.1em] text-[var(--muted)] uppercase">
+                <span>
+                  <Sparkles
+                    size={12}
+                    className="mr-1 inline text-[var(--brass)]"
+                    aria-hidden="true"
+                  />
+                  One capsule, one card
+                </span>
+                <span>Your result is saved if the connection drops</span>
+                <span>No purchase or cash-out</span>
+                <span>A retry never charges twice</span>
+              </div>
+            </>
+          ) : null}
         </div>
       </div>
     </div>

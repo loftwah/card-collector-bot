@@ -27,6 +27,7 @@ const gates = [
     ],
   },
   { name: "acceptance-runner", command: "pnpm", args: ["test:acceptance-runner"] },
+  { name: "reveal-presentation", command: "pnpm", args: ["test:reveal"] },
   { name: "types", command: "pnpm", args: ["check:types"] },
   { name: "unit", command: "pnpm", args: ["test:unit"] },
   { name: "workers", command: "pnpm", args: ["test:workers"] },

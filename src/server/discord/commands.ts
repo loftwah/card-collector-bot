@@ -17,12 +17,7 @@ import {
   listCollectionCards,
   listCollections,
 } from "../modules/collections";
-import {
-  executeDraw,
-  getPoolPreview,
-  listEligiblePools,
-  listPools,
-} from "../modules/pools";
+import { executeDraw, getPoolPreview, listEligiblePools, listPools } from "../modules/pools";
 import { finishKey, listAchievements } from "../modules/achievements";
 import { compareNpc, getNpc, listNpcProfiles } from "../modules/npcs";
 import {
@@ -34,6 +29,7 @@ import {
 } from "../modules/npc-trades";
 import { claimDailyMission, getDailyMissions } from "../modules/missions";
 import {
+  DISCORD_PALETTE,
   achievementsOverviewMessage,
   cabinetSummaryMessage,
   capsulePickerMessage,
@@ -43,6 +39,7 @@ import {
   missionProgressMessage,
   profileMessage,
   revealReceiptMessage,
+  sealedRevealMessage,
   stateFromError,
   welcomeMessage,
 } from "./presentation";
@@ -51,6 +48,7 @@ import {
   drawReceiptFromResult,
   recoverDrawReceipt,
   recordInteractionReceipt,
+  type DiscordReceipt,
 } from "./receipts";
 import { audienceRank, canViewCard, effectiveCardAudience } from "../modules/visibility";
 import { HELP_TEXT } from "./command-definitions";
@@ -87,6 +85,7 @@ interface DrawReceipt {
   render_url: string | null;
   serial: string;
   pool_name: string;
+  pool_slug?: string;
   price: number;
   currency: { name: string; symbol: string };
   balance_after: number;
@@ -97,6 +96,9 @@ interface DrawReceipt {
   settlement_status?: "settled" | "pending";
   settlement_pending?: boolean;
   probability_bps: number;
+  new_subject?: boolean;
+  new_finish?: boolean;
+  owned_copies?: number;
   drawn_at: string;
   replayed: boolean;
 }
@@ -109,13 +111,12 @@ interface DailyReceipt {
   replayed: boolean;
 }
 
-
 const RARITY_COLORS: Record<string, number> = {
-  common: 0x8a8f98,
-  uncommon: 0x3f9d5a,
-  rare: 0x3b82f6,
-  cabinet_rare: 0xa855f7,
-  legendary: 0xf59e0b,
+  common: DISCORD_PALETTE.muted,
+  uncommon: DISCORD_PALETTE.success,
+  rare: DISCORD_PALETTE.action,
+  cabinet_rare: DISCORD_PALETTE.focus,
+  legendary: DISCORD_PALETTE.warning,
 };
 
 const SURFACE_COLUMNS: Record<string, string> = {
@@ -133,7 +134,7 @@ function absoluteUrl(origin: string, value: string | null | undefined): string |
 }
 
 function colorFor(rarityKey: string | null | undefined): number {
-  return RARITY_COLORS[rarityKey ?? "common"] ?? 0x8a8f98;
+  return RARITY_COLORS[rarityKey ?? "common"] ?? DISCORD_PALETTE.muted;
 }
 
 function truncate(value: string, max: number): string {
@@ -175,7 +176,14 @@ function callback(message: DiscordMessage, ephemeral = false): DiscordCallback {
 function errorCallback(error: unknown, _ephemeral = true): DiscordCallback {
   const apiError = error instanceof ApiError ? error : null;
   if (apiError && ["draw_outcome_unavailable", "unknown_commit_outcome"].includes(apiError.code)) {
-    return callback({content:"This opening may have completed. Check your collection and wallet before opening another capsule.",allowed_mentions:{parse:[]}},true);
+    return callback(
+      {
+        content:
+          "This opening may have completed. Check your collection and wallet before opening another capsule.",
+        allowed_mentions: { parse: [] },
+      },
+      true,
+    );
   }
   const nextEligibleAt =
     apiError?.details && typeof apiError.details.next_eligible_at === "string"
@@ -261,8 +269,7 @@ export async function prepareDiscordDraw(
   providedScope?: DiscordScope,
 ): Promise<DiscordOpenPreparation> {
   const scope =
-    providedScope ??
-    (await resolveDiscordScope(ctx, installation, interaction.channel_id ?? null));
+    providedScope ?? (await resolveDiscordScope(ctx, installation, interaction.channel_id ?? null));
   if (scope.emptyReason) {
     return { kind: "respond", callback: scopeFailureMessage(scope) };
   }
@@ -325,16 +332,98 @@ export async function prepareDiscordDraw(
 }
 
 /**
- * Build the private reveal for a committed draw. This is deliberately separate
- * from the commit so a presentation failure can recover from the persisted
- * receipt without ever calling the draw service again.
+ * A committed draw is acknowledged face-down. The opening message carries no
+ * result text, serial, finish, render filename or result-specific media; the
+ * player chooses when to reveal it. The draw itself is already committed, so a
+ * lost reveal interaction can never lose the card or charge twice.
  */
 export async function presentDiscordDraw(
   ctx: Ctx,
   interaction: DiscordInteraction,
-  installation: DiscordInstallation,
+  _installation: DiscordInstallation,
   result: DrawReceipt,
-  poolSlug: string,
+  _poolSlug: string,
+  _scope?: DiscordScope,
+): Promise<DiscordCallback> {
+  const backUrl = absoluteUrl(ctx.config.publicOrigin, "/brand/card-back.webp");
+  if (!backUrl) {
+    throw new ApiError(
+      500,
+      "presentation_missing",
+      "The sealed card back could not be resolved. The draw is committed; open your collection to see the card.",
+    );
+  }
+  return sealedRevealMessage({
+    pool_name: result.pool_name,
+    price: result.price,
+    currency_symbol: result.currency.symbol,
+    back_url: backUrl,
+    reveal_custom_id: `foilbury:reveal:${interaction.id}`,
+    collection_custom_id: "foilbury:collection",
+    album_url: absoluteUrl(ctx.config.publicOrigin, "/play/collection"),
+    scope_name: ctx.tenant.name,
+  });
+}
+
+type RevealSource = DrawReceipt | DiscordReceipt;
+
+async function wishlistHit(
+  ctx: Ctx,
+  source: RevealSource,
+  material: string,
+  effect: string | null,
+) {
+  const row = await first<{ hit: number }>(
+    ctx.db,
+    `SELECT 1 AS hit FROM fb_wishlists w
+      WHERE w.tenant_id = ? AND w.user_id = ? AND w.card_id = ?
+        AND (w.target_variant_id IS NULL OR w.target_variant_id = ?)
+        AND (w.target_material_key IS NULL OR w.target_material_key = ?)
+        AND (w.target_effect_key IS NULL OR w.target_effect_key = ?)
+      LIMIT 1`,
+    ctx.tenant.id,
+    ctx.user!.id,
+    source.card_id,
+    source.variant_id,
+    material,
+    effect,
+  );
+  return Boolean(row?.hit);
+}
+
+async function collectionSnapshotForCard(ctx: Ctx, cardId: string) {
+  return first<{ name: string; total: number; owned: number }>(
+    ctx.db,
+    `SELECT c.name,
+            (SELECT COUNT(*) FROM fb_collection_cards cc2 WHERE cc2.collection_id = c.id) AS total,
+            (SELECT COUNT(DISTINCT ci.card_id)
+               FROM fb_card_instances ci
+               JOIN fb_collection_cards cc3
+                 ON cc3.card_id = ci.card_id AND cc3.collection_id = c.id
+              WHERE ci.tenant_id = ? AND ci.user_id = ? AND ci.status = 'owned') AS owned
+       FROM fb_collection_cards cc
+       JOIN fb_collections c ON c.id = cc.collection_id
+      WHERE cc.card_id = ? AND cc.tenant_id = ? AND c.archived_at IS NULL
+      ORDER BY c.sort, c.name
+      LIMIT 1`,
+    ctx.tenant.id,
+    ctx.user!.id,
+    cardId,
+    ctx.tenant.id,
+  );
+}
+
+/**
+ * Build the private result for an already committed draw. This is deliberately
+ * separate from the commit, and separate from the sealed acknowledgement, so a
+ * presentation failure can recover from the persisted receipt without ever
+ * calling the draw service again.
+ */
+async function presentDiscordReveal(
+  ctx: Ctx,
+  interaction: DiscordInteraction,
+  installation: DiscordInstallation,
+  source: RevealSource,
   scope?: DiscordScope,
 ): Promise<DiscordCallback> {
   const render = await first<{ width: number; height: number; r2_key: string; mime: string }>(
@@ -343,16 +432,30 @@ export async function presentDiscordDraw(
        FROM fb_variant_renders vr JOIN fb_assets a ON a.id = vr.asset_id AND a.tenant_id = vr.tenant_id
       WHERE vr.tenant_id = ? AND vr.variant_id = ? AND vr.status = 'published' LIMIT 1`,
     ctx.tenant.id,
-    result.variant_id,
+    source.variant_id,
   ).catch(() => null);
-  const rarityName = await cardRarity(ctx, result.card_id).catch(() => null);
-  const rarityKey = await cardRarityKey(ctx, result.card_id).catch(() => null);
-  // Audience lookup failure must fail closed: no share control and a private
-  // reveal. The draw itself is already committed and safe in the cabinet.
-  const cardAudience = await effectiveCardAudience(ctx, result.card_id).catch(() => "private" as const);
+  const variant = await first<{ material_key: string; effect_key: string | null }>(
+    ctx.db,
+    "SELECT material_key, effect_key FROM fb_variants WHERE tenant_id = ? AND id = ?",
+    ctx.tenant.id,
+    source.variant_id,
+  ).catch(() => null);
+  const material =
+    variant?.material_key ??
+    ("material_key" in source && source.material_key ? source.material_key : "paper");
+  const effect =
+    variant?.effect_key ?? ("effect_key" in source ? (source.effect_key ?? null) : null);
+  const [rarityName, cardAudience, wished, collection] = await Promise.all([
+    cardRarity(ctx, source.card_id).catch(() => null),
+    // Audience lookup failure must fail closed: no share control and a private
+    // reveal. The draw itself is already committed and safe in the cabinet.
+    effectiveCardAudience(ctx, source.card_id).catch(() => "private" as const),
+    wishlistHit(ctx, source, material, effect).catch(() => false),
+    collectionSnapshotForCard(ctx, source.card_id).catch(() => null),
+  ]);
   const channelAudience = channelAudienceFor(installation, interaction.channel_id);
   const inScope = scope
-    ? await assertCardInDiscordScope(ctx, scope, result.card_id)
+    ? await assertCardInDiscordScope(ctx, scope, source.card_id)
         .then(() => true)
         .catch(() => false)
     : true;
@@ -360,8 +463,34 @@ export async function presentDiscordDraw(
     inScope &&
     cardAudience !== "private" &&
     audienceRank(channelAudience) >= audienceRank(cardAudience);
+  const symbol = "currency" in source ? source.currency.symbol : source.currency_symbol;
   return revealReceiptMessage({
-    ...result,
+    card_id: source.card_id,
+    variant_id: source.variant_id,
+    card_name: source.card_name,
+    variant_name: source.variant_name,
+    material_key: material,
+    effect_key: effect,
+    render_url: "render_url" in source ? source.render_url : null,
+    serial: source.serial,
+    pool_name: source.pool_name,
+    price: source.price,
+    currency: { name: "Foil", symbol },
+    balance_after: source.balance_after,
+    balance_after_debit: source.balance_after_debit,
+    credits_total: source.credits_total,
+    achievement_credits: source.achievement_credits,
+    probability_bps: source.probability_bps ?? 0,
+    new_subject: source.new_subject,
+    new_finish: source.new_finish,
+    owned_copies: source.owned_copies,
+    wishlist_hit: wished,
+    collection_name: collection?.name ?? null,
+    collection_owned: collection?.owned,
+    collection_total: collection?.total,
+    settlement_pending: source.settlement_pending === true,
+    drawn_at: source.drawn_at,
+    replayed: source.replayed,
     rarity_name: rarityName,
     scope_name: ctx.tenant.name,
     audience: cardAudience,
@@ -376,18 +505,39 @@ export async function presentDiscordDraw(
           height: render.height,
         }
       : null,
-    open_custom_id: `foilbury:open:${poolSlug}`,
+    open_custom_id: `foilbury:open:${source.pool_slug || "cabinet-draw"}`,
     collection_custom_id: "foilbury:collection",
     tour_custom_id: "foilbury:tour:progress",
-    album_url: absoluteUrl(ctx.config.publicOrigin, "/play"),
+    album_url: absoluteUrl(ctx.config.publicOrigin, "/play/collection"),
     public_origin: ctx.config.publicOrigin,
-    share_custom_id: shareInChannel
-      ? `foilbury:tourshare:card:${result.instance_id}`
-      : undefined,
-    balance_after_debit: result.balance_after_debit,
-    credits_total: result.credits_total,
-    achievement_credits: result.achievement_credits,
+    share_custom_id: shareInChannel ? `foilbury:tourshare:card:${source.instance_id}` : undefined,
   });
+}
+
+/**
+ * Reveal a committed draw from its original interaction. Recovering the
+ * receipt is read-only: no new draw, debit or copy can be produced here.
+ */
+async function revealCommittedDraw(
+  ctx: Ctx,
+  interaction: DiscordInteraction,
+  installation: DiscordInstallation,
+  originalInteractionId: string,
+): Promise<DiscordCallback> {
+  const receipt = await recoverDrawReceipt(ctx.db, {
+    tenantId: ctx.tenant.id,
+    userId: ctx.user!.id,
+    interactionId: originalInteractionId,
+  });
+  if (!receipt) {
+    throw new ApiError(
+      404,
+      "receipt_not_found",
+      "No committed draw receipt could be found for that reveal. Nothing new was charged; open the cabinet to inspect your cards.",
+    );
+  }
+  const scope = await resolveDiscordScope(ctx, installation, interaction.channel_id ?? null);
+  return presentDiscordReveal(ctx, interaction, installation, receipt, scope);
 }
 
 async function openCard(
@@ -399,8 +549,7 @@ async function openCard(
   providedScope?: DiscordScope,
 ): Promise<DiscordCallback> {
   const scope =
-    providedScope ??
-    (await resolveDiscordScope(ctx, installation, interaction.channel_id ?? null));
+    providedScope ?? (await resolveDiscordScope(ctx, installation, interaction.channel_id ?? null));
   if (scope.emptyReason) return scopeFailureMessage(scope);
   const prepared = await prepareDiscordDraw(
     ctx,
@@ -437,6 +586,7 @@ async function openCard(
 async function redeliverReceipt(
   ctx: Ctx,
   interaction: DiscordInteraction,
+  installation: DiscordInstallation,
   originalInteractionId: string,
 ): Promise<DiscordCallback> {
   const receipt = await recoverDrawReceipt(ctx.db, {
@@ -451,72 +601,14 @@ async function redeliverReceipt(
       "No committed draw receipt could be found for that button. Nothing new was charged; open the cabinet to inspect your cards.",
     );
   }
-  const render = await first<{ width: number; height: number; r2_key: string; mime: string }>(
-    ctx.db,
-    `SELECT vr.width, vr.height, a.r2_key, a.mime
-       FROM fb_variant_renders vr JOIN fb_assets a ON a.id = vr.asset_id AND a.tenant_id = vr.tenant_id
-      WHERE vr.tenant_id = ? AND vr.variant_id = ? AND vr.status = 'published' LIMIT 1`,
-    ctx.tenant.id,
-    receipt.variant_id,
-  ).catch(() => null);
-  const print = editionPrintTitle(receipt.edition_name);
-  const credits = receipt.credits_total ?? 0;
-  const creditNames = receipt.achievement_credits?.map((item) => item.name).filter(Boolean) ?? [];
-  const result = callback(
-    {
-      embeds: [
-        {
-          title: print
-            ? `${receipt.card_name} — ${print}`
-            : `${receipt.card_name} — ${receipt.variant_name}`,
-          description: [
-            "This is the recorded result of your original draw. No second pull was made and no second debit was recorded.",
-            `**${receipt.price} ${receipt.currency_symbol}** was charged from **${receipt.pool_name}**. Current balance: **${receipt.balance_after} ${receipt.currency_symbol}**.`,
-            ...(credits > 0
-              ? [
-                  `Settled rewards: **+${credits} ${receipt.currency_symbol}**${creditNames.length ? ` · ${creditNames.join(", ")}` : ""}.`,
-                ]
-              : []),
-            ...(receipt.settlement_pending
-              ? [
-                  "Reward settlement is still being confirmed from the ledger. The draw, serial and debit are already recorded and will not be paid twice.",
-                ]
-              : []),
-          ].join("\n\n"),
-          color: 0x245c4b,
-          fields: [
-            { name: "Serial", value: `\`${receipt.serial}\``, inline: true },
-            { name: "Receipt", value: `\`${receipt.draw_id}\``, inline: false },
-          ],
-          footer: { text: "Foilbury · delivered from the committed receipt · reference " + interaction.id.slice(0, 24) },
-          timestamp: receipt.drawn_at,
-          ...(render?.r2_key
-            ? {
-                image: {
-                  url: "attachment://foilbury-card.webp",
-                  width: render.width,
-                  height: render.height,
-                },
-              }
-            : {}),
-        },
-      ],
-      components: components([
-        [button("Collection", "foilbury:collection", 2), button("Packs", "foilbury:packs", 2)],
-      ]),
-    },
-    true,
+  const scope = await resolveDiscordScope(ctx, installation, interaction.channel_id ?? null);
+  return presentDiscordReveal(
+    ctx,
+    interaction,
+    installation,
+    { ...receipt, replayed: true },
+    scope,
   );
-  if (render?.r2_key) {
-    result.attachments = [
-      {
-        r2Key: render.r2_key,
-        filename: "foilbury-card.webp",
-        contentType: render.mime || "image/webp",
-      },
-    ];
-  }
-  return result;
 }
 
 async function cardRarity(ctx: Ctx, cardId: string): Promise<string | null> {
@@ -527,16 +619,6 @@ async function cardRarity(ctx: Ctx, cardId: string): Promise<string | null> {
     cardId,
   );
   return row?.name ?? null;
-}
-
-async function cardRarityKey(ctx: Ctx, cardId: string): Promise<string | null> {
-  const row = await first<{ key: string }>(
-    ctx.db,
-    `SELECT r.key FROM fb_card_definitions cd JOIN fb_rarities r ON r.id = cd.rarity_id WHERE cd.tenant_id = ? AND cd.id = ?`,
-    ctx.tenant.id,
-    cardId,
-  );
-  return row?.key ?? null;
 }
 
 async function daily(ctx: Ctx, interaction: DiscordInteraction): Promise<DiscordCallback> {
@@ -796,7 +878,9 @@ async function cardDetails(
       ),
     ),
   ];
-  const aiOrigins = origins.filter((origin) => origin === "ai_assisted" || origin === "ai_generated");
+  const aiOrigins = origins.filter(
+    (origin) => origin === "ai_assisted" || origin === "ai_generated",
+  );
   const artworkLabel =
     aiOrigins.length === 0
       ? origins.includes("sourced")
@@ -817,13 +901,11 @@ async function cardDetails(
             { name: "Source", value: found.source_work ?? "Foilbury", inline: true },
             { name: "Rarity", value: found.rarity?.name ?? "Unclassified", inline: true },
             { name: "Artwork", value: artworkLabel, inline: false },
-            ...attributes
-              .slice(0, 5)
-              .map((attr) => ({
-                name: attr.label ?? "Detail",
-                value: attr.value ?? "—",
-                inline: true,
-              })),
+            ...attributes.slice(0, 5).map((attr) => ({
+              name: attr.label ?? "Detail",
+              value: attr.value ?? "—",
+              inline: true,
+            })),
             {
               name: "Your copies",
               value: owned?.copies
@@ -913,7 +995,7 @@ async function packs(
             title: "No packs available to you",
             description:
               "No active capsule has an eligible card for this account right now. A Bot Admin may have disabled the relevant collection, or your collection preferences may hide every card. Nothing can be charged. Check /foilbury preferences on the website, then try again.",
-            color: 0x8a8f98,
+            color: DISCORD_PALETTE.muted,
           },
         ],
       },
@@ -982,7 +1064,9 @@ async function profile(
   );
   const earned = achievements.filter((achievement) => achievement.state === "earned").length;
   const scopedBadgeNames = new Set(
-    achievements.filter((achievement) => achievement.state === "earned").map((achievement) => achievement.name),
+    achievements
+      .filter((achievement) => achievement.state === "earned")
+      .map((achievement) => achievement.name),
   );
   const [prefs, profileOptions] = await Promise.all([
     getPreferences(ctx),
@@ -1067,7 +1151,11 @@ function starterLookLabel(look: string): string {
   );
 }
 
-async function npcView(ctx: Ctx, installation: DiscordInstallation, query: string): Promise<DiscordCallback> {
+async function npcView(
+  ctx: Ctx,
+  installation: DiscordInstallation,
+  query: string,
+): Promise<DiscordCallback> {
   const scope = await resolveDiscordScope(ctx, installation, installation.channel_key ?? null);
   if (scope.emptyReason) return scopeFailureMessage(scope);
   const allowedCardIds = await discordScopeCardIds(ctx, scope);
@@ -1078,19 +1166,34 @@ async function npcView(ctx: Ctx, installation: DiscordInstallation, query: strin
         embeds: [
           {
             title: "No NPC collectors are active",
-            description: "This Bot has no labelled synthetic collectors yet. A Bot Owner can create one in Studio → NPC collectors. Nothing is simulated in the meantime.",
-            color: 0x7c6b4f,
+            description:
+              "This Bot has no labelled synthetic collectors yet. A Bot Owner can create one in Studio → NPC collectors. Nothing is simulated in the meantime.",
+            color: DISCORD_PALETTE.raised,
             footer: { text: "Foilbury · NPC lounge" },
           },
         ],
-        components: components([[{ type: 2, style: 5, label: "Open Studio", url: absoluteUrl(ctx.config.publicOrigin, "/studio/npcs")! }]]),
+        components: components([
+          [
+            {
+              type: 2,
+              style: 5,
+              label: "Open Studio",
+              url: absoluteUrl(ctx.config.publicOrigin, "/studio/npcs")!,
+            },
+          ],
+        ]),
       },
       true,
     );
   }
   const needle = query.trim().toLowerCase();
   const selected = needle
-    ? profiles.find((npc) => npc.id.toLowerCase() === needle || npc.slug.toLowerCase() === needle || npc.name.toLowerCase().includes(needle))
+    ? profiles.find(
+        (npc) =>
+          npc.id.toLowerCase() === needle ||
+          npc.slug.toLowerCase() === needle ||
+          npc.name.toLowerCase().includes(needle),
+      )
     : null;
   if (!selected) {
     return callback(
@@ -1098,8 +1201,9 @@ async function npcView(ctx: Ctx, installation: DiscordInstallation, query: strin
         embeds: [
           {
             title: "NPC collectors · synthetic cast",
-            description: "Clearly labelled fictional game actors with real persisted cards. They are not Discord members or human engagement.",
-            color: 0x7c6b4f,
+            description:
+              "Clearly labelled fictional game actors with real persisted cards. They are not Discord members or human engagement.",
+            color: DISCORD_PALETTE.raised,
             fields: profiles.slice(0, 8).map((npc) => ({
               name: `${npc.name} · ${npc.preset_label}`,
               value: `${npc.status} · ${npc.subjects} subjects · ${npc.gold} Gold · ${npc.holographic} Holographic\n\`/foilbury npc name:${npc.slug}\``,
@@ -1108,7 +1212,16 @@ async function npcView(ctx: Ctx, installation: DiscordInstallation, query: strin
             footer: { text: "NPC · synthetic collector · not a human member" },
           },
         ],
-        components: components([[{ type: 2, style: 5, label: "Open the NPC lounge", url: absoluteUrl(ctx.config.publicOrigin, "/play/rivals")! }]]),
+        components: components([
+          [
+            {
+              type: 2,
+              style: 5,
+              label: "Open the NPC lounge",
+              url: absoluteUrl(ctx.config.publicOrigin, "/play/rivals")!,
+            },
+          ],
+        ]),
       },
       true,
     );
@@ -1121,14 +1234,27 @@ async function npcView(ctx: Ctx, installation: DiscordInstallation, query: strin
         {
           title: `${selected.name} · NPC`,
           description: selected.bio,
-          color: 0x00c8b8,
-          thumbnail: selected.avatar_url ? { url: absoluteUrl(ctx.config.publicOrigin, selected.avatar_url) ?? selected.avatar_url } : undefined,
+          color: DISCORD_PALETTE.action,
+          thumbnail: selected.avatar_url
+            ? {
+                url:
+                  absoluteUrl(ctx.config.publicOrigin, selected.avatar_url) ?? selected.avatar_url,
+              }
+            : undefined,
           fields: [
             { name: "Preset", value: selected.preset_label, inline: true },
             { name: "Status", value: selected.status, inline: true },
             { name: "Recorded actions", value: String(selected.actions_count), inline: true },
-            { name: "NPC album", value: `${selected.subjects} subjects · ${selected.cards} copies\n${selected.gold} Gold · ${selected.holographic} Holographic`, inline: true },
-            { name: "Your album", value: `${comparison.viewer.subjects} subjects · ${comparison.viewer.cards} copies\n${comparison.viewer.gold} Gold · ${comparison.viewer.holographic} Holographic`, inline: true },
+            {
+              name: "NPC album",
+              value: `${selected.subjects} subjects · ${selected.cards} copies\n${selected.gold} Gold · ${selected.holographic} Holographic`,
+              inline: true,
+            },
+            {
+              name: "Your album",
+              value: `${comparison.viewer.subjects} subjects · ${comparison.viewer.cards} copies\n${comparison.viewer.gold} Gold · ${comparison.viewer.holographic} Holographic`,
+              inline: true,
+            },
             {
               name: "Tradeable copies",
               value:
@@ -1140,10 +1266,9 @@ async function npcView(ctx: Ctx, installation: DiscordInstallation, query: strin
             },
             {
               name: "Wants",
-              value:
-                offers.wants.missing_subjects.length
-                  ? `Missing subjects: ${offers.wants.missing_subjects.slice(0, 6).join(", ")}`
-                  : "No missing subjects in its current goal.",
+              value: offers.wants.missing_subjects.length
+                ? `Missing subjects: ${offers.wants.missing_subjects.slice(0, 6).join(", ")}`
+                : "No missing subjects in its current goal.",
               inline: false,
             },
             {
@@ -1151,15 +1276,30 @@ async function npcView(ctx: Ctx, installation: DiscordInstallation, query: strin
               value: `\`/foilbury trade npc:${selected.slug} give:<your serial> take:<its serial>\``,
               inline: false,
             },
-            { name: "Honesty", value: "NPC · synthetic collector. Real draws, serials and ledger entries; never a human member or fabricated testimonial.", inline: false },
+            {
+              name: "Honesty",
+              value:
+                "NPC · synthetic collector. Real draws, serials and ledger entries; never a human member or fabricated testimonial.",
+              inline: false,
+            },
           ],
           footer: { text: "Foilbury · on-demand NPC inspection and exchange" },
         },
       ],
       components: components([
         [
-          { type: 2, style: 5, label: "Open trade desk", url: absoluteUrl(ctx.config.publicOrigin, `/play/trades?npc=${selected.id}`)! },
-          { type: 2, style: 5, label: "Compare in the lounge", url: absoluteUrl(ctx.config.publicOrigin, "/play/rivals")! },
+          {
+            type: 2,
+            style: 5,
+            label: "Open trade desk",
+            url: absoluteUrl(ctx.config.publicOrigin, `/play/trades?npc=${selected.id}`)!,
+          },
+          {
+            type: 2,
+            style: 5,
+            label: "Compare in the lounge",
+            url: absoluteUrl(ctx.config.publicOrigin, "/play/rivals")!,
+          },
         ],
       ]),
     },
@@ -1195,26 +1335,55 @@ async function npcTradeCommand(
   const giveSerial = typeof values.give === "string" ? values.give.trim() : "";
   const takeSerial = typeof values.take === "string" ? values.take.trim() : "";
   if (!query || !giveSerial || !takeSerial) {
-    throw new ApiError(422, "npc_trade_options", "Choose an NPC by name or slug and provide both exact serials.");
+    throw new ApiError(
+      422,
+      "npc_trade_options",
+      "Choose an NPC by name or slug and provide both exact serials.",
+    );
   }
   const profiles = await listNpcProfiles(ctx);
   const selected = profiles.find(
-    (npc) => npc.id.toLowerCase() === query || npc.slug.toLowerCase() === query || npc.name.toLowerCase().includes(query),
+    (npc) =>
+      npc.id.toLowerCase() === query ||
+      npc.slug.toLowerCase() === query ||
+      npc.name.toLowerCase().includes(query),
   );
-  if (!selected) throw new ApiError(404, "npc_not_found", "That NPC collector is not active in this Bot.");
+  if (!selected)
+    throw new ApiError(404, "npc_not_found", "That NPC collector is not active in this Bot.");
   const npc = await getNpc(ctx, selected.id);
   const give = await findTradeCopy(ctx, ctx.user!.id, giveSerial);
-  if (!give) throw new ApiError(404, "trade_give_not_found", `No owned, unlocked copy with serial ${giveSerial} was found. Use the serial from /foilbury collection.`);
+  if (!give)
+    throw new ApiError(
+      404,
+      "trade_give_not_found",
+      `No owned, unlocked copy with serial ${giveSerial} was found. Use the serial from /foilbury collection.`,
+    );
   const take = await findTradeCopy(ctx, npc.row.user_id, takeSerial);
-  if (!take) throw new ApiError(404, "trade_take_not_found", `The collector has no tradeable copy with serial ${takeSerial}. Use /foilbury npc name:${selected.slug}.`);
+  if (!take)
+    throw new ApiError(
+      404,
+      "trade_take_not_found",
+      `The collector has no tradeable copy with serial ${takeSerial}. Use /foilbury npc name:${selected.slug}.`,
+    );
   // The verified installation scope is a hard boundary for every Discord
   // surface, including NPC exchanges. A collection enabled for the Bot but not
   // for this server (or a later disabled collection) must not appear here.
   const [giveCard, takeCard] = await Promise.all([
-    first<{ card_id: string }>(ctx.db, "SELECT card_id FROM fb_card_instances WHERE id = ? AND tenant_id = ?", give.id, ctx.tenant.id),
-    first<{ card_id: string }>(ctx.db, "SELECT card_id FROM fb_card_instances WHERE id = ? AND tenant_id = ?", take.id, ctx.tenant.id),
+    first<{ card_id: string }>(
+      ctx.db,
+      "SELECT card_id FROM fb_card_instances WHERE id = ? AND tenant_id = ?",
+      give.id,
+      ctx.tenant.id,
+    ),
+    first<{ card_id: string }>(
+      ctx.db,
+      "SELECT card_id FROM fb_card_instances WHERE id = ? AND tenant_id = ?",
+      take.id,
+      ctx.tenant.id,
+    ),
   ]);
-  if (!giveCard || !takeCard) throw new ApiError(409, "npc_trade_unavailable", "A selected copy no longer exists.");
+  if (!giveCard || !takeCard)
+    throw new ApiError(409, "npc_trade_unavailable", "A selected copy no longer exists.");
   await assertCardInDiscordScope(ctx, scope, giveCard.card_id);
   await assertCardInDiscordScope(ctx, scope, takeCard.card_id);
   const preview = await previewNpcTrade(ctx, {
@@ -1223,8 +1392,16 @@ async function npcTradeCommand(
     takeInstanceIds: [take.id],
   });
   const exact = [
-    { name: "You give", value: `${give.card_name} · ${give.variant_name}\n\`${give.serial}\``, inline: true },
-    { name: "You receive", value: `${take.card_name} · ${take.variant_name}\n\`${take.serial}\``, inline: true },
+    {
+      name: "You give",
+      value: `${give.card_name} · ${give.variant_name}\n\`${give.serial}\``,
+      inline: true,
+    },
+    {
+      name: "You receive",
+      value: `${take.card_name} · ${take.variant_name}\n\`${take.serial}\``,
+      inline: true,
+    },
   ];
   if (preview.decision !== "accept") {
     return callback(
@@ -1233,15 +1410,25 @@ async function npcTradeCommand(
           {
             title: `${selected.name} declines`,
             description: preview.reason,
-            color: 0x8a8f98,
+            color: DISCORD_PALETTE.muted,
             fields: exact,
             footer: { text: "NPC · synthetic collector · no copies moved" },
           },
         ],
         components: components([
           [
-            { type: 2, style: 5, label: "Open trade desk", url: absoluteUrl(ctx.config.publicOrigin, `/play/trades?npc=${selected.id}`)! },
-            { type: 2, style: 5, label: "Inspect the collector", url: absoluteUrl(ctx.config.publicOrigin, "/play/rivals")! },
+            {
+              type: 2,
+              style: 5,
+              label: "Open trade desk",
+              url: absoluteUrl(ctx.config.publicOrigin, `/play/trades?npc=${selected.id}`)!,
+            },
+            {
+              type: 2,
+              style: 5,
+              label: "Inspect the collector",
+              url: absoluteUrl(ctx.config.publicOrigin, "/play/rivals")!,
+            },
           ],
         ]),
       },
@@ -1259,23 +1446,40 @@ async function npcTradeCommand(
       embeds: [
         {
           title: `${selected.name} accepts · exact offer held`,
-          description: "The collector's deterministic decision accepted this exchange. Both exact copies are reserved; nothing has moved yet. Confirm to complete the trade or cancel to release them.",
-          color: 0x00c8b8,
+          description:
+            "The collector's deterministic decision accepted this exchange. Both exact copies are reserved; nothing has moved yet. Confirm to complete the trade or cancel to release them.",
+          color: DISCORD_PALETTE.action,
           fields: [
             ...exact,
             { name: "Decision", value: preview.reason, inline: false },
-            { name: "Expires", value: formatDiscordTimestamp(created.trade.expires_at), inline: true },
+            {
+              name: "Expires",
+              value: formatDiscordTimestamp(created.trade.expires_at),
+              inline: true,
+            },
             { name: "Trade", value: `\`${created.trade.id}\``, inline: true },
-            { name: "Honesty", value: "NPC · synthetic collector. The decision is deterministic, based on its recorded holdings, goals and preset; no AI inference or human impersonation.", inline: false },
+            {
+              name: "Honesty",
+              value:
+                "NPC · synthetic collector. The decision is deterministic, based on its recorded holdings, goals and preset; no AI inference or human impersonation.",
+              inline: false,
+            },
           ],
-          footer: { text: "Foilbury · NPC exchange · reserved copies do not transfer until confirm" },
+          footer: {
+            text: "Foilbury · NPC exchange · reserved copies do not transfer until confirm",
+          },
         },
       ],
       components: components([
         [
           button("Confirm exchange", `foilbury:npc-confirm:${created.trade.id}`, 3),
           button("Cancel offer", `foilbury:npc-cancel:${created.trade.id}`, 2),
-          { type: 2, style: 5, label: "Open trade desk", url: absoluteUrl(ctx.config.publicOrigin, `/play/trades?npc=${selected.id}`)! },
+          {
+            type: 2,
+            style: 5,
+            label: "Open trade desk",
+            url: absoluteUrl(ctx.config.publicOrigin, `/play/trades?npc=${selected.id}`)!,
+          },
         ],
       ]),
     },
@@ -1293,21 +1497,52 @@ async function npcTradeConfirm(ctx: Ctx, tradeId: string): Promise<DiscordCallba
       embeds: [
         {
           title: `Exchange complete · ${result.decision.npc_name}`,
-          description: "The exact copies moved atomically. Serials and instance history are preserved; the NPC remains a labelled synthetic collector.",
-          color: 0x3f9d5a,
+          description:
+            "The exact copies moved atomically. Serials and instance history are preserved; the NPC remains a labelled synthetic collector.",
+          color: DISCORD_PALETTE.success,
           fields: [
-            { name: "You gave", value: gave.map((item) => `${item.card_name} · ${item.variant_name}\n\`${item.serial}\``).join("\n") || "—", inline: true },
-            { name: "You received", value: received.map((item) => `${item.card_name} · ${item.variant_name}\n\`${item.serial}\``).join("\n") || "—", inline: true },
+            {
+              name: "You gave",
+              value:
+                gave
+                  .map((item) => `${item.card_name} · ${item.variant_name}\n\`${item.serial}\``)
+                  .join("\n") || "—",
+              inline: true,
+            },
+            {
+              name: "You received",
+              value:
+                received
+                  .map((item) => `${item.card_name} · ${item.variant_name}\n\`${item.serial}\``)
+                  .join("\n") || "—",
+              inline: true,
+            },
             { name: "Decision", value: result.decision.reason, inline: false },
-            { name: "Trade", value: `\`${result.trade.id}\` · ${result.trade.status}`, inline: false },
+            {
+              name: "Trade",
+              value: `\`${result.trade.id}\` · ${result.trade.status}`,
+              inline: false,
+            },
           ],
-          footer: { text: "Foilbury · NPC exchange · serials preserved · no fabricated human activity" },
+          footer: {
+            text: "Foilbury · NPC exchange · serials preserved · no fabricated human activity",
+          },
         },
       ],
       components: components([
         [
-          { type: 2, style: 5, label: "Open my trades", url: absoluteUrl(ctx.config.publicOrigin, "/play/trades")! },
-          { type: 2, style: 5, label: "Inspect the collector", url: absoluteUrl(ctx.config.publicOrigin, "/play/rivals")! },
+          {
+            type: 2,
+            style: 5,
+            label: "Open my trades",
+            url: absoluteUrl(ctx.config.publicOrigin, "/play/trades")!,
+          },
+          {
+            type: 2,
+            style: 5,
+            label: "Inspect the collector",
+            url: absoluteUrl(ctx.config.publicOrigin, "/play/rivals")!,
+          },
         ],
       ]),
     },
@@ -1322,12 +1557,28 @@ async function npcTradeCancel(ctx: Ctx, tradeId: string): Promise<DiscordCallbac
       embeds: [
         {
           title: "NPC offer cancelled",
-          description: "The exact copies were released from reservation. Nothing moved and no serial changed ownership.",
-          color: 0x8a8f98,
-          fields: [{ name: "Trade", value: `\`${result.trade.id}\` · ${result.trade.status}`, inline: false }],
+          description:
+            "The exact copies were released from reservation. Nothing moved and no serial changed ownership.",
+          color: DISCORD_PALETTE.muted,
+          fields: [
+            {
+              name: "Trade",
+              value: `\`${result.trade.id}\` · ${result.trade.status}`,
+              inline: false,
+            },
+          ],
         },
       ],
-      components: components([[{ type: 2, style: 5, label: "Open my trades", url: absoluteUrl(ctx.config.publicOrigin, "/play/trades")! }]]),
+      components: components([
+        [
+          {
+            type: 2,
+            style: 5,
+            label: "Open my trades",
+            url: absoluteUrl(ctx.config.publicOrigin, "/play/trades")!,
+          },
+        ],
+      ]),
     },
     true,
   );
@@ -1409,7 +1660,7 @@ async function adminStatus(ctx: Ctx, installation: DiscordInstallation): Promise
         {
           title: `Bot status · ${ctx.tenant.name}`,
           description: "This is Bot administration, not Foilbury platform administration.",
-          color: 0x3f9d5a,
+          color: DISCORD_PALETTE.success,
           fields: [
             {
               name: "Guild",
@@ -1456,7 +1707,7 @@ async function adminSettings(
           title: "Bot settings",
           description:
             "Availability switches are independent. Disabling one does not delete inventory or disable another interface.",
-          color: 0x7c6b4f,
+          color: DISCORD_PALETTE.raised,
           fields: [
             {
               name: "Currency",
@@ -1533,7 +1784,7 @@ async function adminPools(ctx: Ctx, installation: DiscordInstallation): Promise<
         {
           title: "Pools",
           description: lines.length ? lines.join("\n") : "No pools configured.",
-          color: 0x7c6b4f,
+          color: DISCORD_PALETTE.raised,
           footer: {
             text: "Pool membership and card availability are enforced by the domain service.",
           },
@@ -1574,7 +1825,7 @@ async function createConfirmation(
         {
           title,
           description: `${description}\n\nThis confirmation expires <t:${Math.floor(new Date(expiresAt).getTime() / 1000)}:R> and is bound to your Discord account.`,
-          color: 0xd97757,
+          color: DISCORD_PALETTE.danger,
         },
       ],
       components: components([
@@ -1609,11 +1860,35 @@ async function adminToggle(
 }
 
 function studioGrantRequired(ctx: Ctx): DiscordCallback {
-  return callback({
-    embeds: [{ title: "Continue in Studio", description: "Foil grants need recent strong authentication. Confirm with a passkey, authenticator or Cloudflare Access, then grant in Studio.", color: 0x6b7280 }],
-    components: components([[{type:2,style:5,label:"Open Studio",url:new URL("/studio/economy",ctx.config.publicOrigin).href},
-      {type:2,style:5,label:"Account security",url:new URL("/account/security",ctx.config.publicOrigin).href}]])
-  },true);
+  return callback(
+    {
+      embeds: [
+        {
+          title: "Continue in Studio",
+          description:
+            "Foil grants need recent strong authentication. Confirm with a passkey, authenticator or Cloudflare Access, then grant in Studio.",
+          color: DISCORD_PALETTE.muted,
+        },
+      ],
+      components: components([
+        [
+          {
+            type: 2,
+            style: 5,
+            label: "Open Studio",
+            url: new URL("/studio/economy", ctx.config.publicOrigin).href,
+          },
+          {
+            type: 2,
+            style: 5,
+            label: "Account security",
+            url: new URL("/account/security", ctx.config.publicOrigin).href,
+          },
+        ],
+      ]),
+    },
+    true,
+  );
 }
 
 async function adminGrant(
@@ -1655,8 +1930,7 @@ function tourNav(
     row.push(button(label, customId, style));
   };
   const backId = index > 0 ? `foilbury:tour:${TOUR_STAGES[index - 1]}` : null;
-  const nextId =
-    index < TOUR_STAGES.length - 1 ? `foilbury:tour:${TOUR_STAGES[index + 1]}` : null;
+  const nextId = index < TOUR_STAGES.length - 1 ? `foilbury:tour:${TOUR_STAGES[index + 1]}` : null;
   // Discord rejects the whole message when any custom_id is repeated, even
   // across different action rows. Back and Tour home can both resolve to the
   // welcome stage, and a stage button can duplicate Next. Keep the first
@@ -1706,7 +1980,7 @@ function scopeFailureMessage(scope: DiscordScope): DiscordCallback {
             "",
             "A Bot Owner or scoped admin can reconcile this in Studio → Collections and the Discord installation settings.",
           ].join("\n"),
-          color: 0x8a8f98,
+          color: DISCORD_PALETTE.muted,
           footer: {
             text: `Server scope ${scope.digest.slice(0, 12)} · installation ${scope.installationId}`,
           },
@@ -1745,7 +2019,7 @@ async function tour(
               "",
               "**What you can see here:** this private response, your own inventory and the albums this server actually enables. Nothing in the tour spends Foil, draws a card or grants a reward until you choose an action.",
             ].join("\n"),
-            color: 0xc9a227,
+            color: DISCORD_PALETTE.warning,
             fields: [
               {
                 name: "This server's enabled collections",
@@ -1778,7 +2052,9 @@ async function tour(
                 inline: false,
               },
             ],
-            footer: { text: "Private tour · configured server collections only · use Next to continue" },
+            footer: {
+              text: "Private tour · configured server collections only · use Next to continue",
+            },
           },
         ],
         components: tourNav("welcome", [
@@ -1801,7 +2077,7 @@ async function tour(
             title: "No member album is available",
             description:
               "This server has no enabled, published album your account can enter right now. Ask the Bot Owner to enable a collection. Nothing was charged or awarded.",
-            color: 0x8a8f98,
+            color: DISCORD_PALETTE.muted,
           },
         ],
         components: tourNav(stage),
@@ -1820,7 +2096,7 @@ async function tour(
           {
             title: album.detail.name,
             description: truncate(album.detail.description, 700),
-            color: 0x7c6b4f,
+            color: DISCORD_PALETTE.raised,
             fields: [
               { name: "Audience", value: album.detail.audience_label, inline: true },
               { name: "Cards", value: `${album.cards.length} in the release roster`, inline: true },
@@ -1907,7 +2183,7 @@ async function tour(
               `The daily allowance is **${economy.daily_reward} Foil** every ${Math.round(economy.daily_cooldown_seconds / 3600)} hours; the allowance is shared by this Bot across Discord, the website and the API.`,
               `**Your balance:** ${wallet.balance} ${wallet.currencySymbol}. Pools and the exact current odds are shown below before you open anything.`,
             ].join("\n"),
-            color: 0x245c4b,
+            color: DISCORD_PALETTE.surface,
             fields: lines.length
               ? lines.map((line, index) => ({
                   name: `Pool ${index + 1}`,
@@ -1967,7 +2243,7 @@ async function tour(
               "After the reveal, use **View front**, **View back**, **Details** and **Collection**. Those controls never spend or award another copy.",
               "3D inspection is a website feature, not a native Discord 3D view; the tour labels that link clearly.",
             ].join("\n"),
-            color: 0xd97757,
+            color: DISCORD_PALETTE.danger,
             fields: [
               {
                 name: "Balance",
@@ -2064,12 +2340,13 @@ async function tour(
       .bind(album.detail.id, ctx.tenant.id)
       .all<{ origin: string; cards: number }>();
     const origins = originRows.results.map((row) => row.origin);
-    const artworkSummary =
-      origins.some((origin) => origin === "ai_assisted" || origin === "ai_generated")
-        ? origins.every((origin) => origin === "ai_assisted" || origin === "ai_generated")
-          ? "AI-assisted artwork; reviewed, labelled and not official. This Bot includes AI-assisted editions."
-          : "Mixed: sourced/original and AI-assisted editions. Each print carries its own origin label."
-        : "Sourced character references with Foilbury-original card design and finishes. Not AI-generated.";
+    const artworkSummary = origins.some(
+      (origin) => origin === "ai_assisted" || origin === "ai_generated",
+    )
+      ? origins.every((origin) => origin === "ai_assisted" || origin === "ai_generated")
+        ? "AI-assisted artwork; reviewed, labelled and not official. This Bot includes AI-assisted editions."
+        : "Mixed: sourced/original and AI-assisted editions. Each print carries its own origin label."
+      : "Sourced character references with Foilbury-original card design and finishes. Not AI-generated.";
     return callback(
       {
         embeds: [
@@ -2083,7 +2360,7 @@ async function tour(
               "",
               "**3D:** open the signed-in web album. Discord does not present native 3D cards.",
             ].join("\n"),
-            color: 0x3b82f6,
+            color: DISCORD_PALETTE.action,
             fields: [
               ...(fields.length
                 ? fields
@@ -2129,9 +2406,9 @@ async function tour(
   }
 
   if (stage === "progress") {
-    const inventory = (await getInventory(ctx, { collection: album.detail.slug, limit: 500 })).filter(
-      (item) => scope.aiArtEnabled || !isAiEditionOrigin(item.subject_origin),
-    );
+    const inventory = (
+      await getInventory(ctx, { collection: album.detail.slug, limit: 500 })
+    ).filter((item) => scope.aiArtEnabled || !isAiEditionOrigin(item.subject_origin));
     const unique = new Set(inventory.map((item) => item.card_id));
     const variants = new Set(inventory.map((item) => item.variant_id));
     const duplicates = inventory.length - unique.size;
@@ -2144,10 +2421,7 @@ async function tour(
       .filter((item) => item.state !== "earned")
       .sort((a, b) => b.progress / Math.max(1, b.target) - a.progress / Math.max(1, a.target))[0];
     const completion = collectionAchievements
-      .filter(
-        (item) =>
-          item.criteria?.type === "collection_complete" && item.state === "earned",
-      )
+      .filter((item) => item.criteria?.type === "collection_complete" && item.state === "earned")
       .sort((a, b) => b.reward_amount - a.reward_amount)[0];
     const frozenRoster = Array.isArray(completion?.criteria?.roster_card_ids)
       ? (completion.criteria.roster_card_ids as unknown[]).length
@@ -2169,7 +2443,7 @@ async function tour(
           {
             title: `Progress · ${album.detail.name}`,
             description: celebration,
-            color: album.progress.complete ? 0x3f9d5a : 0x7c6b4f,
+            color: album.progress.complete ? DISCORD_PALETTE.success : DISCORD_PALETTE.raised,
             fields: [
               {
                 name: "Unique subjects",
@@ -2245,7 +2519,9 @@ async function tour(
     }
     const albumCard =
       inventory.find((item) => album.cards.some((card) => card.id === item.card_id)) ?? null;
-    const albumCardAudience = albumCard ? await effectiveCardAudience(ctx, albumCard.card_id) : "private";
+    const albumCardAudience = albumCard
+      ? await effectiveCardAudience(ctx, albumCard.card_id)
+      : "private";
     const albumCardAi = albumCard
       ? await first<{ origin: string | null }>(
           ctx.db,
@@ -2258,7 +2534,8 @@ async function tour(
       : null;
     const canShareAlbumCard =
       albumCard !== null &&
-      (scope.aiArtEnabled || !["ai_assisted", "ai_generated"].includes(albumCardAi?.origin ?? "")) &&
+      (scope.aiArtEnabled ||
+        !["ai_assisted", "ai_generated"].includes(albumCardAi?.origin ?? "")) &&
       albumCardAudience !== "private" &&
       audienceRank(channelAudience) >= audienceRank(albumCardAudience);
     const canShareCompletion =
@@ -2284,7 +2561,7 @@ async function tour(
               "Foilbury checks the card or achievement audience and the channel policy before posting. Consent does not override a restricted collection.",
               "The tour never shares automatically, and no shared post includes your balance, email, sessions or administrator controls.",
             ].join("\n"),
-            color: 0x7c6b4f,
+            color: DISCORD_PALETTE.raised,
             fields: [
               {
                 name: "Destination",
@@ -2340,7 +2617,7 @@ async function tour(
               title: "Administration is private",
               description:
                 "This appendix is only available to this Bot's Owner or Admin. Server moderator status does not grant Foilbury administration.",
-              color: 0x8a8f98,
+              color: DISCORD_PALETTE.muted,
             },
           ],
           components: tourNav("admin"),
@@ -2367,7 +2644,7 @@ async function tour(
               "**Bot administration** is scoped to this Bot. Use `/foilbury admin status|settings|pools|enable|disable|grant` or your signed-in Foilbury Studio. A scoped Admin never needs the owner's Cloudflare entrance.",
               "**Platform administration** and the native EmDash console are separate Cloudflare Access areas. Neither is granted by Discord guild ownership or a Bot role.",
             ].join("\n"),
-            color: 0x245c4b,
+            color: DISCORD_PALETTE.surface,
             fields: [
               { name: "Bot", value: ctx.tenant.name, inline: true },
               { name: "Published cards", value: String(counts?.cards ?? 0), inline: true },
@@ -2391,7 +2668,8 @@ async function tour(
               label: "Open Foilbury Studio",
               url: absoluteUrl(ctx.config.publicOrigin, "/studio")!,
             },
-            ...(ctx.user!.capabilities?.includes("grants") || ctx.user!.capabilities?.includes("economy")
+            ...(ctx.user!.capabilities?.includes("grants") ||
+            ctx.user!.capabilities?.includes("economy")
               ? [
                   {
                     type: 2,
@@ -2451,8 +2729,7 @@ async function tourShare(
       "Sharing needs an authorised server channel.",
     );
   const scope =
-    providedScope ??
-    (await resolveDiscordScope(ctx, installation, interaction.channel_id));
+    providedScope ?? (await resolveDiscordScope(ctx, installation, interaction.channel_id));
   if (scope.emptyReason) throw new ApiError(403, "share_scope_empty", scope.emptyReason);
   const channelAudience = channelAudienceFor(installation, interaction.channel_id);
   let embed: DiscordEmbed;
@@ -2509,7 +2786,11 @@ async function tourShare(
     row.collection_name = scopedCollection?.name ?? row.collection_name;
     audience = await effectiveCardAudience(ctx, row.card_id);
     if (audience === "private") {
-      throw new ApiError(403, "share_private_not_available", "Private collection artwork cannot be shared to a channel.");
+      throw new ApiError(
+        403,
+        "share_private_not_available",
+        "Private collection artwork cannot be shared to a channel.",
+      );
     }
     if (audienceRank(channelAudience) < audienceRank(audience)) {
       throw new ApiError(
@@ -2521,7 +2802,7 @@ async function tourShare(
     embed = {
       title: `${row.card_name} — ${row.variant_name}`,
       description: `Shared by **${ctx.user!.displayName}** with explicit consent. The copy remains owned by the collector; sharing does not grant it to anyone else.`,
-      color: 0xc9a227,
+      color: DISCORD_PALETTE.warning,
       fields: [
         { name: "Collection", value: row.collection_name ?? "Foilbury", inline: true },
         {
@@ -2556,7 +2837,11 @@ async function tourShare(
       );
     audience = album.view_audience;
     if (audience === "private") {
-      throw new ApiError(403, "share_private_not_available", "Private collection artwork cannot be shared to a channel.");
+      throw new ApiError(
+        403,
+        "share_private_not_available",
+        "Private collection artwork cannot be shared to a channel.",
+      );
     }
     if (audienceRank(channelAudience) < audienceRank(audience)) {
       throw new ApiError(
@@ -2568,7 +2853,7 @@ async function tourShare(
     embed = {
       title: `${album.name} · complete`,
       description: `**${ctx.user!.displayName}** completed this member album: ${progress.owned_cards}/${progress.total_cards} unique subjects.`,
-      color: 0x3f9d5a,
+      color: DISCORD_PALETTE.success,
       fields: [
         { name: "Album", value: album.name, inline: true },
         {
@@ -2600,7 +2885,8 @@ async function tourShare(
       const achievements = await listAchievements(ctx, ctx.user!.id);
       const publicCards: string[] = [];
       for (const item of inventory.slice(0, 20)) {
-        if ((await effectiveCardAudience(ctx, item.card_id)) === "public") publicCards.push(item.card_id);
+        if ((await effectiveCardAudience(ctx, item.card_id)) === "public")
+          publicCards.push(item.card_id);
       }
       const publicBadges = achievements.filter(
         (item) =>
@@ -2615,7 +2901,7 @@ async function tourShare(
         title: `${ctx.user!.displayName} · collector profile`,
         description:
           "A member chose to share this public profile summary in an authorised channel. Member artwork and favourites stay private.",
-        color: 0x7c6b4f,
+        color: DISCORD_PALETTE.raised,
         fields: [
           {
             name: "Public showcase cards",
@@ -2695,7 +2981,7 @@ async function tourShare(
         title: `${ctx.user!.displayName} · collector profile`,
         description:
           "A member chose to share this collector view in an authorised channel. The featured copy is the exact owned card; the look and badges are the saved composition.",
-        color: 0x2ce3d3,
+        color: DISCORD_PALETTE.action,
         fields,
         ...(render
           ? { image: { url: "attachment://foilbury-share.webp", width: 750, height: 1050 } }
@@ -2892,7 +3178,7 @@ async function executeConfirmation(
             title: `${surface} ${enabled ? "enabled" : "disabled"}`,
             description:
               "The change is live. Inventory, ownership history and the other interfaces are unchanged.",
-            color: enabled ? 0x3f9d5a : 0xd97757,
+            color: enabled ? DISCORD_PALETTE.success : DISCORD_PALETTE.danger,
           },
         ],
       },
@@ -2933,6 +3219,13 @@ export async function runComponent(
     const pool = validatePoolSlug(customId.slice("foilbury:open:".length));
     return openCard(ctx, interaction, installation, pool, drawIdempotencyKey(interaction.id));
   }
+  if (customId.startsWith("foilbury:reveal:")) {
+    const originalInteractionId = customId.slice("foilbury:reveal:".length).split(":")[0]?.trim();
+    if (!originalInteractionId || !/^[A-Za-z0-9_-]{4,80}$/.test(originalInteractionId)) {
+      throw new ApiError(422, "reveal_invalid", "That reveal control is incomplete.");
+    }
+    return revealCommittedDraw(ctx, interaction, installation, originalInteractionId);
+  }
   if (customId.startsWith("foilbury:redeliver:")) {
     const originalInteractionId = customId
       .slice("foilbury:redeliver:".length)
@@ -2941,23 +3234,33 @@ export async function runComponent(
     if (!originalInteractionId || !/^[A-Za-z0-9_-]{4,80}$/.test(originalInteractionId)) {
       throw new ApiError(422, "redeliver_invalid", "That receipt retry control is incomplete.");
     }
-    return redeliverReceipt(ctx, interaction, originalInteractionId);
+    return redeliverReceipt(ctx, interaction, installation, originalInteractionId);
   }
-  if (customId === "foilbury:collection") return collection(ctx, installation, undefined, interaction.channel_id);
+  if (customId === "foilbury:collection")
+    return collection(ctx, installation, undefined, interaction.channel_id);
   if (customId === "foilbury:daily") return daily(ctx, interaction);
   if (customId.startsWith("foilbury:mission:claim:")) {
     const key = customId.slice("foilbury:mission:claim:".length);
     const claimed = await claimDailyMission(ctx, key, `discord:${interaction.id}:mission:${key}`);
     return missionsView(ctx, `+${claimed.amount} Foil credited. Balance ${claimed.balance_after}.`);
   }
-  if (customId === "foilbury:packs") return packs(ctx, installation, undefined, interaction.channel_id);
+  if (customId === "foilbury:packs")
+    return packs(ctx, installation, undefined, interaction.channel_id);
   if (customId === "foilbury:help") return help(ctx);
   if (customId.startsWith("foilbury:card:")) {
     const [, , cardId, variantId, action] = customId.split(":");
     if (!cardId)
       throw new ApiError(422, "card_component_invalid", "That card control is incomplete.");
     if (action === "front" || action === "back")
-      return cardFace(ctx, cardId, variantId ?? null, action, installation, undefined, interaction.channel_id);
+      return cardFace(
+        ctx,
+        cardId,
+        variantId ?? null,
+        action,
+        installation,
+        undefined,
+        interaction.channel_id,
+      );
     if (action === "details")
       return cardDetails(ctx, cardId, installation, undefined, interaction.channel_id);
     throw new ApiError(404, "card_component_unknown", "That card control is not recognised.");
@@ -2993,7 +3296,11 @@ export async function runComponent(
         .run();
     }
     return callback(
-      { embeds: [{ title: "Cancelled", description: "No change was made.", color: 0x8a8f98 }] },
+      {
+        embeds: [
+          { title: "Cancelled", description: "No change was made.", color: DISCORD_PALETTE.muted },
+        ],
+      },
       true,
     );
   }
