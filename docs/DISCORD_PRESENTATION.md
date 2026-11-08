@@ -19,19 +19,26 @@ Discord-only card renderer and no re-composition of private source layers.
 
 ## Visual vocabulary
 
-The layer uses the Foilbury Signal palette from `DESIGN.md`:
+The layer uses the repaired neutral/periwinkle tokens from `DESIGN.md`:
 
-| Token         | Value     | Use in embeds                                        |
-| ------------- | --------- | ---------------------------------------------------- |
-| Deep current  | `#044e4a` | committed receipt, card view, profile, share preview |
-| Electric aqua | `#00a99c` | getting started, capsule picker, active progress     |
-| Ice           | `#c8f4ee` | quiet empty states and locked achievement surfaces   |
-| Signal lime   | `#c9f25f` | completed album and earned achievement               |
-| Carbon / ink  | `#07110f` | error and denied states                              |
-| Bone          | `#eff5f1` | contact-sheet paper and high-contrast text           |
+| Token   | Value     | Use in embeds                                              |
+| ------- | --------- | ---------------------------------------------------------- |
+| Canvas  | `#11141b` | dark reference surface                                     |
+| Surface | `#1a1f2a` | sealed opening, committed receipt, card, profile and share |
+| Raised  | `#242b39` | quiet empty states and locked achievement surfaces         |
+| Action  | `#a8b8ff` | getting started, capsule picker and active progress        |
+| Focus   | `#c5d0ff` | cabinet-rare and review emphasis                           |
+| Success | `#8fe0bb` | completed album and earned achievement                     |
+| Warning | `#f2cb85` | legendary and pending states                               |
+| Danger  | `#ffadb7` | error and denied states                                    |
+| Muted   | `#b6bece` | common rarity and secondary labels                         |
 
-Discord only guarantees a narrow colour strip for an embed. Colour is therefore
-a second channel, never the only signal: every rarity, finish, progress,
+The rejected Signal Fold aqua/lime palette is not used. Discord only guarantees
+a narrow colour strip for an embed, so the accent is the app's semantic token
+and never the only signal.
+
+Colour is therefore a second channel, never the only signal: every rarity,
+finish, progress,
 completion, error and denial also carries a text label, a number or a shape.
 There are no emoji-only labels and no icon-only buttons. Serial values use
 Discord inline code so they remain legible in a proportional client font.
@@ -50,19 +57,20 @@ The footer carries the scope and the safety statement, for example
 
 ## Template families
 
-| Builder                  | Primary state and action                                                                                    |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------- |
-| `welcomeMessage`         | First use: balance, daily availability, free inspection, daily/open/packs and a field-guide link.           |
-| `capsulePickerMessage`   | Price and real odds per capsule, disabled/unavailable reasons, one obvious open action per capsule.         |
-| `revealReceiptMessage`   | Committed pull: card, finish, rarity, serial, pool, price, balance, odds, replay marker, artwork recovery.  |
-| `cardFaceMessage`        | Saved front or back render, collection, side, finish, serial, source, swap/details/album controls.          |
-| `albumProgressMessage`   | `7/8` or `complete`, missing subject, finish families, milestone, optional completion share.                |
-| `achievementMessage`     | Earned/in-progress/locked, progress, reward, visibility, earned date, criteria, optional share.             |
-| `missionProgressMessage` | Daily cap, reset, per-mission progress, claimed/claimable/not-complete states, bounded claim buttons.       |
-| `profileMessage`         | Balance, owned/unique cards, daily state, badges, Bot scope and privacy note.                               |
-| `sharePromptMessage`     | Destination and its verified audience, what will post, what stays private, what is never included, consent. |
-| `stateMessage`           | Designed error, empty and denied states with a next step and optional private diagnostic reference.         |
-| `stateFromError`         | Reviewed human copy selected by error code; never echoes a raw `ApiError` message or SQL.                   |
+| Builder                  | Primary state and action                                                                                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `welcomeMessage`         | First use: balance, daily availability, free inspection, daily/open/packs and a field-guide link.                                                                   |
+| `capsulePickerMessage`   | Price and real odds per capsule, disabled/unavailable reasons, one obvious open action per capsule.                                                                 |
+| `sealedRevealMessage`    | Face-down committed opening: card back, pool, price, Reveal card + Collection + album. No result fields.                                                            |
+| `revealReceiptMessage`   | Committed pull: card, finish, rarity, serial, pool, price, balance, odds, new/duplicate/wishlist feedback, collection progress, replay marker and artwork recovery. |
+| `cardFaceMessage`        | Saved front or back render, collection, side, finish, serial, source, swap/details/album controls.                                                                  |
+| `albumProgressMessage`   | `7/8` or `complete`, missing subject, finish families, milestone, optional completion share.                                                                        |
+| `achievementMessage`     | Earned/in-progress/locked, progress, reward, visibility, earned date, criteria, optional share.                                                                     |
+| `missionProgressMessage` | Daily cap, reset, per-mission progress, claimed/claimable/not-complete states, bounded claim buttons.                                                               |
+| `profileMessage`         | Balance, owned/unique cards, daily state, badges, Bot scope and privacy note.                                                                                       |
+| `sharePromptMessage`     | Destination and its verified audience, what will post, what stays private, what is never included, consent.                                                         |
+| `stateMessage`           | Designed error, empty and denied states with a next step and optional private diagnostic reference.                                                                 |
+| `stateFromError`         | Reviewed human copy selected by error code; never echoes a raw `ApiError` message or SQL.                                                                           |
 
 ### Reveal receipt parity
 
@@ -80,6 +88,27 @@ rendered into visible copy. `render_url` is used only as a fallback image for a
 verified **public** reveal; member and private reveals use only the attached
 saved render. A missing render still produces an owned-card receipt with a
 recovery instruction.
+
+### Sealed opening, then a deliberate reveal
+
+`/foilbury open` commits the draw first, persists the interaction receipt, then
+returns `sealedRevealMessage`. That message contains only the pool, price, a
+public card-back image and a `Reveal card` button. No field, title, image,
+filename, custom id, accessible name or live announcement carries the card
+name, finish, rarity, serial or result render.
+
+`Reveal card` is a separate read-only component interaction
+(`foilbury:reveal:<original-interaction-id>`). It recovers the same committed
+receipt and builds the result. It never calls the draw service, spends Foil or
+creates a copy. Repeating the reveal is free and returns the same card, serial
+and settlement. A recovery re-send (`foilbury:redeliver:`) explicitly marks the
+result as recorded; the first reveal does not.
+
+The reveal adds owned-result feedback that the committed receipt already knows:
+new subject/finish, duplicate count, wishlist hit, the card's collection
+progress and whether reward settlement is still confirming. The card artwork is
+the saved published render; a missing render leaves the exact serial and an
+artwork follow-up rather than a blank or a fabricated image.
 
 ## Discord limits enforced
 
@@ -198,7 +227,6 @@ rejection, private-by-default responses, attachment naming, reveal-receipt
 parity, audience gates, mission/album states and deterministic preview output.
 It does not replace a real Discord desktop/mobile/spectator session.
 
-
 ## Adoption status — current
 
 The command router now consumes the shared builders for the primary player
@@ -207,7 +235,8 @@ surface:
 - `/foilbury help` → welcome/guide builder;
 - `/foilbury daily` → daily claim builder;
 - `/foilbury packs` and the empty-default picker → capsule picker builder;
-- `/foilbury open`, open buttons and re-send receipt → reveal/receipt builder;
+- `/foilbury open`, open buttons → sealed opening builder;
+- `Reveal card` and the re-send receipt → committed reveal/receipt builder;
 - `/foilbury card`, card buttons → card-face builder;
 - `/foilbury collection` → cabinet summary builder;
 - `/foilbury achievements` → achievements overview builder;
@@ -217,3 +246,39 @@ surface:
 The handler tests invoke the actual command/component path and assert the
 builder-specific titles, fields and action labels. Builder-only tests remain
 useful but are no longer the adoption proof.
+
+## Real-client evidence — 2026-11-08
+
+Source `08ffd7270435db79f4bc31792604159ab67e6bd9`; Worker
+`2c93b5d6-1041-4782-831d-3f7b07105c68`.
+
+The signed-in desktop Discord client, normal inline size, dark theme, in
+`#card-collector-test`:
+
+- Sealed opening: message `1568901235795431525`
+  (https://discord.com/channels/997734945206313041/1566700752385081355/1568901235795431525).
+  Rendered the real Foilbury card back at Discord's 457×639 proxy (750×1050
+  source), `Cabinet Draw · sealed`, `−80 ✦`, and Reveal card / Collection /
+  Open album. No card name, finish, rarity, serial or result render appeared.
+- First reveal: message `1568901484823969802`
+  (https://discord.com/channels/997734945206313041/1566700752385081355/1568901484823969802).
+  Rendered `Nagisa Momoe — Plain`, Uncommon / Plain / serial `FB-4-DE-DC4892`,
+  `New subject and finish`,
+  `Puella Magi Madoka Magica — Mitakihara · 4/8 collected`, opening debit,
+  after-debit balance, `+280 ✦ · Four wishes`, settled balance `1720 ✦`,
+  `0.60% for this copy`, and the committed artwork attachment
+  `foilbury-reveal-card.webp`. The periwinkle action buttons and neutral embed
+  surface replaced the rejected Signal Fold styling.
+- The first deploy's reveal (`1568899355954384908`) showed `Recorded result`
+  incorrectly. The live run exposed it; source `08ffd727` persists
+  `replayed: false` on a first commit and the re-run no longer shows that field.
+
+Screenshots: `.foilbury/evidence/discord-presentation-20261108/`
+(`discord-sealed-fixed.png`, `discord-reveal-full.png`).
+
+Not performed and not claimed: a real mobile Discord client, an independent
+second-account spectator, or the light Discord theme. Those remain open on
+#24. A scheduled-maintenance alert at 08:07 UTC reported `database unavailable`
+during the first deployment; the following scheduled runs produced no further
+alert, so it is recorded as a transient deploy-window failure rather than a
+pass.
