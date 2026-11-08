@@ -234,3 +234,65 @@ These are human authentication checks, not missing implementation or a new authe
 ## Verified email attachment — 2026/11/03
 
 A signed-in account can attach a new primary email from `/account/security` after a recent passkey/authenticator/Access proof. The one-use `link_email` token is bound to `user_id` and the new mailbox; it verifies control without merging another Foilbury account. A Discord-only player can keep the non-routable placeholder address and sign in with Discord; the placeholder is not a claim of email ownership. Dean's different Discord and Foilbury emails are correct: the account link is the identity, not string equality. Cloudflare Access still requires the Access email to match the linked Foilbury account email.
+
+## Membership admission and capability repair — 2026/11/08 (#18)
+
+### Source and deployment
+
+- Source `599ff1c2e0e2720241666f0c7739af25075d937a`; production Worker
+  `784d7590-e32c-4e6f-a2b2-9202c16ea0bb`.
+- Pre-proof D1 backup: `.foilbury/backups/prod-pre-auth-proof-2026-11-08.json`
+  (96 tables, 33,981 rows, SHA-256 `2d7058843f8cda347af45f494121d97ea197ef1ade4c1ca7d467298bd58a61b9`).
+- `pnpm check`: 46 files, 342 tests, 0 failures.
+
+### Repair
+
+- `addMembership` now inserts only when no row exists. Existing revoked,
+  suspended or invited rows are never replaced by a login path.
+- The explicit seed/owner and accepted-invitation paths use
+  `upsertMembership`; ordinary email, Discord, passkey, OAuth and token
+  redemption cannot call it.
+- NPC creation refuses a conflicting synthetic membership instead of
+  overwriting it.
+- Member management still requires the explicit `members` capability (or
+  Super Admin), recent strong authentication and a reason. Agents are denied.
+  Legacy role labels alone do not authorise a lifecycle change.
+- `requireActiveMembership` re-reads the live row for NPC trade commands, so a
+  session that outlived a suspension/revocation cannot complete a transfer.
+
+### Regression and negative control
+
+- New tests cover revoked/suspended rows, pre-issued tokens, concurrent
+  login/revocation, replay, expiry, scoped `members` grants, agent denial,
+  platform-admin authority, cross-tenant denial and the non-restoring helper.
+- Negative control: restoring only the old unconditional `DO UPDATE` in
+  `addMembership` makes the new regression fail (`expected true to be false`);
+  restoring the repair passes. The test suite was also run against the repaired
+  source.
+
+### Live production proof
+
+A labelled fixture account (`usr_authproof_20261108`, email
+`auth-proof-20261108@foilbury.invalid`) was created in production D1, with
+one-use link rows inserted directly. No email was sent and no real member's
+membership was changed. The real deployed `/auth/email/verify` GET/POST flow
+produced:
+
+| Check | Result |
+| --- | --- |
+| New verified account admitted | PASS — HTTP 302 to `/play`, active membership, player role, no capabilities, session cookie set |
+| Consumed token replay | PASS — invalid/used message, no extra session |
+| Pre-issued token after revocation | PASS — HTTP 200 denied with the suspended/revoked message; row stayed `revoked`/`editor`/`["members"]` with the original `revoked_at` |
+| Suspended row | PASS — denied; row stayed `suspended` |
+| Expired token | PASS — invalid/expired before admission |
+| Revocation between GET and POST | PASS — no session minted; row stayed `revoked` |
+
+Evidence: `.foilbury/evidence/auth-lifecycle-proof-2026-11-08.json`. The fixture's
+user, membership, wallet, sessions, links and test audit rows were removed after
+the run; a read-back showed zero remaining rows.
+
+### Still external
+
+The fresh human Cloudflare Access/MFA session for `/platform-admin`,
+`/admin` and `/_emdash/admin` remains a separate human prerequisite. It is not
+claimed by this proof.
