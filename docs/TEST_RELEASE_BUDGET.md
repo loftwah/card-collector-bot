@@ -56,7 +56,8 @@ Local, 2026-11-08, warm dependency cache:
 | Flow                                             | Time   |
 | ------------------------------------------------ | ------ |
 | `pnpm check` (sequential, before)                | 65.5s  |
-| `pnpm check` (concurrent gates, after)           | 50.2s  |
+| `pnpm check` (concurrent gates, after, warm)     | 28.9s  |
+| `pnpm check` (concurrent gates, after, cold)     | 50.2s  |
 | Production release (check, build, upload, smoke) | 123.4s |
 
 GitHub Actions, before parallel jobs:
@@ -66,8 +67,15 @@ GitHub Actions, before parallel jobs:
 | NPC trading, all four browser journeys | 5m24s | `pnpm check` alone was 157s |
 | Latest docs-only PR                    | 3m28s | `pnpm check` alone was 160s |
 
-The CI run that introduced this file is the post-change proof; its budget table
-is written to the job summary, and its total is recorded on the pull request.
+GitHub Actions, after parallel jobs:
+
+| Run                                            | Flow time | Notes                                                                |
+| ---------------------------------------------- | --------- | -------------------------------------------------------------------- |
+| PR #115, all four browser journeys             | **164s**  | Check job 2m04s, browser job 2m27s; 136s inside the 300s budget.     |
+| PR #115, docs-only follow-up (browser skipped) | see run   | Proves the affected-path selection skips browser work for docs only. |
+
+The budget table is written to every CI job summary. The introducing run is
+https://github.com/loftwah/card-collector-bot/actions/runs/42444137964.
 
 ## Re-measure
 
