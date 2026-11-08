@@ -8,6 +8,7 @@
 import { ApiError } from "./context";
 
 export type Machine =
+  | "card"
   | "collection"
   | "membership"
   | "gift_campaign"
@@ -16,6 +17,11 @@ export type Machine =
   | "import";
 
 const TRANSITIONS: Record<Machine, Record<string, readonly string[]>> = {
+  card: {
+    draft: ["published"],
+    published: ["draft", "retired"],
+    retired: ["draft", "published"],
+  },
   collection: {
     draft: ["published", "archived"],
     published: ["draft", "archived"],

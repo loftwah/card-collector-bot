@@ -318,36 +318,66 @@ export async function acceptBotInvitation(ctx: Ctx, rawToken: string): Promise<{
   const capabilities = validateCapabilities(JSON.parse(invitation.capabilities_json) as string[]);
   const role: Role = capabilities.includes("content") || capabilities.includes("publish") ? "editor" : "economy_admin";
   const now = nowIso();
-  await upsertMembership(ctx.db, bot.tenant_id, user.id, role, { capabilities, invitedBy: invitation.id, acceptedAt: now });
-  await ctx.db
-    .prepare(
-      `INSERT INTO fb_bot_admins (id, bot_id, user_id, role, capabilities_json, status, invited_by, created_at, accepted_at)
-       VALUES (?, ?, ?, 'admin', ?, 'active', ?, ?, ?)
-       ON CONFLICT(bot_id, user_id) DO UPDATE SET role = 'admin', capabilities_json = excluded.capabilities_json, status = 'active', accepted_at = excluded.accepted_at, revoked_at = NULL`,
-    )
-    .bind(newId("badm"), bot.id, user.id, JSON.stringify(capabilities), invitation.created_by, now, now)
-    .run();
-  const accepted = await ctx.db
-    .prepare("UPDATE fb_bot_invitations SET status = 'accepted', accepted_by = ?, accepted_at = ? WHERE id = ? AND status = 'pending'")
-    .bind(user.id, now, invitation.id)
-    .run();
-  if ((accepted.meta?.changes ?? 0) !== 1) throw new ApiError(409, "invitation_already_used", "This invitation was already accepted.");
-  await ctx.db
-    .prepare(
-      `INSERT INTO fb_access_emails (email, user_id, added_by, created_at, revoked_at)
-       VALUES (?, ?, ?, ?, NULL)
-       ON CONFLICT(email) DO UPDATE SET user_id = excluded.user_id, revoked_at = NULL`,
-    )
-    .bind(user.email.toLowerCase(), user.id, invitation.created_by, now)
-    .run();
-  await ctx.db
-    .prepare(
-      `INSERT INTO fb_audit_events
-        (id, tenant_id, actor_type, actor_id, represented_user_id, action, object_type, object_id, metadata_json, request_id, created_at)
-       VALUES (?, ?, 'user', ?, ?, 'bot.invitation.accepted', 'bot', ?, ?, ?, ?)`,
-    )
-    .bind(newId("aud"), bot.tenant_id, user.id, user.id, bot.id, JSON.stringify({ capabilities }), ctx.requestId, now)
-    .run();
+  const claimed = `EXISTS (SELECT 1 FROM fb_bot_invitations
+    WHERE id = ? AND status = 'accepted' AND accepted_by = ?)`;
+  // Claiming the single-use invitation and granting every derived authority is
+  // one D1 transaction. Two concurrent accepts cannot both pass the initial
+  // read: the conditional claim picks one winner, and a failure in any later
+  // statement rolls the claim back instead of leaving access without a used
+  // invitation (or an accepted invitation without access).
+  const results = await ctx.db.batch([
+    ctx.db
+      .prepare(
+        `UPDATE fb_bot_invitations SET status = 'accepted', accepted_by = ?, accepted_at = ?
+          WHERE id = ? AND status = 'pending' AND expires_at > ? AND email = ? COLLATE NOCASE
+            AND EXISTS (SELECT 1 FROM fb_bots WHERE id = ? AND status = 'active')`,
+      )
+      .bind(user.id, now, invitation.id, now, invitation.email, bot.id),
+    ctx.db
+      .prepare(
+        `INSERT INTO fb_memberships
+          (tenant_id, user_id, role, created_at, capabilities_json, status, invited_by, accepted_at, revoked_at)
+         SELECT ?, ?, ?, ?, ?, 'active', ?, ?, NULL WHERE changes() = 1
+         ON CONFLICT(tenant_id, user_id) DO UPDATE SET
+           role = excluded.role,
+           capabilities_json = excluded.capabilities_json,
+           status = 'active',
+           invited_by = excluded.invited_by,
+           accepted_at = excluded.accepted_at,
+           revoked_at = NULL`,
+      )
+      .bind(bot.tenant_id, user.id, role, now, JSON.stringify(capabilities), invitation.id, now),
+    ctx.db
+      .prepare(
+        `INSERT INTO fb_bot_admins
+          (id, bot_id, user_id, role, capabilities_json, status, invited_by, created_at, accepted_at)
+         SELECT ?, ?, ?, 'admin', ?, 'active', ?, ?, ? WHERE ${claimed}
+         ON CONFLICT(bot_id, user_id) DO UPDATE SET
+           role = 'admin',
+           capabilities_json = excluded.capabilities_json,
+           status = 'active',
+           accepted_at = excluded.accepted_at,
+           revoked_at = NULL`,
+      )
+      .bind(newId("badm"), bot.id, user.id, JSON.stringify(capabilities), invitation.created_by, now, now, invitation.id, user.id),
+    ctx.db
+      .prepare(
+        `INSERT INTO fb_access_emails (email, user_id, added_by, created_at, revoked_at)
+         SELECT ?, ?, ?, ?, NULL WHERE ${claimed}
+         ON CONFLICT(email) DO UPDATE SET user_id = excluded.user_id, revoked_at = NULL`,
+      )
+      .bind(user.email.toLowerCase(), user.id, invitation.created_by, now, invitation.id, user.id),
+    ctx.db
+      .prepare(
+        `INSERT INTO fb_audit_events
+          (id, tenant_id, actor_type, actor_id, represented_user_id, action, object_type, object_id, metadata_json, request_id, created_at)
+         SELECT ?, ?, 'user', ?, ?, 'bot.invitation.accepted', 'bot', ?, ?, ?, ? WHERE ${claimed}`,
+      )
+      .bind(newId("aud"), bot.tenant_id, user.id, user.id, bot.id, JSON.stringify({ capabilities }), ctx.requestId, now, invitation.id, user.id),
+  ]);
+  if ((results[0]?.meta?.changes ?? 0) !== 1) {
+    throw new ApiError(409, "invitation_already_used", "This invitation was already accepted.");
+  }
   return { bot, capabilities };
 }
 

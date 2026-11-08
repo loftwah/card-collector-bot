@@ -231,65 +231,129 @@ export async function acceptTrade(ctx: Ctx, tradeId: string) {
     trade.revision,
     user.id,
   );
-  if (existing) throw new ApiError(409, "already_accepted", "You already accepted this revision.");
-  const bothAccepted = (await all<{ user_id: string }>(
-    ctx.db,
-    "SELECT user_id FROM fb_trade_acceptances WHERE trade_id = ? AND tenant_id = ? AND revision = ?",
-    trade.id,
-    ctx.tenant.id,
-    trade.revision,
-  )).length >= 1;
+  if (existing) {
+    // Reconcile a trade that two simultaneous first acceptances left fully
+    // accepted but still open. The completion write is itself conditional on
+    // both acceptances existing, so a retry after the race can settle it.
+    await completeTradeIfReady(ctx, trade);
+    const current = await getTrade(ctx, trade.id);
+    if (current.status === "completed") return current;
+    throw new ApiError(409, "already_accepted", "You already accepted this revision.");
+  }
   const now = nowIso();
-  const complete = bothAccepted; // The new acceptance is the second one when one already exists.
-  const statements = [
-    ctx.db
-      .prepare("INSERT INTO fb_trade_acceptances (tenant_id, trade_id, revision, user_id, accepted_at) VALUES (?, ?, ?, ?, ?)")
-      .bind(ctx.tenant.id, trade.id, trade.revision, user.id, now),
-  ];
-  if (complete) {
-    statements.push(
+  try {
+    await ctx.db.batch([
       ctx.db
-        .prepare("UPDATE fb_trades SET status = 'completed', completed_at = ?, updated_at = ? WHERE id = ? AND tenant_id = ? AND status = 'open' AND revision = ?")
-        .bind(now, now, trade.id, ctx.tenant.id, trade.revision),
-    );
-    statements.push(
-      ...trade.items.map((item) =>
-        ctx.db
-          .prepare(
-            "UPDATE fb_card_instances SET user_id = ?, status = 'owned', reserved_for = NULL, updated_at = ? WHERE id = ? AND tenant_id = ? AND status = 'reserved' AND reserved_for = ?",
-          )
-          .bind(item.side === "proposer" ? trade.recipient_id : trade.proposer_id, now, item.instance_id, ctx.tenant.id, trade.id),
+        .prepare("INSERT INTO fb_trade_acceptances (tenant_id, trade_id, revision, user_id, accepted_at) VALUES (?, ?, ?, ?, ?)")
+        .bind(ctx.tenant.id, trade.id, trade.revision, user.id, now),
+      auditStatement(ctx, "trade.accepted", "trade", trade.id, { revision: trade.revision }),
+    ]);
+  } catch (error) {
+    const message = String(error);
+    if (message.includes("UNIQUE") || message.includes("already_accepted")) {
+      await completeTradeIfReady(ctx, trade);
+      const current = await getTrade(ctx, trade.id);
+      if (current.status === "completed") return current;
+      throw new ApiError(409, "already_accepted", "You already accepted this revision. Nothing else was transferred.");
+    }
+    throw error;
+  }
+  // The pre-insert count cannot prove this acceptance is the second one:
+  // two concurrent first acceptances can both read zero. Always attempt the
+  // guarded completion, which examines the committed acceptance rows.
+  await completeTradeIfReady(ctx, trade);
+  return getTrade(ctx, trade.id);
+}
+
+/**
+ * Complete a trade only when both parties have accepted this exact revision
+ * and every reserved card still belongs to the side that offered it. The
+ * conditional update plus the `fb_trades_guard_complete` trigger make this
+ * safe to call after every acceptance, including a replay.
+ */
+async function completeTradeIfReady(
+  ctx: Ctx,
+  trade: Awaited<ReturnType<typeof getTrade>>,
+): Promise<void> {
+  if (trade.status !== "open") return;
+  const now = nowIso();
+  const completed = ctx.db
+    .prepare(
+      `UPDATE fb_trades SET status = 'completed', completed_at = ?, updated_at = ?
+        WHERE id = ? AND tenant_id = ? AND status = 'open' AND revision = ?
+          AND (SELECT COUNT(DISTINCT user_id) FROM fb_trade_acceptances
+                WHERE tenant_id = ? AND trade_id = ? AND revision = ?) = 2
+        RETURNING id`,
+    )
+    .bind(now, now, trade.id, ctx.tenant.id, trade.revision, ctx.tenant.id, trade.id, trade.revision);
+  // This audit row is also the per-batch winner marker. A concurrent
+  // completion can leave the trade `completed` without this call having won
+  // the transition; gating effects on the trade status alone would then write
+  // a second set of history rows. Only the batch whose UPDATE changed a row
+  // inserts this exact audit id, so later statements in that batch can prove
+  // they own the transition.
+  const auditId = newId("aud");
+  const settled = `EXISTS (SELECT 1 FROM fb_audit_events WHERE id = ? AND action = 'trade.completed' AND object_id = ?)`;
+  const statements = [
+    completed,
+    ctx.db
+      .prepare(
+        `INSERT INTO fb_audit_events (id, tenant_id, actor_type, actor_id, represented_user_id, action, object_type, object_id, metadata_json, request_id, created_at)
+         SELECT ?, ?, ?, ?, ?, 'trade.completed', 'trade', ?, ?, ?, ? WHERE changes() = 1`,
+      )
+      .bind(
+        auditId,
+        ctx.tenant.id,
+        ctx.actor.type,
+        ctx.actor.id,
+        ctx.actor.representedUserId,
+        trade.id,
+        JSON.stringify({ revision: trade.revision }),
+        ctx.requestId,
+        now,
       ),
-    );
-    statements.push(
-      ...trade.items.map((item) =>
-        ctx.db
-          .prepare(
-            "INSERT INTO fb_instance_history (id, tenant_id, instance_id, event, from_user_id, to_user_id, reference_type, reference_id, metadata_json, created_at) VALUES (?, ?, ?, 'traded', ?, ?, 'trade', ?, ?, ?)",
-          )
-          .bind(
-            newId("ih"),
-            ctx.tenant.id,
-            item.instance_id,
-            item.side === "proposer" ? trade.proposer_id : trade.recipient_id,
-            item.side === "proposer" ? trade.recipient_id : trade.proposer_id,
-            trade.id,
-            JSON.stringify({ revision: trade.revision }),
-            now,
-          ),
-      ),
-    );
-    statements.push(
+    ...trade.items.map((item) =>
       ctx.db
         .prepare(
-          "INSERT INTO fb_outbox (id, tenant_id, topic, payload_json, status, attempts, available_at, created_at) VALUES (?, ?, 'trade.completed', ?, 'pending', 0, ?, ?)",
+          `UPDATE fb_card_instances SET user_id = ?, status = 'owned', reserved_for = NULL, updated_at = ?
+            WHERE id = ? AND tenant_id = ? AND status = 'reserved' AND reserved_for = ? AND ${settled}`,
         )
-        .bind(newId("out"), ctx.tenant.id, JSON.stringify({ trade_id: trade.id, revision: trade.revision }), now, now),
-    );
-  }
-  statements.push(
-    auditStatement(ctx, complete ? "trade.completed" : "trade.accepted", "trade", trade.id, { revision: trade.revision }),
-  );
+        .bind(
+          item.side === "proposer" ? trade.recipient_id : trade.proposer_id,
+          now,
+          item.instance_id,
+          ctx.tenant.id,
+          trade.id,
+          auditId,
+          trade.id,
+        ),
+    ),
+    ...trade.items.map((item) =>
+      ctx.db
+        .prepare(
+          `INSERT INTO fb_instance_history (id, tenant_id, instance_id, event, from_user_id, to_user_id, reference_type, reference_id, metadata_json, created_at)
+           SELECT ?, ?, ?, 'traded', ?, ?, 'trade', ?, ?, ? WHERE ${settled}`,
+        )
+        .bind(
+          newId("ih"),
+          ctx.tenant.id,
+          item.instance_id,
+          item.side === "proposer" ? trade.proposer_id : trade.recipient_id,
+          item.side === "proposer" ? trade.recipient_id : trade.proposer_id,
+          trade.id,
+          JSON.stringify({ revision: trade.revision }),
+          now,
+          auditId,
+          trade.id,
+        ),
+    ),
+    ctx.db
+      .prepare(
+        `INSERT INTO fb_outbox (id, tenant_id, topic, payload_json, status, attempts, available_at, created_at)
+         SELECT ?, ?, 'trade.completed', ?, 'pending', 0, ?, ? WHERE ${settled}`,
+      )
+      .bind(newId("out"), ctx.tenant.id, JSON.stringify({ trade_id: trade.id, revision: trade.revision }), now, now, auditId, trade.id),
+  ];
   try {
     await ctx.db.batch(statements);
   } catch (error) {
@@ -297,12 +361,8 @@ export async function acceptTrade(ctx: Ctx, tradeId: string) {
     if (message.includes("trade_not_ready") || message.includes("trade_item_invalid")) {
       throw new ApiError(409, "trade_not_ready", "The trade could not be completed because a card or acceptance changed. Nothing was transferred.");
     }
-    if (message.includes("UNIQUE") || message.includes("already_accepted")) {
-      throw new ApiError(409, "already_accepted", "You already accepted this revision. Nothing else was transferred.");
-    }
     throw error;
   }
-  return getTrade(ctx, trade.id);
 }
 
 export async function declineTrade(ctx: Ctx, tradeId: string) {
