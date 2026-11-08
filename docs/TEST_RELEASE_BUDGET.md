@@ -82,6 +82,28 @@ covered by `tests/scripts/ci-affected.test.mjs`, which runs in every
 The budget table is written to every CI job summary. The introducing run is
 https://github.com/loftwah/card-collector-bot/actions/runs/42444137964.
 
+### Production release, 2026-11-08
+
+Source `08f7eb90d786061969d2de00426e164963d8afa1`, Worker
+`5dd329fd-3afc-4edf-bd7f-9157726450e0`, rollback
+`e5bd9fd9-5c7c-4fb0-908d-f6d943bd9f78`.
+
+| Phase                  | Time  |
+| ---------------------- | ----- |
+| Checks                 | 22.7s |
+| Production build       | 6.0s  |
+| Pre-deploy total       | 35.7s |
+| Upload and propagation | 31.2s |
+| Read-only live smoke   | 4.3s  |
+| **Total**              | 73.6s |
+
+The receipt records `within_budget: true` with 226.4s remaining:
+`.foilbury/evidence/release-receipt-08f7eb90d786-6125697f-1495-432b-a8f3-0bc265c713a0.json`.
+The pre-deploy D1 backup is
+`.foilbury/backups/d1-2026-11-08T03-57-54-302Z.json` (96 tables, 33,990 rows,
+SHA-256 `a1069d40d7dee290d518ffd66ed344c2acdea45ca399f2e4275d410e9471d626`).
+No migration was applied; the release was code and documentation only.
+
 ## Re-measure
 
 ```sh
