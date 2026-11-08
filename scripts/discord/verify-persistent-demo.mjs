@@ -44,9 +44,10 @@ async function discord(endpoint, attempt = 0) {
 }
 
 const expectedImages = new Set([1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 13, 14, 15, 16]);
+const FINAL_STAGE = 21;
 const results = [];
 let failures = 0;
-for (let stage = 1; stage <= 17; stage += 1) {
+for (let stage = 1; stage <= FINAL_STAGE; stage += 1) {
   const id = state.stages[String(stage)]?.message_id;
   if (!id) {
     failures += 1;
@@ -88,9 +89,10 @@ for (let stage = 1; stage <= 17; stage += 1) {
   if (message.flags & 64) problems.push("ephemeral message");
   if (!hasStage) problems.push("footer stage mismatch");
   if (expectedImages.has(stage) && !imageUrl) problems.push("required image missing");
-  if (stage === 12 || stage === 17) {
+  if (stage === 12 || stage === FINAL_STAGE) {
     const indexText = JSON.stringify(message.embeds);
-    for (let linked = 1; linked <= 17; linked += 1) {
+    const lastLinked = stage === 12 ? 17 : FINAL_STAGE;
+    for (let linked = 1; linked <= lastLinked; linked += 1) {
       const linkedId = state.stages[String(linked)]?.message_id;
       if (linkedId && !indexText.includes(linkedId)) problems.push(`index missing stage ${linked}`);
     }

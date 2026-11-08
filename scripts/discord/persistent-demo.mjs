@@ -37,7 +37,7 @@ const refreshStages = new Set(
     : [],
 );
 const RUN_ID = "foilbury-demo-2026-11-04";
-const FINAL_STAGE = 17;
+const FINAL_STAGE = 21;
 const GUILD_ID = "997734945206313041";
 const CHANNEL_ID = "1566700752385081355";
 const APPLICATION_ID = "1566702936615026769";
@@ -1150,6 +1150,55 @@ async function publishStages({
   const achievementBoard = state.achievements;
   const profile = state.profile;
 
+  const npcCast = d1(
+    `SELECT n.slug, n.name, n.preset_key, n.status, n.actions_count, n.user_id,
+            (SELECT COUNT(*) FROM fb_card_instances i
+              WHERE i.user_id = n.user_id AND i.status = 'owned') AS copies,
+            (SELECT COUNT(DISTINCT i.card_id) FROM fb_card_instances i
+              WHERE i.user_id = n.user_id AND i.status = 'owned') AS subjects,
+            (SELECT w.balance FROM fb_wallets w WHERE w.user_id = n.user_id LIMIT 1) AS wallet
+       FROM fb_npc_collectors n
+      ORDER BY n.name`,
+  );
+  const npcTradeId = "trd_mw6vw8jl6zv9c2pbsh9jwzs5";
+  const npcTrade = d1(
+    `SELECT t.id, t.status, t.revision, t.completed_at, t.proposer_id, t.recipient_id,
+            d.npc_id, d.decision, d.reason, n.name AS npc_name, n.slug AS npc_slug
+       FROM fb_trades t
+       JOIN fb_npc_trade_decisions d ON d.trade_id = t.id
+       JOIN fb_npc_collectors n ON n.id = d.npc_id
+      WHERE t.id = ${quote(npcTradeId)} LIMIT 1`,
+  )[0] ?? null;
+  const npcTradeItems = npcTrade
+    ? d1(
+        `SELECT i.side, i.instance_id, c.serial, c.user_id AS owner_id,
+                d.name AS card_name, v.name AS variant_name
+           FROM fb_trade_items i
+           JOIN fb_card_instances c ON c.id = i.instance_id
+           JOIN fb_card_definitions d ON d.id = c.card_id
+           JOIN fb_variants v ON v.id = c.variant_id
+          WHERE i.trade_id = ${quote(npcTradeId)}
+          ORDER BY i.side`,
+      )
+    : [];
+  const npcTradeAcceptances = npcTrade
+    ? d1(
+        `SELECT a.user_id, a.revision, a.accepted_at, u.display_name
+           FROM fb_trade_acceptances a
+           LEFT JOIN fb_users u ON u.id = a.user_id
+          WHERE a.trade_id = ${quote(npcTradeId)}
+          ORDER BY a.accepted_at`,
+      )
+    : [];
+  const npcTotals = d1(
+    `SELECT (SELECT COUNT(*) FROM fb_card_instances) AS instances,
+            (SELECT COUNT(*) FROM fb_ledger_entries) AS ledger,
+            (SELECT COUNT(*) FROM fb_npc_trade_decisions) AS decisions,
+            (SELECT COUNT(*) FROM fb_trades WHERE status = 'completed') AS completed_trades`,
+  )[0] ?? null;
+  const npcGiven = npcTradeItems.find((item) => item.side === "proposer") ?? null;
+  const npcReceived = npcTradeItems.find((item) => item.side === "recipient") ?? null;
+
   const cardById = new Map(cardFiles.map((card) => [card.card_id, card]));
   const featuredCard = cardById.get(featured?.card_id);
   const completingCard = cardById.get(completing?.card_id);
@@ -1698,13 +1747,31 @@ async function publishStages({
             inline: false,
           },
           {
+            name: "Stage index · 13–18",
+            value: Array.from({ length: 6 }, (_, index) => {
+              const stage = index + 13;
+              const link = stageLinks(stage);
+              return link ? `[${stage}](${link})` : `${stage}`;
+            }).join(" · "),
+            inline: false,
+          },
+          {
+            name: "Stage index · 19–21",
+            value: Array.from({ length: 3 }, (_, index) => {
+              const stage = index + 19;
+              const link = stageLinks(stage);
+              return link ? `[${stage}](${link})` : `${stage}`;
+            }).join(" · "),
+            inline: false,
+          },
+          {
             name: "Source events",
             value: `${state.draws.length} real openings · ${uniqueAfter}/${cardFiles.length} unique subjects · ${duplicates} duplicates · ${mission ? `mission ${mission.title} claimed once` : "no mission claim"} · ${achievement?.name ?? "completion milestone"} (frozen release 5) with one reward`,
             inline: false,
           },
           {
             name: "Identity",
-            value: `Build \`${(state.build.source_sha ?? "").slice(0, 12)}\` · Worker \`${(state.worker_version ?? "").slice(0, 12)}\` · scope \`${(state.scope_digest ?? "").slice(0, 16)}\` · schema 0030`,
+            value: `Build \`${(state.build.source_sha ?? "").slice(0, 12)}\` · Worker \`${(state.worker_version ?? "").slice(0, 12)}\` · scope \`${(state.scope_digest ?? "").slice(0, 16)}\` · schema 0031`,
             inline: false,
           },
           {
@@ -1936,6 +2003,185 @@ async function publishStages({
       files: imageFor(16).files ?? [],
       rows: [[web("Open the profile page", "/play/profile"), ...chapterIndexLink()]],
     },
+    {
+      stage: 17,
+      embed: {
+        title: "Chapter index · the original sequence and what follows",
+        description:
+          "Stages 1–16 remain the original retained demonstration. The chapters below extend the same run with the production NPC cast and one completed human-initiated NPC trade. No earlier message is deleted.",
+        color: 0xc9a227,
+        fields: [
+          {
+            name: "Stage index · 1–6",
+            value: Array.from({ length: 6 }, (_, index) => {
+              const stage = index + 1;
+              const link = stageLinks(stage);
+              return link ? `[${stage}](${link})` : `${stage}`;
+            }).join(" · "),
+            inline: false,
+          },
+          {
+            name: "Stage index · 7–12",
+            value: Array.from({ length: 6 }, (_, index) => {
+              const stage = index + 7;
+              const link = stageLinks(stage);
+              return link ? `[${stage}](${link})` : `${stage}`;
+            }).join(" · "),
+            inline: false,
+          },
+          {
+            name: "Stage index · 13–18",
+            value: Array.from({ length: 6 }, (_, index) => {
+              const stage = index + 13;
+              const link = stageLinks(stage);
+              return link ? `[${stage}](${link})` : `${stage}`;
+            }).join(" · "),
+            inline: false,
+          },
+          {
+            name: "Next",
+            value:
+              "Stage 18 introduces the NPC cast; 19 records the deterministic decision; 20 records the completed transfer. The final index is stage 21.",
+            inline: false,
+          },
+        ],
+        footer: { text: `Foilbury · ${RUN_ID} · stage 17` },
+      },
+      files: [],
+      rows: [[web("Open the cabinet", "/play"), ...chapterIndexLink()]],
+    },
+    {
+      stage: 18,
+      embed: {
+        title: "NPC collectors · three labelled synthetic regulars",
+        description:
+          "The production Bot now has three persistent NPC collectors. Each has a real Bot-scoped wallet, an ordinary membership, real draws, serials and achievements. They are not Discord members, human testimonials or engagement metrics, and every surface labels them accordingly.",
+        color: 0x5b6ee1,
+        fields: [
+          ...npcCast.map((npc) => ({
+            name: npc.name,
+            value: `${npc.preset_key.replaceAll("_", " ")} · ${npc.status} · ${npc.actions_count} recorded actions · ${npc.subjects} subjects / ${npc.copies} copies · ${Number(npc.wallet).toLocaleString("en-AU")} Foil left`,
+            inline: false,
+          })),
+          {
+            name: "Same rules as a member",
+            value:
+              "Each opening used the deployed draw service at the ordinary price and pool odds. The preset chooses which eligible capsule to open; it never improves odds, adds entries or awards a card outside a real draw.",
+            inline: false,
+          },
+          {
+            name: "Where to look",
+            value:
+              "Member lounge: /play/rivals. Admin workspace: /studio/npcs. Every comparison is side-by-side with your own recorded album, never a fabricated statistic.",
+            inline: false,
+          },
+        ],
+        footer: { text: `Foilbury · ${RUN_ID} · stage 18` },
+      },
+      files: [],
+      rows: [[web("Open the NPC lounge", "/play/rivals"), ...chapterIndexLink()]],
+    },
+    {
+      stage: 19,
+      embed: {
+        title: "NPC trade · a deterministic decision on an exact offer",
+        description:
+          "Dean initiated an exact-copy exchange with Taro Brass from the real Discord command. The NPC decision is deterministic from its preset, recorded goals and current holdings; there is no AI inference and no human impersonation. Accepting reserved both copies without moving them.",
+        color: 0x3f9d5a,
+        fields: npcTrade
+          ? [
+              {
+                name: "You give",
+                value: npcGiven
+                  ? `${npcGiven.card_name} · ${npcGiven.variant_name} · ${npcGiven.serial}`
+                  : "No proposer copy recorded.",
+                inline: true,
+              },
+              {
+                name: "You receive",
+                value: npcReceived
+                  ? `${npcReceived.card_name} · ${npcReceived.variant_name} · ${npcReceived.serial}`
+                  : "No recipient copy recorded.",
+                inline: true,
+              },
+              {
+                name: "Decision",
+                value: `${npcTrade.decision} · ${npcTrade.reason}`,
+                inline: false,
+              },
+              {
+                name: "Controls",
+                value:
+                  "`/foilbury trade npc:… give:… take:…` returns an ephemeral preview with Confirm exchange, Cancel offer and Open trade desk. Confirmation is a second explicit action; nothing moves on preview.",
+                inline: false,
+              },
+              {
+                name: "Trade",
+                value: `\`${npcTrade.id}\` · revision ${npcTrade.revision} · ${npcTrade.status} · NPC \`${npcTrade.npc_slug}\``,
+                inline: false,
+              },
+            ]
+          : [{ name: "Trade", value: "No NPC trade decision was recorded.", inline: false }],
+        footer: { text: `Foilbury · ${RUN_ID} · stage 19` },
+      },
+      files: [],
+      rows: [[web("Open the trade desk", "/play/trades"), ...chapterIndexLink()]],
+    },
+    {
+      stage: 20,
+      embed: {
+        title: "NPC trade · completed atomically with serials preserved",
+        description:
+          "Confirming the offer moved both exact copies in one transaction. The Discord receipt, the persisted trade history and the web trade desk all read the same completed record. No new instance, serial or Foil ledger row was invented.",
+        color: 0xc9a227,
+        fields: npcTrade
+          ? [
+              {
+                name: "Completed",
+                value: `${dualTime(npcTrade.completed_at)} · revision ${npcTrade.revision} · ${npcTradeAcceptances.filter((row) => row.revision === npcTrade.revision).length}/2 acceptances`,
+                inline: false,
+              },
+              {
+                name: "Ownership after",
+                value: [
+                  npcReceived
+                    ? `Dean holds ${npcReceived.card_name} · ${npcReceived.variant_name} · ${npcReceived.serial}.`
+                    : null,
+                  npcGiven
+                    ? `${npcTrade.npc_name} holds ${npcGiven.card_name} · ${npcGiven.variant_name} · ${npcGiven.serial}.`
+                    : null,
+                  "The original acquired-at timestamps and serials are unchanged; only the owner moved.",
+                ]
+                  .filter(Boolean)
+                  .join("\n"),
+                inline: false,
+              },
+              {
+                name: "Conservation",
+                value: npcTotals
+                  ? `${npcTotals.instances} card instances and ${npcTotals.ledger} Foil ledger rows remain. The trade added no instance and no Foil movement; ${npcTotals.decisions} NPC decision and ${npcTotals.completed_trades} completed trade are recorded.`
+                  : "Production counts were not read for this run.",
+                inline: false,
+              },
+              {
+                name: "Honesty",
+                value:
+                  "Taro Brass is a labelled synthetic collector. This is a human-initiated trade against a deterministic NPC, not evidence of a second human participant or an independent spectator.",
+                inline: false,
+              },
+            ]
+          : [{ name: "Trade", value: "No completed NPC trade was recorded.", inline: false }],
+        footer: { text: `Foilbury · ${RUN_ID} · stage 20` },
+      },
+      files: [],
+      rows: [
+        [
+          web("Open my trades", "/play/trades"),
+          web("Open the NPC lounge", "/play/rivals"),
+          ...chapterIndexLink(),
+        ],
+      ],
+    },
   ];
 
   for (const stage of stages) {
@@ -2019,8 +2265,8 @@ async function publishStages({
       inline: false,
     },
     {
-      name: "Stage index · 13–17",
-      value: Array.from({ length: 5 }, (_, index) => {
+      name: "Stage index · 13–18",
+      value: Array.from({ length: 6 }, (_, index) => {
         const stage = index + 13;
         const link = stageLinks(stage);
         return link ? `[${stage}](${link})` : `${stage}`;
@@ -2028,19 +2274,28 @@ async function publishStages({
       inline: false,
     },
     {
+      name: "Stage index · 19–21",
+      value: Array.from({ length: 3 }, (_, index) => {
+        const stage = index + 19;
+        const link = stageLinks(stage);
+        return link ? `[${stage}](${link})` : `${stage}`;
+      }).join(" · "),
+      inline: false,
+    },
+    {
       name: "Source events",
-      value: `${state.draws.length} original-run openings · ${uniqueAfter}/${cardFiles.length} unique subjects · ${duplicates} duplicates · ${missionBoard ? `${missionBoard.claimed_count}/${missionBoard.items.length} daily missions claimed` : "mission board not read"} · ${achievement?.name ?? "completion milestone"} (frozen release 5) with one reward · one deliberate profile share`,
+      value: `${state.draws.length} original-run openings · ${uniqueAfter}/${cardFiles.length} unique subjects · ${duplicates} duplicates · ${missionBoard ? `${missionBoard.claimed_count}/${missionBoard.items.length} daily missions claimed` : "mission board not read"} · ${achievement?.name ?? "completion milestone"} (frozen release 5) with one reward · one deliberate profile share · one completed human-initiated NPC trade`,
       inline: false,
     },
     {
       name: "Identity",
-      value: `Build \`${(state.build.source_sha ?? "").slice(0, 12)}\` · Worker \`${(state.worker_version ?? "").slice(0, 12)}\` · scope \`${(state.scope_digest ?? "").slice(0, 16)}\` · schema 0030`,
+      value: `Build \`${(state.build.source_sha ?? "").slice(0, 12)}\` · Worker \`${(state.worker_version ?? "").slice(0, 12)}\` · scope \`${(state.scope_digest ?? "").slice(0, 16)}\` · schema 0031`,
       inline: false,
     },
     {
       name: "Unperformed",
       value:
-        "Independent second-account spectator observation and a real mobile client review remain open; this sequence does not claim them. NPC cast and trading stages are delivered under #9 and are not claimed here until those stages are posted.",
+        "Independent second-account spectator observation and a real mobile client review remain open; this sequence does not claim them. The NPC cast and the human-initiated NPC trade are real production records, but one synthetic collector is not an independent spectator.",
       inline: false,
     },
     {
