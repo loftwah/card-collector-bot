@@ -1067,7 +1067,10 @@ function starterLookLabel(look: string): string {
   );
 }
 
-async function npcView(ctx: Ctx, query: string): Promise<DiscordCallback> {
+async function npcView(ctx: Ctx, installation: DiscordInstallation, query: string): Promise<DiscordCallback> {
+  const scope = await resolveDiscordScope(ctx, installation, installation.channel_key ?? null);
+  if (scope.emptyReason) return scopeFailureMessage(scope);
+  const allowedCardIds = await discordScopeCardIds(ctx, scope);
   const profiles = await listNpcProfiles(ctx);
   if (profiles.length === 0) {
     return callback(
@@ -1111,7 +1114,7 @@ async function npcView(ctx: Ctx, query: string): Promise<DiscordCallback> {
     );
   }
   const comparison = await compareNpc(ctx, selected.id);
-  const offers = await npcTradeOffers(ctx, selected.id);
+  const offers = await npcTradeOffers(ctx, selected.id, { allowedCardIds });
   return callback(
     {
       embeds: [
@@ -1183,8 +1186,11 @@ async function findTradeCopy(ctx: Ctx, userId: string, serial: string) {
 async function npcTradeCommand(
   ctx: Ctx,
   interaction: DiscordInteraction,
+  installation: DiscordInstallation,
   values: Record<string, string | number | boolean | undefined>,
 ): Promise<DiscordCallback> {
+  const scope = await resolveDiscordScope(ctx, installation, interaction.channel_id ?? null);
+  if (scope.emptyReason) return scopeFailureMessage(scope);
   const query = typeof values.npc === "string" ? values.npc.trim().toLowerCase() : "";
   const giveSerial = typeof values.give === "string" ? values.give.trim() : "";
   const takeSerial = typeof values.take === "string" ? values.take.trim() : "";
@@ -1201,6 +1207,16 @@ async function npcTradeCommand(
   if (!give) throw new ApiError(404, "trade_give_not_found", `No owned, unlocked copy with serial ${giveSerial} was found. Use the serial from /foilbury collection.`);
   const take = await findTradeCopy(ctx, npc.row.user_id, takeSerial);
   if (!take) throw new ApiError(404, "trade_take_not_found", `The collector has no tradeable copy with serial ${takeSerial}. Use /foilbury npc name:${selected.slug}.`);
+  // The verified installation scope is a hard boundary for every Discord
+  // surface, including NPC exchanges. A collection enabled for the Bot but not
+  // for this server (or a later disabled collection) must not appear here.
+  const [giveCard, takeCard] = await Promise.all([
+    first<{ card_id: string }>(ctx.db, "SELECT card_id FROM fb_card_instances WHERE id = ? AND tenant_id = ?", give.id, ctx.tenant.id),
+    first<{ card_id: string }>(ctx.db, "SELECT card_id FROM fb_card_instances WHERE id = ? AND tenant_id = ?", take.id, ctx.tenant.id),
+  ]);
+  if (!giveCard || !takeCard) throw new ApiError(409, "npc_trade_unavailable", "A selected copy no longer exists.");
+  await assertCardInDiscordScope(ctx, scope, giveCard.card_id);
+  await assertCardInDiscordScope(ctx, scope, takeCard.card_id);
   const preview = await previewNpcTrade(ctx, {
     npcId: selected.id,
     giveInstanceIds: [give.id],
@@ -2778,9 +2794,9 @@ export async function runCommand(
     case "profile":
       return profile(ctx, installation, undefined, interaction.channel_id);
     case "npc":
-      return npcView(ctx, typeof values.name === "string" ? values.name : "");
+      return npcView(ctx, installation, typeof values.name === "string" ? values.name : "");
     case "trade":
-      return npcTradeCommand(ctx, interaction, values);
+      return npcTradeCommand(ctx, interaction, installation, values);
     case "help":
       return help(ctx);
     case "admin:status":

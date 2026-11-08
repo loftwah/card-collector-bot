@@ -1317,6 +1317,7 @@ describe("Discord HTTP interactions", () => {
 
   it("shows a labelled NPC profile and comparison on demand", async () => {
     const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    await fixturePool(owner);
     const npc = await createNpc(owner, { name: "Discord Rival", presetKey: "variety_collector", bio: "A clearly synthetic collector used only for the Discord inspection test." });
     const listed = await send(interaction(command("npc"), { id: "npc-list" }));
     expect(listed.payload.data?.embeds?.[0]?.title).toContain("NPC collectors");

@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { handleDiscordInteraction } from "../../src/server/discord/handler";
 import { signDiscordRequest } from "../../src/server/discord/signature";
 import type { DiscordEnv } from "../../src/server/discord/types";
-import { bootstrap, ctxFor, fixturePool, runtime, setBalance, walletBalance } from "./helpers";
+import { bootstrap, ctxFor, fixturePool, makeInstance, runtime, setBalance, walletBalance } from "./helpers";
 import { addCollectionCards, createCollection } from "../../src/server/modules/collections";
-import { resolveDiscordScope } from "../../src/server/discord/scope";
+import { createNpc } from "../../src/server/modules/npcs";
+import { npcTradeOffers } from "../../src/server/modules/npc-trades";
+import { discordScopeCardIds, resolveDiscordScope } from "../../src/server/discord/scope";
 import type { DiscordInstallation } from "../../src/server/discord/types";
 import { routeApi } from "../../src/server/api/router";
 
@@ -211,6 +213,41 @@ describe("Discord configured-server scope", () => {
     expect(allowed.data?.flags).toBe(64);
     expect(JSON.stringify(allowed.data)).toContain("Test One");
     expect(await draws()).toBe(1);
+  });
+
+  it("limits the NPC tradeable list to cards filed only in this server's configured collections", async () => {
+    const player = await install(["col_test_public"]);
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const fixture = await fixturePool(owner);
+    const npc = await createNpc(owner, {
+      name: "Scope Curator",
+      presetKey: "completionist",
+      goalCollectionId: "col_test_public",
+      startingBalance: 0,
+    });
+    const npcRow = await runtime.DB
+      .prepare("SELECT user_id FROM fb_npc_collectors WHERE id = ?")
+      .bind(npc.id)
+      .first<{ user_id: string }>();
+    await makeInstance(owner, npcRow!.user_id, fixture, "NPC-SCOPE-1");
+    const scoped = await resolveDiscordScope(player, await installation(), CHANNEL_ID);
+    const allowed = await discordScopeCardIds(player, scoped);
+    const before = await npcTradeOffers(player, npc.id, { allowedCardIds: allowed });
+    expect(before.copies.map((copy) => copy.card_name)).toEqual(["Test One"]);
+
+    const outside = await createCollection(owner, {
+      name: "Outside Server Scope",
+      scope: "global",
+      status: "published",
+      viewAudience: "members",
+    });
+    await addCollectionCards(owner, outside.id, [fixture.cardId]);
+    const refreshed = await resolveDiscordScope(player, await installation(), CHANNEL_ID);
+    const narrowed = await discordScopeCardIds(player, refreshed);
+    // A card filed in a collection outside the installation allowlist is not
+    // presented as tradeable, even though the Bot still enables the collection.
+    const after = await npcTradeOffers(player, npc.id, { allowedCardIds: narrowed });
+    expect(after.copies).toEqual([]);
   });
 
   it("excludes AI-assisted artwork when the Bot preference is off and includes it when on", async () => {
