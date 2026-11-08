@@ -88,7 +88,9 @@ export function drawReceiptFromResult(result: DrawReceipt): DiscordDrawReceipt {
     settlement_status: result.settlement_status,
     settlement_pending: result.settlement_pending,
     drawn_at: result.drawn_at,
-    replayed: result.replayed,
+    // The shared draw service omits `replayed` on the first commit. Persisting
+    // `undefined` made the first reveal look like a recovered re-send.
+    replayed: result.replayed === true,
   };
 }
 
