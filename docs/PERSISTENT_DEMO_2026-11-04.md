@@ -183,9 +183,29 @@ in `docs/CONTENT_QUALITY_MATRIX.md` and the import evidence JSON.
   with the collector name. Both now use the same left-to-right scrim so the
   name, featured copy and badges remain readable.
 
+## NPC extension · 2026-11-08
+
+Stages 18–20 were added as retained messages after the #9 production cast and
+trade were exercised; stage 17 was refreshed from the old conclusion into an
+index so no historical message was deleted.
+
+- **Stage 18 — NPC collectors:** https://discord.com/channels/997734945206313041/1566700752385081355/1568794094019551435
+- **Stage 19 — deterministic decision:** https://discord.com/channels/997734945206313041/1566700752385081355/1568794095722434741
+- **Stage 20 — completed transfer:** https://discord.com/channels/997734945206313041/1566700752385081355/1568794097450225675
+- **Stage 21 — full index:** https://discord.com/channels/997734945206313041/1566700752385081355/1568794099039998004
+
+The recorded trade is `trd_mw6vw8jl6zv9c2pbsh9jwzs5`: Dean gave Anakt Garden
+Gold `FB-4-DE-7A6A37` and received Gonta Gokuhara Plain `FB-4-TA-626A51` from
+Taro Brass. Production read-back after settlement: the Anakt Garden instance is
+owned by Taro Brass's synthetic user, the Gonta instance is owned by
+`usr_prod_owner`, both serials and `acquired_at` values are unchanged, the trade
+has two acceptances at revision 1, and production still has 147 card instances,
+230 Foil ledger rows, one NPC decision and one completed trade. No card or Foil
+row was created by the transfer.
+
 ## Verification performed
 
-- `scripts/discord/verify-persistent-demo.mjs`: **17/17 PASS**, zero failures.
+- `scripts/discord/verify-persistent-demo.mjs`: **21/21 PASS**, zero failures.
   Every required image downloaded with HTTP 200 `image/png`; stage 12 and stage
   17 indexes link every stage; no mentions or private account/tenant identifiers.
 - The signed-in desktop Discord client was used to inspect stages 13–17, the
@@ -208,8 +228,9 @@ in `docs/CONTENT_QUALITY_MATRIX.md` and the import evidence JSON.
   independent person.
 - **Real mobile Discord client:** still BLOCKED. Responsive browser emulation is
   not a physical-device observation.
-- **NPC cast and trading stages:** not posted here. They depend on #9's real
-  production cast and human-initiated exchange; stage 10 and stage 17 state this
-  honestly instead of inventing an NPC.
+- **NPC cast and trading stages:** posted as stages 18–20 from real production
+  records. They are a human-initiated trade against a labelled, deterministic
+  synthetic collector; they are not a second human participant or an independent
+  spectator.
 - The profile share expires on 2026/11/14. The retained message shows the
   recipient snapshot; the private link itself is not evidence beyond that date.

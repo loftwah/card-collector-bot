@@ -659,14 +659,16 @@ export default function TradeDesk({
                       {busy === `accept-${detail.id}` ? "Accepting…" : "Accept this revision"}
                     </Button>
                   ) : null}
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => open(detail.id)}
-                    disabled={Boolean(busy)}
-                  >
-                    <RefreshCw size={13} /> Refresh offer
-                  </Button>
+                  {detail.status === "open" ? (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => open(detail.id)}
+                      disabled={Boolean(busy)}
+                    >
+                      <RefreshCw size={13} /> Refresh offer
+                    </Button>
+                  ) : null}
                 </div>
               </div>
             </>
