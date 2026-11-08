@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createShareLink, revokeShareLink, updatePreferences } from "../../src/server/modules/economy";
+import { resolveShareView } from "../../src/server/modules/shares";
 import { bootstrap, ctxFor, fixturePool, makeInstance, runtime } from "./helpers";
 import { nowIso } from "../../src/server/db";
 
@@ -29,6 +30,22 @@ describe("deliberate sharing", () => {
     });
     const profile = await createShareLink(owner, { kind: "profile", expiresInDays: 7 });
     expect(profile.kind).toBe("profile");
+  });
+
+  it("turning sharing off stops new links but leaves existing links explicit and revocable", async () => {
+    await bootstrap();
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    await updatePreferences(owner, { sharingEnabled: true });
+    const existing = await createShareLink(owner, { kind: "profile", expiresInDays: 7 });
+    await updatePreferences(owner, { sharingEnabled: false });
+    const view = await resolveShareView(owner, existing.token);
+    expect(view.active).toBe(true);
+    expect(view.visible).toBe(true);
+    await expect(createShareLink(owner, { kind: "profile", expiresInDays: 7 })).rejects.toMatchObject({
+      code: "sharing_disabled",
+    });
+    await revokeShareLink(owner, existing.id);
+    expect((await resolveShareView(owner, existing.token)).active).toBe(false);
   });
 
   it("captures the chosen profile look and note without private identifiers", async () => {

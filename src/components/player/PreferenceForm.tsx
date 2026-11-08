@@ -392,7 +392,9 @@ export default function PreferenceForm({
             </label>
             <p className="mt-3 text-xs leading-relaxed text-[var(--muted)]">
               Every link is a snapshot with an expiry. It never silently expands to cards you obtain
-              later, and a secret URL never substitutes for membership.
+              later, and a secret URL never substitutes for membership. Turning this off stops new
+              links only; existing active links stay live until they expire or you revoke them under
+              Manage shares.
             </p>
           </div>
         </section>
