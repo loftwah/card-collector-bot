@@ -194,6 +194,12 @@ index so no historical message was deleted.
 - **Stage 20 — completed transfer:** https://discord.com/channels/997734945206313041/1566700752385081355/1568794097450225675
 - **Stage 21 — full index:** https://discord.com/channels/997734945206313041/1566700752385081355/1568794099039998004
 
+Stage 19 also records a declined preview: offering Chiaki Nanami Silver
+`FB-3-DE-4E3CB0` for Victor Wembanyama Gold `FB-4-TA-A2CA60` returned “the NPC's
+only goal copy” and created no trade or reservation. Stage 20 attaches a composed
+front-art image of both exact copies, with the serials and the direction of the
+exchange.
+
 The recorded trade is `trd_mw6vw8jl6zv9c2pbsh9jwzs5`: Dean gave Anakt Garden
 Gold `FB-4-DE-7A6A37` and received Gonta Gokuhara Plain `FB-4-TA-626A51` from
 Taro Brass. Production read-back after settlement: the Anakt Garden instance is

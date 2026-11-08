@@ -101,6 +101,12 @@ Evidence: `docs/evidence/npc-studio.png`, `docs/evidence/npc-lounge.png`,
 `docs/evidence/npc-lounge-mobile.png`, `docs/evidence/npc-browser.json`,
 `docs/evidence/npc-studio-receipts.png`.
 
+A declined preview was also exercised against Taro Brass: offering Chiaki
+Nanami Silver `FB-3-DE-4E3CB0` for Victor Wembanyama Gold `FB-4-TA-A2CA60`
+returned `decline` with “The collector cannot spare Victor Wembanyama
+FB-4-TA-A2CA60: the NPC's only goal copy.” No trade row and no reservation were
+created by the preview.
+
 Production cast (2026-11-08): Mina Quill (`completionist`), Taro Brass
 (`gold_hunter`) and Juniper Vale (`friendly_collector`), each with 1,200 Foil and
 eight real draws. Dean's first human-initiated NPC trade,

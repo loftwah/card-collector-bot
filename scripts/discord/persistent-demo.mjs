@@ -1198,6 +1198,34 @@ async function publishStages({
   )[0] ?? null;
   const npcGiven = npcTradeItems.find((item) => item.side === "proposer") ?? null;
   const npcReceived = npcTradeItems.find((item) => item.side === "recipient") ?? null;
+  const npcTradeCards = [];
+  for (const item of [npcGiven, npcReceived]) {
+    if (!item) continue;
+    const row = d1(
+      `SELECT fr.r2_key
+         FROM fb_card_instances i
+         JOIN fb_variant_renders vr ON vr.variant_id = i.variant_id AND vr.status = 'published'
+         JOIN fb_assets fr ON fr.id = vr.asset_id
+        WHERE i.id = ${quote(item.instance_id)} LIMIT 1`,
+    )[0];
+    if (!row?.r2_key) continue;
+    npcTradeCards.push({
+      card_id: item.instance_id,
+      name: item.card_name,
+      caption: `${item.variant_name} · ${item.serial} · ${item.side === "proposer" ? "Dean gave" : "Dean received"}`,
+      file: await downloadR2(row.r2_key, `npc-trade-${item.side}.webp`),
+    });
+  }
+  const npcTradePath = npcTradeCards.length
+    ? await composeGrid({
+        cards: npcTradeCards,
+        owned: null,
+        title: "Exact copies exchanged",
+        subtitle: `${npcGiven?.serial ?? ""} → Taro · ${npcReceived?.serial ?? ""} → Dean · serials preserved`,
+        out: path.join(ASSET_DIR, "npc-trade.png"),
+        columns: 2,
+      })
+    : null;
 
   const cardById = new Map(cardFiles.map((card) => [card.card_id, card]));
   const featuredCard = cardById.get(featured?.card_id);
@@ -1314,6 +1342,7 @@ async function publishStages({
     [14, { name: "achievements-board.png", path: achievementsBoardPath }],
     [15, { name: "profile-hero.png", path: profileHeroPath }],
     [16, { name: "profile-share.png", path: profileSharePath }],
+    [20, { name: "npc-trade.png", path: npcTradePath }],
   ]);
   if (!dryRun) {
     for (const [stage, image] of newStageImages) {
@@ -2110,6 +2139,12 @@ async function publishStages({
                 inline: false,
               },
               {
+                name: "A declined preview",
+                value:
+                  "Offering Chiaki Nanami Silver FB-3-DE-4E3CB0 for Victor Wembanyama Gold FB-4-TA-A2CA60 returned decline: “The collector cannot spare Victor Wembanyama FB-4-TA-A2CA60: the NPC's only goal copy.” No trade was created and nothing was reserved.",
+                inline: false,
+              },
+              {
                 name: "Controls",
                 value:
                   "`/foilbury trade npc:… give:… take:…` returns an ephemeral preview with Confirm exchange, Cancel offer and Open trade desk. Confirmation is a second explicit action; nothing moves on preview.",
@@ -2172,8 +2207,9 @@ async function publishStages({
             ]
           : [{ name: "Trade", value: "No completed NPC trade was recorded.", inline: false }],
         footer: { text: `Foilbury · ${RUN_ID} · stage 20` },
+        ...(imageFor(20).embed ?? {}),
       },
-      files: [],
+      files: imageFor(20).files ?? [],
       rows: [
         [
           web("Open my trades", "/play/trades"),
