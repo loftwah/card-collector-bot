@@ -7,6 +7,8 @@ interface Props {
   description: string;
   noIndex?: boolean;
   shareImage?: string;
+  shareImageWidth?: number;
+  shareImageHeight?: number;
   wide?: boolean;
   shell?: "site" | "player";
 }
@@ -15,6 +17,8 @@ const {
   description,
   noIndex = false,
   shareImage = "/brand/social-preview.jpg",
+  shareImageWidth = 1200,
+  shareImageHeight = 630,
   shell = "site",
 } = Astro.props;
 const session = Astro.locals.foilbury;
@@ -30,24 +34,33 @@ const pageTitle = title.includes("Foilbury") ? title : `${title} · Foilbury`;
     <title>{pageTitle}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
-    <link rel="preload" href="/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/geist/GeistSerifVF.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/geist/GeistSansVF.woff2" as="font" type="font/woff2" crossorigin />
     {noIndex ? <meta name="robots" content="noindex" /> : null}
     <meta name="foilbury-csrf" content={session?.csrfToken ?? ""} />
-    <meta name="theme-color" content="#11141B" />
+    <meta name="theme-color" content="#fafaf8" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="/brand/mark.svg" type="image/svg+xml" />
     <link rel="icon" href="/brand/favicon-32.png" sizes="32x32" type="image/png" />
     <link rel="icon" href="/brand/favicon-16.png" sizes="16x16" type="image/png" />
     <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Foilbury" />
+    <meta property="og:locale" content="en_AU" />
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
     <meta property="og:image" content={new URL(shareImage, Astro.site ?? Astro.url).href} />
+    <meta property="og:image:width" content={String(shareImageWidth)} />
+    <meta property="og:image:height" content={String(shareImageHeight)} />
+    <meta property="og:image:alt" content={`${pageTitle} — Foilbury`} />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={pageTitle} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={new URL(shareImage, Astro.site ?? Astro.url).href} />
+    <meta name="twitter:image:alt" content={`${pageTitle} — Foilbury`} />
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>

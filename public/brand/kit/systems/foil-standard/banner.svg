@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-label="Foilbury Discord banner">
+    <defs><pattern id="banner-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+    <path d="M40 0H0V40" fill="none" stroke="#FAFAF8" stroke-width="1" opacity="0.07"/>
+  </pattern></defs>
+    <rect width="960" height="540" fill="#0A0A0A"/>
+    <rect width="960" height="540" fill="url(#banner-grid)"/>
+    <g transform="translate(56 106)">
+      <g transform="translate(0 0) scale(0.42)">
+        <path d="M56 48h108l12 12v28H96v28h64v40H96v60H56z" transform="translate(12 12)" fill="#1F5EFF"/>
+        <path d="M56 48h108l12 12v28H96v28h64v40H96v60H56z" fill="#FAFAF8"/>
+      </g>
+      <text x="96" y="60" font-family="Geist Serif" font-weight="500" font-size="40" letter-spacing="-1" fill="#FAFAF8">Foilbury</text>
+    </g>
+    <text x="56" y="330" font-family="Geist Serif" font-weight="500" font-size="64" letter-spacing="-3" fill="#FAFAF8">Characters</text>
+    <text x="56" y="400" font-family="Geist Serif" font-weight="500" font-size="64" letter-spacing="-3" fill="#FAFAF8">worth keeping.</text>
+    <rect x="58" y="432" width="220" height="5" fill="#1F5EFF"/>
+    <text x="58" y="484" font-family="Geist Mono" font-size="14" letter-spacing="4" fill="#8A8A84">PUBLIC SHELF · MEMBER ALBUM · ORIGINAL WORLDS</text>
+    <g transform="translate(686 128) rotate(8 100 140)">
+      <rect x="12" y="12" width="200" height="280" rx="8" fill="#0E0E0E" stroke="#2A2A2A"/>
+      <rect width="200" height="280" rx="8" fill="#111111" stroke="#2A2A2A"/>
+      <g transform="translate(64 88) scale(0.34)">
+        <path d="M56 48h108l12 12v28H96v28h64v40H96v60H56z" transform="translate(12 12)" fill="#1F5EFF"/>
+        <path d="M56 48h108l12 12v28H96v28h64v40H96v60H56z" fill="#FAFAF8"/>
+      </g>
+      <text x="100" y="246" text-anchor="middle" font-family="Geist Mono" font-size="9" letter-spacing="3" fill="#8A8A84">PUBLIC SHELF · 001</text>
+      <rect y="276" width="200" height="4" fill="#1F5EFF"/>
+    </g>
+  </svg>

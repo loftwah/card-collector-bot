@@ -31,7 +31,7 @@ function query(sql) {
   return first?.results ?? [];
 }
 const manropeBase64 = fs.readFileSync(path.join(root, "public", "fonts", "manrope-latin.woff2")).toString("base64");
-const brandMark = fs.readFileSync(path.join(root, "public", "brand", "kit", "signal-fold", "mark-1024.png")).toString("base64");
+const brandMark = fs.readFileSync(path.join(root, "public", "brand", "kit", "foil-standard", "mark-1024.png")).toString("base64");
 
 function esc(value) {
   return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");

@@ -41,7 +41,7 @@ try {
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto("/");
-    await page.getByRole("heading", { name: /pull something wonderful/i }).waitFor();
+    await page.getByRole("heading", { name: /characters worth keeping/i }).waitFor();
     await audit(page, `${scheme} public home`, `ui-home-${scheme}.png`);
     await page.goto("/cabinet");
     await page.getByRole("heading", { name: /public showcase/i }).waitFor();
@@ -108,7 +108,7 @@ try {
     await audit(page, `${scheme} Studio team policy`, `ui-studio-team-${scheme}.png`);
     await page.goto("/play/preferences");
     await page.getByRole("heading", { level: 1, name: /^Preferences$/ }).waitFor();
-    await page.getByText(/manage shares/i).waitFor();
+    await page.getByRole("heading", { name: /manage shares/i }).waitFor();
     await audit(page, `${scheme} collection preferences`, `ui-preferences-${scheme}.png`);
     await page.goto("/play/wishlist");
     await page.getByRole("heading", { level: 1, name: /^Wishlist$/ }).waitFor();

@@ -55,6 +55,12 @@ const sharePresentation =
     : null;
 const sharePortrait = sharePresentation?.portrait?.image_url ?? null;
 const shareBanner = sharePresentation?.banner?.image_url ?? null;
+const cardRender = typeof payload.render_url === "string" ? payload.render_url : null;
+const shareImage = publicView
+  ? (cardRender ?? shareBanner ?? sharePortrait ?? "/brand/social-preview.jpg")
+  : "/brand/social-preview.jpg";
+const shareImageWidth = publicView && (cardRender || shareBanner || sharePortrait) ? 750 : 1200;
+const shareImageHeight = publicView && (cardRender || shareBanner || sharePortrait) ? 1050 : 630;
 const shareFavourites = sharePresentation?.favourites?.length
   ? sharePresentation.favourites
   : (Array.isArray(payload.favourite_cards)
@@ -78,7 +84,7 @@ const shareBadges = sharePresentation?.badges?.length
       collection_logo_url: null,
     }));
 ---
-<BaseLayout title={pageTitle} description={publicView ? `${shareTitle} — an explicitly shared Foilbury snapshot.` : "A members-only Foilbury share. Sign in with an entitled account to view it."} noIndex>
+<BaseLayout title={pageTitle} description={publicView ? `${shareTitle} — an explicitly shared Foilbury snapshot.` : "A members-only Foilbury share. Sign in with an entitled account to view it."} noIndex shareImage={shareImage} shareImageWidth={shareImageWidth} shareImageHeight={shareImageHeight}>
   <section class="container py-12 md:py-16">
     {active && visible ? (
       <>

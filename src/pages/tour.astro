@@ -41,7 +41,13 @@ const steps = [
 ];
 const fmtDuration = (seconds: number) => seconds >= 3600 ? `${Math.round(seconds / 3600)} hours` : `${Math.round(seconds / 60)} minutes`;
 ---
-<BaseLayout title="The guided tour · Foilbury" description="A short, real tour of Foilbury: the public showcase, a branded set, free play, card inspection, collection mastery and deliberate sharing." shareImage={hero?.variant.render_url ?? "/brand/social-preview.jpg"}>
+<BaseLayout
+  title="The guided tour · Foilbury"
+  description="A short, real tour of Foilbury: the public showcase, a branded set, free play, card inspection, collection mastery and deliberate sharing."
+  shareImage={hero?.variant.render_url ?? "/brand/social-preview.jpg"}
+  shareImageWidth={hero?.variant.render_url ? 750 : 1200}
+  shareImageHeight={hero?.variant.render_url ? 1050 : 630}
+>
   <section class="signal-rule" aria-hidden="true"></section>
   <section class="container py-10 md:py-14">
     <div class="grid min-w-0 grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-start">

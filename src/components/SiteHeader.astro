@@ -1,4 +1,5 @@
 ---
+import BrandMark from "./BrandMark.astro";
 import ThemeToggle from "./ThemeToggle";
 import LogoutButton from "./LogoutButton";
 const session = Astro.locals.foilbury;
@@ -24,10 +25,11 @@ if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform"
   <div class="container site-header__inner flex min-h-[68px] flex-wrap items-center justify-between gap-2 py-3 sm:gap-4">
     <a
       href="/"
-      class="flex shrink-0 items-center gap-1.5 no-underline"
+      class="flex shrink-0 items-center gap-2.5 no-underline"
       aria-label="Foilbury home"
     >
-      <span class="font-display text-[1.1rem] font-bold tracking-[-0.035em]">
+      <BrandMark size={26} class="text-[var(--ink)]" />
+      <span class="hidden font-display text-[1.35rem] font-medium tracking-[-0.025em] min-[420px]:inline">
         Foilbury
       </span>
     </a>
@@ -37,7 +39,7 @@ if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform"
         <a
           href={link.href}
           class:list={[
-            "border-b-2 px-3 py-2 font-sans text-[0.85rem] font-medium no-underline transition-colors",
+            "border-b px-3 py-2 font-sans text-[0.84rem] font-medium no-underline transition-colors",
             (
               link.href === "/play/draw"
                 ? path.startsWith("/play/draw")
@@ -45,7 +47,7 @@ if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform"
                   ? path.startsWith("/play") && !path.startsWith("/play/draw")
                   : path === link.href || path.startsWith(link.href + "/")
             )
-              ? "border-[var(--signal)] text-[var(--ink)]"
+              ? "border-[var(--ink)] text-[var(--ink)]"
               : "border-transparent text-[var(--muted)] hover:text-[var(--ink)]",
           ]}
         >

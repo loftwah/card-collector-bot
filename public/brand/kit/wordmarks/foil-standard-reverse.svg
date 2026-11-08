@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 400" role="img" aria-label="Foilbury wordmark">
+    <rect width="1600" height="400" fill="#0A0A0A"/>
+    <g transform="translate(40 0)">
+      <g transform="translate(0 96) scale(0.62)">
+        <path d="M56 48h108l12 12v28H96v28h64v40H96v60H56z" transform="translate(12 12)" fill="#1F5EFF"/>
+        <path d="M56 48h108l12 12v28H96v28h64v40H96v60H56z" fill="#FAFAF8"/>
+      </g>
+      <text x="220" y="248" font-family="Geist Serif" font-weight="500" font-size="210" letter-spacing="-8" fill="#FAFAF8">Foilbury</text>
+      <text x="226" y="312" font-family="Geist Mono" font-size="22" letter-spacing="8" fill="#FAFAF8" opacity=".58">A COLLECTOR'S CABINET</text>
+    </g>
+  </svg>

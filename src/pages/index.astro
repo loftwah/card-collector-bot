@@ -17,21 +17,45 @@ const featuredCards = featuredCollection
     })
   : [];
 
-const featuredCard =
-  featuredCards.find((card) =>
-    card.editions.some((edition) => edition.variants.some((variant) => variant.render_url)),
-  ) ?? null;
-const featuredVariant =
-  featuredCard?.editions
-    .flatMap((edition) => edition.variants)
-    .find((variant) => variant.render_url) ?? null;
+type FeaturedCard = (typeof featuredCards)[number];
+type FeaturedVariant = FeaturedCard["editions"][number]["variants"][number];
+const heroEntries = featuredCards
+  .map((card) => {
+    const variant = card.editions
+      .flatMap((edition) => edition.variants)
+      .find((item) => item.render_url);
+    return variant ? { card, variant } : null;
+  })
+  .filter((entry): entry is { card: FeaturedCard; variant: FeaturedVariant } => entry !== null)
+  .slice(0, 3);
+const heroMain = heroEntries[0] ?? null;
+const heroBacks = heroEntries.slice(1, 3);
 const primaryHref = user ? "/play" : "/login?next=%2Fplay";
-const shelfCollections = collections.slice(0, 4);
+const browseHref = user ? "/play" : "/cabinet";
+const shelfCollections = collections.slice(0, 6);
+const albumFeatures = [
+  [
+    "Open a capsule",
+    "See the exact price and the live eligible odds before a card moves. One opening commits one copy.",
+  ],
+  [
+    "Inspect the object",
+    "Front, back and an on-demand 3D view. Reduced motion gets a clean static inspection instead.",
+  ],
+  [
+    "Keep the story",
+    "Every card carries a reviewed profile, a source boundary and its collection context.",
+  ],
+  [
+    "Let duplicates travel",
+    "Trade or recycle extras. Your ledger, serials and history stay authoritative.",
+  ],
+];
 ---
 
 <BaseLayout
-  title="Foilbury — a personal card library"
-  description="A free collectible-card album for approved original worlds. Browse the public shelf, open a capsule and keep the cards you love."
+  title="Foilbury — characters worth keeping"
+  description="A free collectible-card cabinet for original worlds. Browse the public shelf, open a capsule and keep the copy you pull."
 >
   <script
     type="application/ld+json"
@@ -49,178 +73,214 @@ const shelfCollections = collections.slice(0, 4);
       },
     })}
   />
-  <section class="public-hero border-b border-[var(--line)]">
-    <div class="container public-hero__grid">
-      <div class="public-hero__copy">
-        <h1 class="public-hero__title">Pull something wonderful.</h1>
-        <p class="public-hero__lede">
-          A free album for original character cards. Open a capsule, keep the copy, and arrange a
-          shelf that is yours.
+
+  <section class="home-hero">
+    <div class="container home-hero__grid">
+      <div class="home-hero__copy">
+        <h1 class="home-title">
+          <span>Characters</span>
+          <span>worth keeping.</span>
+        </h1>
+        <p class="home-hero__lede">
+          A free collectible-card cabinet for original worlds. Open a capsule, keep the copy, and
+          arrange a shelf that is yours.
         </p>
-        <div class="public-hero__actions">
-          <a class="btn btn-primary" href="/cabinet">Browse originals</a>
-          <a class="btn btn-secondary" href={primaryHref}>
-            {user ? "Open my library" : "Sign in"}
+        <div class="home-hero__actions">
+          <a class="btn btn-primary" href={browseHref}>
+            {user ? "Open my library" : "Browse originals"}
           </a>
+          <a class="btn btn-secondary" href="#how-it-works">See how it works</a>
         </div>
-        <p class="public-hero__note">
-          Free to play. Earned Foil only. No purchase, marketplace or cash-out.
-        </p>
+        <p class="home-hero__note">Free to play · no purchase · earned Foil only</p>
       </div>
 
-      <div class="public-hero__shelf">
+      <div class="home-stage" aria-label="Selected cards from the public shelf">
+        <div class="home-stage__panel" aria-hidden="true"></div>
         {
-          featuredCard && featuredVariant ? (
-            <a class="public-feature" href={`/cabinet/${featuredCard.slug}`}>
-              <div class="public-feature__card">
+          heroBacks.map((entry, index) => (
+            <a
+              class:list={[
+                "home-card",
+                index === 0 ? "home-card--back-left" : "home-card--back-right",
+              ]}
+              href={`/cabinet/${entry.card.slug}`}
+              aria-label={`${entry.card.name}, ${entry.variant.material_name}`}
+            >
+              <span class="home-card__object">
                 <img
-                  src={featuredVariant.render_url!}
-                  srcset={
-                    featuredVariant.preview_url
-                      ? `${featuredVariant.preview_url} 600w, ${featuredVariant.render_url} 750w`
-                      : undefined
-                  }
-                  sizes="(min-width: 1024px) 34vw, 76vw"
+                  src={entry.variant.render_url!}
                   alt=""
+                  width="750"
+                  height="1050"
+                  loading="eager"
+                  decoding="async"
+                />
+              </span>
+            </a>
+          ))
+        }
+        {
+          heroMain ? (
+            <a
+              class="home-card home-card--main"
+              href={`/cabinet/${heroMain.card.slug}`}
+              aria-label={`${heroMain.card.name}, ${heroMain.variant.material_name}`}
+            >
+              <span class="home-card__object">
+                <img
+                  src={heroMain.variant.render_url!}
+                  alt={`${heroMain.card.name} card in ${heroMain.variant.material_name} finish`}
                   width="750"
                   height="1050"
                   loading="eager"
                   fetchpriority="high"
                   decoding="async"
                 />
-              </div>
-              <div class="public-feature__caption">
-                <p class="eyebrow">{featuredCollection?.name ?? "Public shelf"}</p>
-                <p class="public-feature__name">{featuredCard.name}</p>
-                <p class="public-feature__meta">
-                  {featuredVariant.material_name}
-                  {featuredVariant.effect_name &&
-                  featuredVariant.effect_name.toLowerCase() !== "none"
-                    ? ` · ${featuredVariant.effect_name}`
-                    : ""}{" "}
-                  finish
-                </p>
-                <span class="public-feature__link">View this card</span>
-              </div>
+              </span>
             </a>
           ) : (
-            <div class="public-feature public-feature--empty">
-              <div class="public-feature__card" aria-hidden="true">
-                <span>Foilbury</span>
-              </div>
-              <div class="public-feature__caption">
-                <p class="eyebrow">Public shelf</p>
-                <p class="public-feature__name">The first originals are being prepared.</p>
-                <p class="public-feature__meta">Approved public artwork appears here.</p>
-              </div>
+            <div class="home-card home-card--main home-card--empty">
+              <span class="home-card__object">
+                <span class="home-card__fallback">F</span>
+              </span>
             </div>
           )
         }
+        <p class="home-stage__caption">
+          <span>Public shelf</span>
+          <span>{featuredCollection?.name ?? "Approved originals"}</span>
+        </p>
       </div>
     </div>
   </section>
 
-  <section id="how-it-works" class="public-band border-b border-[var(--line)]">
-    <div class="container public-how">
-      <div class="public-how__intro">
-        <h2 class="public-how__title">One capsule. One card. Keep the copy.</h2>
+  <section class="home-worlds" aria-label="Public collections">
+    <div class="container home-worlds__row">
+      <span class="home-worlds__label">Original worlds</span>
+      {
+        collections.slice(0, 4).map((collection) => (
+          <a href={`/cabinet?collection=${collection.slug}`}>{collection.name}</a>
+        ))
+      }
+    </div>
+  </section>
+
+  <section id="how-it-works" class="home-loop">
+    <div class="container home-loop__grid">
+      <div class="home-loop__intro">
+        <h2>One capsule. One card. Keep the copy.</h2>
+        <p>
+          No gacha theatre, no mystery price. The odds, the cost and the receipt are visible before
+          and after the opening.
+        </p>
       </div>
-      <ol class="public-steps">
+      <ol class="home-steps">
         <li>
-          <span class="public-step__index" aria-hidden="true">01</span>
-          <h3>Choose a capsule</h3>
-          <p>See the exact cost and the actual eligible odds before you open anything.</p>
+          <span class="home-step__number" aria-hidden="true">01</span>
+          <div>
+            <h3>Choose a capsule</h3>
+            <p>See the exact cost and the actual eligible odds before you open anything.</p>
+          </div>
         </li>
         <li>
-          <span class="public-step__index" aria-hidden="true">02</span>
-          <h3>Open one card</h3>
-          <p>Every opening commits one card copy with its own serial and saved receipt.</p>
+          <span class="home-step__number" aria-hidden="true">02</span>
+          <div>
+            <h3>Open one card</h3>
+            <p>Every opening commits one copy with its own serial and a saved receipt.</p>
+          </div>
         </li>
         <li>
-          <span class="public-step__index" aria-hidden="true">03</span>
-          <h3>Keep it in your library</h3>
-          <p>Inspect the front and back, follow roster progress and trade duplicates.</p>
+          <span class="home-step__number" aria-hidden="true">03</span>
+          <div>
+            <h3>Keep it in your library</h3>
+            <p>Inspect the front and back, follow roster progress and trade duplicates.</p>
+          </div>
         </li>
       </ol>
     </div>
   </section>
 
-  <section class="public-collections border-b border-[var(--line)]">
+  <section class="home-shelf">
     <div class="container">
-      <div class="public-section-head">
-        <div>
-          <h2 class="public-section-title">A shelf of original worlds.</h2>
-          <p class="public-section-lede">
-            Approved original collections, shown without member data. The public shelf is a
-            preview; your own album stays private.
-          </p>
-        </div>
-        <a class="btn btn-secondary btn-sm" href="/cabinet">Browse every card</a>
+      <div class="home-shelf__head">
+        <h2>A shelf of original worlds.</h2>
+        <a class="home-shelf__all" href="/cabinet">
+          Browse every card <span aria-hidden="true">↗</span>
+        </a>
       </div>
-
       {
         shelfCollections.length ? (
-          <div class="public-collection-grid">
+          <div class="home-shelf__list">
             {shelfCollections.map((collection, index) => (
-              <a
-                class="public-collection"
-                href={`/cabinet?collection=${collection.slug}`}
-                data-tone={index % 4}
-              >
-                <div class="public-collection__art">
+              <a class="home-shelf__row" href={`/cabinet?collection=${collection.slug}`}>
+                <span class="home-shelf__index">{String(index + 1).padStart(2, "0")}</span>
+                <span class="home-shelf__name">{collection.name}</span>
+                <span class="home-shelf__desc">
+                  {collection.description || "An approved original collection."}
+                </span>
+                <span class="home-shelf__count">{collection.card_count} cards</span>
+                <span class="home-shelf__thumb">
                   {collection.cover_url ? (
-                    <img
-                      src={collection.cover_url}
-                      alt=""
-                      width="750"
-                      height="1050"
-                      loading={index === 0 ? "eager" : "lazy"}
-                    />
+                    <img src={collection.cover_url} alt="" width="750" height="1050" loading="lazy" />
+                  ) : collection.logo_url ? (
+                    <img src={collection.logo_url} alt="" width="72" height="72" loading="lazy" />
                   ) : (
-                    <div class="public-collection__fallback" aria-hidden="true">
-                      {collection.logo_url ? (
-                        <img src={collection.logo_url} alt="" width="72" height="72" />
-                      ) : null}
-                      <span>{collection.name}</span>
-                    </div>
+                    <span aria-hidden="true">{collection.name.charAt(0)}</span>
                   )}
-                </div>
-                <div class="public-collection__body">
-                  <h3>{collection.name}</h3>
-                  <p>{collection.description || "An approved original collection."}</p>
-                  <span class="public-collection__link">Explore collection →</span>
-                </div>
+                </span>
+                <span class="home-shelf__arrow" aria-hidden="true">↗</span>
               </a>
             ))}
           </div>
         ) : (
-          <div class="empty mt-6">
-            <div>
-              <p class="display-sm text-2xl">The public shelf is being prepared.</p>
-              <p class="mt-2 text-sm">
-                Approved originals will appear here. Member collections stay private.
-              </p>
-            </div>
-          </div>
+          <p class="home-shelf__empty">
+            The public shelf is being prepared. Approved originals will appear here.
+          </p>
         )
       }
     </div>
   </section>
 
-  <section class="public-close">
-    <div class="container public-close__inner">
-      <div>
-        <h2 class="public-close__title">Start with one card.</h2>
-        <p class="public-close__lede">
-          Sign in with Discord, a one-use email link or a passkey. Your copies, serials and progress
-          stay in this Bot's album.
+  <section class="home-album">
+    <div class="container home-album__grid">
+      <div class="home-album__intro">
+        <h2>The members' album.</h2>
+        <p>
+          Sign in with Discord, a one-use email link or a passkey. Your album holds the collections
+          you are entitled to, with full profiles, spoiler controls, duplicates and provenance.
         </p>
+        <div class="home-album__actions">
+          <a class="btn btn-primary" href="/login?next=%2Fplay">Join the album</a>
+          <a class="btn btn-secondary" href="/login?next=%2Fplay%2Fcollection">
+            I already have an account
+          </a>
+        </div>
       </div>
-      <div class="public-close__actions">
-        <a class="btn btn-primary" href={primaryHref}>
+      <div class="home-features">
+        {
+          albumFeatures.map(([title, body], index) => (
+            <div class="home-feature">
+              <span class="home-feature__index" aria-hidden="true">
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <h3>{title}</h3>
+              <p>{body}</p>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <section class="home-close">
+    <div class="container home-close__inner">
+      <h2>Start with one card.</h2>
+      <p>A room of your own, built one pull at a time. The public shelf is open; the album is one click away.</p>
+      <div class="home-close__actions">
+        <a class="btn btn-invert" href={primaryHref}>
           {user ? "Open my library" : "Sign in to collect"}
         </a>
-        <a class="btn btn-secondary" href="/cabinet">Browse the public shelf</a>
+        <a class="btn btn-invert-outline" href="/cabinet">Browse the public shelf</a>
       </div>
     </div>
   </section>

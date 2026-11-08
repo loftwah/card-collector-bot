@@ -188,12 +188,12 @@ try {
     const page = await context.newPage();
     watch(page);
     await page.goto("/");
-    await page.getByRole("heading", { name: /pull something wonderful/i }).waitFor();
+    await page.getByRole("heading", { name: /characters worth keeping/i }).waitFor();
     check(
       "public home has one clear primary action",
-      (await page.locator(".public-hero").getByRole("link", { name: /browse originals/i }).count()) === 1,
+      (await page.locator(".home-hero .btn-primary").count()) === 1,
     );
-    await page.locator(".public-hero").getByRole("link", { name: /browse originals/i }).click();
+    await page.locator(".home-hero").getByRole("link", { name: /browse originals/i }).click();
     await page.getByRole("heading", { name: /public showcase/i }).waitFor();
     check("public catalogue navigation resolves", page.url().endsWith("/cabinet"));
     const cardLink = page.locator('a[href^="/cabinet/"]').first();

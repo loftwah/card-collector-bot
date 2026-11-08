@@ -43,23 +43,22 @@ export const DISCORD_LIMITS = {
 } as const;
 
 /**
- * The repaired neutral/periwinkle direction from DESIGN.md. Discord only takes
- * one accent integer per embed, so colour is a second channel behind the title,
- * rarity, finish and status text. These are the app tokens, not the rejected
- * Signal Fold aqua/lime palette.
+ * Foil Standard tokens. Discord takes one accent integer per embed, so colour
+ * is a second channel behind the title, rarity, finish and status text. The
+ * palette is the same paper/ink/foil-blue system used by the website.
  */
 export const DISCORD_PALETTE = {
-  canvas: 0x11141b,
-  surface: 0x1a1f2a,
-  raised: 0x242b39,
-  text: 0xf4f6fc,
-  muted: 0xb6bece,
-  border: 0x65738e,
-  action: 0xa8b8ff,
-  focus: 0xc5d0ff,
-  success: 0x8fe0bb,
+  canvas: 0x0a0a0a,
+  surface: 0x121212,
+  raised: 0x1a1a1a,
+  text: 0xfafaf8,
+  muted: 0xa3a39e,
+  border: 0x5a5a56,
+  action: 0x1f5eff,
+  focus: 0x8fb0ff,
+  success: 0x7ee2b8,
   warning: 0xf2cb85,
-  danger: 0xffadb7,
+  danger: 0xff9a9a,
 } as const;
 
 export type DiscordAccent = (typeof DISCORD_PALETTE)[keyof typeof DISCORD_PALETTE];

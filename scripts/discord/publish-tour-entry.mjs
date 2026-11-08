@@ -114,7 +114,7 @@ const message = {
           value: `[Web tour](${publicLinks.tour}) · [Cabinet](${publicLinks.cabinet}) · [Public showcase](${publicLinks.showcase})\n3D card inspection is a labelled website feature; Discord does not claim native 3D.`,
         },
       ],
-      image: { url: `${origin}/brand/kit/systems/signal-fold/banner-960x540.png`, width: 960, height: 540 },
+      image: { url: `${origin}/brand/kit/banners/foil-standard-960x540.png`, width: 960, height: 540 },
       footer: "Foilbury · Signal Fold · free play, no wagering · 2026/11/04",
     }),
   ],

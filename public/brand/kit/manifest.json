@@ -1,15 +1,29 @@
 {
-  "generated_at": "2026-11-03T06:12:40.995Z",
+  "generated_at": "2026-11-08T12:42:06.246Z",
   "palette": {
-    "ink": "#07110f",
-    "paper": "#eff5f1",
-    "aqua": "#00c8b8",
-    "aquaBright": "#2ce3d3",
-    "ice": "#c8f4ee",
-    "lime": "#c9f25f",
-    "deep": "#044e4a"
+    "paper": "#FAFAF8",
+    "ink": "#0A0A0A",
+    "graphite": "#5B5B57",
+    "rule": "#E4E4DF",
+    "foil": "#1F5EFF",
+    "holo": [
+      "#8BE9FF",
+      "#1F5EFF",
+      "#B18CFF",
+      "#E9FF8A"
+    ]
   },
   "marks": [
+    {
+      "slug": "foil-standard",
+      "label": "Foil Standard",
+      "note": "A dark-and-paper archive with a high-contrast Geist Serif voice and one electric foil edge.",
+      "svg": "/brand/kit/foil-standard/mark.svg",
+      "png": "/brand/kit/foil-standard/mark-1024.png",
+      "avatars": [
+        "/brand/kit/foil-standard/avatar-512.png"
+      ]
+    },
     {
       "slug": "signal-fold",
       "label": "Signal Fold",
@@ -66,6 +80,12 @@
   "avatars": [],
   "banners": [
     {
+      "slug": "foil-standard",
+      "label": "Foil Standard banner",
+      "discord": "/brand/kit/banners/foil-standard-960x540.png",
+      "social": "/brand/kit/banners/foil-standard-1920x1080.png"
+    },
+    {
       "slug": "grid-signal",
       "label": "Grid Signal",
       "discord": "/brand/kit/banners/grid-signal-960x540.png",
@@ -91,6 +111,13 @@
     }
   ],
   "wordmarks": [
+    {
+      "slug": "foil-standard",
+      "label": "Foil Standard wordmark",
+      "svg": "/brand/kit/wordmarks/foil-standard.svg",
+      "png": "/brand/wordmark.png",
+      "transparent": "/brand/kit/wordmarks/foil-standard-transparent-1600x400.png"
+    },
     {
       "slug": "signal",
       "label": "Signal wordmark",
@@ -122,6 +149,18 @@
   ],
   "social": [
     {
+      "slug": "foil-standard-og",
+      "label": "Foil Standard Open Graph",
+      "png": "/brand/kit/social/og-1200x630.png",
+      "dimensions": "1200x630"
+    },
+    {
+      "slug": "foil-standard-hero",
+      "label": "Foil Standard hero",
+      "png": "/brand/kit/social/hero-1920x1080.png",
+      "dimensions": "1920x1080"
+    },
+    {
       "slug": "og",
       "label": "Open Graph / social preview",
       "png": "/brand/kit/social/og-1200x630.png",
@@ -135,6 +174,199 @@
     }
   ],
   "systems": [
+    {
+      "slug": "foil-standard",
+      "index": "00",
+      "label": "Foil Standard",
+      "kicker": "Monochrome archive",
+      "tagline": "Characters worth keeping.",
+      "note": "A dark-and-paper archive with a high-contrast Geist Serif voice and one electric foil edge.",
+      "rationale": "Foil Standard replaces the decorated aqua mark with a two-plane card fold: a paper F over a foil-blue plane, chamfered like a turned card corner. Geist Serif gives the cabinet an editorial voice; Geist Sans and Mono keep the odds, serials and controls precise. The palette is neutral in both themes, so collection art supplies the colour.",
+      "strengths": [
+        "The mark reads as an F at 16px and as a folded card at 512px.",
+        "Geist Serif, Sans and Mono give the product one voice across marketing, album and admin.",
+        "One foil-blue signal stays legible in light and dark without tinting card art."
+      ],
+      "watchouts": [
+        "The serif carries the display; do not set controls or data in it.",
+        "Foil blue is a signal, not a decorative wash.",
+        "Keep the top 48px of the Discord banner quiet for the server title."
+      ],
+      "smallSize": "The paper F over the foil plane survives 16px; the chamfer is the only detail that disappears.",
+      "bannerLogic": "A quiet ink field with the wordmark low-left and a cropped card edge at right; no text in the top 48px.",
+      "tokens": {
+        "ground": "#0A0A0A",
+        "base": "#FAFAF8",
+        "primary": "#1F5EFF",
+        "secondary": "#8FB0FF",
+        "accent": "#5B5B57",
+        "lightGround": "#FAFAF8"
+      },
+      "palette": [
+        {
+          "name": "Paper",
+          "hex": "#FAFAF8",
+          "role": "page and card planes"
+        },
+        {
+          "name": "Ink",
+          "hex": "#0A0A0A",
+          "role": "type and feature fields"
+        },
+        {
+          "name": "Graphite",
+          "hex": "#5B5B57",
+          "role": "secondary type"
+        },
+        {
+          "name": "Rule",
+          "hex": "#E4E4DF",
+          "role": "hairline structure"
+        },
+        {
+          "name": "Foil blue",
+          "hex": "#1F5EFF",
+          "role": "the one signal edge"
+        }
+      ],
+      "typography": {
+        "display": "Geist Serif 500, tight tracking, sentence case.",
+        "interface": "Geist Sans for UI and body.",
+        "data": "Geist Mono for serials, odds, labels and provenance.",
+        "licensing": "Geist is self-hosted under the SIL Open Font License 1.1.",
+        "source": "https://vercel.com/font"
+      },
+      "assets": [
+        {
+          "id": "mark-svg",
+          "path": "/brand/kit/foil-standard/mark.svg",
+          "width": 256,
+          "height": 256,
+          "format": "svg",
+          "use": "Vector mark master"
+        },
+        {
+          "id": "glyph-svg",
+          "path": "/brand/kit/foil-standard/glyph.svg",
+          "width": 200,
+          "height": 200,
+          "format": "svg",
+          "use": "Transparent glyph for UI"
+        },
+        {
+          "id": "mark-1024",
+          "path": "/brand/kit/foil-standard/mark-1024.png",
+          "width": 1024,
+          "height": 1024,
+          "format": "png",
+          "use": "Opaque app icon master"
+        },
+        {
+          "id": "mark-512",
+          "path": "/brand/kit/foil-standard/mark-512.png",
+          "width": 512,
+          "height": 512,
+          "format": "png",
+          "use": "512px proof"
+        },
+        {
+          "id": "mark-256",
+          "path": "/brand/kit/foil-standard/mark-256.png",
+          "width": 256,
+          "height": 256,
+          "format": "png",
+          "use": "256px proof"
+        },
+        {
+          "id": "avatar-512",
+          "path": "/brand/kit/foil-standard/avatar-512.png",
+          "width": 512,
+          "height": 512,
+          "format": "png",
+          "use": "Discord application avatar"
+        },
+        {
+          "id": "wordmark-svg",
+          "path": "/brand/kit/wordmarks/foil-standard.svg",
+          "width": 1600,
+          "height": 400,
+          "format": "svg",
+          "use": "Vector wordmark master"
+        },
+        {
+          "id": "wordmark-png",
+          "path": "/brand/wordmark.png",
+          "width": 1600,
+          "height": 400,
+          "format": "png",
+          "use": "Wordmark on paper"
+        },
+        {
+          "id": "wordmark-reverse",
+          "path": "/brand/wordmark-reverse.png",
+          "width": 1600,
+          "height": 400,
+          "format": "png",
+          "use": "Wordmark on ink"
+        },
+        {
+          "id": "social-og",
+          "path": "/brand/social-preview.jpg",
+          "width": 1200,
+          "height": 630,
+          "format": "jpg",
+          "use": "Default Open Graph image"
+        },
+        {
+          "id": "social-og-png",
+          "path": "/brand/kit/social/og-1200x630.png",
+          "width": 1200,
+          "height": 630,
+          "format": "png",
+          "use": "Social preview master"
+        },
+        {
+          "id": "social-hero",
+          "path": "/brand/kit/social/hero-1920x1080.png",
+          "width": 1920,
+          "height": 1080,
+          "format": "png",
+          "use": "Wide hero artwork"
+        },
+        {
+          "id": "banner-960",
+          "path": "/brand/kit/banners/foil-standard-960x540.png",
+          "width": 960,
+          "height": 540,
+          "format": "png",
+          "use": "Discord server banner size"
+        },
+        {
+          "id": "banner-1920",
+          "path": "/brand/kit/banners/foil-standard-1920x1080.png",
+          "width": 1920,
+          "height": 1080,
+          "format": "png",
+          "use": "Wide banner master"
+        },
+        {
+          "id": "discord-avatar",
+          "path": "/brand/discord-avatar.png",
+          "width": 512,
+          "height": 512,
+          "format": "png",
+          "use": "Discord application icon upload"
+        },
+        {
+          "id": "card-back",
+          "path": "/brand/card-back.webp",
+          "width": 750,
+          "height": 1050,
+          "format": "webp",
+          "use": "Generic card back"
+        }
+      ]
+    },
     {
       "slug": "signal-fold",
       "index": "01",
@@ -926,10 +1158,193 @@
     }
   ],
   "system_status": {
-    "owner_selection": "pending",
-    "applied": false,
-    "canonical_working_identity": "signal-fold",
-    "generated_at": "2026-11-03T13:33:37.089Z",
-    "note": "Three complete systems are presented for owner selection. No Discord application avatar, guild icon or server banner was changed. The incumbent Signal Fold working identity remains in place until explicit owner approval."
+    "owner_selection": "selected",
+    "applied": true,
+    "canonical_working_identity": "foil-standard",
+    "selected_at": "2026-11-08T12:42:06.246Z",
+    "note": "Foil Standard is the selected Foilbury identity. The application icon, cover and description were updated through the Discord application endpoint; the Loftwah guild icon remains unchanged.",
+    "applied_at": "2026-11-08T17:17:09.806Z"
+  },
+  "schema": 2,
+  "identity": {
+    "slug": "foil-standard",
+    "label": "Foil Standard",
+    "kicker": "Monochrome archive",
+    "note": "A dark-and-paper archive with a high-contrast Geist Serif voice and one electric foil edge.",
+    "rationale": "Foil Standard replaces the decorated aqua mark with a two-plane card fold: a paper F over a foil-blue plane, chamfered like a turned card corner. Geist Serif gives the cabinet an editorial voice; Geist Sans and Mono keep the odds, serials and controls precise. The palette is neutral in both themes, so collection art supplies the colour.",
+    "palette": [
+      {
+        "name": "Paper",
+        "hex": "#FAFAF8",
+        "role": "page and card planes"
+      },
+      {
+        "name": "Ink",
+        "hex": "#0A0A0A",
+        "role": "type and feature fields"
+      },
+      {
+        "name": "Graphite",
+        "hex": "#5B5B57",
+        "role": "secondary type"
+      },
+      {
+        "name": "Rule",
+        "hex": "#E4E4DF",
+        "role": "hairline structure"
+      },
+      {
+        "name": "Foil blue",
+        "hex": "#1F5EFF",
+        "role": "the one signal edge"
+      }
+    ],
+    "foil": {
+      "name": "Holo edge",
+      "stops": [
+        "#8BE9FF",
+        "#1F5EFF",
+        "#B18CFF",
+        "#E9FF8A"
+      ],
+      "role": "the mark edge and one hero rule"
+    },
+    "typography": {
+      "display": "Geist Serif 500, tight tracking, sentence case.",
+      "interface": "Geist Sans for UI and body.",
+      "data": "Geist Mono for serials, odds, labels and provenance.",
+      "licensing": "Geist is self-hosted under the SIL Open Font License 1.1.",
+      "source": "https://vercel.com/font"
+    },
+    "assets": [
+      {
+        "id": "mark-svg",
+        "path": "/brand/kit/foil-standard/mark.svg",
+        "width": 256,
+        "height": 256,
+        "format": "svg",
+        "use": "Vector mark master"
+      },
+      {
+        "id": "glyph-svg",
+        "path": "/brand/kit/foil-standard/glyph.svg",
+        "width": 200,
+        "height": 200,
+        "format": "svg",
+        "use": "Transparent glyph for UI"
+      },
+      {
+        "id": "mark-1024",
+        "path": "/brand/kit/foil-standard/mark-1024.png",
+        "width": 1024,
+        "height": 1024,
+        "format": "png",
+        "use": "Opaque app icon master"
+      },
+      {
+        "id": "mark-512",
+        "path": "/brand/kit/foil-standard/mark-512.png",
+        "width": 512,
+        "height": 512,
+        "format": "png",
+        "use": "512px proof"
+      },
+      {
+        "id": "mark-256",
+        "path": "/brand/kit/foil-standard/mark-256.png",
+        "width": 256,
+        "height": 256,
+        "format": "png",
+        "use": "256px proof"
+      },
+      {
+        "id": "avatar-512",
+        "path": "/brand/kit/foil-standard/avatar-512.png",
+        "width": 512,
+        "height": 512,
+        "format": "png",
+        "use": "Discord application avatar"
+      },
+      {
+        "id": "wordmark-svg",
+        "path": "/brand/kit/wordmarks/foil-standard.svg",
+        "width": 1600,
+        "height": 400,
+        "format": "svg",
+        "use": "Vector wordmark master"
+      },
+      {
+        "id": "wordmark-png",
+        "path": "/brand/wordmark.png",
+        "width": 1600,
+        "height": 400,
+        "format": "png",
+        "use": "Wordmark on paper"
+      },
+      {
+        "id": "wordmark-reverse",
+        "path": "/brand/wordmark-reverse.png",
+        "width": 1600,
+        "height": 400,
+        "format": "png",
+        "use": "Wordmark on ink"
+      },
+      {
+        "id": "social-og",
+        "path": "/brand/social-preview.jpg",
+        "width": 1200,
+        "height": 630,
+        "format": "jpg",
+        "use": "Default Open Graph image"
+      },
+      {
+        "id": "social-og-png",
+        "path": "/brand/kit/social/og-1200x630.png",
+        "width": 1200,
+        "height": 630,
+        "format": "png",
+        "use": "Social preview master"
+      },
+      {
+        "id": "social-hero",
+        "path": "/brand/kit/social/hero-1920x1080.png",
+        "width": 1920,
+        "height": 1080,
+        "format": "png",
+        "use": "Wide hero artwork"
+      },
+      {
+        "id": "banner-960",
+        "path": "/brand/kit/banners/foil-standard-960x540.png",
+        "width": 960,
+        "height": 540,
+        "format": "png",
+        "use": "Discord server banner size"
+      },
+      {
+        "id": "banner-1920",
+        "path": "/brand/kit/banners/foil-standard-1920x1080.png",
+        "width": 1920,
+        "height": 1080,
+        "format": "png",
+        "use": "Wide banner master"
+      },
+      {
+        "id": "discord-avatar",
+        "path": "/brand/discord-avatar.png",
+        "width": 512,
+        "height": 512,
+        "format": "png",
+        "use": "Discord application icon upload"
+      },
+      {
+        "id": "card-back",
+        "path": "/brand/card-back.webp",
+        "width": 750,
+        "height": 1050,
+        "format": "webp",
+        "use": "Generic card back"
+      }
+    ]
   }
 }

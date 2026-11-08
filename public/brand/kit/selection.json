@@ -1,40 +1,40 @@
 {
-  "schema": 1,
-  "selected_system": "signal-fold",
+  "schema": 2,
+  "selected_system": "foil-standard",
   "decision": "selected",
-  "authority": "agent-delegated",
-  "decided_at": "2026-11-04T01:45:00.000Z",
-  "decided_at_melbourne": "2026/11/04 12:45 AEDT",
-  "rationale": "Signal Fold keeps the folded-card geometry that belongs to a collecting product, reads as a deliberate F at 32px, has the strongest continuity with the existing card and website language, and needs no new palette to stay coherent in light and dark presentation.",
+  "authority": "owner-directed",
+  "decided_at": "2026-11-08T12:42:06.247Z",
+  "decided_at_melbourne": "8/11/26, 11:42 pm",
+  "rationale": "The owner asked for a Vercel-grade monochrome identity with Geist Serif. Foil Standard keeps Foilbury's card-fold idea, replaces the aqua/lime crypto palette with paper, ink and one foil-blue signal, and gives the product a consistent editorial voice from the public shelf to the admin tables.",
   "applied": {
     "application_icon": {
       "status": "applied",
-      "icon_hash": "e8234929cc269ab7843ee384aaaa3991",
-      "at": "2026-11-04T01:38:00.000Z",
+      "icon_hash": "68e74b82ec875b0b9247c244b7d3facb",
+      "at": "2026-11-08T17:17:09.806Z",
       "note": "Applied through the official Discord PATCH /applications/@me endpoint."
     },
     "application_description": {
       "status": "applied",
-      "at": "2026-11-04T01:38:00.000Z",
-      "note": "Replaced the generic platform copy with the actual free-play product description."
+      "at": "2026-11-08T17:17:09.806Z",
+      "note": "A free collectible-card cabinet for original worlds. Open a capsule, keep the copy, and arrange a shelf that is yours."
     },
     "guild_icon": {
       "status": "not_changed",
-      "reason": "The Loftwah guild icon belongs to the wider server identity and was not replaced."
+      "reason": "The Loftwah guild icon belongs to the wider server identity."
     },
     "server_banner": {
       "status": "blocked",
-      "reason": "The guild has no BANNER entitlement (Boost tier 2 is required). The 960x540 and 1920x1080 assets are retained for later use."
+      "reason": "The guild has no BANNER entitlement (Boost tier 2 is required)."
     },
     "application_cover_image": {
       "status": "applied",
-      "cover_image_hash": "9b20e60b4947e3fac36a62b728a67b4e",
-      "at": "2026-11-04T02:50:00.000Z",
-      "note": "Applied the 1920x1080 Signal Fold banner through the supported cover_image field. This is the application cover image, not the bot profile banner."
+      "cover_image_hash": "934e3ae38e61ec01d6cf13f5fb00e2a2",
+      "at": "2026-11-08T17:17:09.806Z",
+      "note": "Applied the 1920x1080 Foil Standard banner through the supported cover_image field."
     },
     "application_banner": {
       "status": "manual",
-      "reason": "The bot profile banner is a Developer Portal surface. The bot API can update the application icon and cover image but not the profile banner; no claim is made that the old banner was replaced."
+      "reason": "The bot profile banner is a Developer Portal surface."
     },
     "discord_setup_panel": {
       "status": "applied",
@@ -43,10 +43,14 @@
       "note": "Public-safe onboarding panel posted in the existing test channel. Pinning was denied because the bot lacks MANAGE_MESSAGES."
     }
   },
-  "alternatives_retained": ["bastion", "aperture"],
+  "alternatives_retained": [
+    "signal-fold",
+    "bastion",
+    "aperture"
+  ],
   "rollback": {
-    "application_icon": "Restore a previous application icon from the Developer Portal or PATCH /applications/@me with the archived asset.",
-    "previous_description": "Foilbury is an open, customisable gachapon and digital collectibles platform. Create collections, design cards, configure rarity and pull mechanics, and discover the thrill of revealing something new.",
-    "assets": "All three systems remain under public/brand/kit/systems/ and the legacy marks remain under public/brand/kit/."
-  }
+    "application_icon": "Restore the previous Discord application icon from the archived Signal Fold asset at /brand/kit/signal-fold/mark-1024.png.",
+    "assets": "All historical systems remain under /brand/kit/ and the previous masters remain in git history."
+  },
+  "applied_at": "2026-11-08T17:17:09.806Z"
 }
