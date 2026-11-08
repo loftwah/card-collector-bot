@@ -149,7 +149,57 @@ const DEFAULT_CAPABILITIES: Record<Role, string[]> = {
   player: [],
 };
 
+/**
+ * Create a membership only when no row exists.
+ *
+ * Admission paths (email, Discord, linking) must never turn an existing
+ * suspended/revoked row back into an active one. A deliberate restoration is
+ * `setMemberStatus` in membership.ts, which requires the `members` capability,
+ * recent strong authentication and a recorded reason. The explicit seed/owner
+ * paths use `upsertMembership` below.
+ */
 export async function addMembership(
+  db: D1Database,
+  tenantId: string,
+  userId: string,
+  role: Role,
+  options?: {
+    capabilities?: string[];
+    status?: "active" | "invited" | "revoked";
+    invitedBy?: string | null;
+    acceptedAt?: string | null;
+  },
+): Promise<boolean> {
+  const capabilities = options?.capabilities ?? DEFAULT_CAPABILITIES[role];
+  const now = nowIso();
+  const row = await db
+    .prepare(
+      `INSERT INTO fb_memberships
+        (tenant_id, user_id, role, created_at, capabilities_json, status, invited_by, accepted_at, revoked_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(tenant_id, user_id) DO NOTHING
+       RETURNING user_id`,
+    )
+    .bind(
+      tenantId,
+      userId,
+      role,
+      now,
+      JSON.stringify(capabilities),
+      options?.status ?? "active",
+      options?.invitedBy ?? null,
+      options?.acceptedAt ?? (options?.status === "invited" ? null : now),
+      options?.status === "revoked" ? now : null,
+    )
+    .first<{ user_id: string }>();
+  return row !== null;
+}
+
+/**
+ * Explicit administrative upsert for a new Bot owner or an accepted
+ * invitation. Never use this for ordinary sign-in or admission.
+ */
+export async function upsertMembership(
   db: D1Database,
   tenantId: string,
   userId: string,

@@ -6,7 +6,7 @@ import { base64url, newId } from "../ids";
 import {
   ensureWallet,
   seedIdentityTaxonomy,
-  addMembership,
+  upsertMembership,
   createUser,
   issueAgentGrant,
   PLAYER_SCOPES,
@@ -162,10 +162,10 @@ export async function bootstrapInstallation(): Promise<BootstrapResult> {
     password: atticPassword,
   });
 
-  await addMembership(db, cabinet.id, owner.id, "owner");
-  await addMembership(db, cabinet.id, player.id, "player");
-  await addMembership(db, harbour.id, harbourOwner.id, "owner");
-  await addMembership(db, attic.id, atticOwner.id, "owner");
+  await upsertMembership(db, cabinet.id, owner.id, "owner");
+  await upsertMembership(db, cabinet.id, player.id, "player");
+  await upsertMembership(db, harbour.id, harbourOwner.id, "owner");
+  await upsertMembership(db, attic.id, atticOwner.id, "owner");
   for (const [tenantId, userId] of [
     [cabinet.id, owner.id],
     [cabinet.id, player.id],

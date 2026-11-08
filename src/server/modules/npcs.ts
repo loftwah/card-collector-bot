@@ -270,7 +270,10 @@ export async function createNpc(
       .prepare("INSERT INTO fb_npc_limits (tenant_id, updated_at) VALUES (?, ?) ON CONFLICT(tenant_id) DO NOTHING")
       .bind(ctx.tenant.id, now),
   ]);
-  await addMembership(ctx.db, ctx.tenant.id, userId, "player", { acceptedAt: now });
+  const admitted = await addMembership(ctx.db, ctx.tenant.id, userId, "player", { acceptedAt: now });
+  if (!admitted) {
+    throw new ApiError(409, "npc_membership_conflict", "That synthetic collector identity already has a membership; nothing was changed.");
+  }
   await ensureWallet(ctx.db, ctx.tenant.id, userId);
   const economy = await first<{ starter_grant: number }>(ctx.db, "SELECT starter_grant FROM fb_economy_settings WHERE tenant_id = ?", ctx.tenant.id);
   const starting = Math.max(0, Math.min(10000, input.startingBalance ?? economy?.starter_grant ?? 800));

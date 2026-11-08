@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { bootstrap, ctxFor, fixturePool, runtime, tenant } from "./helpers";
 import { createUser, addMembership, addPlayerMembershipIfAbsent, findUserByEmail, createSession, ensureWallet } from "../../src/server/modules/identity";
-import { joinMainAlbum } from "../../src/server/modules/membership";
+import { joinMainAlbum, setMemberStatus } from "../../src/server/modules/membership";
 import { requestMagicLink, redeemMagicLink } from "../../src/server/modules/magic-links";
 import { findAccessTenantForIdentity, resolveAccessIdentity } from "../../src/server/access";
 import { createBot, createBotInvitation, acceptBotInvitation, revokeBotAdmin } from "../../src/server/modules/bots";
@@ -61,6 +61,97 @@ describe("passwordless identity, Access linking, bots and collections", () => {
         .first<{ count: number }>();
       expect(sessionsAfter?.count ?? 0).toBe(sessionsBefore?.count ?? 0);
     }
+  });
+
+  it("never rewrites an existing revoked or suspended row through addMembership", async () => {
+    const ctx = await ctxFor("cabinet", "owner@foilbury.local");
+    const player = await createUser(runtime.DB, { email: "upsert-guard@example.com", displayName: "Upsert Guard", password: "a-long-test-password" });
+    expect(await addMembership(runtime.DB, ctx.tenant.id, player.id, "player")).toBe(true);
+    expect(await addMembership(runtime.DB, ctx.tenant.id, player.id, "player")).toBe(false);
+
+    for (const status of ["revoked", "suspended"] as const) {
+      const changedAt = nowIso();
+      await runtime.DB
+        .prepare("UPDATE fb_memberships SET status = ?, revoked_at = ?, role = 'editor', capabilities_json = '[\"members\"]' WHERE tenant_id = ? AND user_id = ?")
+        .bind(status, changedAt, ctx.tenant.id, player.id)
+        .run();
+      // The old helper was an unconditional upsert and would replace this row
+      // with an active owner. It must now refuse to touch the existing row.
+      expect(await addMembership(runtime.DB, ctx.tenant.id, player.id, "owner")).toBe(false);
+      const membership = await runtime.DB
+        .prepare("SELECT status, revoked_at, role, capabilities_json FROM fb_memberships WHERE tenant_id = ? AND user_id = ?")
+        .bind(ctx.tenant.id, player.id)
+        .first<{ status: string; revoked_at: string | null; role: string; capabilities_json: string }>();
+      expect(membership).toMatchObject({
+        status,
+        revoked_at: changedAt,
+        role: "editor",
+        capabilities_json: '["members"]',
+      });
+    }
+  });
+
+  it("requires the explicit members capability for member management and denies agents", async () => {
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const manager = await createUser(runtime.DB, { email: "member-manager@example.com", displayName: "Member Manager", password: "a-long-test-password" });
+    await addMembership(runtime.DB, owner.tenant.id, manager.id, "editor");
+    const managerCtx = {
+      ...owner,
+      user: {
+        ...owner.user!,
+        id: manager.id,
+        email: manager.email,
+        role: "editor" as const,
+        platformAdmin: false,
+        capabilities: ["economy", "inventory", "grants"],
+      },
+      sessionAssurance: "passkey",
+      sessionAuthTime: nowIso(),
+    };
+    await expect(setMemberStatus(managerCtx, player.user!.id, "suspended", "Scoped grant check")).rejects.toMatchObject({
+      status: 403,
+      code: "insufficient_capability",
+    });
+
+    await runtime.DB
+      .prepare("UPDATE fb_memberships SET role = 'editor', capabilities_json = '[\"content\",\"publish\",\"members\"]' WHERE tenant_id = ? AND user_id = ?")
+      .bind(owner.tenant.id, manager.id)
+      .run();
+    const allowedCtx = { ...managerCtx, user: { ...managerCtx.user, capabilities: ["content", "publish", "members"] } };
+    const suspended = await setMemberStatus(allowedCtx, player.user!.id, "suspended", "Explicit member capability check");
+    expect(suspended.status).toBe("suspended");
+    const restored = await setMemberStatus(allowedCtx, player.user!.id, "active", "Restore after scoped check");
+    expect(restored.status).toBe("active");
+
+    const agentCtx = {
+      ...owner,
+      actor: { type: "agent" as const, id: "agt_member_test", representedUserId: manager.id, label: "Member agent" },
+      sessionAssurance: "passkey",
+      sessionAuthTime: nowIso(),
+    };
+    await expect(setMemberStatus(agentCtx, player.user!.id, "suspended", "Agent cannot decide membership")).rejects.toMatchObject({
+      status: 403,
+      code: "human_admin_required",
+    });
+
+    const harbour = await tenant("harbour");
+    const harbourUser = await createUser(runtime.DB, { email: "harbour-member@example.com", displayName: "Harbour Member", password: "a-long-test-password" });
+    await addMembership(runtime.DB, harbour.id, harbourUser.id, "player");
+    await expect(setMemberStatus(allowedCtx, harbourUser.id, "suspended", "Wrong tenant")).rejects.toMatchObject({
+      status: 404,
+      code: "member_not_found",
+    });
+
+    const platformCtx = {
+      ...owner,
+      user: { ...owner.user!, platformAdmin: true, capabilities: [] },
+      sessionAssurance: "mfa",
+      sessionAuthTime: nowIso(),
+    };
+    const viaPlatform = await setMemberStatus(platformCtx, player.user!.id, "suspended", "Platform administrator check");
+    expect(viaPlatform.status).toBe("suspended");
+    await setMemberStatus(platformCtx, player.user!.id, "active", "Restore after platform check");
   });
 
   it("does not overwrite an inactive membership created during magic-link admission", async () => {

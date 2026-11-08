@@ -2,7 +2,7 @@ import type { D1Database } from "@cloudflare/workers-types";
 import { ApiError, hasCapability, requireProtectedAccount, requireUser, type Ctx, type Role } from "../context";
 import { all, first, nowIso } from "../db";
 import { newId, sha256Hex, token } from "../ids";
-import { addMembership, ensureWallet, seedIdentityTaxonomy } from "./identity";
+import { upsertMembership, ensureWallet, seedIdentityTaxonomy } from "./identity";
 import { creditWallet } from "./wallet";
 import { sendEmail } from "../email";
 
@@ -156,7 +156,7 @@ export async function createBot(
       .bind(tenantId, now, user.id),
   ]);
   await seedIdentityTaxonomy(ctx.db, tenantId);
-  await addMembership(ctx.db, tenantId, user.id, "owner");
+  await upsertMembership(ctx.db, tenantId, user.id, "owner");
   await ctx.db
     .prepare(
       `INSERT INTO fb_bot_admins (id, bot_id, user_id, role, capabilities_json, status, created_at, accepted_at)
@@ -318,7 +318,7 @@ export async function acceptBotInvitation(ctx: Ctx, rawToken: string): Promise<{
   const capabilities = validateCapabilities(JSON.parse(invitation.capabilities_json) as string[]);
   const role: Role = capabilities.includes("content") || capabilities.includes("publish") ? "editor" : "economy_admin";
   const now = nowIso();
-  await addMembership(ctx.db, bot.tenant_id, user.id, role, { capabilities, invitedBy: invitation.id, acceptedAt: now });
+  await upsertMembership(ctx.db, bot.tenant_id, user.id, role, { capabilities, invitedBy: invitation.id, acceptedAt: now });
   await ctx.db
     .prepare(
       `INSERT INTO fb_bot_admins (id, bot_id, user_id, role, capabilities_json, status, invited_by, created_at, accepted_at)
