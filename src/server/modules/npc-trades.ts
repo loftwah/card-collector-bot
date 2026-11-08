@@ -4,6 +4,7 @@ import { newId, sha256Hex } from "../ids";
 import { auditStatement } from "../http";
 import { canViewCollection } from "./visibility";
 import { acceptTrade, cancelTrade, getTrade } from "./trades";
+import { requireActiveMembership } from "./membership";
 
 interface NpcTradeRow {
   id: string;
@@ -322,7 +323,12 @@ async function evaluate(
   };
 }
 
-export async function npcTradeOffers(ctx: Ctx, npcId: string) {
+export async function npcTradeOffers(
+  ctx: Ctx,
+  npcId: string,
+  options?: { allowedCardIds?: Set<string> },
+) {
+  await requireActiveMembership(ctx);
   const npc = await loadNpc(ctx, npcId);
   await assertNpcAvailable(ctx, npc);
   const inventory = await npcInventory(ctx, npc);
@@ -330,6 +336,7 @@ export async function npcTradeOffers(ctx: Ctx, npcId: string) {
   const wishlist = await wishlists(ctx, npc);
   const copies = [];
   for (const copy of inventory) {
+    if (options?.allowedCardIds && !options.allowedCardIds.has(copy.card_id)) continue;
     const collection = await primaryCollection(ctx, copy.card_id);
     if (!collection) continue;
     if (!(await canViewCollection(ctx, collection.id))) continue;
@@ -381,6 +388,7 @@ export async function previewNpcTrade(
 ): Promise<NpcTradePreview> {
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in to trade with a collector.");
+  await requireActiveMembership(ctx);
   if (user.synthetic) throw new ApiError(403, "synthetic_trade_blocked", "NPC collectors cannot initiate human trades.");
   const npc = await loadNpc(ctx, input.npcId);
   await assertNpcAvailable(ctx, npc);
@@ -398,6 +406,7 @@ export async function createNpcTrade(
 ) {
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in to trade with a collector.");
+  await requireActiveMembership(ctx);
   const npc = await loadNpc(ctx, input.npcId);
   await assertNpcAvailable(ctx, npc);
   const digest = (await sha256Hex(JSON.stringify({ npc: input.npcId, give: input.giveInstanceIds, take: input.takeInstanceIds }))).slice(0, 32);
@@ -498,6 +507,7 @@ async function npcTradeRow(ctx: Ctx, tradeId: string) {
 }
 
 export async function getNpcTrade(ctx: Ctx, tradeId: string) {
+  await requireActiveMembership(ctx);
   const row = await npcTradeRow(ctx, tradeId);
   if (!row) throw new ApiError(404, "npc_trade_not_found", "NPC trade not found.");
   return {
@@ -516,6 +526,7 @@ export async function getNpcTrade(ctx: Ctx, tradeId: string) {
 export async function confirmNpcTrade(ctx: Ctx, tradeId: string) {
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in to confirm the exchange.");
+  await requireActiveMembership(ctx);
   const row = await npcTradeRow(ctx, tradeId);
   if (!row) throw new ApiError(404, "npc_trade_not_found", "NPC trade not found.");
   if (row.proposer_id !== user.id) throw new ApiError(403, "not_your_trade", "Only the proposing member can confirm this exchange.");
@@ -563,6 +574,7 @@ export async function confirmNpcTrade(ctx: Ctx, tradeId: string) {
 export async function cancelNpcTrade(ctx: Ctx, tradeId: string) {
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in to cancel the exchange.");
+  await requireActiveMembership(ctx);
   const row = await npcTradeRow(ctx, tradeId);
   if (!row) throw new ApiError(404, "npc_trade_not_found", "NPC trade not found.");
   if (row.proposer_id !== user.id) throw new ApiError(403, "not_your_trade", "Only the proposing member can cancel this exchange.");
@@ -574,6 +586,7 @@ export async function cancelNpcTrade(ctx: Ctx, tradeId: string) {
 export async function listNpcTrades(ctx: Ctx) {
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in to see NPC trades.");
+  await requireActiveMembership(ctx);
   const rows = await all<{
     id: string;
     status: string;

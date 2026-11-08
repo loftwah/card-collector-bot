@@ -48,6 +48,27 @@ export async function getMyMemberships(ctx: Ctx): Promise<MembershipView[]> {
   }));
 }
 
+/**
+ * Re-read the live membership for a domain command. A session is a credential,
+ * not a permanent entitlement: a profile, trade or share mutation must fail if
+ * the membership was suspended or revoked after sign-in.
+ */
+export async function requireActiveMembership(ctx: Ctx): Promise<void> {
+  const user = ctx.user;
+  if (!user) throw new ApiError(401, "authentication_required", "Sign in to continue.");
+  const row = await first<{ status: string; revoked_at: string | null; disabled_at: string | null }>(
+    ctx.db,
+    `SELECT m.status, m.revoked_at, u.disabled_at
+       FROM fb_memberships m JOIN fb_users u ON u.id = m.user_id
+      WHERE m.tenant_id = ? AND m.user_id = ?`,
+    ctx.tenant.id,
+    user.id,
+  );
+  if (!row || row.status !== "active" || row.revoked_at || row.disabled_at) {
+    throw new ApiError(403, "membership_inactive", "This album membership is not active. Ask an administrator for access.");
+  }
+}
+
 export async function joinMainAlbum(ctx: Ctx): Promise<{ joined: boolean; membership: MembershipView }> {
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in to join the album.");

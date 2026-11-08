@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { bootstrap, ctxFor, fixturePool, makeInstance, runtime } from "./helpers";
 import { createNpc, setNpcStatus, updateNpc } from "../../src/server/modules/npcs";
+import { addMembership, createUser } from "../../src/server/modules/identity";
 import {
   cancelNpcTrade,
   confirmNpcTrade,
@@ -155,6 +156,103 @@ describe("human-initiated NPC trading", () => {
     await runtime.DB.prepare("UPDATE fb_bot_collections SET enabled = 0 WHERE collection_id = 'col_test_public'").run();
     await expect(confirmNpcTrade(player, third.trade.id)).rejects.toMatchObject({ code: "npc_trade_unavailable" });
     await cancelNpcTrade(player, third.trade.id);
+  });
+
+  it("rejects an expired offer before any ownership change", async () => {
+    const { player, npc, npcPlainA, humanGold } = await npcTradeFixture();
+    const created = await createNpcTrade(player, {
+      npcId: npc.id,
+      giveInstanceIds: [humanGold],
+      takeInstanceIds: [npcPlainA],
+      idempotencyKey: "npc-trade-expired-001",
+    });
+    await runtime.DB
+      .prepare("UPDATE fb_trades SET expires_at = ? WHERE id = ?")
+      .bind(new Date(Date.now() - 1000).toISOString(), created.trade.id)
+      .run();
+    await expect(confirmNpcTrade(player, created.trade.id)).rejects.toMatchObject({ code: "trade_expired" });
+    // The offer still holds its reservation until cancellation/expiry cleanup,
+    // but ownership must not move and no new acceptance may be written.
+    expect((await instance(humanGold))).toMatchObject({ user_id: player.user!.id, status: "reserved" });
+    expect((await instance(npcPlainA))).toMatchObject({ status: "reserved" });
+  });
+
+  it("rejects a stale trade revision without recording a new acceptance or moving copies", async () => {
+    const { player, npc, npcPlainA, humanGold } = await npcTradeFixture();
+    const created = await createNpcTrade(player, {
+      npcId: npc.id,
+      giveInstanceIds: [humanGold],
+      takeInstanceIds: [npcPlainA],
+      idempotencyKey: "npc-trade-stale-revision-001",
+    });
+    await runtime.DB.prepare("UPDATE fb_trades SET revision = 2 WHERE id = ?").bind(created.trade.id).run();
+    await expect(confirmNpcTrade(player, created.trade.id)).rejects.toMatchObject({ code: "trade_revision_stale" });
+    const acceptances = await runtime.DB
+      .prepare("SELECT revision FROM fb_trade_acceptances WHERE trade_id = ? ORDER BY revision")
+      .bind(created.trade.id)
+      .all<{ revision: number }>();
+    expect(acceptances.results?.map((row) => row.revision)).toEqual([1]);
+    expect((await instance(humanGold))).toMatchObject({ user_id: player.user!.id, status: "reserved" });
+    expect((await instance(npcPlainA))).toMatchObject({ status: "reserved" });
+  });
+
+  it("completes exactly once under two concurrent confirmations", async () => {
+    const { player, npc, npcUserId, npcPlainA, humanGold } = await npcTradeFixture();
+    const created = await createNpcTrade(player, {
+      npcId: npc.id,
+      giveInstanceIds: [humanGold],
+      takeInstanceIds: [npcPlainA],
+      idempotencyKey: "npc-trade-concurrent-001",
+    });
+    const results = await Promise.allSettled([
+      confirmNpcTrade(player, created.trade.id),
+      confirmNpcTrade(player, created.trade.id),
+    ]);
+    expect(results.some((result) => result.status === "fulfilled")).toBe(true);
+    for (const result of results) {
+      if (result.status === "rejected") {
+        expect(["already_accepted", "npc_trade_not_open"]).toContain((result.reason as { code?: string }).code);
+      }
+    }
+    const trade = await runtime.DB
+      .prepare("SELECT status, revision FROM fb_trades WHERE id = ?")
+      .bind(created.trade.id)
+      .first<{ status: string; revision: number }>();
+    expect(trade).toMatchObject({ status: "completed", revision: 1 });
+    expect((await instance(humanGold))).toMatchObject({ user_id: npcUserId, status: "owned", reserved_for: null });
+    expect((await instance(npcPlainA))).toMatchObject({ user_id: player.user!.id, status: "owned", reserved_for: null });
+    const history = await runtime.DB
+      .prepare("SELECT COUNT(*) AS count FROM fb_instance_history WHERE reference_type = 'trade' AND reference_id = ?")
+      .bind(created.trade.id)
+      .first<{ count: number }>();
+    expect(history?.count).toBe(2);
+  });
+
+  it("denies a revoked member and a wrong actor without moving any copy", async () => {
+    const { player, owner, npc, npcPlainA, humanGold } = await npcTradeFixture();
+    const created = await createNpcTrade(player, {
+      npcId: npc.id,
+      giveInstanceIds: [humanGold],
+      takeInstanceIds: [npcPlainA],
+      idempotencyKey: "npc-trade-revoked-001",
+    });
+    const outsider = await createUser(runtime.DB, {
+      email: "npc-outsider@example.com",
+      displayName: "NPC Outsider",
+      password: "a-long-test-password",
+    });
+    await addMembership(runtime.DB, owner.tenant.id, outsider.id, "player");
+    const outsiderCtx = await ctxFor("cabinet", "npc-outsider@example.com");
+    await expect(confirmNpcTrade(outsiderCtx, created.trade.id)).rejects.toMatchObject({ code: "not_your_trade" });
+    expect((await instance(humanGold))).toMatchObject({ user_id: player.user!.id, status: "reserved" });
+
+    await runtime.DB
+      .prepare("UPDATE fb_memberships SET status = 'revoked', revoked_at = ? WHERE tenant_id = ? AND user_id = ?")
+      .bind(nowIso(), owner.tenant.id, player.user!.id)
+      .run();
+    await expect(confirmNpcTrade(player, created.trade.id)).rejects.toMatchObject({ code: "membership_inactive" });
+    expect((await instance(humanGold))).toMatchObject({ user_id: player.user!.id, status: "reserved" });
+    expect((await instance(npcPlainA))).toMatchObject({ status: "reserved" });
   });
 
   it("is idempotent on duplicate create and repeat confirm", async () => {

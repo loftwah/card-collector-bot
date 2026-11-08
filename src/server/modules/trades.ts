@@ -166,6 +166,23 @@ export async function acceptTrade(ctx: Ctx, tradeId: string) {
   const trade = await getTrade(ctx, tradeId);
   if (trade.status !== "open") throw new ApiError(409, "trade_not_open", `This trade is ${trade.status}.`);
   if (new Date(trade.expires_at) <= new Date()) throw new ApiError(409, "trade_expired", "This trade has expired.");
+  // An acceptance from an earlier revision is not consent to the current
+  // offer. Reject instead of silently recording a new acceptance the member
+  // never reviewed, and never move a reserved copy.
+  const staleAcceptance = await first<{ revision: number }>(
+    ctx.db,
+    "SELECT revision FROM fb_trade_acceptances WHERE trade_id = ? AND tenant_id = ? AND revision < ? ORDER BY revision DESC LIMIT 1",
+    trade.id,
+    ctx.tenant.id,
+    trade.revision,
+  );
+  if (staleAcceptance) {
+    throw new ApiError(
+      409,
+      "trade_revision_stale",
+      "This offer changed after it was accepted. Review the current revision again; nothing was transferred.",
+    );
+  }
   const side = user.id === trade.proposer_id ? "proposer" : "recipient";
   const other = side === "proposer" ? trade.recipient_id : trade.proposer_id;
   if (user.id !== trade.proposer_id && user.id !== trade.recipient_id) throw new ApiError(403, "not_a_party", "You are not a party to this trade.");
@@ -279,6 +296,9 @@ export async function acceptTrade(ctx: Ctx, tradeId: string) {
     const message = String(error);
     if (message.includes("trade_not_ready") || message.includes("trade_item_invalid")) {
       throw new ApiError(409, "trade_not_ready", "The trade could not be completed because a card or acceptance changed. Nothing was transferred.");
+    }
+    if (message.includes("UNIQUE") || message.includes("already_accepted")) {
+      throw new ApiError(409, "already_accepted", "You already accepted this revision. Nothing else was transferred.");
     }
     throw error;
   }
