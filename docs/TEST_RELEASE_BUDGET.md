@@ -69,10 +69,15 @@ GitHub Actions, before parallel jobs:
 
 GitHub Actions, after parallel jobs:
 
-| Run                                            | Flow time | Notes                                                                |
-| ---------------------------------------------- | --------- | -------------------------------------------------------------------- |
-| PR #115, all four browser journeys             | **164s**  | Check job 2m04s, browser job 2m27s; 136s inside the 300s budget.     |
-| PR #115, docs-only follow-up (browser skipped) | see run   | Proves the affected-path selection skips browser work for docs only. |
+| Run                                | Flow time | Notes                                                            |
+| ---------------------------------- | --------- | ---------------------------------------------------------------- |
+| PR #115, all four browser journeys | **164s**  | Check job 2m04s, browser job 2m27s; 136s inside the 300s budget. |
+| PR #115, evidence refresh          | **169s**  | Check job 2m35s, browser job 1m56s; 131s inside the budget.      |
+
+The benchmark selects browser journeys from the **cumulative PR diff**, so this
+PR's `package.json` change correctly selects all four. The docs-only skip is
+covered by `tests/scripts/ci-affected.test.mjs`, which runs in every
+`pnpm check`.
 
 The budget table is written to every CI job summary. The introducing run is
 https://github.com/loftwah/card-collector-bot/actions/runs/42444137964.
