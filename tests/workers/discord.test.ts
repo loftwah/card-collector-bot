@@ -212,6 +212,8 @@ describe("Discord HTTP interactions", () => {
     expect(revealed.payload.data?.flags).toBe(64);
     expect(revealed.payload.data?.embeds?.[0]?.title).toContain("Test One");
     expect(JSON.stringify(revealed.payload)).toContain("attachment://foilbury-reveal-card.webp");
+    // The first reveal of a committed draw is not a recovered re-send.
+    expect(JSON.stringify(revealed.payload.data)).not.toContain("Recorded result");
     const draw = await runtime.DB.prepare(
       "SELECT d.instance_id, d.receipt_json, ci.user_id, ci.serial FROM fb_draws d JOIN fb_card_instances ci ON ci.id = d.instance_id WHERE d.idempotency_key = ?",
     )
