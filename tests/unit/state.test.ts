@@ -17,6 +17,14 @@ describe("workflow transitions", () => {
     expect(() => assertTransition("membership", "revoked", "suspended")).toThrow("cannot move");
   });
 
+  it("allows a retired card to be restored but not a draft to retire directly", () => {
+    expect(canTransition("card", "draft", "published")).toBe(true);
+    expect(canTransition("card", "published", "retired")).toBe(true);
+    expect(canTransition("card", "retired", "published")).toBe(true);
+    expect(canTransition("card", "retired", "draft")).toBe(true);
+    expect(() => assertTransition("card", "draft", "retired")).toThrow("cannot move");
+  });
+
   it("models retryable render jobs and non-retryable success", () => {
     expect(nextStates("render_job", "pending")).toEqual(["running", "cancelled"]);
     expect(canTransition("render_job", "running", "failed")).toBe(true);

@@ -189,6 +189,7 @@ export async function loginWithPasskey(
        FROM fb_webauthn_credentials c
        JOIN fb_users u ON u.id = c.user_id
        JOIN fb_memberships m ON m.user_id = u.id AND m.tenant_id = ?
+         AND m.status = 'active' AND m.revoked_at IS NULL
        JOIN fb_tenants t ON t.id = m.tenant_id
       WHERE c.credential_id = ?`,
     ctx.tenant.id,
@@ -284,11 +285,21 @@ export async function listPasskeys(db: D1Database, userId: string) {
 }
 
 export async function deletePasskey(db: D1Database, userId: string, passkeyId: string): Promise<void> {
-  const count = await first<{ count: number }>(db, "SELECT COUNT(*) AS count FROM fb_webauthn_credentials WHERE user_id = ?", userId);
-  if ((count?.count ?? 0) <= 1) {
+  // Keep the "never remove the last credential" invariant inside the write.
+  // A separate count followed by a delete lets two concurrent removals both
+  // observe two credentials and delete both, leaving strong authentication
+  // unavailable for the account.
+  const deleted = await db
+    .prepare(
+      `DELETE FROM fb_webauthn_credentials
+        WHERE id = ? AND user_id = ?
+          AND (SELECT COUNT(*) FROM fb_webauthn_credentials WHERE user_id = ?) > 1`,
+    )
+    .bind(passkeyId, userId, userId)
+    .run();
+  if ((deleted.meta?.changes ?? 0) !== 1) {
     throw new ApiError(409, "last_passkey", "Add another passkey before removing the last one.");
   }
-  await db.prepare("DELETE FROM fb_webauthn_credentials WHERE id = ? AND user_id = ?").bind(passkeyId, userId).run();
 }
 
 export async function hashChallenge(challenge: string): Promise<string> {

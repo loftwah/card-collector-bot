@@ -3,6 +3,7 @@ import { ApiError, type Ctx, type Role } from "../context";
 import { all, first, nowIso, statement } from "../db";
 import { newId, sha256Hex } from "../ids";
 import { auditStatement } from "../http";
+import { assertTransition } from "../state";
 import { cardVisibilitySql, publicCollectionSql, viewerAccess } from "./visibility";
 import { botAllowsAiArt, isAiArtOrigin } from "./bots";
 import { normalizeCardName } from "./card-name-aliases";
@@ -239,16 +240,20 @@ export async function listCards(
 export async function getCard(
   ctx: Ctx,
   idOrSlug: string,
-  options?: { includeDrafts?: boolean; includeAi?: boolean },
+  options?: { includeDrafts?: boolean; includeAi?: boolean; includeArchived?: boolean },
 ): Promise<CardView> {
   const access = await viewerAccess(ctx);
   const visibility = cardVisibilitySql(access);
   const administrative = Boolean(options?.includeDrafts || access.managesCurrentTenant);
   const gate = administrative ? "1 = 1" : `(cd.status = 'published' AND (${visibility.sql}))`;
   const gateParams = administrative ? [] : visibility.params;
+  // Archived rows are normally invisible, including to the administrative
+  // catalogue. Restoration is the one explicit exception: the caller must ask
+  // for the archived row before it can clear the archive marker.
+  const archivedGate = options?.includeArchived ? "" : "AND cd.archived_at IS NULL";
   const row = await first<CardRow>(
     ctx.db,
-    `${CARD_SELECT} WHERE cd.tenant_id = ? AND (cd.id = ? OR cd.slug = ?) AND cd.archived_at IS NULL AND ${gate}`,
+    `${CARD_SELECT} WHERE cd.tenant_id = ? AND (cd.id = ? OR cd.slug = ?) ${archivedGate} AND ${gate}`,
     ctx.tenant.id,
     idOrSlug,
     idOrSlug,
@@ -780,7 +785,7 @@ export async function setCardStatus(
   id: string,
   status: "draft" | "published" | "retired",
 ): Promise<CardView> {
-  const card = await getCard(ctx, id, { includeDrafts: true });
+  const card = await getCard(ctx, id, { includeDrafts: true, includeArchived: true });
   if (status === "published") {
     const variants = await first<{ count: number }>(
       ctx.db,
@@ -800,13 +805,26 @@ export async function setCardStatus(
   if (status === "retired" && card.status === "draft") {
     throw new ApiError(409, "invalid_transition", "A draft is removed or archived, not retired.");
   }
+  if (status !== card.status) assertTransition("card", card.status, status);
+  // `archived_at` is the archive marker, not a synonym for `retired`. Leaving
+  // it set while publishing or drafting a card produces a status/visibility
+  // contradiction: the row claims to be published, but every catalogue and
+  // media read filters it out. Restoring a retired or archived card must clear
+  // the marker in the same write that changes the status.
   await ctx.db.batch([
     ctx.db
       .prepare(
-        "UPDATE fb_card_definitions SET status = ?, updated_at = ?, version = version + 1 WHERE id = ? AND tenant_id = ?",
+        `UPDATE fb_card_definitions SET
+           status = ?,
+           archived_at = CASE WHEN ? = 'retired' THEN archived_at ELSE NULL END,
+           updated_at = ?,
+           version = version + 1
+         WHERE id = ? AND tenant_id = ?`,
       )
-      .bind(status, nowIso(), card.id, ctx.tenant.id),
-    auditStatement(ctx, `card.${status}`, "card", card.id),
+      .bind(status, status, nowIso(), card.id, ctx.tenant.id),
+    auditStatement(ctx, `card.${status}`, "card", card.id, {
+      restored_from_archive: Boolean(card.archived_at) && status !== "retired",
+    }),
   ]);
   return getCard(ctx, card.id, { includeDrafts: true });
 }
@@ -820,22 +838,30 @@ export async function archiveCard(ctx: Ctx, id: string): Promise<void> {
     card.id,
   );
   if (!instances?.count && card.status === "draft") {
-    await ctx.db.batch([
-      ctx.db
-        .prepare("DELETE FROM fb_card_tags WHERE tenant_id = ? AND card_id = ?")
-        .bind(ctx.tenant.id, card.id),
-      ctx.db
-        .prepare("DELETE FROM fb_variants WHERE tenant_id = ? AND card_id = ?")
-        .bind(ctx.tenant.id, card.id),
-      ctx.db
-        .prepare("DELETE FROM fb_artwork_editions WHERE tenant_id = ? AND card_id = ?")
-        .bind(ctx.tenant.id, card.id),
-      ctx.db
-        .prepare("DELETE FROM fb_card_definitions WHERE tenant_id = ? AND id = ?")
-        .bind(ctx.tenant.id, card.id),
-      auditStatement(ctx, "card.draft_removed", "card", card.id),
-    ]);
-    return;
+    try {
+      await ctx.db.batch([
+        ctx.db
+          .prepare("DELETE FROM fb_card_tags WHERE tenant_id = ? AND card_id = ?")
+          .bind(ctx.tenant.id, card.id),
+        ctx.db
+          .prepare("DELETE FROM fb_variants WHERE tenant_id = ? AND card_id = ?")
+          .bind(ctx.tenant.id, card.id),
+        ctx.db
+          .prepare("DELETE FROM fb_artwork_editions WHERE tenant_id = ? AND card_id = ?")
+          .bind(ctx.tenant.id, card.id),
+        ctx.db
+          .prepare("DELETE FROM fb_card_definitions WHERE tenant_id = ? AND id = ?")
+          .bind(ctx.tenant.id, card.id),
+        auditStatement(ctx, "card.draft_removed", "card", card.id),
+      ]);
+      return;
+    } catch (error) {
+      // A draft that is already referenced by a collection, set, print
+      // proposal or another durable record cannot be hard-deleted without
+      // losing that history. Fall through to the archive path instead of
+      // surfacing a raw foreign-key failure.
+      if (!/FOREIGN KEY/i.test(String(error))) throw error;
+    }
   }
   await ctx.db.batch([
     ctx.db
@@ -1520,6 +1546,19 @@ export async function mergeCards(ctx: Ctx, sourceId: string, targetId: string) {
     ctx.db
       .prepare("UPDATE fb_set_memberships SET card_id = ? WHERE tenant_id = ? AND card_id = ?")
       .bind(target.id, ctx.tenant.id, source.id),
+    // Collection membership is part of card identity. A merge must not make a
+    // curated collection silently lose the subject because only the retired
+    // source id kept the link.
+    ctx.db
+      .prepare(
+        `INSERT OR IGNORE INTO fb_collection_cards (collection_id, card_id, tenant_id, sort, added_by, added_at)
+         SELECT collection_id, ?, tenant_id, sort, added_by, added_at
+           FROM fb_collection_cards WHERE tenant_id = ? AND card_id = ?`,
+      )
+      .bind(target.id, ctx.tenant.id, source.id),
+    ctx.db
+      .prepare("DELETE FROM fb_collection_cards WHERE tenant_id = ? AND card_id = ?")
+      .bind(ctx.tenant.id, source.id),
     ctx.db
       .prepare(
         "INSERT OR IGNORE INTO fb_card_tags (tenant_id, card_id, tag_id) SELECT tenant_id, ?, tag_id FROM fb_card_tags WHERE tenant_id = ? AND card_id = ?",
