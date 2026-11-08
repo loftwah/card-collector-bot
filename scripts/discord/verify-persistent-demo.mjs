@@ -43,7 +43,7 @@ async function discord(endpoint, attempt = 0) {
   return response.json();
 }
 
-const expectedImages = new Set([1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 13, 14, 15, 16]);
+const expectedImages = new Set([1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 13, 14, 15, 16, 20]);
 const FINAL_STAGE = 21;
 const results = [];
 let failures = 0;
