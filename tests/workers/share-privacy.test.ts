@@ -5,6 +5,7 @@ import { resolveShareView } from "../../src/server/modules/shares";
 import type { Ctx } from "../../src/server/context";
 import { nowIso } from "../../src/server/db";
 import { createUser, addMembership } from "../../src/server/modules/identity";
+import { addCollectionCards, createCollection } from "../../src/server/modules/collections";
 
 function anonymous(ctx: Ctx): Ctx {
   return {
@@ -93,6 +94,79 @@ describe("share privacy and lifecycle policy", () => {
     expect(ownerView.showSerial).toBe(true);
   });
 
+  it("inherits the most restrictive collection when a card belongs to a public and a members collection", async () => {
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const fixture = await fixturePool(owner);
+    const instanceId = await makeInstance(owner, owner.user!.id, fixture, "SHARE-MULTI-COLLECTION");
+    const second = await createCollection(owner, {
+      name: "Second Members World",
+      scope: "global",
+      status: "published",
+      viewAudience: "members",
+    });
+    await addCollectionCards(owner, second.id, [fixture.cardId]);
+    await updatePreferences(owner, { sharingEnabled: true });
+    const share = await createShareLink(owner, { kind: "card", targetId: instanceId, expiresInDays: 7 });
+    expect(share.audience).toBe("member");
+    expect(share.preview.collection_id).toBe(second.id);
+    const anon = await resolveShareView(anonymous(owner), share.token);
+    expect(anon.publicView).toBe(false);
+    expect(anon.visible).toBe(false);
+    expect(JSON.stringify(anon.payload)).not.toContain("SHARE-MULTI-COLLECTION");
+    const member = await resolveShareView(player, share.token);
+    expect(member.visible).toBe(true);
+  });
+
+  it("closes a public card link when the card is later filed in a restricted collection", async () => {
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const fixture = await fixturePool(owner);
+    const instanceId = await makeInstance(owner, owner.user!.id, fixture, "SHARE-LATE-RESTRICTION");
+    await updatePreferences(owner, { sharingEnabled: true });
+    const share = await createShareLink(owner, { kind: "card", targetId: instanceId, expiresInDays: 7 });
+    expect((await resolveShareView(anonymous(owner), share.token)).publicView).toBe(true);
+    const restricted = await createCollection(owner, {
+      name: "Later Restricted World",
+      scope: "global",
+      status: "published",
+      viewAudience: "private",
+    });
+    await addCollectionCards(owner, restricted.id, [fixture.cardId]);
+    const closed = await resolveShareView(anonymous(owner), share.token);
+    expect(closed.active).toBe(true);
+    expect(closed.publicView).toBe(false);
+    expect(closed.visible).toBe(false);
+  });
+
+  it("denies a share when the owner row has revoked_at even if status is still active", async () => {
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    await updatePreferences(owner, { sharingEnabled: true });
+    const share = await createShareLink(owner, { kind: "profile", expiresInDays: 7 });
+    await runtime.DB
+      .prepare("UPDATE fb_memberships SET revoked_at = ? WHERE tenant_id = ? AND user_id = ?")
+      .bind(nowIso(), owner.tenant.id, owner.user!.id)
+      .run();
+    const denied = await resolveShareView(owner, share.token);
+    expect(denied.active).toBe(false);
+    expect(denied.visible).toBe(false);
+    expect(JSON.stringify(denied.payload)).toBe("{}");
+  });
+
+  it("does not let a player create a collection share for a collection they cannot view", async () => {
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const privateCollection = await createCollection(owner, {
+      name: "Owner Only World",
+      scope: "global",
+      status: "published",
+      viewAudience: "private",
+    });
+    await updatePreferences(player, { sharingEnabled: true });
+    await expect(
+      createShareLink(player, { kind: "collection", targetId: privateCollection.id, expiresInDays: 7 }),
+    ).rejects.toMatchObject({ code: "collection_not_found" });
+  });
+
   it("closes a public link when the collection audience changes", async () => {
     const owner = await ctxFor("cabinet", "owner@foilbury.local");
     const fixture = await fixturePool(owner);
@@ -131,13 +205,17 @@ describe("share privacy and lifecycle policy", () => {
     expect((await resolveShareView(owner, ownerRevoked.token)).active).toBe(false);
   });
 
-  it("does not resolve a cabinet share from another Bot", async () => {
+  it("does not expose a member share to a viewer from another Bot", async () => {
     const owner = await ctxFor("cabinet", "owner@foilbury.local");
     await updatePreferences(owner, { sharingEnabled: true });
     const share = await createShareLink(owner, { kind: "profile", expiresInDays: 7 });
     const harbour = await ctxFor("harbour", "harbour.owner@foilbury.test");
     const cross = await resolveShareView(harbour, share.token);
-    expect(cross.active).toBe(false);
+    // The token is recognised (so a legitimate recipient sees a sign-in/access
+    // gate rather than a misleading 404), but the snapshot itself is withheld.
     expect(cross.visible).toBe(false);
+    expect(cross.publicView).toBe(false);
+    expect(cross.payload).toEqual({});
+    expect(cross.showSerial).toBe(false);
   });
 });

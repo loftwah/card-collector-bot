@@ -12,6 +12,8 @@ import { auditStatement, findIdempotent, idempotencyStatement, type IdempotencyI
 import { getWalletSummary } from "./wallet";
 import { nextDailyEligibleAt } from "./daily-time";
 import { listCollections } from "./collections";
+import { canViewCollection } from "./visibility";
+import { cardShareAudience } from "./shares";
 import {
   getProfilePresentationOptions,
   parseProfilePresentation,
@@ -769,7 +771,15 @@ export async function createShareLink(
       user.id,
     );
     if (!instance) throw new ApiError(404, "instance_not_found", "That copy is not in your collection.");
-    audience = instance.collection_audience === "public" && instance.collection_approved_at ? "public" : "member";
+    const effective = await cardShareAudience(ctx, instance.card_id);
+    audience = effective.audience === "public" ? "public" : "member";
+    const effectiveCollection = effective.collectionId
+      ? await first<{ id: string; name: string }>(
+          ctx.db,
+          "SELECT id, name FROM fb_collections WHERE id = ? AND archived_at IS NULL",
+          effective.collectionId,
+        )
+      : null;
     payload = {
       label: kind === "latest" ? "Latest pull" : "Card",
       card_id: instance.card_id,
@@ -779,8 +789,8 @@ export async function createShareLink(
       variant_name: instance.variant_name,
       finish: instance.effect_key && instance.effect_key !== "none" ? `${instance.material_key} · ${instance.effect_key}` : instance.variant_name,
       serial: instance.serial,
-      collection_id: instance.collection_id,
-      collection_name: instance.collection_name,
+      collection_id: effectiveCollection?.id ?? instance.collection_id,
+      collection_name: effectiveCollection?.name ?? instance.collection_name,
       render_url: instance.render_url,
       back_url: instance.back_url,
       audience,
@@ -793,6 +803,9 @@ export async function createShareLink(
       targetId,
     );
     if (!collection) throw new ApiError(404, "collection_not_found", "That collection does not exist.");
+    if (!(await canViewCollection(ctx, collection.id))) {
+      throw new ApiError(404, "collection_not_found", "That collection is not available to this account.");
+    }
     audience = collection.view_audience === "public" && collection.public_approved_at ? "public" : "member";
     payload = {
       label: "Collection",

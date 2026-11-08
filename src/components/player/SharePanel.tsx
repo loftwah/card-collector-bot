@@ -94,7 +94,7 @@ export default function SharePanel({
       {confirming ? (
         <div className="share-panel__confirm" role="group" aria-label="Confirm share link">
           <p className="text-sm font-semibold">Confirm the exact snapshot</p>
-          <p className="mt-1 text-xs text-[var(--muted)]">The link can be opened by anyone with the URL while it is active. It never grants membership or access to your account.</p>
+          <p className="mt-1 text-xs text-[var(--muted)]">A public-safe link can be opened by anyone with the URL while it is active. A members-only link still requires an entitled sign-in on every request. Neither grants membership or access to your account.</p>
           <div className="mt-3 flex flex-wrap items-end gap-3">
             <label className="text-xs font-semibold">
               Expires
