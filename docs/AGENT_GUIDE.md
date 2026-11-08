@@ -20,6 +20,16 @@ Setup writes `.dev.vars`, `.foilbury/local-credentials.json` and `.foilbury/agen
 
 Two agent grants are created: an owner grant with all scopes and a player grant with player scopes only. Agent tokens are hashed at rest. The bearer token is readable once from `.foilbury/agents.json` for local use; never commit it, log it or paste it into a prompt.
 
+## Checks and release budget
+
+`pnpm check` runs the complete correctness gate: access config, release and API
+contract scripts, the acceptance runner, Astro typecheck, unit tests and Worker
+tests. The independent gates run concurrently; no gate is skipped. GitHub
+Actions selects browser journeys from the changed paths, runs them on a separate
+runner in parallel with the correctness gate, and fails the flow if it exceeds
+five minutes. A production release has a 240-second pre-deploy budget and records
+its total in the release receipt. See `TEST_RELEASE_BUDGET.md`.
+
 ## Browser
 
 Use `/login` for Discord, a one-use email link, a passkey, or the explicit loopback-only development sign-in. The bootstrap password is a legacy fallback, not the normal journey. The development sign-in is enabled only by `FOILBURY_LOCAL_MODE=true` and `FOILBURY_DEV_LOGIN=true`, and rejects non-loopback requests. Set `FOILBURY_DEV_LOGIN=false` to revoke it.
