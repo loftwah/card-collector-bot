@@ -5757,8 +5757,9 @@ html[data-motion="reduced"] .layered-card__effect {
 }
 
 @media (max-width: 640px) {
-  .share-panel__preview {
-    grid-template-columns: 1fr;
+  .share-panel__preview,
+  .share-panel--collection .share-panel__preview {
+    grid-template-columns: minmax(0, 1fr);
   }
   .share-panel__preview img {
     max-width: 190px;
