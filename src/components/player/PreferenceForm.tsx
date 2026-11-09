@@ -247,15 +247,22 @@ export default function PreferenceForm({
             <div className="preference-worlds mt-4">
               {visibleCollections.map((collection, index) => {
                 const included = !hiddenCollections.includes(collection.id);
+                const art = collection.banner_url ?? collection.logo_url;
+                const isBanner = Boolean(collection.banner_url);
                 return (
                   <label key={collection.id} className="preference-world">
-                    <span className="preference-world__art preference-world__art--mark">
-                      {collection.logo_url ? (
+                    <span
+                      className={[
+                        "preference-world__art",
+                        isBanner ? "preference-world__art--banner" : "preference-world__art--mark",
+                      ].join(" ")}
+                    >
+                      {art ? (
                         <img
-                          src={collection.logo_url}
+                          src={art}
                           alt=""
-                          width="512"
-                          height="512"
+                          width={isBanner ? 1600 : 512}
+                          height={isBanner ? 900 : 512}
                           loading={index < 8 ? "eager" : "lazy"}
                           decoding="async"
                         />

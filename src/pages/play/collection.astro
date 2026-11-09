@@ -66,8 +66,10 @@ const finishLabel = (key: string) => finishLabels[key] ?? key;
     selected && progress && binder ? (
       <div class="collection-album">
         <header class="collection-album__hero">
-          <div class:list={["collection-album__cover", "collection-album__cover--mark"]}>
-            {selectedMark ? (
+          <div class:list={["collection-album__cover", !selectedBanner && "collection-album__cover--mark"]}>
+            {selectedBanner ? (
+              <img src={selectedBanner} alt="" width="1600" height="900" loading="eager" />
+            ) : selectedMark ? (
               <img src={selectedMark} alt="" width="512" height="512" loading="eager" />
             ) : (
               <span class="collection-album__cover-fallback" aria-hidden="true">

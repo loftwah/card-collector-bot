@@ -4620,7 +4620,7 @@ html[data-motion="reduced"] .layered-card__effect {
 
 @media (min-width: 820px) {
   .collection-album__hero {
-    grid-template-columns: minmax(190px, 0.62fr) minmax(0, 1.38fr) auto;
+    grid-template-columns: minmax(240px, 0.8fr) minmax(0, 1.2fr) auto;
     align-items: start;
     gap: 2rem;
   }
@@ -4645,11 +4645,11 @@ html[data-motion="reduced"] .layered-card__effect {
 
 @media (min-width: 820px) {
   .collection-album__cover {
-    aspect-ratio: 5 / 7;
-    max-width: 260px;
+    aspect-ratio: 16 / 9;
+    max-width: none;
   }
   .collection-album__cover > img {
-    object-fit: contain;
+    object-fit: cover;
   }
 }
 
@@ -7757,7 +7757,7 @@ html[data-motion="reduced"] .layered-card__effect {
 }
 
 .collection-album__cover--mark > img {
-  width: 58%;
+  width: min(32%, 7rem);
   height: auto;
   object-fit: contain;
 }
@@ -7773,4 +7773,17 @@ html[data-motion="reduced"] .layered-card__effect {
   width: 66%;
   height: 66%;
   object-fit: contain;
+}
+
+.preference-world__art--banner {
+  width: 5.5rem;
+  min-width: 5.5rem;
+  height: 3.1rem;
+  background: #0a0a0a;
+}
+
+.preference-world__art--banner img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
