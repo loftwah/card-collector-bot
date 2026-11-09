@@ -2,6 +2,7 @@
 import PlayerLayout from "../../layouts/PlayerLayout.astro";
 import CollectionBrowser from "../../components/player/CollectionBrowser";
 import SharePanel from "../../components/player/SharePanel";
+import BinderSlot from "../../components/player/BinderSlot.astro";
 import { pageContext } from "../../server/page";
 import { countInventory, getInventory } from "../../server/modules/collection";
 import { listSets } from "../../server/modules/catalogue";
@@ -11,6 +12,9 @@ import {
   listCollections,
 } from "../../server/modules/collections";
 import { collectionBanner, collectionMark } from "../../lib/collection-art";
+import { collectionPresentation, groupForCard } from "../../lib/collection-presentation";
+import { getPoolPreview } from "../../server/modules/pools";
+import { getWalletSummary } from "../../server/modules/wallet";
 
 const ctx = await pageContext(Astro.request);
 const user = ctx.user!;
@@ -36,9 +40,17 @@ const selected = initialCollection
   : null;
 const selectedBanner = collectionBanner(selected);
 const selectedMark = collectionMark(selected);
-const [progress, binder] = selected
-  ? await Promise.all([collectionProgress(ctx, selected.id), collectionBinder(ctx, selected.id)])
-  : [null, null];
+const presentation = selected ? collectionPresentation(selected.slug) : null;
+const [progress, binder, openingPool, wallet] = selected
+  ? await Promise.all([
+      collectionProgress(ctx, selected.id),
+      collectionBinder(ctx, selected.id),
+      presentation
+        ? getPoolPreview(ctx, presentation.openingPool).catch(() => null)
+        : Promise.resolve(null),
+      getWalletSummary(ctx.db, ctx.tenant.id, user.id, 1).catch(() => null),
+    ])
+  : [null, null, null, null];
 const finishLabels: Record<string, string> = {
   plain: "Plain",
   silver: "Silver",
@@ -52,21 +64,141 @@ const nextFinish =
     .map((key) => ({ key, ...(finishStats[key] ?? { owned: 0, total: 0 }) }))
     .filter((entry) => entry.total > 0 && entry.owned < entry.total)
     .sort((a, b) => b.owned / Math.max(1, b.total) - a.owned / Math.max(1, a.total))[0] ?? null;
-const rosterPct = progress && progress.total_cards
-  ? Math.round((progress.owned_cards / progress.total_cards) * 100)
-  : 0;
+const rosterPct =
+  progress && progress.total_cards
+    ? Math.round((progress.owned_cards / progress.total_cards) * 100)
+    : 0;
 const filledSlots = binder ? binder.cards.filter((card) => card.owned).length : 0;
 const audienceLabel = (audience: string) =>
   audience === "public" ? "Public showcase" : audience === "private" ? "Private" : "Member album";
 const finishLabel = (key: string) => finishLabels[key] ?? key;
+const finishKeyForEntry = (entry: { material_key: string; effect_key: string | null }) => {
+  if (entry.effect_key === "holographic" || entry.material_key === "diamond") return "holographic";
+  if (entry.material_key === "silver") return "silver";
+  if (entry.material_key === "gold") return "gold";
+  if (entry.material_key === "plain") return "plain";
+  return "other";
+};
+const openingOdds = openingPool
+  ? finishOrder.map((key) => {
+      const probability = openingPool.entries
+        .filter((entry) => finishKeyForEntry(entry) === key)
+        .reduce((sum, entry) => sum + entry.probability_bps, 0);
+      return { key, probability };
+    })
+  : [];
+const openingBalance = wallet?.balance ?? 0;
+const openingShortfall = openingPool ? Math.max(0, openingPool.price - openingBalance) : 0;
+const missingSubjects = binder
+  ? binder.cards.filter((card) => !card.owned).map((card) => card.name)
+  : [];
+const binderGroups =
+  presentation && binder
+    ? presentation.groups
+        .map((group) => {
+          const cards = binder.cards.filter(
+            (card) => groupForCard(card.subtitle, presentation) === group.key,
+          );
+          return { ...group, cards };
+        })
+        .filter((group) => group.cards.length)
+    : null;
+const otherBinderCards =
+  presentation && binder
+    ? binder.cards.filter((card) => groupForCard(card.subtitle, presentation) === "other")
+    : [];
 ---
 
 <PlayerLayout title={selected ? `${selected.name} · Foilbury` : "All copies · Foilbury"}>
-  {
-    selected && progress && binder ? (
-      <div class="collection-album">
+  {selected && progress && binder ? (
+    <div class="collection-album">
+      {presentation ? (
+        <header class:list={["pilot-album__hero", `pilot-album__hero--${presentation.theme}`]}>
+          {selectedBanner ? (
+            <img
+              class="pilot-album__banner"
+              src={selectedBanner}
+              alt=""
+              width="1600"
+              height="900"
+              loading="eager"
+            />
+          ) : null}
+          <div class="pilot-album__veil" aria-hidden="true" />
+          <div class="pilot-album__content">
+            <div class="pilot-album__topline">
+              <a class="pilot-album__back" href="/play/collections">
+                ← All collections
+              </a>
+              <span class="pilot-album__audience">{audienceLabel(selected.view_audience)}</span>
+            </div>
+            <div class="pilot-album__identity">
+              {selectedMark ? (
+                <img
+                  class="pilot-album__mark"
+                  src={selectedMark}
+                  alt=""
+                  width="240"
+                  height="96"
+                  loading="eager"
+                />
+              ) : null}
+              <p class="pilot-album__eyebrow">{presentation.eyebrow}</p>
+              <h1>
+                {presentation.titleLead && presentation.titleTail ? (
+                  <>
+                    {presentation.titleLead}
+                    <span class="pilot-title__dash"> — </span>
+                    <span class="pilot-title__tail">{presentation.titleTail}</span>
+                  </>
+                ) : (
+                  selected.name
+                )}
+              </h1>
+              <p class="pilot-album__lede">{presentation.lede}</p>
+            </div>
+            <div class="pilot-album__actions">
+              <a class="btn btn-primary" href={`/play/draw?pool=${presentation.openingPool}`}>
+                {presentation.openingCta}
+              </a>
+              <a class="btn btn-secondary" href="#my-cards">
+                My cards
+              </a>
+            </div>
+            <dl class="pilot-album__facts">
+              <div>
+                <dt>{presentation.theme === "table" ? "Seats" : "Case files"}</dt>
+                <dd>
+                  {progress.owned_cards}/{progress.total_cards}
+                </dd>
+              </div>
+              <div>
+                <dt>Finish set</dt>
+                <dd>
+                  {progress.owned_variants}/{progress.total_variants}
+                </dd>
+              </div>
+              <div>
+                <dt>Copies</dt>
+                <dd>{progress.owned_copies}</dd>
+              </div>
+            </dl>
+            <p class="pilot-album__note">
+              {selected.source_work ??
+                (selected.scope === "global" ? "Foilbury original" : "This Bot")}
+              {" · "}
+              {progress.total_cards} subjects · {progress.total_variants} core variants
+            </p>
+          </div>
+        </header>
+      ) : (
         <header class="collection-album__hero">
-          <div class:list={["collection-album__cover", !selectedBanner && "collection-album__cover--mark"]}>
+          <div
+            class:list={[
+              "collection-album__cover",
+              !selectedBanner && "collection-album__cover--mark",
+            ]}
+          >
             {selectedBanner ? (
               <img src={selectedBanner} alt="" width="1600" height="900" loading="eager" />
             ) : selectedMark ? (
@@ -88,11 +220,16 @@ const finishLabel = (key: string) => finishLabels[key] ?? key;
               {selected.description || "A curated collection."}
             </p>
             <div class="collection-album__actions">
-              <a class="btn btn-primary" href="/play/draw">Open a capsule</a>
-              <a class="btn btn-secondary" href="#my-cards">My cards</a>
+              <a class="btn btn-primary" href="/play/draw">
+                Open a capsule
+              </a>
+              <a class="btn btn-secondary" href="#my-cards">
+                My cards
+              </a>
             </div>
             <p class="collection-album__note">
-              {selected.source_work ?? (selected.scope === "global" ? "Foilbury original" : "This Bot")}
+              {selected.source_work ??
+                (selected.scope === "global" ? "Foilbury original" : "This Bot")}
               {" · "}
               {progress.total_cards} subjects · {progress.total_variants} core variants
             </p>
@@ -101,7 +238,9 @@ const finishLabel = (key: string) => finishLabels[key] ?? key;
           <dl class="collection-album__stats">
             <div>
               <dt>Subjects</dt>
-              <dd>{progress.owned_cards}/{progress.total_cards}</dd>
+              <dd>
+                {progress.owned_cards}/{progress.total_cards}
+              </dd>
             </div>
             <div>
               <dt>Copies</dt>
@@ -113,7 +252,146 @@ const finishLabel = (key: string) => finishLabels[key] ?? key;
             </div>
           </dl>
         </header>
+      )}
 
+      {presentation ? (
+        <section
+          class:list={["pilot-summary", `pilot-summary--${presentation.theme}`]}
+          aria-label="Collection progress and next opening"
+        >
+          <div class="pilot-panel pilot-panel--roster">
+            <p class="pilot-panel__kicker">Roster completion</p>
+            <div class="pilot-panel__figure">
+              <strong>
+                {progress.owned_cards}/{progress.total_cards}
+              </strong>
+              <span>{rosterPct}%</span>
+            </div>
+            <div
+              class="pilot-panel__bar"
+              role="progressbar"
+              aria-valuemin="0"
+              aria-valuemax={progress.total_cards}
+              aria-valuenow={progress.owned_cards}
+              aria-label={`${selected.name} roster completion`}
+            >
+              <span style={`width:${rosterPct}%`}></span>
+            </div>
+            <p class="pilot-panel__hint">
+              {missingSubjects.length
+                ? `Next missing: ${missingSubjects.slice(0, 3).join(", ")}${
+                    missingSubjects.length > 3 ? ` and ${missingSubjects.length - 3} more` : ""
+                  }.`
+                : "Every subject is home. Finish progress is the next hunt."}
+            </p>
+          </div>
+
+          <div class="pilot-panel pilot-panel--finishes">
+            <div class="pilot-panel__head">
+              <p class="pilot-panel__kicker">Owned by finish</p>
+              <span class="pilot-panel__small">
+                {progress.owned_variants}/{progress.total_variants} core variants
+              </span>
+            </div>
+            <div class="pilot-finish-list">
+              {finishOrder.map((key) => {
+                const stat = finishStats[key] ?? { owned: 0, total: 0 };
+                const pct = stat.total ? Math.round((stat.owned / stat.total) * 100) : 0;
+                return (
+                  <div class="pilot-finish">
+                    <div class="pilot-finish__head">
+                      <span>{finishLabel(key)}</span>
+                      <span class="mono">
+                        {stat.owned}/{stat.total}
+                        {stat.total && stat.owned >= stat.total ? " · mastered" : ""}
+                      </span>
+                    </div>
+                    <div
+                      class="pilot-finish__bar"
+                      role="progressbar"
+                      aria-valuemin="0"
+                      aria-valuemax={stat.total}
+                      aria-valuenow={stat.owned}
+                      aria-label={`${finishLabel(key)} progress`}
+                    >
+                      <span style={`width:${pct}%`}></span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {nextFinish ? (
+              <p class="pilot-panel__hint">
+                Next finish target: <strong>{finishLabel(nextFinish.key)}</strong>{" "}
+                {nextFinish.owned}/{nextFinish.total} — {nextFinish.total - nextFinish.owned}{" "}
+                missing.
+              </p>
+            ) : (
+              <p class="pilot-panel__hint is-complete">
+                Every published core finish is held. Finish mastery is complete for this collection.
+              </p>
+            )}
+          </div>
+
+          <aside class="pilot-opening" aria-labelledby="pilot-opening-title">
+            <p class="pilot-panel__kicker">What to open next</p>
+            <h2 id="pilot-opening-title">
+              {openingPool?.pool.name ?? "This collection is in the cabinet draw"}
+            </h2>
+            {openingPool ? (
+              <>
+                <p class="pilot-opening__copy">{openingPool.pool.description}</p>
+                <dl class="pilot-opening__facts">
+                  <div>
+                    <dt>Cost</dt>
+                    <dd>{openingPool.price} Foil</dd>
+                  </div>
+                  <div>
+                    <dt>Eligible</dt>
+                    <dd>{openingPool.eligible_count} cards</dd>
+                  </div>
+                  <div>
+                    <dt>Balance</dt>
+                    <dd>{openingBalance} Foil</dd>
+                  </div>
+                </dl>
+                <div class="pilot-opening__odds" aria-label="Finish odds">
+                  {openingOdds.map((odd) => (
+                    <span>
+                      {finishLabel(odd.key)} <strong>{Math.round(odd.probability / 100)}%</strong>
+                    </span>
+                  ))}
+                </div>
+                <p class="pilot-opening__note">
+                  One copy with its own serial and finish. Foil is earned through daily allowances,
+                  missions and achievements; capsules are never bought.
+                </p>
+                <a
+                  class="btn btn-primary btn-sm"
+                  href={`/play/draw?pool=${presentation.openingPool}`}
+                >
+                  {presentation.openingCta}
+                </a>
+                {openingShortfall > 0 ? (
+                  <p class="pilot-opening__shortfall">
+                    You need {openingShortfall} more Foil. Your daily allowance is the next step.
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <p class="pilot-opening__copy">
+                  There is no dedicated capsule available for this collection right now. The mixed
+                  cabinet draw is the honest next step.
+                </p>
+                <a class="btn btn-secondary btn-sm" href="/play/draw">
+                  Open the cabinet draw
+                </a>
+              </>
+            )}
+          </aside>
+        </section>
+      ) : (
         <div class="collection-album__progress">
           <div class="collection-progress-block">
             <div class="collection-progress-block__head">
@@ -174,7 +452,8 @@ const finishLabel = (key: string) => finishLabels[key] ?? key;
             {nextFinish ? (
               <p class="collection-progress-block__hint">
                 Next finish target: <strong>{finishLabel(nextFinish.key)}</strong>{" "}
-                {nextFinish.owned}/{nextFinish.total} — {nextFinish.total - nextFinish.owned} missing.
+                {nextFinish.owned}/{nextFinish.total} — {nextFinish.total - nextFinish.owned}{" "}
+                missing.
               </p>
             ) : (
               <p class="collection-progress-block__hint green">
@@ -183,180 +462,202 @@ const finishLabel = (key: string) => finishLabels[key] ?? key;
             )}
           </div>
         </div>
+      )}
 
-        <nav class="collection-album__sections" aria-label="Collection sections">
-          <a href="#album">Album</a>
-          <a href="#my-cards">All cards</a>
-          <a href="#about">About</a>
-        </nav>
+      <nav class="collection-album__sections" aria-label="Collection sections">
+        <a href="#album">Album</a>
+        <a href="#my-cards">All cards</a>
+        <a href="#about">About</a>
+      </nav>
 
-        <section id="album" class="collection-album__section">
-          <div class="collection-section-head">
-            <div>
-              <h2 class="collection-section-title">Full binder</h2>
-            </div>
-            <p class="collection-section-meta">
-              {filledSlots}/{binder.total} slots filled
-            </p>
+      <section id="album" class="collection-album__section">
+        <div class="collection-section-head">
+          <div>
+            <h2 class="collection-section-title">
+              {presentation ? presentation.rosterLabel : "Full binder"}
+            </h2>
           </div>
+          <p class="collection-section-meta">
+            {filledSlots}/{binder.total} slots filled
+          </p>
+        </div>
+        {presentation && binderGroups ? (
+          <div class="pilot-binder">
+            {binderGroups.map((group) => (
+              <section class:list={["pilot-shelf", `pilot-shelf--${presentation.theme}`]}>
+                <div class="pilot-shelf__head">
+                  <div>
+                    <h3>{group.label}</h3>
+                    <p>{group.caption}</p>
+                  </div>
+                  <p class="pilot-shelf__count">
+                    {group.cards.filter((card) => card.owned).length}/{group.cards.length} found
+                  </p>
+                </div>
+                <div class="binder-grid">
+                  {group.cards.map((card) => (
+                    <BinderSlot
+                      card={card}
+                      finishLabels={finishLabels}
+                      theme={presentation.theme}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+            {otherBinderCards.length ? (
+              <section class:list={["pilot-shelf", `pilot-shelf--${presentation.theme}`]}>
+                <div class="pilot-shelf__head">
+                  <div>
+                    <h3>More from the collection</h3>
+                    <p>Additional published subjects</p>
+                  </div>
+                  <p class="pilot-shelf__count">
+                    {otherBinderCards.filter((card) => card.owned).length}/{otherBinderCards.length}{" "}
+                    found
+                  </p>
+                </div>
+                <div class="binder-grid">
+                  {otherBinderCards.map((card) => (
+                    <BinderSlot
+                      card={card}
+                      finishLabels={finishLabels}
+                      theme={presentation.theme}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+          </div>
+        ) : (
           <div class="binder-grid">
             {binder.cards.map((card) => (
-              <article class="binder-slot" data-owned={card.owned ? "true" : "false"}>
-                <div class="binder-slot__object">
-                  {card.owned && card.render_url ? (
-                    <img src={card.render_url} alt="" width="300" height="420" loading="lazy" />
-                  ) : (
-                    <div class="binder-slot__missing">
-                      <span class="binder-slot__missing-mark" aria-hidden="true">+</span>
-                      <span>{card.owned ? "Render unavailable" : "Missing"}</span>
-                    </div>
-                  )}
-                </div>
-                <div class="binder-slot__body">
-                  <p class="binder-slot__name">{card.name}</p>
-                  <p class="binder-slot__meta">
-                    {card.owned
-                      ? `${card.copies} cop${card.copies === 1 ? "y" : "ies"}${
-                          card.finishes.length
-                            ? ` · ${card.finishes.map(finishLabel).join(", ")}`
-                            : ""
-                        }`
-                      : "Not yet collected"}
-                  </p>
-                  {card.owned && card.instance_id ? (
-                    <a class="btn btn-secondary btn-sm" href={`/play/card/${card.instance_id}`}>
-                      Inspect
-                    </a>
-                  ) : (
-                    <a class="btn btn-secondary btn-sm" href="/play/draw">
-                      Find a capsule
-                    </a>
-                  )}
-                </div>
-              </article>
+              <BinderSlot card={card} finishLabels={finishLabels} />
             ))}
           </div>
-        </section>
+        )}
+      </section>
 
-        <section id="my-cards" class="collection-album__section">
-          <div class="collection-section-head">
-            <div>
-              <h2 class="collection-section-title">My cards</h2>
-            </div>
-            <a class="btn btn-secondary btn-sm" href="/play/collections">
-              Browse collections
-            </a>
+      <section id="my-cards" class="collection-album__section">
+        <div class="collection-section-head">
+          <div>
+            <h2 class="collection-section-title">My cards</h2>
           </div>
-          <p class="collection-section-lede">
-            Every owned copy in this collection, with its own serial and finish. Filters and sort
-            apply to the copies you hold.
-          </p>
-          <CollectionBrowser
-            scopeKey={JSON.stringify([ctx.tenant.id, user.id])}
-            client:load
-            initialItems={items}
-            initialTotal={totalItems}
-            initialSearch={initialSearch}
-            initialFavourite={initialFavourite}
-            initialSet={initialSet}
-            sets={publishedSets.map((set) => ({ slug: set.slug, name: set.name }))}
-            collections={collections
-              .filter((collection) => collection.enabled)
-              .map((collection) => ({
-                slug: collection.slug,
-                name: collection.name,
-                logo_url: collection.logo_url,
-              }))}
-            initialCollection={initialCollection}
-          />
-        </section>
+          <a class="btn btn-secondary btn-sm" href="/play/collections">
+            Browse collections
+          </a>
+        </div>
+        <p class="collection-section-lede">
+          Every owned copy in this collection, with its own serial and finish. Filters and sort
+          apply to the copies you hold.
+        </p>
+        <CollectionBrowser
+          scopeKey={JSON.stringify([ctx.tenant.id, user.id])}
+          client:load
+          initialItems={items}
+          initialTotal={totalItems}
+          initialSearch={initialSearch}
+          initialFavourite={initialFavourite}
+          initialSet={initialSet}
+          sets={publishedSets.map((set) => ({ slug: set.slug, name: set.name }))}
+          collections={collections
+            .filter((collection) => collection.enabled)
+            .map((collection) => ({
+              slug: collection.slug,
+              name: collection.name,
+              logo_url: collection.logo_url,
+            }))}
+          initialCollection={initialCollection}
+        />
+      </section>
 
-        <section id="about" class="collection-album__section">
-          <div class="collection-section-head">
-            <div>
-              <h2 class="collection-section-title">The collection</h2>
-            </div>
+      <section id="about" class="collection-album__section">
+        <div class="collection-section-head">
+          <div>
+            <h2 class="collection-section-title">The collection</h2>
           </div>
-          <div class="collection-about">
-            <div>
-              <p>{selected.description || "A curated collection."}</p>
-              <dl class="collection-about__facts">
-                <div>
-                  <dt>Audience</dt>
-                  <dd>{audienceLabel(selected.view_audience)}</dd>
-                </div>
-                <div>
-                  <dt>Source</dt>
-                  <dd>{selected.source_work ?? "Foilbury original"}</dd>
-                </div>
-                <div>
-                  <dt>Scope</dt>
-                  <dd>{selected.scope === "global" ? "Foilbury collection" : "This Bot"}</dd>
-                </div>
-              </dl>
-              {ctx.csrfToken ? (
-                <form
-                  method="post"
-                  action={`/play/world/${encodeURIComponent(selected.id)}/explore`}
-                  class="mt-5"
-                >
-                  <input type="hidden" name="csrf" value={ctx.csrfToken} />
-                  <button type="submit" class="btn btn-secondary btn-sm">
-                    Record a world visit
-                  </button>
-                  <p class="mt-2 text-xs text-[var(--muted)]">
-                    After looking around, record this visit for today's mission.
-                  </p>
-                </form>
-              ) : null}
-            </div>
-            <SharePanel
-              client:load
-              kind="collection"
-              targetId={selected.id}
-              title={selected.name}
-              description={`${progress.owned_cards}/${progress.total_cards} subjects · ${progress.owned_variants}/${progress.total_variants} core variants. The share is a labelled snapshot, not live inventory.`}
-              frontUrl={selectedBanner ?? selectedMark}
-            />
+        </div>
+        <div class="collection-about">
+          <div>
+            <p>{selected.description || "A curated collection."}</p>
+            <dl class="collection-about__facts">
+              <div>
+                <dt>Audience</dt>
+                <dd>{audienceLabel(selected.view_audience)}</dd>
+              </div>
+              <div>
+                <dt>Source</dt>
+                <dd>{selected.source_work ?? "Foilbury original"}</dd>
+              </div>
+              <div>
+                <dt>Scope</dt>
+                <dd>{selected.scope === "global" ? "Foilbury collection" : "This Bot"}</dd>
+              </div>
+            </dl>
+            {ctx.csrfToken ? (
+              <form
+                method="post"
+                action={`/play/world/${encodeURIComponent(selected.id)}/explore`}
+                class="mt-5"
+              >
+                <input type="hidden" name="csrf" value={ctx.csrfToken} />
+                <button type="submit" class="btn btn-secondary btn-sm">
+                  Record a world visit
+                </button>
+                <p class="mt-2 text-xs text-[var(--muted)]">
+                  After looking around, record this visit for today's mission.
+                </p>
+              </form>
+            ) : null}
           </div>
-        </section>
-      </div>
-    ) : (
-      <div class="my-cards-page">
-        <header class="border-b border-[var(--line)] pb-6">
-          <h1 class="page-title mt-2">All copies</h1>
-          <p class="mt-3 max-w-2xl text-[var(--muted)]">
-            Every card copy you hold in this Bot, with its own serial and finish. For the curated
-            shelves and display, open your cabinet.
-          </p>
-          <div class="mt-4 flex flex-wrap gap-2">
-            <a class="btn btn-primary btn-sm" href="/play/cabinet">Open your cabinet</a>
-            <a class="btn btn-secondary btn-sm" href="/play/collections">
-              Browse collections
-            </a>
-          </div>
-        </header>
-        <div class="mt-7">
-          <CollectionBrowser
-            scopeKey={JSON.stringify([ctx.tenant.id, user.id])}
+          <SharePanel
             client:load
-            initialItems={items}
-            initialTotal={totalItems}
-            initialSearch={initialSearch}
-            initialFavourite={initialFavourite}
-            initialSet={initialSet}
-            sets={publishedSets.map((set) => ({ slug: set.slug, name: set.name }))}
-            collections={collections
-              .filter((collection) => collection.enabled)
-              .map((collection) => ({
-                slug: collection.slug,
-                name: collection.name,
-                logo_url: collection.logo_url,
-              }))}
-            initialCollection={initialCollection}
+            kind="collection"
+            targetId={selected.id}
+            title={selected.name}
+            description={`${progress.owned_cards}/${progress.total_cards} subjects · ${progress.owned_variants}/${progress.total_variants} core variants. The share is a labelled snapshot, not live inventory.`}
+            frontUrl={selectedBanner ?? selectedMark}
           />
         </div>
+      </section>
+    </div>
+  ) : (
+    <div class="my-cards-page">
+      <header class="border-b border-[var(--line)] pb-6">
+        <h1 class="page-title mt-2">All copies</h1>
+        <p class="mt-3 max-w-2xl text-[var(--muted)]">
+          Every card copy you hold in this Bot, with its own serial and finish. For the curated
+          shelves and display, open your cabinet.
+        </p>
+        <div class="mt-4 flex flex-wrap gap-2">
+          <a class="btn btn-primary btn-sm" href="/play/cabinet">
+            Open your cabinet
+          </a>
+          <a class="btn btn-secondary btn-sm" href="/play/collections">
+            Browse collections
+          </a>
+        </div>
+      </header>
+      <div class="mt-7">
+        <CollectionBrowser
+          scopeKey={JSON.stringify([ctx.tenant.id, user.id])}
+          client:load
+          initialItems={items}
+          initialTotal={totalItems}
+          initialSearch={initialSearch}
+          initialFavourite={initialFavourite}
+          initialSet={initialSet}
+          sets={publishedSets.map((set) => ({ slug: set.slug, name: set.name }))}
+          collections={collections
+            .filter((collection) => collection.enabled)
+            .map((collection) => ({
+              slug: collection.slug,
+              name: collection.name,
+              logo_url: collection.logo_url,
+            }))}
+          initialCollection={initialCollection}
+        />
       </div>
-    )
-  }
+    </div>
+  )}
 </PlayerLayout>

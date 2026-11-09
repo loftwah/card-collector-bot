@@ -473,6 +473,34 @@ WHERE slug = 'the-simpsons';
 - Desktop 1440px and mobile 390px, light and dark: no horizontal overflow; first visible tiles remain eager and later banners retain the collection-name fallback.
 - `pnpm check` passed 7/7 after the share-panel fix; `pnpm deploy:production` passed its check, build, identity and smoke suite.
 
+## Protocol 11 pilot key art and card language — 2026-11-10
+
+- Production collection: `protocol-11`.
+- Change: set `banner_url` to the committed original key art `/art/collections/protocol-11-banner.webp`. `logo_url` remains `/art/collections/protocol-11.svg`; the mark is now secondary.
+- `release_version`, `status` and `view_audience` are unchanged.
+- Source art: generated from the five supplied table-night portraits; provenance, prompt and hashes are in `docs/AI_COLLECTION_ART_PROVENANCE.md`.
+- Card language: `docs/CARD_LANGUAGE.md`; livery frames are authored by `art/generate-layers.mjs`.
+- Pre-change D1 backup and rollback are recorded by the release receipt for this change. The idempotent forward SQL is:
+
+```sql
+UPDATE fb_collections
+SET banner_url = '/art/collections/protocol-11-banner.webp',
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+WHERE slug = 'protocol-11'
+  AND (banner_url IS NULL OR banner_url <> '/art/collections/protocol-11-banner.webp');
+```
+
+Rollback:
+
+```sql
+UPDATE fb_collections
+SET banner_url = NULL,
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+WHERE slug = 'protocol-11';
+```
+
+The card fronts and backs are additive rendered assets; old renders remain in R2 and can be republished by re-running the prior render pipeline.
+
 ### Boundary
 
 - The AI banners are derivative AI-assisted compositions from published reference art. They are not official, licensed or exact canonical artwork.

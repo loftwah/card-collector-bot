@@ -622,7 +622,10 @@ async function appendSetMembership(ctx: Ctx, setSlug: string, cardIds: string[])
   );
 }
 
-export async function createRenderJobs(ctx: Ctx, options?: { force?: boolean }) {
+export async function createRenderJobs(
+  ctx: Ctx,
+  options?: { force?: boolean; collectionSlug?: string },
+) {
   const variants = await all<{
     variant_id: string;
     card_id: string;
@@ -653,9 +656,16 @@ export async function createRenderJobs(ctx: Ctx, options?: { force?: boolean }) 
              AND r.source_hash IS e.source_hash
         ))
         AND NOT EXISTS (SELECT 1 FROM fb_jobs j WHERE j.tenant_id = v.tenant_id AND j.kind = 'render_card'
-          AND json_extract(j.payload_json, '$.variant_id') = v.id AND j.status IN ('pending','running'))`,
+          AND json_extract(j.payload_json, '$.variant_id') = v.id AND j.status IN ('pending','running'))
+        AND (? = '' OR EXISTS (
+          SELECT 1 FROM fb_collection_cards cc2
+          JOIN fb_collections c2 ON c2.id = cc2.collection_id
+           WHERE cc2.card_id = v.card_id AND c2.slug = ?
+        ))`,
     ctx.tenant.id,
     options?.force ? 1 : 0,
+    options?.collectionSlug ?? "",
+    options?.collectionSlug ?? "",
   );
   const jobIds: string[] = [];
   for (const variant of variants) {

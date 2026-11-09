@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import fs from "node:fs";
+import path from "node:path";
 import sharp from "sharp";
 import { composeCard } from "../art/compose.mjs";
 import { requireQueuedBackground } from "./content/render-queued-front.mjs";
@@ -10,13 +12,21 @@ const json = args.has("--json");
 const queueOnly = args.has("--queue-only");
 const limitArg = process.argv.find((arg) => arg.startsWith("--limit="));
 const limit = limitArg ? Math.max(1, Number(limitArg.split("=")[1])) : undefined;
+const collectionArg = process.argv.find((arg) => arg.startsWith("--collection="));
+const collectionSlug = collectionArg?.split("=")[1]?.trim() || "";
+const presentations = JSON.parse(
+  fs.readFileSync(path.join(process.cwd(), "src/data/collection-presentations.json"), "utf8"),
+);
 
 function log(message) {
   if (!json) console.log(message);
 }
 
 await ensureServer();
-const queued = await apiJson("/api/v1/admin/renders/queue", { method: "POST", body: {} });
+const queued = await apiJson("/api/v1/admin/renders/queue", {
+  method: "POST",
+  body: collectionSlug ? { collection: collectionSlug } : {},
+});
 log(`Render queue: ${queued.queued} new job${queued.queued === 1 ? "" : "s"}.`);
 if (queueOnly) {
   if (json) console.log(JSON.stringify(queued, null, 2));
@@ -87,9 +97,20 @@ while (true) {
     // A multi-print edition is named "Subject — Print title". The face keeps
     // the subject name and uses the print title as its subtitle, so two prints
     // of the same subject are distinguishable without renaming the subject.
-    const printTitle = entry.edition?.name?.includes(" — ")
+    const rawPrintTitle = entry.edition?.name?.includes(" — ")
       ? entry.edition.name.split(" — ").slice(1).join(" — ")
       : "";
+    const printTitle = /^source edition$/i.test(rawPrintTitle.trim()) ? "" : rawPrintTitle;
+    const storedComposition = payload.composition_json
+      ? JSON.parse(payload.composition_json)
+      : null;
+    // A multi-print edition is a full-art object; only the square table-night
+    // portraits use the coaster mount.
+    const composition = printTitle
+      ? { ...(storedComposition ?? {}), mode: "contain" }
+      : storedComposition;
+    const collectionSlugForCard = entry.card.collections?.[0]?.slug ?? "";
+    const collectionTheme = presentations[collectionSlugForCard]?.theme ?? "";
     const { buffer: renderBytes } = await composeCard({
       subjectPath,
       backgroundPath,
@@ -104,7 +125,9 @@ while (true) {
           : "MEMBER EDITION",
       className: printTitle ? "Print" : (entry.card.class?.name ?? ""),
       rarity: entry.card.rarity?.name ?? "",
-      composition: payload.composition_json ? JSON.parse(payload.composition_json) : null,
+      composition,
+      collectionTheme,
+      markInvert: collectionTheme === "trial",
       markBuffer,
       markMime,
       returnBytes: true,
@@ -129,9 +152,7 @@ while (true) {
     await apiJson(`/api/v1/admin/jobs/${job.id}/fail`, {
       method: "POST",
       body: { message, attempt },
-    }).catch(
-      () => undefined,
-    );
+    }).catch(() => undefined);
     log(`  failed ${entry.card.name} — ${entry.variant.name}: ${message}`);
   }
 }

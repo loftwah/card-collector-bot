@@ -2178,10 +2178,19 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   ) {
     ensureContentWrite(ctx);
     requireScope(ctx, "render:write");
-    const body = await readJson(request, z.object({ force: z.boolean().optional() })).catch(() => ({
-      force: false,
-    }));
-    return json(await createRenderJobs(ctx, { force: Boolean(body?.force) }));
+    const body = await readJson(
+      request,
+      z.object({
+        force: z.boolean().optional(),
+        collection: z.string().trim().min(1).max(80).optional(),
+      }),
+    ).catch(() => ({ force: false, collection: undefined }));
+    return json(
+      await createRenderJobs(ctx, {
+        force: Boolean(body?.force),
+        collectionSlug: body?.collection,
+      }),
+    );
   }
   if (segments.length === 2 && segments[0] === "admin" && segments[1] === "jobs" && method === "GET") {
     ensureOps(ctx);

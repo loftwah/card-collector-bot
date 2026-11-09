@@ -34,6 +34,8 @@ export async function composeCard(input) {
     className = "",
     rarity = "",
     markPath = "",
+    collectionTheme = "",
+    markInvert = false,
     outputPath,
   } = input;
 
@@ -50,9 +52,13 @@ export async function composeCard(input) {
   const subjectMeta = await sharp(subjectPath).metadata();
   const isCutout = Boolean(subjectMeta.hasAlpha);
   const composition = normaliseComposition(input.composition);
-  const mode =
-    composition.mode ??
-    (subjectMeta.width === subjectMeta.height && !isCutout ? "medallion" : "contain");
+  const defaultMode =
+    subjectMeta.width === subjectMeta.height && !isCutout
+      ? collectionTheme === "table"
+        ? "mount"
+        : "medallion"
+      : "contain";
+  const mode = composition.mode ?? defaultMode;
   const zoom = Math.min(1.6, Math.max(0.6, Number(composition.zoom ?? 1)));
   const offsetX = Math.min(20, Math.max(-20, Number(composition.offsetX ?? 0)));
   const offsetY = Math.min(20, Math.max(-20, Number(composition.offsetY ?? 0)));
@@ -103,6 +109,50 @@ export async function composeCard(input) {
       .toBuffer();
     layerWidth = size;
     layerHeight = size;
+  } else if (mode === "mount") {
+    /* A square table-night portrait becomes a coaster on a paper matte: the
+       circular source is masked cleanly, then mounted with a fine brass ring.
+       Print editions stay full-art and do not use this mode. */
+    const circle = Math.round(540 * zoom);
+    const matteSize = circle + 88;
+    const square = await sharp(source)
+      .resize(circle, circle, { fit: "cover", position: "attention" })
+      .png()
+      .toBuffer();
+    const mask = Buffer.from(
+      `<svg width="${circle}" height="${circle}" xmlns="http://www.w3.org/2000/svg"><circle cx="${circle / 2}" cy="${circle / 2}" r="${circle / 2 - 2}" fill="#fff"/></svg>`,
+    );
+    const cut = await sharp(square)
+      .composite([{ input: mask, blend: "dest-in" }])
+      .png()
+      .toBuffer();
+    const ring = Buffer.from(
+      `<svg width="${circle}" height="${circle}" xmlns="http://www.w3.org/2000/svg"><circle cx="${circle / 2}" cy="${circle / 2}" r="${circle / 2 - 2}" fill="none" stroke="#F4F0E6" stroke-width="5"/><circle cx="${circle / 2}" cy="${circle / 2}" r="${circle / 2 - 6}" fill="none" stroke="#B08A52" stroke-width="2"/></svg>`,
+    );
+    const portrait = await sharp(cut)
+      .composite([{ input: ring, left: 0, top: 0 }])
+      .png()
+      .toBuffer();
+    const matte = await sharp({
+      create: {
+        width: matteSize,
+        height: matteSize,
+        channels: 4,
+        background: { r: 244, g: 240, b: 230, alpha: 1 },
+      },
+    })
+      .composite([{ input: portrait, left: 44, top: 44 }])
+      .png()
+      .toBuffer();
+    const edge = Buffer.from(
+      `<svg width="${matteSize}" height="${matteSize}" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="1" width="${matteSize - 2}" height="${matteSize - 2}" rx="4" fill="none" stroke="#B08A52" stroke-width="1.8" opacity=".9"/><rect x="9" y="9" width="${matteSize - 18}" height="${matteSize - 18}" rx="2" fill="none" stroke="#6F5A35" stroke-width=".8" opacity=".55"/></svg>`,
+    );
+    layer = await sharp(matte)
+      .composite([{ input: edge, left: 0, top: 0 }])
+      .png()
+      .toBuffer();
+    layerWidth = matteSize;
+    layerHeight = matteSize;
   } else if (mode === "fill") {
     layerWidth = Math.round(artWindow.width * zoom);
     layerHeight = Math.round(artWindow.height * zoom);
@@ -127,15 +177,18 @@ export async function composeCard(input) {
 
   const baseLeft = artWindow.x + Math.round((artWindow.width - layerWidth) / 2);
   const baseTop =
-    isCutout && mode === "contain"
-      ? artWindow.y + artWindow.height - layerHeight
-      : artWindow.y + Math.round((artWindow.height - layerHeight) / 2);
+    mode === "mount"
+      ? artWindow.y + 24
+      : isCutout && mode === "contain"
+        ? artWindow.y + artWindow.height - layerHeight
+        : artWindow.y + Math.round((artWindow.height - layerHeight) / 2);
   const requestedLeft = baseLeft + Math.round((offsetX / 100) * artWindow.width);
   const requestedTop = baseTop + Math.round((offsetY / 100) * artWindow.height);
   // Keep the original positioning for layers that fit. If a zoomed layer is
   // larger than the canvas, retain its intended centre and crop the overflow.
   const left = layerWidth > W ? requestedLeft : clamp(requestedLeft, 0, W - layerWidth);
-  const top = layerHeight > canvasHeight ? requestedTop : clamp(requestedTop, 0, canvasHeight - layerHeight);
+  const top =
+    layerHeight > canvasHeight ? requestedTop : clamp(requestedTop, 0, canvasHeight - layerHeight);
   const clippedLeft = Math.max(0, left);
   const clippedTop = Math.max(0, top);
   const clippedRight = Math.min(W, left + layerWidth);
@@ -143,14 +196,18 @@ export async function composeCard(input) {
   if (clippedRight <= clippedLeft || clippedBottom <= clippedTop) {
     throw new Error("Artwork does not intersect the card art canvas.");
   }
-  const clippedLayer = layerWidth > W || layerHeight > canvasHeight
-    ? await sharp(layer).extract({
-        left: clippedLeft - left,
-        top: clippedTop - top,
-        width: clippedRight - clippedLeft,
-        height: clippedBottom - clippedTop,
-      }).png().toBuffer()
-    : layer;
+  const clippedLayer =
+    layerWidth > W || layerHeight > canvasHeight
+      ? await sharp(layer)
+          .extract({
+            left: clippedLeft - left,
+            top: clippedTop - top,
+            width: clippedRight - clippedLeft,
+            height: clippedBottom - clippedTop,
+          })
+          .png()
+          .toBuffer()
+      : layer;
 
   const shadow = Buffer.from(
     `<svg width="${W}" height="200" xmlns="http://www.w3.org/2000/svg"><ellipse cx="${W / 2}" cy="100" rx="250" ry="42" fill="#000" opacity=".45" filter="url(#b)"/><defs><filter id="b"><feGaussianBlur stdDeviation="28"/></filter></defs></svg>`,
@@ -193,7 +250,11 @@ export async function composeCard(input) {
     .toBuffer();
 
   const materialLayer = path.join(layerDir, `material-${material}.png`);
-  const frameLayer = path.join(layerDir, `frame-${material}.png`);
+  const genericFrame = path.join(layerDir, `frame-${material}.png`);
+  const liveryFrame = collectionTheme
+    ? path.join(layerDir, `frame-${collectionTheme}-${material}.png`)
+    : null;
+  const frameLayer = liveryFrame && fs.existsSync(liveryFrame) ? liveryFrame : genericFrame;
   const effectLayer =
     effect && effect !== "none" ? path.join(layerDir, `effect-${effect}.png`) : null;
   if (!fs.existsSync(materialLayer) || !fs.existsSync(frameLayer)) {
@@ -263,7 +324,8 @@ export async function composeCard(input) {
     rarity,
     material,
     effect,
-    markData: await markDataUri(markPath, input.markBuffer, input.markMime),
+    collectionTheme,
+    markData: await markDataUri(markPath, input.markBuffer, input.markMime, markInvert),
   });
   const textPng = new Resvg(textSvg, {
     fitTo: { mode: "width", value: W },
@@ -314,13 +376,25 @@ function escapeXml(value) {
     .replaceAll("'", "&apos;");
 }
 
-async function markDataUri(markPath, markBuffer, markMime) {
+async function markDataUri(markPath, markBuffer, markMime, invert = false) {
   try {
     if (!markBuffer && (!markPath || !fs.existsSync(markPath))) return "";
-    const ext = markBuffer ? (markMime === 'image/svg+xml' ? 'svg' : 'png') : path.extname(markPath).replace(".", "").toLowerCase();
+    const ext = markBuffer
+      ? markMime === "image/svg+xml"
+        ? "svg"
+        : "png"
+      : path.extname(markPath).replace(".", "").toLowerCase();
     const source = markBuffer ?? markPath;
-    if (ext === "svg") {
+    if (ext === "svg" && !invert) {
       return `data:image/svg+xml;base64,${(markBuffer ?? fs.readFileSync(markPath)).toString("base64")}`;
+    }
+    if (ext === "svg" && invert) {
+      const png = await sharp(markBuffer ?? fs.readFileSync(markPath))
+        .resize(512, 512, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+        .negate({ alpha: false })
+        .png()
+        .toBuffer();
+      return `data:image/png;base64,${png.toString("base64")}`;
     }
     // Collection marks are often supplied as black artwork on a white field.
     // Knock out near-white pixels so the supplied square does not become a
@@ -350,9 +424,10 @@ async function markDataUri(markPath, markBuffer, markMime) {
         }
       }
     }
-    const png = await sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } })
+    let png = await sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } })
       .png()
       .toBuffer();
+    if (invert) png = await sharp(png).negate({ alpha: false }).png().toBuffer();
     return `data:image/png;base64,${png.toString("base64")}`;
   } catch {
     return "";
@@ -390,8 +465,25 @@ function cardTextSvg({
   rarity,
   material,
   effect,
+  collectionTheme,
   markData,
 }) {
+  if (collectionTheme === "trial") {
+    return trialTextSvg({ name, subtitle, setName, serial, rarity, material, effect, markData });
+  }
+  if (collectionTheme === "table") {
+    return tableTextSvg({
+      name,
+      subtitle,
+      setName,
+      serial,
+      className,
+      rarity,
+      material,
+      effect,
+      markData,
+    });
+  }
   const lines = wrapName(name);
   const longest = Math.max(...lines.map((line) => line.length), 1);
   const nameSize = lines.length >= 3 ? 40 : longest > 20 ? 40 : lines.length > 1 ? 46 : 54;
@@ -437,6 +529,167 @@ function cardTextSvg({
   </svg>`;
 }
 
+function gameAndRole(subtitle) {
+  const parts = String(subtitle ?? "").split(" · ");
+  return {
+    game: parts[0]?.trim() || "",
+    role: parts.slice(1).join(" · ").trim(),
+  };
+}
+
+function wrapWords(value, maxChars, maxLines = 2) {
+  const words = String(value ?? "")
+    .split(/\s+/)
+    .filter(Boolean);
+  const lines = [];
+  let line = "";
+  for (const word of words) {
+    if ((line + " " + word).trim().length > maxChars && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = (line + " " + word).trim();
+    }
+  }
+  if (line) lines.push(line);
+  return lines.slice(0, maxLines);
+}
+
+/** Danganronpa: a class-trial evidence file, not a generic dark card. */
+function trialTextSvg({ name, subtitle, setName, serial, rarity, material, effect, markData }) {
+  const displayName = String(name).toUpperCase();
+  const lines = wrapName(displayName);
+  const longest = Math.max(...lines.map((line) => line.length), 1);
+  const nameSize = lines.length >= 3 ? 37 : longest > 20 ? 40 : lines.length > 1 ? 44 : 52;
+  const lineHeight = nameSize + 6;
+  const lastBaseline = 890 - (lines.length - 1) * lineHeight;
+  const nameMarkup = lines
+    .map(
+      (line, index) =>
+        `<tspan x="64" dy="${index === 0 ? 0 : lineHeight}">${escapeXml(line)}</tspan>`,
+    )
+    .join("");
+  const { game, role } = gameAndRole(subtitle);
+  const roleLines = role ? wrapWords(role, 46, 2) : [];
+  const gameY = lastBaseline + 28;
+  const roleY = gameY + 23;
+  const metaY = roleLines.length ? roleY + (roleLines.length - 1) * 21 + 24 : gameY + 24;
+  const materialLabel =
+    effect === "holographic" || material === "diamond"
+      ? "HOLOGRAPHIC"
+      : `${material.toUpperCase()}${effect && effect !== "none" ? ` · ${effect.toUpperCase()}` : ""}`;
+  const markMarkup = markData
+    ? `<rect x="56" y="42" width="178" height="50" fill="#08080A" opacity=".9"/><image href="${markData}" x="64" y="48" width="162" height="38" preserveAspectRatio="xMinYMid meet"/>`
+    : "";
+  const headerX = markData ? 250 : 64;
+  const trialSet = /danganronpa/i.test(setName)
+    ? "DANGANRONPA · CLASS TRIAL"
+    : truncate(`${setName.toUpperCase()} · CLASS TRIAL`, 40);
+  const roleMarkup = roleLines
+    .map(
+      (line, index) =>
+        `<text x="64" y="${roleY + index * 21}" font-family="Manrope" font-size="17" font-weight="600" fill="#F4F0E6" opacity=".9">${escapeXml(line)}</text>`,
+    )
+    .join("");
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+    <defs>
+      <linearGradient id="trialShade" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#08080A" stop-opacity="0"/>
+        <stop offset=".32" stop-color="#08080A" stop-opacity=".2"/>
+        <stop offset="1" stop-color="#08080A" stop-opacity=".97"/>
+      </linearGradient>
+      <linearGradient id="trialTop" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#08080A" stop-opacity=".86"/>
+        <stop offset=".62" stop-color="#08080A" stop-opacity=".38"/>
+        <stop offset="1" stop-color="#08080A" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <rect x="0" y="0" width="${W}" height="190" fill="url(#trialTop)"/>
+    <rect x="0" y="720" width="${W}" height="330" fill="url(#trialShade)"/>
+    <rect x="0" y="720" width="8" height="330" fill="#FF2E7E"/>
+    ${markMarkup}
+    <text x="${headerX}" y="78" font-family="IBM Plex Mono" font-size="13" letter-spacing="2.4" fill="#F4F0E6">${escapeXml(trialSet)}</text>
+    <text x="${W - 64}" y="78" text-anchor="end" font-family="IBM Plex Mono" font-size="13" letter-spacing="2.2" fill="#FF2E7E">${escapeXml(materialLabel)}</text>
+    <text x="64" y="${lastBaseline}" font-family="Manrope" font-weight="800" font-size="${nameSize}" letter-spacing=".6" fill="#FFFDF6">${nameMarkup}</text>
+    ${game ? `<text x="64" y="${gameY}" font-family="IBM Plex Mono" font-size="12" letter-spacing="2.4" fill="#FF2E7E">${escapeXml(game.toUpperCase())}</text>` : ""}
+    ${roleMarkup}
+    <text x="64" y="${metaY}" font-family="IBM Plex Mono" font-size="12" letter-spacing="1.9" fill="#F4F0E6" opacity=".72">${escapeXml(truncate(rarity ?? "CABINET RARE", 34).toUpperCase())}</text>
+    <path d="M64 986 H686" stroke="#F4F0E6" stroke-width=".7" opacity=".22"/>
+    <g transform="translate(64 1000)">
+      <circle cx="8" cy="8" r="7" fill="none" stroke="#FF2E7E" stroke-width="1.4"/>
+      <path d="M3 13 L13 3" stroke="#FF2E7E" stroke-width="1.4"/>
+      <text x="23" y="12" font-family="IBM Plex Mono" font-size="10" letter-spacing="2.4" fill="#F4F0E6" opacity=".66">MEMBER ARCHIVE · NOT OFFICIAL</text>
+    </g>
+    <text x="${W - 64}" y="1016" text-anchor="end" font-family="IBM Plex Mono" font-size="11" letter-spacing="1.4" fill="#F4F0E6" opacity=".76">${escapeXml(serial)}</text>
+  </svg>`;
+}
+
+/** Protocol 11: a table-night place card with a mounted portrait and brass rules. */
+function tableTextSvg({
+  name,
+  subtitle,
+  setName,
+  serial,
+  className,
+  rarity,
+  material,
+  effect,
+  markData,
+}) {
+  const lines = wrapName(name);
+  const longest = Math.max(...lines.map((line) => line.length), 1);
+  const nameSize = lines.length >= 3 ? 40 : longest > 20 ? 42 : lines.length > 1 ? 46 : 54;
+  const lineHeight = nameSize + 7;
+  const lastBaseline = 900 - (lines.length - 1) * lineHeight;
+  const nameMarkup = lines
+    .map(
+      (line, index) =>
+        `<tspan x="64" dy="${index === 0 ? 0 : lineHeight}">${escapeXml(line)}</tspan>`,
+    )
+    .join("");
+  const materialLabel =
+    effect === "holographic" || material === "diamond"
+      ? "HOLOGRAPHIC"
+      : `${material.toUpperCase()}${effect && effect !== "none" ? ` · ${effect.toUpperCase()}` : ""}`;
+  const markMarkup = markData
+    ? `<svg x="64" y="48" width="56" height="56" viewBox="0 0 58 58"><rect width="58" height="58" fill="#07110F" opacity=".72"/><image href="${markData}" x="4" y="4" width="50" height="50" preserveAspectRatio="xMidYMid meet"/></svg>`
+    : "";
+  const meta = ["Table night", className, rarity]
+    .filter(Boolean)
+    .map((value) => escapeXml(truncate(value, 40)))
+    .join(" · ");
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+    <defs>
+      <linearGradient id="tableShade" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#07110F" stop-opacity="0"/>
+        <stop offset=".35" stop-color="#07110F" stop-opacity=".25"/>
+        <stop offset="1" stop-color="#07110F" stop-opacity=".96"/>
+      </linearGradient>
+      <linearGradient id="tableTop" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#07110F" stop-opacity=".86"/>
+        <stop offset=".58" stop-color="#07110F" stop-opacity=".42"/>
+        <stop offset="1" stop-color="#07110F" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <rect x="0" y="0" width="${W}" height="190" fill="url(#tableTop)"/>
+    <rect x="0" y="720" width="${W}" height="330" fill="url(#tableShade)"/>
+    ${markMarkup}
+    <text x="136" y="78" font-family="IBM Plex Mono" font-size="14" letter-spacing="3" fill="#D9BF8B">${escapeXml(truncate(setName.toUpperCase(), 34))} · TABLE NIGHT</text>
+    <text x="${W - 64}" y="78" text-anchor="end" font-family="IBM Plex Mono" font-size="13" letter-spacing="2.2" fill="#F4F0E6" opacity=".82">${escapeXml(materialLabel)}</text>
+    <path d="M64 112 H${W - 64}" stroke="#B08A52" stroke-width="1" opacity=".55"/>
+    <text x="64" y="${lastBaseline}" font-family="Fraunces" font-weight="600" font-size="${nameSize}" fill="#F4F0E6">${nameMarkup}</text>
+    ${subtitle ? `<text x="64" y="${lastBaseline + 33}" font-family="Manrope" font-size="18" fill="#F4F0E6" opacity=".86">${escapeXml(truncate(subtitle, 48))}</text>` : ""}
+    <text x="64" y="${lastBaseline + 62}" font-family="IBM Plex Mono" font-size="12" letter-spacing="1.8" fill="#D9BF8B">${meta.toUpperCase()}</text>
+    <path d="M64 986 H686" stroke="#F4F0E6" stroke-width=".7" opacity=".2"/>
+    <g transform="translate(64 1000)">
+      <circle cx="8" cy="8" r="7" fill="none" stroke="#D9BF8B" stroke-width="1.2"/>
+      <text x="5" y="12" font-family="IBM Plex Mono" font-size="8" fill="#D9BF8B">XI</text>
+      <text x="23" y="12" font-family="IBM Plex Mono" font-size="10" letter-spacing="2.2" fill="#F4F0E6" opacity=".62">ORIGINAL FOILBURY PROJECT</text>
+    </g>
+    <text x="${W - 64}" y="1016" text-anchor="end" font-family="IBM Plex Mono" font-size="11" letter-spacing="1.4" fill="#F4F0E6" opacity=".76">${escapeXml(serial)}</text>
+  </svg>`;
+}
+
 // Optional CLI: node art/compose.mjs '<json>' (used for focused visual checks)
 if (process.argv[1] && process.argv[1].endsWith("compose.mjs") && process.argv[2]) {
   const input = JSON.parse(process.argv[2]);
@@ -450,9 +703,13 @@ if (process.argv[1] && process.argv[1].endsWith("compose.mjs") && process.argv[2
  * collectible material treatment, never a second random outcome.
  */
 export async function composeCardBack(input) {
-  const { backPath, material = "plain", effect = "none", outputPath } = input;
+  const { backPath, material = "plain", effect = "none", collectionTheme = "", outputPath } = input;
   const materialLayer = path.join(layerDir, `material-${material}.png`);
-  const frameLayer = path.join(layerDir, `frame-${material}.png`);
+  const genericFrame = path.join(layerDir, `frame-${material}.png`);
+  const liveryFrame = collectionTheme
+    ? path.join(layerDir, `frame-${collectionTheme}-${material}.png`)
+    : null;
+  const frameLayer = liveryFrame && fs.existsSync(liveryFrame) ? liveryFrame : genericFrame;
   if (!fs.existsSync(materialLayer) || !fs.existsSync(frameLayer)) {
     throw new Error(`Missing back material or frame layer for ${material}`);
   }
@@ -480,7 +737,8 @@ export async function composeCardBack(input) {
       });
     }
   }
-  if (input.returnBytes) return sharp(base).composite(layers).webp({ quality: 88, effort: 5 }).toBuffer();
+  if (input.returnBytes)
+    return sharp(base).composite(layers).webp({ quality: 88, effort: 5 }).toBuffer();
   await sharp(base).composite(layers).webp({ quality: 88, effort: 5 }).toFile(outputPath);
   return outputPath;
 }

@@ -1,0 +1,67 @@
+---
+interface BinderCard {
+  id: string;
+  name: string;
+  subtitle: string | null;
+  owned: boolean;
+  copies: number;
+  finishes: string[];
+  render_url: string | null;
+  thumbnail_url: string | null;
+  instance_id: string | null;
+}
+
+interface Props {
+  card: BinderCard;
+  finishLabels: Record<string, string>;
+  theme?: "trial" | "table" | null;
+}
+
+const { card, finishLabels, theme = null } = Astro.props;
+const finishLabel = (key: string) => finishLabels[key] ?? key;
+const imageUrl = card.render_url ?? card.thumbnail_url;
+---
+
+<article
+  class:list={["binder-slot", theme && `binder-slot--${theme}`]}
+  data-owned={card.owned ? "true" : "false"}
+>
+  <div class="binder-slot__object">
+    {card.owned && imageUrl ? (
+      <img
+        src={imageUrl}
+        alt=""
+        width="300"
+        height="420"
+        loading="lazy"
+        class="binder-slot__render"
+      />
+    ) : (
+      <div class="binder-slot__missing">
+        <span class="binder-slot__missing-mark" aria-hidden="true">
+          +
+        </span>
+        <span>{card.owned ? "Render unavailable" : "Missing"}</span>
+      </div>
+    )}
+  </div>
+  <div class="binder-slot__body">
+    <p class="binder-slot__name">{card.name}</p>
+    <p class="binder-slot__meta">
+      {card.owned
+        ? `${card.copies} cop${card.copies === 1 ? "y" : "ies"}${
+            card.finishes.length ? ` · ${card.finishes.map(finishLabel).join(", ")}` : ""
+          }`
+        : "Not yet collected"}
+    </p>
+    {card.owned && card.instance_id ? (
+      <a class="btn btn-secondary btn-sm" href={`/play/card/${card.instance_id}`}>
+        Inspect
+      </a>
+    ) : (
+      <a class="btn btn-secondary btn-sm" href="/play/draw">
+        Find a capsule
+      </a>
+    )}
+  </div>
+</article>

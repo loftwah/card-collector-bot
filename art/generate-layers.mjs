@@ -64,6 +64,66 @@ function frameSvg(material) {
   );
 }
 
+/**
+ * Collection livery frames. These are authored geometry, not a second brand
+ * mark: the collection's real banner/mark still carries identity in the shell.
+ * The centre stays transparent so the card's own art, finish and material do
+ * the work inside the border.
+ */
+function liveryFrameSvg(theme, material) {
+  const metal = {
+    plain: { edge: "#F4F0E6", soft: "#B08A52", bright: "#FFFDF6" },
+    silver: { edge: "#DDE7EC", soft: "#8A9399", bright: "#FFFFFF" },
+    gold: { edge: "#F0CE86", soft: "#B08A52", bright: "#FFF1C7" },
+    diamond: { edge: "#C9F2FF", soft: "#8FB7C8", bright: "#FFFFFF" },
+  }[material];
+  if (theme === "trial") {
+    // Class-trial evidence file: black binders, a paper rule, one hot-pink
+    // registration edge and angular corner marks.
+    return svg(
+      W,
+      H,
+      `<rect x="6" y="6" width="${W - 12}" height="${H - 12}" fill="none" stroke="#08080A" stroke-width="28"/>
+      <rect x="26" y="26" width="${W - 52}" height="${H - 52}" fill="none" stroke="${metal.edge}" stroke-width="2.2"/>
+      <rect x="34" y="34" width="${W - 68}" height="${H - 68}" fill="none" stroke="#08080A" stroke-width="1.1" opacity=".8"/>
+      <path d="M20 20 V1030 H300" fill="none" stroke="#FF2E7E" stroke-width="5"/>
+      <path d="M${W - 20} 20 V150" fill="none" stroke="#FF2E7E" stroke-width="5"/>
+      <g fill="none" stroke="${metal.bright}" stroke-width="3">
+        <path d="M48 96 V48 H96"/><path d="M${W - 96} 48 H${W - 48} V96"/>
+        <path d="M48 ${H - 96} V${H - 48} H96"/><path d="M${W - 96} ${H - 48} H${W - 48} V${H - 96}"/>
+      </g>
+      <g fill="#FF2E7E">
+        <path d="M48 108 h20 v5 h-20z"/><path d="M${W - 68} 108 h20 v5 h-20z"/>
+        <path d="M48 ${H - 113} h20 v5 h-20z"/><path d="M${W - 68} ${H - 113} h20 v5 h-20z"/>
+      </g>
+      <path d="M64 970 H${W - 64}" stroke="${metal.soft}" stroke-width="1" opacity=".55"/>`,
+    );
+  }
+  // Table-night place card: deep green baize edge, brass rule, four seat pips.
+  return svg(
+    W,
+    H,
+    `<rect x="7" y="7" width="${W - 14}" height="${H - 14}" rx="22" fill="none" stroke="#14352B" stroke-width="24"/>
+    <rect x="26" y="26" width="${W - 52}" height="${H - 52}" rx="14" fill="none" stroke="${metal.soft}" stroke-width="2.4"/>
+    <rect x="34" y="34" width="${W - 68}" height="${H - 68}" rx="9" fill="none" stroke="${metal.edge}" stroke-width="1" opacity=".85"/>
+    <g fill="${metal.bright}">
+      <circle cx="48" cy="48" r="4"/><circle cx="${W - 48}" cy="48" r="4"/>
+      <circle cx="48" cy="${H - 48}" r="4"/><circle cx="${W - 48}" cy="${H - 48}" r="4"/>
+    </g>
+    <g fill="none" stroke="${metal.soft}" stroke-width="1.2" opacity=".8">
+      <path d="M64 92 H190"/><path d="M${W - 190} 92 H${W - 64}"/>
+      <path d="M64 ${H - 92} H190"/><path d="M${W - 190} ${H - 92} H${W - 64}"/>
+    </g>
+    <g fill="${metal.soft}" opacity=".9">
+      <circle cx="214" cy="92" r="2.2"/><circle cx="226" cy="92" r="2.2"/>
+      <circle cx="${W - 226}" cy="92" r="2.2"/><circle cx="${W - 214}" cy="92" r="2.2"/>
+      <circle cx="214" cy="${H - 92}" r="2.2"/><circle cx="226" cy="${H - 92}" r="2.2"/>
+      <circle cx="${W - 226}" cy="${H - 92}" r="2.2"/><circle cx="${W - 214}" cy="${H - 92}" r="2.2"/>
+    </g>
+    <path d="M64 966 H${W - 64}" stroke="${metal.soft}" stroke-width="1.2" opacity=".6"/>`,
+  );
+}
+
 function materialSvg(material) {
   if (material === "plain") {
     return svg(
@@ -209,7 +269,11 @@ const mark = (fill = ink, card = paper, accent = brass) => `
 const markSvg = (fill = ink, card = paper, accent = brass) =>
   svg(512, 512, mark(fill, card, accent));
 const markTransparentSvg = (stroke = ink) =>
-  svg(512, 512, `<path d="M148 116 H330 L388 174 V396 H148 Z" fill="none" stroke="${stroke}" stroke-width="18"/><path d="M206 200 H304 M206 254 H282 M206 308 H304" stroke="${stroke}" stroke-width="24"/><path d="M330 116 L388 174 H330 Z" fill="${stroke}"/>`);
+  svg(
+    512,
+    512,
+    `<path d="M148 116 H330 L388 174 V396 H148 Z" fill="none" stroke="${stroke}" stroke-width="18"/><path d="M206 200 H304 M206 254 H282 M206 308 H304" stroke="${stroke}" stroke-width="24"/><path d="M330 116 L388 174 H330 Z" fill="${stroke}"/>`,
+  );
 
 const wordmarkSvg = (fill = ink, accent = brass) =>
   svg(
@@ -274,6 +338,9 @@ async function writeSvg(file, content, width) {
 for (const material of ["plain", "silver", "gold", "diamond"]) {
   await writeSvg(`material-${material}.svg`, materialSvg(material), W, H);
   await writeSvg(`frame-${material}.svg`, frameSvg(material), W, H);
+  for (const theme of ["trial", "table"]) {
+    await writeSvg(`frame-${theme}-${material}.svg`, liveryFrameSvg(theme, material), W, H);
+  }
 }
 for (const effect of ["holographic", "prismatic"]) {
   await writeSvg(`effect-${effect}.svg`, effectSvg(effect), W, H);
@@ -298,25 +365,64 @@ for (const [size, name] of [
   await sharp(markBuffer).resize(size, size).png().toFile(path.join(brandDir, name));
 }
 // Maskable: mark inside an ink safe area
-const maskable = svg(512, 512, `<rect width="512" height="512" fill="${ink}"/><g transform="translate(86 86) scale(.664)">${mark(ink, paper, brass)}</g>`);
-await sharp(Buffer.from(maskable)).resize(512, 512).png().toFile(path.join(brandDir, "icon-512-maskable.png"));
-await sharp(Buffer.from(maskable)).resize(192, 192).png().toFile(path.join(brandDir, "icon-192-maskable.png"));
-await sharp(rasterizeSvg(wordmarkSvg(), 1200)).resize(1200, 300).png().toFile(path.join(brandDir, "wordmark.png"));
-await sharp(rasterizeSvg(wordmarkSvg(paper, brass), 1200)).resize(1200, 300).png().toFile(path.join(brandDir, "wordmark-reverse.png"));
+const maskable = svg(
+  512,
+  512,
+  `<rect width="512" height="512" fill="${ink}"/><g transform="translate(86 86) scale(.664)">${mark(ink, paper, brass)}</g>`,
+);
+await sharp(Buffer.from(maskable))
+  .resize(512, 512)
+  .png()
+  .toFile(path.join(brandDir, "icon-512-maskable.png"));
+await sharp(Buffer.from(maskable))
+  .resize(192, 192)
+  .png()
+  .toFile(path.join(brandDir, "icon-192-maskable.png"));
+await sharp(rasterizeSvg(wordmarkSvg(), 1200))
+  .resize(1200, 300)
+  .png()
+  .toFile(path.join(brandDir, "wordmark.png"));
+await sharp(rasterizeSvg(wordmarkSvg(paper, brass), 1200))
+  .resize(1200, 300)
+  .png()
+  .toFile(path.join(brandDir, "wordmark-reverse.png"));
 await sharp(monoBuffer).resize(512, 512).png().toFile(path.join(brandDir, "mark-mono.png"));
-await sharp(fs.readFileSync(path.join(layerDir, "card-back.png"))).resize(1200, 1680).webp({ quality: 88 }).toFile(path.join(brandDir, "card-back.webp"));
+await sharp(fs.readFileSync(path.join(layerDir, "card-back.png")))
+  .resize(1200, 1680)
+  .webp({ quality: 88 })
+  .toFile(path.join(brandDir, "card-back.webp"));
 
 // Social preview uses the authored card back until a real card render is available.
 await sharp({
   create: { width: 1200, height: 630, channels: 4, background: paper },
 })
   .composite([
-    { input: Buffer.from(svg(1200, 630, `<rect width="1200" height="630" fill="${paper}"/><rect x="0" y="0" width="18" height="630" fill="${green}"/>`)) },
-    { input: await sharp(path.join(layerDir, "card-back.png")).resize(354, 496).png().toBuffer(), left: 742, top: 70 },
-    { input: await sharp(rasterizeSvg(wordmarkSvg(), 820)).resize(820, 205).png().toBuffer(), left: 84, top: 110 },
+    {
+      input: Buffer.from(
+        svg(
+          1200,
+          630,
+          `<rect width="1200" height="630" fill="${paper}"/><rect x="0" y="0" width="18" height="630" fill="${green}"/>`,
+        ),
+      ),
+    },
+    {
+      input: await sharp(path.join(layerDir, "card-back.png")).resize(354, 496).png().toBuffer(),
+      left: 742,
+      top: 70,
+    },
+    {
+      input: await sharp(rasterizeSvg(wordmarkSvg(), 820)).resize(820, 205).png().toBuffer(),
+      left: 84,
+      top: 110,
+    },
     {
       input: rasterizeSvg(
-        svg(820, 180, `<text x="88" y="58" font-family="Manrope" font-weight="600" font-size="34" fill="${ink}">A collector's cabinet for characters worth keeping.</text><text x="88" y="116" font-family="IBM Plex Mono" font-size="19" letter-spacing="4" fill="${green}">EARN · COLLECT · TRADE · KEEP</text>`),
+        svg(
+          820,
+          180,
+          `<text x="88" y="58" font-family="Manrope" font-weight="600" font-size="34" fill="${ink}">A collector's cabinet for characters worth keeping.</text><text x="88" y="116" font-family="IBM Plex Mono" font-size="19" letter-spacing="4" fill="${green}">EARN · COLLECT · TRADE · KEEP</text>`,
+        ),
         820,
       ),
       left: 0,
@@ -326,4 +432,10 @@ await sharp({
   .jpeg({ quality: 90 })
   .toFile(path.join(brandDir, "social-preview.jpg"));
 
-console.log(JSON.stringify({ layers: fs.readdirSync(layerDir).length, brand: fs.readdirSync(brandDir).length }, null, 2));
+console.log(
+  JSON.stringify(
+    { layers: fs.readdirSync(layerDir).length, brand: fs.readdirSync(brandDir).length },
+    null,
+    2,
+  ),
+);

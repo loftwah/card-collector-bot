@@ -1,0 +1,48 @@
+{
+  "danganronpa-three-games": {
+    "theme": "trial",
+    "titleLead": "Danganronpa",
+    "titleTail": "Three Killing Games",
+    "eyebrow": "Class trial archive",
+    "lede": "Three killing games. Nine students and one bear. Every card is a case file from the trial room, and every finish is part of the same investigation.",
+    "openingPool": "danganronpa-three-games-capsule",
+    "openingCta": "Open a Danganronpa capsule",
+    "rosterLabel": "The case files",
+    "groups": [
+      {
+        "key": "thh",
+        "label": "Trigger Happy Havoc",
+        "caption": "The first killing game · 2010",
+        "match": "Trigger Happy Havoc"
+      },
+      {
+        "key": "gd",
+        "label": "Goodbye Despair",
+        "caption": "The island sequel · 2012",
+        "match": "Goodbye Despair"
+      },
+      {
+        "key": "kh",
+        "label": "Killing Harmony",
+        "caption": "The final killing game · 2017",
+        "match": "Killing Harmony"
+      }
+    ]
+  },
+  "protocol-11": {
+    "theme": "table",
+    "eyebrow": "Original Foilbury project",
+    "lede": "Five regulars, one table and a game that has been running since the first night. Protocol 11 is an original Foilbury crew, drawn around a Tuesday-night tabletop.",
+    "openingPool": "protocol-draw",
+    "openingCta": "Open a Protocol Draw",
+    "rosterLabel": "The regulars",
+    "groups": [
+      {
+        "key": "table",
+        "label": "The table",
+        "caption": "Five seats, one long-running game",
+        "match": ""
+      }
+    ]
+  }
+}

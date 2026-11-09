@@ -2420,10 +2420,13 @@
         "render:write"
       ],
       "roles": [],
-      "schema": "{ force?:boolean }",
+      "schema": "{ force?:boolean, collection?:string }",
       "calls": [
         "catch",
         "optional",
+        "max",
+        "min",
+        "trim",
         "createRenderJobs"
       ],
       "studio_alias": false

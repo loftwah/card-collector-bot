@@ -531,7 +531,9 @@ These collections use their real series mark as the identity because the availab
 
 ## Foilbury-owned collections
 
-Bubbles, Fighter, Protocol 11 and Shared Characters are original Foilbury properties. Their committed marks remain at `/art/collections/bubbles.svg`, `/art/collections/fighter.svg`, `/art/collections/protocol-11.svg` and `/art/collections/shared.svg`. They are not third-party source art, and no generated replacement was made.
+Bubbles, Fighter, Protocol 11 and Shared Characters are original Foilbury properties. Their committed marks remain at `/art/collections/bubbles.svg`, `/art/collections/fighter.svg`, `/art/collections/protocol-11.svg` and `/art/collections/shared.svg`. They are not third-party source art.
+
+Protocol 11 now has original key-art banner `/art/collections/protocol-11-banner.webp` made from its five actual table-night portraits. The geometric Protocol 11 mark remains the secondary identifier; the new key art is the banner first. The model, prompt, references, dimensions and hashes are recorded in `docs/AI_COLLECTION_ART_PROVENANCE.md`. The pilot card language is recorded in `docs/CARD_LANGUAGE.md`.
 
 ## Retrieval and verification notes
 

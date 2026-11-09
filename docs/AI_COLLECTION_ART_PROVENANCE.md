@@ -229,6 +229,50 @@ Create a wide 16:9 cinematic collection banner/key art for a classic yellow anim
 
 </details>
 
+### Protocol 11 — Table Night (2026-11-10)
+
+- Stored asset: `/art/collections/protocol-11-banner.webp` · 1920×1080 · image/webp · 252578 bytes
+- Stored SHA-256: `3ee41f01387524a1a6484e57771fe2f7a861062089619b5c5d7330d349fe6e2c`
+- Selected source: `.foilbury/generated/protocol-11/banner-candidate-3.png` · 2752×1536 · image/png
+- Source SHA-256: `db5dcb3bbfba512e0f1d668bef02384aed563432f488e12b3bca71f0f75b7190`
+- Model: `fal-ai/nano-banana-pro/edit` · 2K · 16:9 · generated 2026-11-10
+- Classification: public · origin ai_assisted · official false (original Foilbury project; not a third-party official or licensed asset) · review reviewed
+- Role: collection banner/hero only. The existing Protocol 11 geometric mark remains the secondary collection mark.
+- Bounded pass: three images (two base candidates plus one correction edit), US$0.45, pass ceiling US$1.00. The ledger entry is in `.foilbury/evidence/art-budget-ledger.json`.
+
+**Reference files** (private working copies, not public docs):
+
+- `.foilbury/art-src/protocol-11/protocol-gabe.png` — supplied table-night portrait
+- `.foilbury/art-src/protocol-11/protocol-rhea.png` — supplied table-night portrait
+- `.foilbury/art-src/protocol-11/protocol-june.png` — supplied table-night portrait
+- `.foilbury/art-src/protocol-11/protocol-nora.png` — supplied table-night portrait
+- `.foilbury/art-src/protocol-11/protocol-knox.png` — supplied table-night portrait
+- `.foilbury/art-src/protocol-11/table-night-crew.png` — supplied table scene used for setting and palette only; its incidental cast was not carried into the final image.
+
+<details><summary>Base prompt (candidate 2) and correction prompt (candidate 3)</summary>
+
+```text
+A warm, cinematic 16:9 collection banner for Protocol 11, an original Foilbury tabletop crew. The five recurring characters sit around a teal baize game table in a lamplit late-night room. Keep their likenesses exact from the supplied portraits:
+- Gabe: a broad, warm human man with red curly hair, a thick black moustache, a small blue-star paper crown, a teal knit vest, cream shirt and red neckerchief.
+- Rhea: a sharp, friendly woman with purple-black hair, round glasses and a teal jacket.
+- June: a cheerful raccoon chef with orange fur, a cream muzzle, a small white chef hat and a red neckerchief.
+- Nora: a composed grey cat with round brass glasses, a cream chest and a red knit sweater.
+- Knox: a rounded silver robot with a warm amber smiling screen face, a short antenna and a teal hoodie.
+They are mid-game: cards in hand, a bowl of biscuits, mugs, a folded score pad, wooden dice and a small board on the table. Hanging brass lamp, teal wall, plants, a dark window with city lights. Eye-level, all five readable, faces unobscured, hands and props coherent. Deep green, warm brass and cream palette, painterly editorial illustration, full-bleed, crisp enough for a website hero and a Discord banner.
+
+Composition: a slightly higher three-quarter view, Gabe and June laughing at one end, Rhea leaning in, Nora and Knox at the near corners; the teal table and game pieces fill the lower third. Cinematic depth, the room softly out of focus. No text, letters, numbers, logos, watermarks, borders, card frames or UI.
+```
+
+```text
+Edit the supplied group banner. Keep the exact composition, camera, lighting, room, table, props, poses, expressions and every character except for the three corrections below.
+1. Rhea (the woman with purple hair and round glasses, second from the right): change her black top to the deep teal jacket from her portrait, with a cream shirt underneath. Keep her purple hair, glasses, face, earrings and pose unchanged.
+2. June (the orange animal in the white chef hat, centre-right): make her an anthropomorphic raccoon matching her portrait — rounded raccoon ears, a cream muzzle, a dark raccoon mask around the eyes, and orange-and-cream fur. Keep the white chef hat and red neckerchief.
+3. Knox (the silver robot on the right): remove the small green leaf emblem from the hoodie. Keep the teal hoodie, amber smile screen, antenna and pose unchanged.
+Do not change Gabe, Nora, the table, the lamp, the window, the plants, the biscuits, the mugs, the dice or the board. No text, letters, numbers, logos, watermarks, borders, card frames or UI.
+```
+
+</details>
+
 ## Boundary
 
 - These banners are AI-assisted derivative compositions. They are not official artwork and must not be presented as licensed or canonical.

@@ -844,13 +844,21 @@ export async function collectionBinder(ctx: Ctx, collectionId: string) {
     ctx.db,
     `SELECT cd.id, cd.slug, cd.name, cd.subtitle, cd.status,
             (SELECT vr.public_url FROM fb_variants v2
+               JOIN fb_materials m2 ON m2.id = v2.material_id
+               LEFT JOIN fb_effects fx2 ON fx2.id = v2.effect_id
                JOIN fb_variant_renders vr ON vr.variant_id = v2.id AND vr.status = 'published'
               WHERE v2.card_id = cd.id AND v2.status = 'published' AND v2.archived_at IS NULL
-              ORDER BY v2.name LIMIT 1) AS render_url,
+              ORDER BY CASE m2.key WHEN 'plain' THEN 0 WHEN 'silver' THEN 1 WHEN 'gold' THEN 2 WHEN 'diamond' THEN 3 ELSE 4 END,
+                       CASE WHEN fx2.key IS NULL OR fx2.key = 'none' THEN 0 ELSE 1 END, v2.name
+              LIMIT 1) AS render_url,
             (SELECT vr.public_url FROM fb_variants v2
+               JOIN fb_materials m2 ON m2.id = v2.material_id
+               LEFT JOIN fb_effects fx2 ON fx2.id = v2.effect_id
                JOIN fb_variant_renders vr ON vr.variant_id = v2.id AND vr.status = 'published'
               WHERE v2.card_id = cd.id AND v2.status = 'published' AND v2.archived_at IS NULL
-              ORDER BY v2.name LIMIT 1) AS thumbnail_url
+              ORDER BY CASE m2.key WHEN 'plain' THEN 0 WHEN 'silver' THEN 1 WHEN 'gold' THEN 2 WHEN 'diamond' THEN 3 ELSE 4 END,
+                       CASE WHEN fx2.key IS NULL OR fx2.key = 'none' THEN 0 ELSE 1 END, v2.name
+              LIMIT 1) AS thumbnail_url
        FROM fb_collection_cards cc
        JOIN fb_card_definitions cd ON cd.id = cc.card_id AND cd.status = 'published' AND cd.archived_at IS NULL
       WHERE cc.collection_id = ?
@@ -891,7 +899,9 @@ export async function collectionBinder(ctx: Ctx, collectionId: string) {
        JOIN fb_variants v ON v.id = ci.variant_id
        JOIN fb_materials m ON m.id = v.material_id
        LEFT JOIN fb_effects fx ON fx.id = v.effect_id
-      WHERE ci.tenant_id = ? AND ci.user_id = ? AND ci.status IN ('owned','reserved') AND cc.collection_id = ?`,
+      WHERE ci.tenant_id = ? AND ci.user_id = ? AND ci.status IN ('owned','reserved') AND cc.collection_id = ?
+      ORDER BY CASE m.key WHEN 'plain' THEN 0 WHEN 'silver' THEN 1 WHEN 'gold' THEN 2 WHEN 'diamond' THEN 3 ELSE 4 END,
+               CASE WHEN fx.key IS NULL OR fx.key = 'none' THEN 0 ELSE 1 END, ci.acquired_at`,
     ctx.tenant.id,
     user.id,
     collection.id,
