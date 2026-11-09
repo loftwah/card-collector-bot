@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { buildContext } from "../../../../../server/context";
 import { apiErrorResponse, json } from "../../../../../server/http";
+import { requestReference } from "../../../../../server/ids";
 import { cookieHeaders, sessionCookies } from "../../../../../server/api/helpers";
 import { switchBot } from "../../../../../server/modules/bots";
 import { createSwitchedSession } from "../../../../../server/modules/identity";
@@ -18,6 +19,6 @@ export const POST: APIRoute = async ({ request, params }) => {
       cookieHeaders(sessionCookies(session.token, session.csrf, session.expiresAt, ctx.config.environment === "production")),
     );
   } catch (error) {
-    return apiErrorResponse(error, request.headers.get("cf-ray") ?? crypto.randomUUID());
+    return apiErrorResponse(error, requestReference(request));
   }
 };

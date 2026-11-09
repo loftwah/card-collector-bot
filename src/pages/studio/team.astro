@@ -1,14 +1,11 @@
 ---
 import StudioLayout from "../../layouts/StudioLayout.astro";
 import AdminTeam from "../../components/admin/AdminTeam";
-import { pageContext } from "../../server/page";
-import { hasCapability } from "../../server/context";
-
-const ctx = await pageContext(Astro.request);
-const user = ctx.user!;
-const canManage =
-  user.role === "owner" || user.platformAdmin || hasCapability(user, "members");
-if (!canManage) return Astro.redirect("/studio");
+const session = Astro.locals.foilbury;
+const user = session?.user ?? null;
+const scope = user?.globalCollectionScope;
+const isBotAdmin = ["owner", "editor", "economy_admin"].includes(user?.role ?? "");
+if (!isBotAdmin) return Astro.redirect("/studio");
 ---
 <StudioLayout>
   <div class="studio-rule">

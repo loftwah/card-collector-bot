@@ -1,1 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" aria-label="Foilbury Bastion mark" role="img" viewBox="0 0 256 256"><rect width="256" height="256" fill="#044e4a"/><path fill="#eff5f1" d="M44 40h168v44H44z"/><path fill="#eff5f1" d="M44 106h112v44H44z"/><path fill="#c9f25f" d="M44 172h168v44H44z"/><path fill="#2ce3d3" d="M176 106h36v44h-36z"/><path fill="#00c8b8" d="M44 40h36v176H44z"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Foilbury Bastion mark">
+    <rect width="256" height="256" fill="#044e4a"/>
+    <path d="M44 40h168v44H44z" fill="#eff5f1"/>
+    <path d="M44 106h112v44H44z" fill="#eff5f1"/>
+    <path d="M44 172h168v44H44z" fill="#c9f25f"/>
+    <path d="M176 106h36v44h-36z" fill="#2ce3d3"/>
+    <path d="M44 40h36v176H44z" fill="#00c8b8"/>
+  </svg>

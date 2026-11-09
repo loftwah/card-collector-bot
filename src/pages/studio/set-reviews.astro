@@ -1,0 +1,9 @@
+---
+import StudioLayout from "../../layouts/StudioLayout.astro";
+import MemberSetReview from "../../components/studio/MemberSetReview";
+const session = Astro.locals.foilbury;
+---
+
+<StudioLayout>
+  <MemberSetReview client:load tenantSlug={session?.tenantSlug ?? "current Bot"} />
+</StudioLayout>

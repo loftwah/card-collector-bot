@@ -160,7 +160,7 @@ describe("source imports", () => {
     const second = await commitImport(owner, base);
     expect(second.summary.unchanged).toBe(1);
     expect(second.summary.imported).toBe(0);
-    const before = await getCard(owner, "import-one");
+    const before = await getCard(owner, "import-one", { includeDrafts: true });
     const editionId = before.editions[0]!.id;
     const variantId = before.editions[0]!.variants[0]!.id;
 
@@ -171,7 +171,7 @@ describe("source imports", () => {
     const third = await commitImport(owner, changed);
     expect(third.summary.revised).toBe(1);
     expect(third.summary.failed).toBe(0);
-    const card = await getCard(owner, "import-one");
+    const card = await getCard(owner, "import-one", { includeDrafts: true });
     expect(card.editions).toHaveLength(1);
     expect(card.editions[0]!.id).toBe(editionId);
     expect(card.editions[0]!.variants[0]!.id).toBe(variantId);
@@ -187,7 +187,10 @@ describe("source imports", () => {
 describe("set versioning", () => {
   it("keeps the prior checklist version and creates a new draft when membership changes", async () => {
     await bootstrap();
-    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const baseOwner = await ctxFor("cabinet", "owner@foilbury.local");
+    const now = new Date().toISOString(), expires = new Date(Date.now() + 3600000).toISOString();
+    await runtime.DB.prepare("INSERT INTO fb_sessions (id,token_hash,user_id,tenant_id,csrf_token,created_at,expires_at,last_seen_at,assurance,auth_time) VALUES ('set_version_session','set_version_token',?,?,'test',?,?,?,'mfa',?)").bind(baseOwner.user!.id,baseOwner.tenant.id,now,expires,now,now).run();
+    const owner = { ...baseOwner, sessionId: "set_version_session", sessionAssurance: "mfa", sessionAuthTime: now };
     const fixture = await fixturePool(owner);
     const set = (await listSets(owner)).find((item) => item.slug === "first-cabinet");
     expect(set).toBeTruthy();
@@ -219,7 +222,7 @@ describe("card merging", () => {
     expect(edition?.card_id).toBe(target.id);
     const alias = await runtime.DB.prepare("SELECT target_card_id FROM fb_card_aliases WHERE tenant_id = ? AND source_card_id = ?").bind(owner.tenant.id, fixture.cardId).first<{ target_card_id: string }>();
     expect(alias?.target_card_id).toBe(target.id);
-    const viaAlias = await getCard(owner, fixture.cardId);
+    const viaAlias = await getCard(owner, fixture.cardId, { includeDrafts: true });
     expect(viaAlias.id).toBe(target.id);
     const sourceStatus = await runtime.DB.prepare("SELECT status, archived_at FROM fb_card_definitions WHERE id = ?").bind(fixture.cardId).first<{ status: string; archived_at: string | null }>();
     expect(sourceStatus?.status).toBe("retired");

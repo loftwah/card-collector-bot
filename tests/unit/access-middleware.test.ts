@@ -11,6 +11,7 @@ vi.mock("../../src/server/modules/identity", () => ({ createSession: mocks.creat
 vi.mock("../../src/server/api/helpers", () => ({ sessionCookies: mocks.sessionCookies }));
 
 import { onRequest } from "../../src/middleware";
+import { requestReference } from "../../src/server/ids";
 
 function fixture(sessionId: string | null = null) {
   const request = new Request("https://foilbury.example.test/platform-admin");
@@ -38,6 +39,17 @@ beforeEach(() => {
 });
 
 describe("first Access page response", () => {
+  it("keeps one bounded reference across middleware and downstream work", async () => {
+    const { context, locals } = fixture("existing-session");
+    context.request = new Request("https://foilbury.example.test/platform-admin", { headers: { "cf-ray": "cookie=fixture-secret" } });
+    context.url = new URL(context.request.url);
+    await onRequest(context as never, async () => {
+      expect(locals.requestId).toBe(requestReference(context.request));
+      expect(locals.requestId).toMatch(/^req_[0-9a-z]{24}$/);
+      expect(locals.requestId).not.toContain("fixture-secret");
+      return new Response("ok");
+    });
+  });
   it("renders the fresh CSRF value before the page and its session cookies are returned", async () => {
     const { context, locals } = fixture();
     const response = await onRequest(context as never, async () => {

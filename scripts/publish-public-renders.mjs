@@ -15,6 +15,11 @@ import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import sharp from "sharp";
 
+// Held before any directory creation, local/remote queries, uploads or SQL writes.
+// The legacy implementation below is retained for recovery analysis, not execution.
+console.error("Public render publication is unavailable until version-bound inputs, verified renderer outputs and atomic publication are implemented. Existing renders and evidence have not been changed.");
+process.exit(1);
+
 const apply = process.argv.includes("--apply");
 const wrangler = process.platform === "win32" ? "wrangler.cmd" : "npx";
 const tmp = path.join(".foilbury", "tmp", "public-publish");

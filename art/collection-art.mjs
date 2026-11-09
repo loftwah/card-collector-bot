@@ -20,11 +20,18 @@ const FONT_FILES = [
   path.join(root, "art/fonts/IBMPlexMono-SemiBold.ttf"),
 ];
 
-function wrapText(value, maxChars) {
+function wrapText(value, maxChars, breakLongWords = false) {
   const words = String(value ?? "").split(/\s+/).filter(Boolean);
   const lines = [];
   let line = "";
   for (const word of words) {
+    if (breakLongWords && [...word].length > maxChars) {
+      if (line) { lines.push(line); line = ""; }
+      const chars = [...word];
+      while (chars.length > maxChars) lines.push(chars.splice(0, maxChars).join(""));
+      line = chars.join("");
+      continue;
+    }
     if ((line + " " + word).trim().length > maxChars && line) {
       lines.push(line);
       line = word;
@@ -36,8 +43,8 @@ function wrapText(value, maxChars) {
   return lines;
 }
 
-function textBlock({ value, x, y, maxChars, lineHeight, size, fill, opacity = 0.85, font = "Manrope, sans-serif", maxLines = 99, ellipsis = false }) {
-  const allLines = wrapText(value, maxChars);
+function textBlock({ value, x, y, maxChars, lineHeight, size, fill, opacity = 0.85, font = "Manrope, sans-serif", maxLines = 99, ellipsis = false, breakLongWords = false }) {
+  const allLines = wrapText(value, maxChars, breakLongWords);
   const lines = allLines.slice(0, maxLines);
   if (ellipsis && allLines.length > maxLines && lines.length) {
     lines[lines.length - 1] = `${lines[lines.length - 1].replace(/[.,;:!?]?$/, "")}…`;
@@ -58,6 +65,18 @@ function escapeXml(value) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+/** Preserve the supplied attribution while making an unknown licence explicit. */
+export function artCreditForBack(card) {
+  const source = card.art?.source;
+  const credit = source?.credit ?? card.credit;
+  if (!credit) return credit;
+  const licence = String(source?.license ?? "").trim();
+  if (source && (!licence || /^(not stated|unknown|unverified)/i.test(licence))) {
+    return String(credit).replace(/\bNot official or licensed\./gi, "Official status and licensing are unverified.");
+  }
+  return credit;
 }
 
 function hashSeed(value) {
@@ -275,9 +294,11 @@ function coverSvg({ name, description, initials, palette: colors, motif, sourceW
   </svg>`;
 }
 
-function backSvg({ name, subtitle, bio, attributes, collectionName, collectionDescription, initials, palette: colors, motif, sourceWork, artCredit }) {
+export function backSvg({ name, subtitle, bio, attributes, collectionName, collectionDescription, palette: colors, motif, artCredit }) {
   const c = palette(colors);
-  const titleLines = wrapText(name, 18).slice(0, 3);
+  const allTitleLines = wrapText(name, 18, true);
+  const titleLines = allTitleLines.slice(0, 3);
+  if (allTitleLines.length > titleLines.length && titleLines.length) titleLines[titleLines.length - 1] += "…";
   const titleSize = titleLines.length >= 3 ? 44 : titleLines.length > 1 ? 52 : 58;
   const titleLineHeight = titleSize + 6;
   const titleY = 190;
@@ -286,12 +307,18 @@ function backSvg({ name, subtitle, bio, attributes, collectionName, collectionDe
     .join("");
   const subtitleY = titleY + (titleLines.length - 1) * titleLineHeight + 34;
   const bioY = subtitleY + 44;
-  const bioLineCount = Math.min(wrapText(bio ?? "", 40).length, 6);
+  // Reserve room for the actual attribute rows before the world section. The
+  // old six-line cap cut normal biographies short despite ample unused space.
+  const attributeCount = Math.min((attributes ?? []).length, 3) + ((attributes ?? []).length > 3 ? 1 : 0);
+  const maxBioLines = Math.max(1, Math.min(12, Math.floor((742 - bioY - 28 - Math.max(0, attributeCount - 1) * 40) / 30)));
+  const bioLineCount = Math.min(wrapText(bio ?? "", 40, true).length, maxBioLines);
   const attrY = bioY + bioLineCount * 30 + 28;
   const attrLines = (attributes ?? [])
     .slice(0, 3)
-    .map((attr, index) => `<text x="70" y="${attrY + index * 40}" font-family="IBM Plex Mono, monospace" font-size="18" letter-spacing="1.6" fill="${c.light}" opacity=".76">${escapeXml(String(attr.label ?? "").toUpperCase())} · ${escapeXml(String(attr.value ?? ""))}</text>`)
+    .map((attr, index) => `<text x="70" y="${attrY + index * 40}" font-family="IBM Plex Mono, monospace" font-size="18" letter-spacing="1.6" fill="${c.light}" opacity=".76">${escapeXml(clip(`${String(attr.label ?? "").toUpperCase()} · ${String(attr.value ?? "")}`, 48))}</text>`)
     .join("");
+  const moreAttributes = (attributes ?? []).length > 3
+    ? `<text x="70" y="${attrY + 120}" font-family="IBM Plex Mono, monospace" font-size="15" fill="${c.light}" opacity=".76">${(attributes ?? []).length - 3} more in catalogue</text>` : "";
   return `<svg width="750" height="1050" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
@@ -306,16 +333,14 @@ function backSvg({ name, subtitle, bio, attributes, collectionName, collectionDe
     <text x="70" y="104" font-family="IBM Plex Mono, monospace" font-size="16" letter-spacing="5" fill="${c.light}" opacity=".72">${escapeXml(clip(collectionName, 42).toUpperCase())}</text>
     ${titleMarkup}
     <text x="70" y="${subtitleY}" font-family="Manrope, sans-serif" font-size="21" fill="${c.light}" opacity=".78">${escapeXml(clip(subtitle ?? "", 52))}</text>
-    ${textBlock({ value: bio ?? "", x: 70, y: bioY, maxChars: 40, lineHeight: 30, size: 21, fill: c.light, opacity: 0.88, maxLines: 6, ellipsis: true })}
+    ${textBlock({ value: bio ?? "", x: 70, y: bioY, maxChars: 40, lineHeight: 30, size: 21, fill: c.light, opacity: 0.88, maxLines: maxBioLines, ellipsis: true, breakLongWords: true })}
     ${attrLines}
+    ${moreAttributes}
     <path d="M70 768 H680" stroke="${c.light}" stroke-width="1" opacity=".18"/>
     <text x="70" y="804" font-family="IBM Plex Mono, monospace" font-size="15" letter-spacing="4" fill="${c.light}" opacity=".52">ABOUT THIS WORLD</text>
-    ${textBlock({ value: collectionDescription ?? "", x: 70, y: 836, maxChars: 70, lineHeight: 24, size: 15, fill: c.light, opacity: 0.62, maxLines: 2, ellipsis: true })}
-    ${artCredit ? textBlock({ value: artCredit, x: 70, y: 920, maxChars: 58, lineHeight: 14, size: 10, fill: c.light, opacity: 0.46, maxLines: 2, ellipsis: true }) : ""}
+    ${textBlock({ value: collectionDescription ?? "", x: 70, y: 836, maxChars: 70, lineHeight: 24, size: 15, fill: c.light, opacity: 0.62, maxLines: 2, ellipsis: true, breakLongWords: true })}
+    ${artCredit ? textBlock({ value: artCredit, x: 70, y: 901, maxChars: 62, lineHeight: 19, size: 16, fill: c.light, opacity: 0.94, maxLines: 4, ellipsis: true, breakLongWords: true }) : ""}
     <text x="70" y="1002" font-family="IBM Plex Mono, monospace" font-size="12" letter-spacing="4" fill="${c.light}" opacity=".5">FOILBURY · MEMBER EDITION</text>
-    <circle cx="650" cy="930" r="42" fill="#0b0d0c" opacity=".62"/>
-    <circle cx="650" cy="930" r="35" fill="none" stroke="${c.light}" stroke-width="2" opacity=".55"/>
-    <text x="650" y="944" text-anchor="middle" font-family="Fraunces, Georgia, serif" font-size="30" fill="${c.light}">${escapeXml(initials)}</text>
   </svg>`;
 }
 
@@ -378,13 +403,9 @@ export async function generateCollectionArt({ collection, cards, outputDir, sour
         attributes: card.attributes,
         collectionName: collection.name,
         collectionDescription: collection.description,
-        // The reverse badge identifies the collection, not the character. This
-        // avoids character initials reading as unrelated words or symbols.
-        initials: collectionInitials,
         palette: colors,
         motif,
-        sourceWork: collection.source_work,
-        artCredit: card.art?.source?.credit ?? card.credit,
+        artCredit: artCreditForBack(card),
       }),
       path.join(outputDir, `${card.slug}-back.png`),
     );

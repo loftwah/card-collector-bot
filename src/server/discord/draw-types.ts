@@ -20,7 +20,7 @@ export interface DrawReceipt {
   pool_name: string;
   price: number;
   currency: { name: string; symbol: string };
-  balance_after: number;
+  balance_after?: number;
   balance_after_debit?: number;
   current_balance?: number;
   credits_total?: number;

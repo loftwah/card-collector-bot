@@ -1,1 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" aria-label="Fighter collection mark" role="img" viewBox="0 0 128 128"><rect width="128" height="128" fill="#6d2b2b" rx="64"/><path fill="#f4f0e6" d="M32 78 48 30l16 30 16-30 16 48-32 24z"/><path fill="#c69a58" d="M48 78 64 62l16 16-16 14z"/><path stroke="#f4f0e6" stroke-linecap="round" stroke-width="4" d="M36 88h56"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Fighter collection mark">
+  <rect width="128" height="128" rx="64" fill="#6d2b2b"/>
+  <path d="M32 78 48 30l16 30 16-30 16 48-32 24z" fill="#f4f0e6"/>
+  <path d="M48 78 64 62l16 16-16 14z" fill="#c69a58"/>
+  <path d="M36 88h56" stroke="#f4f0e6" stroke-width="4" stroke-linecap="round"/>
+</svg>

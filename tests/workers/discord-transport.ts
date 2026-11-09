@@ -32,6 +32,7 @@ export interface TransportFailure {
   target: "original" | "followup" | "any";
   status: number;
   body?: string;
+  retryAfter?: string;
   times?: number;
 }
 
@@ -112,7 +113,7 @@ export class DiscordTransport {
     }
     const failure = this.takeFailure(method, target);
     if (failure) {
-      return new Response(failure.body ?? "simulated provider failure", { status: failure.status });
+      return new Response(failure.body ?? "simulated provider failure", { status: failure.status, headers: failure.retryAfter === undefined ? undefined : { "retry-after": failure.retryAfter } });
     }
 
     if (isOriginal && method === "PATCH") {

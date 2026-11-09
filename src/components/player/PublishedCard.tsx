@@ -30,12 +30,9 @@ export default function PublishedCard({
   className?: string;
 }) {
   const [flipped, setFlipped] = useState(false);
-  const [hydrated, setHydrated] = useState(false);
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
   const back = backUrl || frontUrl;
-
-  useEffect(() => {
-    setHydrated(true);
-  }, []);
 
   const faces = (
     <>
@@ -60,7 +57,7 @@ export default function PublishedCard({
   );
 
   return (
-    <div className={cn("published-card-shell", className)} data-hydrated={hydrated ? "true" : "false"}>
+    <div className={cn("published-card-shell", className)}>
       {href ? (
         <a href={href} className="published-card block no-underline" aria-label={`Inspect ${name}`}>
           {faces}
@@ -74,12 +71,14 @@ export default function PublishedCard({
             type="button"
             className="card-toolbar__button"
             onClick={() => setFlipped((value) => !value)}
+            disabled={!ready}
             aria-pressed={flipped}
             aria-label={flipped ? `Show ${name} front` : `Show ${name} back`}
-            disabled={!hydrated}
           >
-            <RotateCcw size={13} aria-hidden="true" /> {flipped ? "Front" : "Back"}
+            <RotateCcw size={13} aria-hidden="true" />{" "}
+            {flipped ? "Front" : "Back"}
           </button>
+          {!ready ? <span className="text-xs text-[var(--muted)]">JavaScript required to flip</span> : null}
           {inspectHref ? (
             <a className="card-toolbar__button" href={inspectHref}>
               Inspect <ArrowUpRight size={13} aria-hidden="true" />

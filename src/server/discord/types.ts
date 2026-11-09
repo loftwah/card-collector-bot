@@ -94,6 +94,8 @@ export interface DiscordCallback {
   type: number;
   data?: DiscordMessage;
   attachments?: DiscordAttachment[];
+  /** Internal-only proof for a card share; never sent as Discord payload. */
+  publicCardShare?: { tenantId: string; userId: string; installationId: string; instanceId: string; cardId: string; variantId: string; serial: string; assetId: string; renderKey: string; assetSha256: string; assetBytes: number; mime: string; attemptId: string; epoch: {global:number;tenant:number;user:number;userId:string} | null };
 }
 
 export interface DiscordInstallation {

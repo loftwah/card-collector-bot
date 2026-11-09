@@ -23,7 +23,6 @@ const jsonOutput = args.has("--json");
 const root = process.cwd();
 const env = readEnv(path.join(root, ".env"));
 const checks = [];
-let channelDenied = false;
 let deployedBuild = null;
 
 function readEnv(file) {
@@ -338,7 +337,6 @@ if (!applicationId || !guildId || !channelId) {
     const allowed = Boolean(
       everyoneOverwrite && (BigInt(everyoneOverwrite.allow) & viewBit) !== 0n,
     );
-    channelDenied = denied;
 
     const botUserId = application.bot?.id ?? applicationId;
     const [roles, member] = await Promise.all([
@@ -370,12 +368,12 @@ if (!applicationId || !guildId || !channelId) {
     );
     add(
       "channel visibility",
-      denied ? "PASS" : "BLOCKED",
+      "BLOCKED",
       denied
-        ? "@everyone is explicitly denied View Channel. This is a channel policy signal, not proof that every role/member is excluded."
+        ? "@everyone is explicitly denied View Channel, but other roles, member overwrites and administrators may still have access. Durable viewer authorisation is unverified."
         : allowed
           ? "An @everyone overwrite explicitly allows View Channel; the channel is public to guild members."
-          : "No @everyone View Channel override: every guild member can read the channel.",
+          : "No explicit @everyone View Channel override; effective permissions and inherited overwrites must be reviewed for all potential viewers.",
     );
     const spectatorEvidenceFile = process.env.FOILBURY_SPECTATOR_EVIDENCE;
     let spectator = null;
@@ -420,48 +418,12 @@ try {
     );
     const policy = JSON.parse(installation.channel_audience_json || "{}");
     const configured = policy[channelId];
-    const audienceVerification = rows(
-      `SELECT metadata_json, created_at FROM fb_audit_events
-        WHERE action = 'discord.channel_audience.verified'
-          AND object_type = 'discord_installation'
-          AND object_id = '${String(installation.id).replaceAll("'", "''")}'
-        ORDER BY created_at DESC LIMIT 1`,
-    )[0];
-    let verifiedMembers = false;
-    let verificationDetail = "";
-    if (audienceVerification) {
-      try {
-        const metadata = JSON.parse(audienceVerification.metadata_json);
-        verifiedMembers =
-          metadata.guild_id === guildId &&
-          metadata.channel_id === channelId &&
-          metadata.audience === "members" &&
-          Number(metadata.human_member_count) > 0 &&
-          Array.isArray(metadata.human_discord_user_ids) &&
-          metadata.human_discord_user_ids.length === Number(metadata.human_member_count);
-        if (verifiedMembers) {
-          verificationDetail = ` · verified members from ${metadata.human_member_count} human guild members at ${metadata.verified_at ?? audienceVerification.created_at}`;
-        }
-      } catch {
-        verifiedMembers = false;
-      }
-    }
-    const revealStatus =
-      configured === "members" || configured === "private"
-        ? channelDenied || verifiedMembers
-          ? "PASS"
-          : "FAIL"
-        : channelDenied
-          ? "BLOCKED"
-          : "PASS";
+    // A channel overwrite or a historical census does not establish a
+    // revocable mapping between Discord viewers and Foilbury members.
     add(
       "reveal policy",
-      revealStatus,
-      configured
-        ? `Channel audience is configured as ${configured}${verificationDetail}.`
-        : channelDenied
-          ? "Restricted reveals will stay ephemeral until the operator records the verified channel audience."
-          : "No channel audience is configured; restricted reveals stay ephemeral and public reveals may be shared.",
+      "BLOCKED",
+      `Stored channel audience is ${configured ?? "public (default)"}; durable viewer-to-membership authorisation and deployed share enforcement are not established by this probe. Restricted channel shares must remain blocked.`,
     );
   }
 

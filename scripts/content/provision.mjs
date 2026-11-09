@@ -1,28 +1,18 @@
 #!/usr/bin/env node
 /**
- * Provision the launch collection manifests through the supported API.
+ * Inventory launch collection manifests. Writes are paused until generated
+ * artwork can be tied to a verifiable byte-bound visual review.
  *
  * Usage:
  *   node scripts/content/provision.mjs --dry-run
- *   node scripts/content/provision.mjs --enable-collections  (explicitly re-enable newly imported collections)
- *   node scripts/content/provision.mjs
- *   FOILBURY_URL=https://foilbury.loftwah.com FOILBURY_AGENT_TOKEN=fba_... \
- *     node scripts/content/provision.mjs --skip-render
- *
- * Art is generated locally from deterministic original briefs, uploaded to R2,
- * then imported through the same domain operations as the Admin UI. The script
- * is idempotent: unchanged source hashes are skipped, cards keep their stable
- * IDs, and existing awards are never rewritten.
+ * Dry-run reads and validates the manifests without generating or uploading art.
  */
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import sharp from "sharp";
 import { generateCollectionArt } from "../../art/collection-art.mjs";
-import { composeCardBack } from "../../art/compose.mjs";
-import { renderProvisionedFront } from "./render-provisioned-front.mjs";
-import { requireQueuedBackground } from "./render-queued-front.mjs";
-import { readRenderSource, readLocalRenderSource } from "./render-bytes.mjs";
+import { composeCard, composeCardBack } from "../../art/compose.mjs";
 import { apiForm, apiJson, ensureServer, BASE_URL, agentToken, accessHeaders } from "../lib/api.mjs";
 
 const args = new Set(process.argv.slice(2));
@@ -38,6 +28,7 @@ const root = process.cwd();
 const contentDir = path.join(root, ".foilbury/content");
 const artDir = path.join(root, ".foilbury/generated");
 const sourcedDir = path.join(root, ".foilbury/sourced");
+const tmpDir = path.join(root, ".foilbury/tmp");
 
 function log(message) {
   if (!jsonOut) console.log(message);
@@ -132,8 +123,9 @@ async function ensureCollection(manifest, logoUrl, bannerUrl, backUrl) {
     featured: Boolean(manifest.collection.featured),
   };
   if (existing) {
-    const updated = await apiJson(`/api/v1/admin/collections/${existing.id}`, { method: "PATCH", body });
-    return { collection: updated.collection, created: false };
+    // A content refresh is not authority to overwrite curated metadata,
+    // selected visual assets, audience, release state or distribution.
+    return { collection: existing, created: false };
   }
   const created = await apiJson("/api/v1/admin/collections", {
     method: "POST",
@@ -276,7 +268,6 @@ async function renderQueue(cards, generated) {
       continue;
     }
     try {
-      requireQueuedBackground(payload);
       const subject = await fetch(`${BASE_URL}/api/v1/admin/assets/${payload.subject_asset_id}/bytes`, {
         headers: { authorization: `Bearer ${agentToken()}`, ...accessHeaders() },
       });
@@ -287,31 +278,49 @@ async function renderQueue(cards, generated) {
           })
         : null;
       if (background && !background.ok) throw new Error(`Background asset fetch failed (${background.status}).`);
-      const subjectPath = await readRenderSource(subject);
-      const backgroundPath = await readRenderSource(background);
-      const { buffer: outputBytes } = await renderProvisionedFront({ payload, card: entry.card, subjectPath, backgroundPath, returnBytes: true });
+      const subjectPath = path.join(tmpDir, `${payload.variant_id}-subject.png`);
+      const backgroundPath = path.join(tmpDir, `${payload.variant_id}-background.png`);
+      fs.writeFileSync(subjectPath, Buffer.from(await subject.arrayBuffer()));
+      if (background) fs.writeFileSync(backgroundPath, Buffer.from(await background.arrayBuffer()));
+      const outputPath = path.join(tmpDir, `${payload.variant_id}.webp`);
+      await composeCard({
+        subjectPath,
+        backgroundPath,
+        material: payload.material_key,
+        effect: payload.effect_key ?? "none",
+        name: entry.card.name,
+        subtitle: entry.card.subtitle ?? "",
+        setName: entry.card.sets[0]?.name ?? entry.card.collections[0]?.name ?? "Cabinet",
+        serial: "CABINET PROOF",
+        className: entry.card.class?.name ?? "",
+        rarity: entry.card.rarity?.name ?? "",
+        outputPath,
+      });
       const backSource = generated.get(entry.card.slug)?.back;
       let backBytes;
       if (backSource && fs.existsSync(backSource)) {
-        backBytes = await composeCardBack({
-          backPath: readLocalRenderSource(backSource),
+        const backPath = path.join(tmpDir, `${payload.variant_id}-back.webp`);
+        await composeCardBack({
+          backPath: backSource,
           material: payload.material_key,
           effect: payload.effect_key ?? "none",
-          returnBytes: true,
+          outputPath: backPath,
         });
+        backBytes = fs.readFileSync(backPath);
+        fs.rmSync(backPath, { force: true });
       }
       const form = new FormData();
-      form.append("file", new Blob([outputBytes], { type: "image/webp" }), `${payload.variant_id}.webp`);
+      form.append("file", new Blob([fs.readFileSync(outputPath)], { type: "image/webp" }), `${payload.variant_id}.webp`);
       if (backBytes) form.append("back", new Blob([backBytes], { type: "image/webp" }), `${payload.variant_id}-back.webp`);
       form.append("attempt", String(attempt));
       const completed = await apiForm(`/api/v1/admin/jobs/${job.id}/complete`, form);
       if (makeDerivatives && completed?.assetId) {
-        const thumb = await sharp(outputBytes).resize(300, 420, { fit: "cover", position: "attention" }).webp({ quality: 82, effort: 5 }).toBuffer();
+        const thumb = await sharp(outputPath).resize(300, 420, { fit: "cover", position: "attention" }).webp({ quality: 82, effort: 5 }).toBuffer();
         const derivativeForm = new FormData();
         derivativeForm.append("file", new Blob([thumb], { type: "image/webp" }), `${payload.variant_id}-thumb.webp`);
         derivativeForm.append("sizeKey", "thumb");
         await apiForm(`/api/v1/admin/assets/${completed.assetId}/derivatives`, derivativeForm).catch(() => undefined);
-        const preview = await sharp(outputBytes).resize(600, 840, { fit: "cover", position: "attention" }).webp({ quality: 84, effort: 5 }).toBuffer();
+        const preview = await sharp(outputPath).resize(600, 840, { fit: "cover", position: "attention" }).webp({ quality: 84, effort: 5 }).toBuffer();
         const previewForm = new FormData();
         previewForm.append("file", new Blob([preview], { type: "image/webp" }), `${payload.variant_id}-preview.webp`);
         previewForm.append("sizeKey", "preview");
@@ -319,6 +328,9 @@ async function renderQueue(cards, generated) {
       }
       rendered += 1;
       if (rendered % 20 === 0) log(`  rendered ${rendered}…`);
+      fs.rmSync(subjectPath, { force: true });
+      fs.rmSync(backgroundPath, { force: true });
+      fs.rmSync(outputPath, { force: true });
     } catch (error) {
       failed += 1;
       const message = error instanceof Error ? error.message : String(error);
@@ -403,12 +415,18 @@ async function rebuildPools(manifests) {
 }
 
 async function main() {
+  if (!dryRun) {
+    throw new Error("Content provisioning is paused: generated artwork has no verifiable byte-bound review record and this importer cannot preserve reviewed selections safely. Use --dry-run for a read-only manifest inventory; review and publish through Studio until this importer is repaired.");
+  }
   const manifests = loadManifests();
   log(`Loaded ${manifests.length} manifest${manifests.length === 1 ? "" : "s"}.`);
   if (dryRun) {
     for (const { manifest } of manifests) {
       log(`  ${manifest.collection.slug}: ${manifest.cards.length} cards, ${manifest.achievements?.length ?? 0} achievements`);
     }
+    const summary = { mode: "dry-run", collections: manifests.map(({ manifest }) => ({ slug: manifest.collection.slug, cards: manifest.cards.length, achievements: manifest.achievements?.length ?? 0 })), writes: 0 };
+    if (jsonOut) console.log(JSON.stringify(summary, null, 2));
+    return;
   }
   if (!dryRun && !process.env.FOILBURY_URL) await ensureServer();
 

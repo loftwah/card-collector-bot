@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Check, Copy, Download, ExternalLink, Link2, Loader2, ShieldCheck } from "lucide-react";
 import { api, describeError } from "@/lib/client";
+import { formatDate } from "@/lib/utils";
 import { Button } from "../ui/button";
 
 type ShareKind = "card" | "collection" | "achievement" | "wishlist" | "latest";
@@ -56,6 +57,7 @@ export default function SharePanel({
     if (!result) return;
     try {
       await navigator.clipboard.writeText(result.url);
+      setError("");
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     } catch {
@@ -67,7 +69,7 @@ export default function SharePanel({
     <section className="share-panel" aria-label={`Share ${title}`}>
       <div className="share-panel__head">
         <div>
-          <p className="studio-kicker text-[var(--teal)]">Share deliberately</p>
+          <p className="studio-kicker text-[var(--teal)]">Share</p>
           <h3 className="display-sm mt-1 text-2xl uppercase">{title}</h3>
           <p className="mt-1 text-sm text-[var(--muted)]">{description}</p>
         </div>
@@ -78,11 +80,11 @@ export default function SharePanel({
         {frontUrl ? <img src={frontUrl} alt="" width="150" height="210" /> : <div className="grid h-[210px] w-[150px] place-items-center bg-[var(--ink)] p-3 text-center font-mono text-[0.55rem] uppercase tracking-[0.12em] text-[var(--paper)]">{title}</div>}
         <div className="min-w-0">
           <p className="font-semibold">{title}</p>
-          <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">Recipients see exactly this object and its published front/back. No wallet, email, account ID, admin data, private source layers or other cards are included. The link is a snapshot; cards you obtain later never appear in it.</p>
+          <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">Create a snapshot to share. People can open it only if they have access to its contents; cards you collect later won't appear in it.</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {!confirming && !result ? (
               <Button size="sm" onClick={() => setConfirming(true)}>
-                <Link2 size={14} /> Preview &amp; create link
+                <Link2 size={14} /> Create share link
               </Button>
             ) : null}
             {frontUrl ? <a className="btn btn-secondary btn-sm" href={frontUrl} download><Download size={14} /> Front</a> : null}
@@ -93,8 +95,8 @@ export default function SharePanel({
 
       {confirming ? (
         <div className="share-panel__confirm" role="group" aria-label="Confirm share link">
-          <p className="text-sm font-semibold">Confirm the exact snapshot</p>
-          <p className="mt-1 text-xs text-[var(--muted)]">A public-safe link can be opened by anyone with the URL while it is active. A members-only link still requires an entitled sign-in on every request. Neither grants membership or access to your account.</p>
+          <p className="text-sm font-semibold">Create a share link</p>
+          <p className="mt-1 text-xs text-[var(--muted)]">Anyone with the link can try to open it. Member-only content still requires the right access, and the link does not grant access to your account.</p>
           <div className="mt-3 flex flex-wrap items-end gap-3">
             <label className="text-xs font-semibold">
               Expires
@@ -105,7 +107,7 @@ export default function SharePanel({
               </select>
             </label>
             <Button size="sm" onClick={create} disabled={busy}>{busy ? <><Loader2 size={14} className="animate-spin" /> Creating…</> : <>Create link</>}</Button>
-            <Button size="sm" variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>Cancel</Button>
+            <Button size="sm" variant="ghost" onClick={() => { setConfirming(false); setError(""); }} disabled={busy}>Cancel</Button>
           </div>
         </div>
       ) : null}
@@ -113,9 +115,9 @@ export default function SharePanel({
       {error ? <p className="mt-3 text-xs text-[var(--oxblood)]" role="alert">{error}</p> : null}
       {result ? (
         <div className="mt-4 border-t border-[var(--line)] pt-3">
-          <p className="text-xs text-[var(--muted)]">Audience: <strong>{result.audience === "public" ? "Public-safe" : result.audience === "private" ? "Owner only" : "Members"}</strong> · expires {new Date(result.expires_at).toLocaleDateString("en-AU")}</p>
+          <p className="text-xs text-[var(--muted)]" role="status">Link created · <strong>{result.audience === "public" ? "Public" : result.audience === "private" ? "People with access" : "Members with access"}</strong> · expires {formatDate(result.expires_at)} Melbourne</p>
           <div className="mt-2 flex flex-wrap gap-2">
-            <input className="input min-w-0 flex-1 font-mono text-xs" readOnly value={result.url} aria-label="Share link" onFocus={(event) => event.target.select()} />
+            <input className="input min-w-0 basis-full font-mono text-xs sm:basis-auto sm:flex-1" readOnly value={result.url} aria-label="Share link" onFocus={(event) => event.target.select()} />
             <Button size="sm" variant="secondary" onClick={copy}>{copied ? <><Check size={14} /> Copied</> : <><Copy size={14} /> Copy</>}</Button>
             <a className="btn btn-secondary btn-sm" href={result.url} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Open as recipient</a>
           </div>

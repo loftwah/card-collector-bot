@@ -38,8 +38,6 @@ export interface AchievementView extends AchievementDefinition {
   notification_state: string | null;
   unlock_id?: string | null;
   collection_logo_url?: string | null;
-  collection_name?: string | null;
-  collection_slug?: string | null;
   criteria: Record<string, unknown>;
   reward: Record<string, unknown>;
 }
@@ -69,15 +67,22 @@ async function fulfilAchievementReward(
   let rewardState = unlock.reward_state;
   let rewardLedgerId = unlock.reward_ledger_id;
   const idempotencyKey = `achievement:${unlock.achievement_id}:${unlock.achievement_version}:${unlock.user_id}`;
+  const keepPending = () => ctx.db.prepare(`UPDATE fb_achievement_unlocks SET reward_state='pending' WHERE id=? AND tenant_id=? AND reward_state IN ('pending','failed') AND reward_ledger_id IS NULL`)
+    .bind(unlock.id,ctx.tenant.id).run().catch(() => undefined);
   if (unlock.reward_amount > 0 && rewardState !== "granted") {
-    const previous = await first<{ id: string }>(
+    const previous = await first<{ id: string; amount: number; kind: string; reference_type: string | null; reference_id: string | null }>(
       ctx.db,
-      "SELECT id FROM fb_ledger_entries WHERE tenant_id = ? AND user_id = ? AND idempotency_key = ?",
+      "SELECT id,amount,kind,reference_type,reference_id FROM fb_ledger_entries WHERE tenant_id = ? AND user_id = ? AND idempotency_key = ?",
       ctx.tenant.id,
       unlock.user_id,
       idempotencyKey,
     );
     if (previous) {
+      if (previous.kind !== 'issue' || previous.amount !== unlock.reward_amount || previous.reference_type !== 'achievement' || previous.reference_id !== unlock.id) {
+        await keepPending();
+        console.error(JSON.stringify({ level: "error", event_code: "achievement.reward_conflict", error: "operation_failed" }));
+        return { rewardState: "pending", notificationState: unlock.notification_state };
+      }
       rewardState = "granted";
       rewardLedgerId = previous.id;
     } else {
@@ -95,26 +100,26 @@ async function fulfilAchievementReward(
           actorType: "system",
           actorId: "achievements",
         });
+        const exact = await first<{ id: string }>(ctx.db,
+          "SELECT id FROM fb_ledger_entries WHERE id=? AND tenant_id=? AND user_id=? AND idempotency_key=? AND kind='issue' AND amount=? AND reference_type='achievement' AND reference_id=?",
+          credit.ledgerId,ctx.tenant.id,unlock.user_id,idempotencyKey,unlock.reward_amount,unlock.id);
+        if (!exact) throw new ApiError(409,'achievement_ledger_conflict','The reward receipt needs reconciliation.');
         rewardState = "granted";
-        rewardLedgerId = credit.ledgerId;
-      } catch (error) {
-        await ctx.db
-          .prepare(
-            "UPDATE fb_achievement_unlocks SET reward_state = 'failed', reward_ledger_id = NULL WHERE id = ? AND tenant_id = ?",
-          )
-          .bind(unlock.id, ctx.tenant.id)
-          .run()
-          .catch(() => undefined);
-        console.error(
-          JSON.stringify({
-            level: "error",
-            message: "achievement reward failed",
-            achievement: definition.key,
-            unlock: unlock.id,
-            error: String(error),
-          }),
-        );
-        return { rewardState: "failed", notificationState: unlock.notification_state };
+        rewardLedgerId = exact.id;
+      } catch {
+        // A lost response can follow a committed credit. Reconcile against the
+        // ledger; when it cannot be read, keep the outcome pending for retry.
+        const committed = await first<{ id: string }>(ctx.db,
+          "SELECT id FROM fb_ledger_entries WHERE tenant_id=? AND user_id=? AND idempotency_key=? AND kind='issue' AND amount=? AND reference_type='achievement' AND reference_id=?",
+          ctx.tenant.id, unlock.user_id, idempotencyKey, unlock.reward_amount, unlock.id).catch(() => null);
+        if (committed) {
+          rewardState = "granted";
+          rewardLedgerId = committed.id;
+        } else {
+          await keepPending();
+          console.error(JSON.stringify({ level: "error", event_code: "achievement.reward_pending", error: "operation_failed" }));
+          return { rewardState: "pending", notificationState: unlock.notification_state };
+        }
       }
     }
   } else if (unlock.reward_amount <= 0) {
@@ -127,7 +132,7 @@ async function fulfilAchievementReward(
       ctx.db,
       `SELECT id, status FROM fb_outbox
         WHERE tenant_id = ? AND topic = 'achievement.earned'
-          AND json_extract(payload_json, '$.unlock_id') = ?
+          AND json_extract(CASE WHEN json_valid(payload_json) THEN payload_json ELSE '{}' END, '$.unlock_id') = ?
         ORDER BY created_at DESC LIMIT 1`,
       ctx.tenant.id,
       unlock.id,
@@ -136,7 +141,10 @@ async function fulfilAchievementReward(
       await ctx.db
         .prepare(
           `INSERT INTO fb_outbox (id, tenant_id, topic, payload_json, status, attempts, available_at, created_at)
-           VALUES (?, ?, 'achievement.earned', ?, 'pending', 0, ?, ?)`,
+           SELECT ?, ?, 'achievement.earned', ?, 'pending', 0, ?, ? WHERE NOT EXISTS (
+             SELECT 1 FROM fb_outbox WHERE tenant_id=? AND topic='achievement.earned'
+               AND json_extract(CASE WHEN json_valid(payload_json) THEN payload_json ELSE '{}' END,'$.unlock_id')=?
+           )`,
         )
         .bind(
           newId("obx"),
@@ -148,27 +156,38 @@ async function fulfilAchievementReward(
           }),
           nowIso(),
           nowIso(),
+          ctx.tenant.id,
+          unlock.id,
         )
         .run();
     } else if (outbox.status === "failed") {
-      await ctx.db
+      const retry = await ctx.db
         .prepare(
-          "UPDATE fb_outbox SET status = 'pending', attempts = 0, available_at = ?, last_error = NULL WHERE id = ? AND tenant_id = ?",
+          "UPDATE fb_outbox SET status = 'pending', attempts = 0, available_at = ?, last_error = NULL WHERE id = ? AND tenant_id = ? AND status = 'failed'",
         )
         .bind(nowIso(), outbox.id, ctx.tenant.id)
         .run();
+      if (retry.meta.changes === 0) {
+        const current = await first<{ status: string }>(ctx.db,"SELECT status FROM fb_outbox WHERE id=? AND tenant_id=?",outbox.id,ctx.tenant.id);
+        if (current?.status === 'delivered') notificationState = 'sent';
+      }
     } else if (outbox.status === "delivered") {
       notificationState = "sent";
     }
   }
 
-  await ctx.db
+  const saved = await ctx.db
     .prepare(
-      "UPDATE fb_achievement_unlocks SET reward_state = ?, reward_ledger_id = ?, notification_state = ? WHERE id = ? AND tenant_id = ?",
+      `UPDATE fb_achievement_unlocks SET
+        reward_state = CASE WHEN reward_state='granted' THEN reward_state ELSE ? END,
+        reward_ledger_id = CASE WHEN reward_state='granted' THEN reward_ledger_id ELSE ? END,
+        notification_state = CASE WHEN notification_state='sent' THEN notification_state ELSE ? END
+       WHERE id = ? AND tenant_id = ? RETURNING reward_state,notification_state`,
     )
     .bind(rewardState, rewardLedgerId, notificationState, unlock.id, ctx.tenant.id)
-    .run();
-  return { rewardState, notificationState };
+    .first<{reward_state:string;notification_state:string}>();
+  if (!saved) throw new ApiError(409,'achievement_unavailable','The achievement is no longer available.');
+  return { rewardState:saved.reward_state, notificationState:saved.notification_state };
 }
 
 export function finishKey(
@@ -204,7 +223,7 @@ function criteriaTarget(criteria: Record<string, unknown>): number {
 export async function evaluateAchievements(
   ctx: Ctx,
   input: { userId?: string; eventId?: string; notify?: boolean } = {},
-): Promise<{ evaluated: number; unlocked: AchievementView[] }> {
+): Promise<{ evaluated: number; unlocked: AchievementView[]; newlyUnlocked: AchievementView[] }> {
   const user = ctx.user;
   const userId = input.userId ?? user?.id;
   if (!userId)
@@ -290,6 +309,7 @@ export async function evaluateAchievements(
   }
 
   const unlocked: AchievementView[] = [];
+  const newlyUnlocked: AchievementView[] = [];
   for (const definition of definitions) {
     const criteria = parseJson<Record<string, unknown>>(definition.criteria_json, {});
     const reward = parseJson<Record<string, unknown>>(definition.reward_json, {});
@@ -498,8 +518,7 @@ export async function evaluateAchievements(
         notification_state: fulfilled.notificationState,
       }),
     ]);
-    unlocked.push(
-      toView(
+    const earned = toView(
         definition,
         criteria,
         reward,
@@ -508,11 +527,12 @@ export async function evaluateAchievements(
         rewardAmount,
         fulfilled.rewardState,
         fulfilled.notificationState,
-      ),
-    );
+      );
+    unlocked.push(earned);
+    newlyUnlocked.push(earned);
   }
 
-  return { evaluated: definitions.length, unlocked };
+  return { evaluated: definitions.length, unlocked, newlyUnlocked };
 }
 
 function toView(
@@ -563,34 +583,13 @@ export async function listAchievements(ctx: Ctx, userId?: string): Promise<Achie
     return Boolean(ctx.user);
   });
   const collectionIds = [...visibleCollections];
-  const collectionRows = collectionIds.length
-    ? await all<{ id: string; logo_url: string | null; name: string; slug: string }>(
-        ctx.db,
-        `SELECT id, logo_url, name, slug FROM fb_collections WHERE id IN (${collectionIds.map(() => "?").join(",")})`,
-        ...collectionIds,
-      )
+  const logoRows = collectionIds.length
+    ? await all<{ id: string; logo_url: string | null }>(ctx.db, `SELECT id, logo_url FROM fb_collections WHERE id IN (${collectionIds.map(() => "?").join(",")})`, ...collectionIds)
     : [];
-  const collectionDetails = new Map(
-    collectionRows.map((row) => [
-      row.id,
-      { logo_url: row.logo_url, name: row.name, slug: row.slug },
-    ]),
-  );
-  const collectionIdFor = (definition: AchievementDefinition) => {
-    const criteria = parseJson<Record<string, unknown>>(definition.criteria_json, {});
-    return typeof criteria.collection_id === "string" ? criteria.collection_id : "";
-  };
+  const logos = new Map(logoRows.map((row) => [row.id, row.logo_url]));
   const emblemFor = (definition: AchievementDefinition) => {
-    const collectionId = collectionIdFor(definition);
-    return collectionId ? (collectionDetails.get(collectionId)?.logo_url ?? null) : null;
-  };
-  const sourceFor = (definition: AchievementDefinition) => {
-    const collectionId = collectionIdFor(definition);
-    return collectionId ? (collectionDetails.get(collectionId)?.name ?? null) : null;
-  };
-  const sourceSlugFor = (definition: AchievementDefinition) => {
-    const collectionId = collectionIdFor(definition);
-    return collectionId ? (collectionDetails.get(collectionId)?.slug ?? null) : null;
+    const criteria = parseJson<Record<string, unknown>>(definition.criteria_json, {});
+    return typeof criteria.collection_id === "string" ? logos.get(criteria.collection_id) ?? null : null;
   };
   if (!targetUserId) {
     return visible.map((definition) => {
@@ -608,8 +607,6 @@ export async function listAchievements(ctx: Ctx, userId?: string): Promise<Achie
           null,
         ),
         collection_logo_url: emblemFor(definition),
-        collection_name: sourceFor(definition),
-        collection_slug: sourceSlugFor(definition),
       };
     });
   }
@@ -668,34 +665,8 @@ export async function listAchievements(ctx: Ctx, userId?: string): Promise<Achie
       ),
       unlock_id: unlock?.id ?? null,
       collection_logo_url: emblemFor(definition),
-      collection_name: sourceFor(definition),
-      collection_slug: sourceSlugFor(definition),
     };
   });
-}
-
-export async function recordCollectionExploration(ctx: Ctx, collectionId: string): Promise<void> {
-  const user = ctx.user;
-  // Machine reads must stay free of write-on-read side effects. Exploration is
-  // recorded only for an intentional human view; it never awards currency.
-  if (!user || ctx.actor.type !== "user") return;
-  const now = nowIso();
-  await ctx.db
-    .prepare(
-      `INSERT INTO fb_domain_events (id, tenant_id, user_id, event_type, object_type, object_id, dedupe_key, payload_json, created_at)
-       VALUES (?, ?, ?, 'collection.explored', 'collection', ?, ?, '{}', ?)
-       ON CONFLICT(tenant_id, dedupe_key) DO NOTHING`,
-    )
-    .bind(
-      newId("evt"),
-      ctx.tenant.id,
-      user.id,
-      collectionId,
-      `explore:${user.id}:${collectionId}`,
-      now,
-    )
-    .run()
-    .catch(() => undefined);
 }
 
 export async function recordDomainEvent(

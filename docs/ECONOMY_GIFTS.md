@@ -49,6 +49,19 @@ set their own reviewed weights. No player-specific odds are applied.
 - There is no purchase, cash-out, marketplace, NFT, advertising grind or
   investment value.
 
+Member set rewards require an explicit review by the current Bot owner with a
+recent passkey or MFA session. The review binds the roster, reward and linked
+collections. A member claim checks that exact release, current membership and
+session, every card's audience and ownership, and the wallet in the same D1
+transaction. The member surface derives its label from the authorised roster;
+unreviewed set descriptions are not published. This path currently supports
+published global and own-Bot member collections and approved public
+collections; private grants and other Bots are not included. If bound details
+change, revoke the release and review the current version again. Historical
+reviews, claims and ledger entries remain intact; re-review does not create a
+second reward for the same set version. Public set
+release approval remains a separate Super Admin action.
+
 ## Gifts
 
 `Send a gift` supports:

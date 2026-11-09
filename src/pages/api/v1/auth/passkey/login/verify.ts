@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { z } from "zod";
 import { buildContext } from "../../../../../../server/context";
 import { apiErrorResponse, json, readJson } from "../../../../../../server/http";
+import { requestReference } from "../../../../../../server/ids";
 import { cookieHeaders, sessionCookies } from "../../../../../../server/api/helpers";
 import { loginWithPasskey } from "../../../../../../server/modules/passkeys";
 
@@ -18,6 +19,6 @@ export const POST: APIRoute = async ({ request }) => {
       cookieHeaders(sessionCookies(result.token, result.csrf, result.expiresAt, ctx.config.environment === "production")),
     );
   } catch (error) {
-    return apiErrorResponse(error, request.headers.get("cf-ray") ?? crypto.randomUUID());
+    return apiErrorResponse(error, requestReference(request));
   }
 };

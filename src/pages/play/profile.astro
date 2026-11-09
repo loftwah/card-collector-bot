@@ -3,360 +3,97 @@ import PlayerLayout from "../../layouts/PlayerLayout.astro";
 import AchievementBadge from "../../components/player/AchievementBadge.astro";
 import ShareLinkButton from "../../components/player/ShareLinkButton";
 import ShareManager from "../../components/player/ShareManager";
-import ProfileCustomiser from "../../components/player/ProfileCustomiser";
-import ProfileCard from "../../components/player/ProfileCard.astro";
 import { pageContext } from "../../server/page";
-import { countInventory } from "../../server/modules/collection";
+import { getInventory } from "../../server/modules/collection";
 import { listAchievements } from "../../server/modules/achievements";
-import { listCollections } from "../../server/modules/collections";
-import { getPreferences, listShareLinks } from "../../server/modules/economy";
-import {
-  getProfilePresentationOptions,
-  resolveProfilePresentation,
-} from "../../server/modules/profile-presentation";
-import { first } from "../../server/db";
+import { listCollections, collectionProgress } from "../../server/modules/collections";
+import { listShareLinks } from "../../server/modules/economy";
 
 const ctx = await pageContext(Astro.request);
 const user = ctx.user!;
-const [totalCopies, favouriteRow, subjectRow, membership, achievements, collections, shares, prefs, profileOptions] =
-  await Promise.all([
-    countInventory(ctx),
-    first<{ count: number }>(
-      ctx.db,
-      `SELECT COUNT(*) AS count FROM fb_card_instances
-        WHERE tenant_id = ? AND user_id = ? AND status IN ('owned','reserved') AND favourite = 1`,
-      ctx.tenant.id,
-      user.id,
-    ),
-    first<{ subjects: number }>(
-      ctx.db,
-      `SELECT COUNT(DISTINCT card_id) AS subjects FROM fb_card_instances
-        WHERE tenant_id = ? AND user_id = ? AND status IN ('owned','reserved')`,
-      ctx.tenant.id,
-      user.id,
-    ),
-    first<{ created_at: string }>(
-      ctx.db,
-      `SELECT created_at FROM fb_memberships
-        WHERE tenant_id = ? AND user_id = ? ORDER BY created_at LIMIT 1`,
-      ctx.tenant.id,
-      user.id,
-    ),
-    listAchievements(ctx, user.id),
-    listCollections(ctx),
-    listShareLinks(ctx),
-    getPreferences(ctx),
-    getProfilePresentationOptions(ctx),
-  ]);
-
-const earned = achievements.filter((item) => item.state === "earned");
-const profile = resolveProfilePresentation(
-  prefs.profile_presentation,
-  profileOptions,
-  prefs.profile_presentation_version,
-);
-const featured = profile.featured;
-const showcase = profile.favourites.filter((card) => card.id !== featured?.id).slice(0, 4);
-const binderCards = [featured, ...showcase]
-  .filter((card): card is NonNullable<typeof card> => Boolean(card))
-  .slice(0, 4);
-const displayedWorlds = collections.slice(0, 3);
-const shelfCard = (card: (typeof binderCards)[number]) => ({
-  id: card.id,
-  card_name: card.cardName,
-  render_url: card.renderUrl,
-  thumbnail_url: card.thumbnailUrl,
-  edition_name: null,
-  variant_name: card.variantName,
-  serial: card.serial,
-});
-const initials = (user.displayName || "Collector")
-  .split(/\s+/)
-  .filter(Boolean)
-  .map((part) => part[0])
-  .join("")
-  .slice(0, 2)
-  .toUpperCase();
-const memberSince = membership?.created_at
-  ? new Date(membership.created_at).toLocaleDateString("en-AU", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      timeZone: "Australia/Melbourne",
-    })
-  : null;
-const starterLooks = [
-  {
-    key: "quiet",
-    name: "Quiet archive",
-    note: "One specimen, generous space, quiet labels.",
-  },
-  {
-    key: "signal",
-    name: "Signal room",
-    note: "A centred card with a periwinkle signal band.",
-  },
-  {
-    key: "binder",
-    name: "Binder desk",
-    note: "Four copies on a working grid.",
-  },
-  {
-    key: "night",
-    name: "Night shelf",
-    note: "A low row of cards on a dark shelf.",
-  },
-];
+const [inventory, achievements, collections, shares] = await Promise.all([
+  getInventory(ctx, { limit: 300, favourite: true }),
+  listAchievements(ctx, user.id),
+  listCollections(ctx),
+  listShareLinks(ctx),
+]);
+const earned = achievements.filter((item) => item.state === "earned").slice(0, 8);
+const progress = await Promise.all(collections.slice(0, 6).map(async (collection) => ({ collection, stat: await collectionProgress(ctx, collection.id) })));
+const activeWorlds = progress.filter((item) => item.stat.total_cards > 0 && item.stat.owned_cards > 0).sort((a, b) => (b.stat.owned_cards / Math.max(1, b.stat.total_cards)) - (a.stat.owned_cards / Math.max(1, a.stat.total_cards))).slice(0, 4);
+const favourites = inventory.slice(0, 8);
+const totalCards = progress.reduce((sum, item) => sum + item.stat.owned_cards, 0);
+const completeWorlds = progress.filter((item) => item.stat.complete).length;
 ---
-
-<PlayerLayout title="Collector profile · Foilbury">
-  <div
-    class="profile-page"
-    data-profile-look={prefs.profile_look}
-    data-profile-frame={profile.selection.frame}
-    data-avatar-decoration={profile.selection.avatarDecoration}
-    data-name-treatment={profile.selection.nameTreatment}
-    data-profile-effect={profile.selection.effect}
-  >
-  <section class="profile-hero">
-    {profile.banner.imageUrl ? (
-      <img class="profile-hero__banner" src={profile.banner.imageUrl} alt="" aria-hidden="true" />
-    ) : null}
-    <div class="profile-hero__identity">
-      {profile.portrait.imageUrl ? (
-        <span class="profile-avatar profile-avatar--image" aria-hidden="true">
-          <img src={profile.portrait.imageUrl} alt="" width="64" height="64" />
-        </span>
-      ) : (
-        <span class="profile-avatar" aria-hidden="true">{initials}</span>
-      )}
-      <div class="min-w-0">
-        <h1 class="page-title mt-1">{user.displayName}</h1>
-        <p class="profile-hero__meta">
-          Foilbury collector{memberSince ? ` · member since ${memberSince}` : ""}
-        </p>
-        <p class="profile-hero__lede">
-          A curated view of what you keep. Favourites, collection progress and the badges you
-          actually earned. Your wallet, email and account ID are not part of this page.
-        </p>
-        <p class="profile-hero__bio" data-profile-bio>{prefs.profile_bio}</p>
+<PlayerLayout title="Collector showcase · Foilbury">
+  <section class="border-b border-[var(--line)] pb-7">
+    <div class="flex flex-wrap items-end justify-between gap-5">
+      <div>
+        <p class="studio-kicker text-[var(--teal)]">Collector showcase</p>
+        <h1 class="display mt-2 text-[clamp(2.8rem,7vw,5.6rem)] uppercase">{user.displayName}</h1>
+        <p class="mt-3 max-w-2xl text-[var(--muted)]">A curated view of what you keep. Favourites, the worlds you are closest to finishing, and the badges you actually earned. Your wallet, email and account ID are not part of this page.</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <ShareLinkButton client:load kind="profile" label="Share showcase" />
+        <a class="btn btn-secondary btn-sm" href="/play/preferences">Sharing settings</a>
       </div>
     </div>
-    <div class="profile-hero__actions">
-      <ShareLinkButton client:load kind="profile" label="Share profile" />
-      <a class="btn btn-secondary btn-sm" href="#customise">Customise</a>
-    </div>
-    <dl class="profile-stats">
-      <div>
-        <dt>Subjects</dt>
-        <dd>{subjectRow?.subjects ?? 0}</dd>
-      </div>
-      <div>
-        <dt>Copies</dt>
-        <dd>{totalCopies}</dd>
-      </div>
-      <div>
-        <dt>Favourites</dt>
-        <dd>{favouriteRow?.count ?? 0}</dd>
-      </div>
-      <div>
-        <dt>Badges</dt>
-        <dd>{earned.length}</dd>
-      </div>
-    </dl>
   </section>
 
-  <section class="profile-feature">
-    {
-      featured ? (
-        <>
-          <div class="profile-feature__art">
-            {featured.renderUrl ? (
-              <img
-                src={featured.renderUrl}
-                alt={`${featured.cardName} — ${featured.variantName}`}
-                width="750"
-                height="1050"
-                loading="eager"
-              />
-            ) : (
-              <div class="card-face-fallback">{featured.cardName.charAt(0)}</div>
-            )}
-          </div>
-          <div class="profile-feature__copy">
-            <h2 class="profile-feature__name">{featured.cardName}</h2>
-            <p class="profile-feature__meta">
-              {featured.finish && featured.finish !== featured.variantName
-                ? `${featured.variantName} · ${featured.finish}`
-                : featured.variantName}
-            </p>
-            <p class="profile-feature__serial">{featured.serial}</p>
-            <p class="profile-feature__note">
-              {profile.favourites.some((card) => card.id === featured.id)
-                ? "Pinned from your favourites."
-                : "Chosen as the featured copy in your composition."}
-              The card object is shown as saved; the controls sit outside it.
-            </p>
-            <div class="profile-feature__actions">
-              <a class="btn btn-primary btn-sm" href={`/play/card/${featured.id}`}>
-                Inspect this copy
-              </a>
-              <a class="btn btn-secondary btn-sm" href="/play/collection">
-                Manage favourites
-              </a>
-            </div>
-          </div>
-        </>
-      ) : (
-        <div class="profile-feature__empty">
-          <div>
-            <p class="display-sm text-2xl">No favourite pinned yet.</p>
-            <p class="mt-2 text-sm">
-              Favourite a card in your collection and it becomes the featured specimen here.
-            </p>
-            <a class="btn btn-primary btn-sm mt-4" href="/play/collection">
-              Choose a card
+  <section class="mt-7 grid gap-3 sm:grid-cols-3">
+    <div class="studio-stat"><p class="studio-stat__label">Subjects held</p><p class="studio-stat__value">{totalCards}</p></div>
+    <div class="studio-stat"><p class="studio-stat__label">Worlds complete</p><p class="studio-stat__value">{completeWorlds}</p></div>
+    <div class="studio-stat"><p class="studio-stat__label">Badges earned</p><p class="studio-stat__value">{achievements.filter((item) => item.state === "earned").length}</p></div>
+  </section>
+
+  <section class="mt-9">
+    <div class="flex flex-wrap items-end justify-between gap-3 border-b border-[var(--line)] pb-3">
+      <h2 class="display-sm text-3xl uppercase">Pinned cards</h2>
+      <a class="font-mono text-[0.6rem] uppercase tracking-[0.1em] underline underline-offset-4" href="/play/collection">Manage favourites →</a>
+    </div>
+    {favourites.length ? (
+      <div class="card-grid mt-5">
+        {favourites.map((card) => (
+          <a href={`/play/card/${card.id}`} class="group no-underline">
+            <div class="card-face">{card.render_url ? <img src={card.render_url} alt={`${card.card_name} — ${card.variant_name}`} loading="lazy" /> : <div class="card-face-fallback">{card.card_name.charAt(0)}</div>}</div>
+            <p class="display-sm mt-2 text-base">{card.card_name}</p>
+            <p class="text-xs text-[var(--muted)]">{card.variant_name} · {card.serial}</p>
+          </a>
+        ))}
+      </div>
+    ) : (
+      <div class="empty mt-5"><div><p class="display-sm text-2xl">No favourites pinned yet.</p><p class="mt-2 text-sm">Favourite a card in your collection and it appears here, ready for a curated share.</p></div></div>
+    )}
+  </section>
+
+  <section class="mt-10 grid gap-6 lg:grid-cols-[1fr_1fr]">
+    <div>
+      <div class="border-b border-[var(--line)] pb-3"><h2 class="display-sm text-3xl uppercase">Closest worlds</h2></div>
+      <div class="mt-3 grid gap-2">
+        {activeWorlds.map(({ collection, stat }) => {
+          const pct = stat.total_cards ? Math.round((stat.owned_cards / stat.total_cards) * 100) : 0;
+          return (
+            <a href={`/play/collection?collection=${collection.slug}`} class="flex items-center gap-3 border border-[var(--line)] bg-[var(--paper)] p-3 no-underline hover:border-[var(--ink)]">
+              {collection.logo_url ? <img src={collection.logo_url} alt="" class="h-10 w-10 object-contain" width="40" height="40" /> : null}
+              <div class="min-w-0 flex-1"><p class="truncate font-semibold">{collection.name}</p><p class="font-mono text-[0.56rem] uppercase tracking-[0.08em] text-[var(--muted)]">{stat.owned_cards}/{stat.total_cards} subjects · {pct}%</p><div class="mt-1 h-1.5 bg-[var(--paper-3)]"><div class="h-full bg-[var(--signal)]" style={`width:${pct}%`}></div></div></div>
             </a>
+          );
+        })}
+        {activeWorlds.length === 0 ? <p class="empty">Open a capsule to start a world.</p> : null}
+      </div>
+    </div>
+    <div>
+      <div class="border-b border-[var(--line)] pb-3"><h2 class="display-sm text-3xl uppercase">Earned badges</h2></div>
+      <div class="mt-3 grid gap-2">
+        {earned.map((item) => (
+          <div class="flex items-center gap-3 border border-[var(--line)] bg-[var(--paper)] p-3">
+            <AchievementBadge artKey={item.art_key} name={item.name} category={item.category} earned size={44} emblemUrl={item.collection_logo_url} />
+            <div class="min-w-0"><p class="truncate font-semibold">{item.name}</p><p class="font-mono text-[0.54rem] uppercase tracking-[0.08em] text-[var(--muted)]">{item.category} · earned</p></div>
           </div>
-        </div>
-      )
-    }
-  </section>
-
-  <section class="profile-section">
-    <div class="profile-section__head">
-      <div>
-        <h2 class="profile-section__title">Your shelf</h2>
+        ))}
+        {earned.length === 0 ? <p class="empty">Your first badge is one capsule away.</p> : null}
       </div>
-      <a class="profile-section__link" href="/play/collection">Manage favourites →</a>
-    </div>
-    {
-      binderCards.length ? (
-        <>
-          {showcase.length ? (
-            <div class="profile-showcase profile-showcase--rest">
-              {showcase.map((card) => (
-                <ProfileCard card={shelfCard(card)} />
-              ))}
-            </div>
-          ) : (
-            <p class="profile-section__lede profile-showcase-note">
-              Pin more favourites to fill this shelf.
-            </p>
-          )}
-          <div class="profile-showcase profile-showcase--binder">
-            {binderCards.map((card) => (
-              <ProfileCard card={shelfCard(card)} />
-            ))}
-          </div>
-        </>
-      ) : (
-        <div class="empty mt-5">
-          <div>
-            <p class="display-sm text-2xl">Your shelf is waiting.</p>
-            <p class="mt-2 text-sm">
-              Favourite more cards to arrange a small public-safe showcase.
-            </p>
-          </div>
-        </div>
-      )
-    }
-  </section>
-
-  {
-    profile.fallbackNotes.length ? (
-      <div class="profile-fallback-note" role="status">
-        <strong>Some saved choices are unavailable.</strong>
-        <ul>
-          {profile.fallbackNotes.map((note) => (
-            <li>{note}</li>
-          ))}
-        </ul>
-        <p>Choose a replacement below; nothing else in your profile changed.</p>
-      </div>
-    ) : null
-  }
-
-  <ProfileCustomiser
-    client:load
-    displayName={user.displayName}
-    initialLook={prefs.profile_look}
-    initialBio={prefs.profile_bio}
-    looks={starterLooks}
-    presentation={profile}
-    options={profileOptions}
-  />
-
-  <section class="profile-section">
-    <div class="profile-section__head">
-      <div>
-        <h2 class="profile-section__title">What you have unlocked</h2>
-      </div>
-      <a class="profile-section__link" href="/play/achievements">All achievements →</a>
-    </div>
-    {
-      profile.badges.length ? (
-        <div class="profile-badges">
-          {profile.badges.map((item) => (
-            <div class="profile-badge">
-              <AchievementBadge
-                artKey={item.artKey}
-                name={item.name}
-                category={item.category}
-                earned
-                size={48}
-                emblemUrl={item.collectionLogoUrl}
-              />
-              <div class="min-w-0">
-                <p class="profile-badge__name">{item.name}</p>
-                <p class="profile-badge__meta">{item.category} · earned</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div class="empty mt-5">
-          <div>
-            <p class="display-sm text-2xl">Your first badge is one capsule away.</p>
-            <p class="mt-2 text-sm">Open a capsule or complete a daily mission to begin.</p>
-            <a class="btn btn-primary btn-sm mt-4" href="/play/draw">Open a capsule</a>
-          </div>
-        </div>
-      )
-    }
-  </section>
-
-  <section class="profile-section">
-    <div class="profile-section__head">
-      <div>
-        <h2 class="profile-section__title">Worlds in your library</h2>
-      </div>
-      <a class="profile-section__link" href="/play/collections">All collections →</a>
-    </div>
-    <div class="profile-worlds">
-      {displayedWorlds.map((collection) => (
-        <a class="profile-world" href={`/play/collection?collection=${collection.slug}`}>
-          {collection.logo_url ? (
-            <img src={collection.logo_url} alt="" width="40" height="40" loading="lazy" />
-          ) : (
-            <span class="profile-world__mark" aria-hidden="true">
-              {collection.name.charAt(0)}
-            </span>
-          )}
-          <span class="min-w-0">{collection.name}</span>
-        </a>
-      ))}
     </div>
   </section>
 
-  <section class="profile-section">
-    <div class="profile-section__head">
-      <div>
-        <h2 class="profile-section__title">Shared links</h2>
-      </div>
-      <a class="profile-section__link" href="/play/preferences">Sharing settings →</a>
-    </div>
-    <ShareManager client:load initial={shares} />
-  </section>
-  </div>
+  <ShareManager client:load initial={shares} />
 </PlayerLayout>

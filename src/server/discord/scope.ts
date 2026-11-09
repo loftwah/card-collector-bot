@@ -6,11 +6,16 @@ import { listCollections, type CollectionSummary } from "../modules/collections"
 import {
   audienceRank,
   canViewAudience,
+  currentViewerAccess,
   mostRestrictive,
-  viewerAccess,
   type Audience,
 } from "../modules/visibility";
 import { channelAudienceFor } from "./context";
+import {
+  readDrawScopeEpoch,
+  type DrawScopeEpoch,
+  type DrawInstallationSnapshot,
+} from "../modules/draw-scope-epoch";
 import type { DiscordInstallation } from "./types";
 
 export interface DiscordScopeCollection {
@@ -27,6 +32,9 @@ export interface DiscordScopeCollection {
 }
 
 export interface DiscordScope {
+  /** Captured before any database-dependent scope inputs are read. */
+  drawEpoch: DrawScopeEpoch | null;
+  drawInstallation: DrawInstallationSnapshot;
   installationId: string;
   botId: string;
   tenantId: string;
@@ -56,15 +64,20 @@ function parseAllowlist(raw: string | null | undefined): {
   value: string[] | null;
   error: string | null;
 } {
-  if (raw === null || raw === undefined || raw.trim() === "") return { value: null, error: null };
+  if (raw === null || raw === undefined) return { value: null, error: null };
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) {
       return { value: null, error: "The installation collection allowlist is not an array." };
     }
-    const ids = parsed.filter((item): item is string => typeof item === "string" && item.length > 0);
+    const ids = parsed.filter(
+      (item): item is string => typeof item === "string" && item.length > 0,
+    );
     if (ids.length !== parsed.length) {
-      return { value: null, error: "The installation collection allowlist contains a non-string entry." };
+      return {
+        value: null,
+        error: "The installation collection allowlist contains a non-string entry.",
+      };
     }
     return { value: [...new Set(ids)], error: null };
   } catch {
@@ -81,6 +94,7 @@ export async function resolveDiscordScope(
   installation: DiscordInstallation,
   channelId: string | null | undefined,
 ): Promise<DiscordScope> {
+  const drawEpoch = await readDrawScopeEpoch(ctx);
   const channel = channelId ?? null;
   const channelAudience = channelAudienceFor(installation, channel);
   const allowlist = parseAllowlist(installation.collection_allowlist_json);
@@ -94,10 +108,25 @@ export async function resolveDiscordScope(
     : null;
   const resolvedBot = bot ?? (await botForTenant(ctx.db, ctx.tenant.id));
   const revision = Number(installation.configuration_revision ?? 1);
+  const drawInstallation: DrawInstallationSnapshot = {
+    id: installation.id,
+    revision,
+    botId: installation.bot_id ?? null,
+    channelAllowlist: installation.channel_allowlist_json,
+    collectionAllowlist: installation.collection_allowlist_json ?? null,
+    channelAudience: installation.channel_audience_json ?? null,
+    channelKey: installation.channel_key ?? null,
+  };
 
   const base: Omit<
     DiscordScope,
-    "collectionIds" | "collections" | "emptyReason" | "digest" | "configuredCollectionIds"
+    | "collectionIds"
+    | "collections"
+    | "emptyReason"
+    | "digest"
+    | "configuredCollectionIds"
+    | "drawEpoch"
+    | "drawInstallation"
   > = {
     installationId: installation.id,
     botId: resolvedBot?.id ?? "",
@@ -119,6 +148,8 @@ export async function resolveDiscordScope(
     );
     return {
       ...base,
+      drawEpoch,
+      drawInstallation,
       configuredCollectionIds,
       collectionIds: [],
       collections: [],
@@ -166,7 +197,7 @@ export async function resolveDiscordScope(
     );
   }
 
-  const access = await viewerAccess(ctx);
+  const access = await currentViewerAccess(ctx);
   const eligible = configured.filter((collection) => canViewAudience(access, collection));
   if (eligible.length === 0) {
     return empty(
@@ -179,9 +210,11 @@ export async function resolveDiscordScope(
     (collection) => audienceRank(collection.view_audience) <= audienceRank(channelAudience),
   );
   if (visible.length === 0) {
-    const audiences = [...new Set(eligible.map((collection) => collection.view_audience))].join(", ");
+    const audiences = [...new Set(eligible.map((collection) => collection.view_audience))].join(
+      ", ",
+    );
     return empty(
-      `This channel is verified for ${channelAudience} content, but the collections enabled for this server are ${audiences}. Enable approved public content or verify a genuinely restricted channel; restricted artwork will not be posted here. Nothing was charged.`,
+      `This channel is configured for ${channelAudience} content, but the collections enabled for this server are ${audiences}. Enable approved public content or review the channel configuration; restricted artwork will not be posted here. Nothing was charged.`,
       configuredCollectionIds,
     );
   }
@@ -226,6 +259,8 @@ export async function resolveDiscordScope(
 
   return {
     ...base,
+    drawEpoch,
+    drawInstallation,
     configuredCollectionIds,
     collectionIds,
     collections,
@@ -295,10 +330,7 @@ export interface RankedAlbum {
  * roster, then the larger catalogue. The caller still verifies renders,
  * achievements and pool eligibility before presenting it.
  */
-export async function rankDiscordAlbums(
-  ctx: Ctx,
-  scope: DiscordScope,
-): Promise<RankedAlbum[]> {
+export async function rankDiscordAlbums(ctx: Ctx, scope: DiscordScope): Promise<RankedAlbum[]> {
   if (!ctx.user) return [];
   const rows = await all<{ collection_id: string; owned: number }>(
     ctx.db,
@@ -336,6 +368,8 @@ export function poolScopeFromDiscord(scope: DiscordScope): {
   digest: string;
   requireFiled: true;
   aiArtEnabled: boolean;
+  drawEpoch: DrawScopeEpoch | null;
+  drawInstallation: DrawInstallationSnapshot;
 } {
   return {
     collectionIds: scope.collectionIds,
@@ -343,6 +377,8 @@ export function poolScopeFromDiscord(scope: DiscordScope): {
     digest: scope.digest,
     requireFiled: true,
     aiArtEnabled: scope.aiArtEnabled,
+    drawEpoch: scope.drawEpoch,
+    drawInstallation: scope.drawInstallation,
   };
 }
 
@@ -357,10 +393,7 @@ export function isAiEditionOrigin(origin: string | null | undefined): boolean {
  * historical copy from a now-disabled collection is not presented as current
  * server content.
  */
-export async function discordScopeCardIds(
-  ctx: Ctx,
-  scope: DiscordScope,
-): Promise<Set<string>> {
+export async function discordScopeCardIds(ctx: Ctx, scope: DiscordScope): Promise<Set<string>> {
   if (scope.collectionIds.length === 0) return new Set();
   const placeholders = scope.collectionIds.map(() => "?").join(",");
   const rows = await all<{ card_id: string }>(

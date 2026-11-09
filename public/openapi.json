@@ -11,8 +11,8 @@
   },
   "servers": [
     {
-      "url": "http://localhost:5173",
-      "description": "Canonical local server"
+      "url": "http://127.0.0.1:4321",
+      "description": "Explicit local loopback server"
     }
   ],
   "security": [
@@ -467,6 +467,7 @@
               "schema": {
                 "type": "object",
                 "required": [
+                  "recipientEmail",
                   "proposerInstanceIds",
                   "recipientInstanceIds"
                 ],
@@ -491,26 +492,8 @@
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 168
-                  },
-                  "recipientId": {
-                    "type": "string",
-                    "minLength": 3,
-                    "maxLength": 80
                   }
-                },
-                "anyOf": [
-                  {
-                    "required": [
-                      "recipientId"
-                    ]
-                  },
-                  {
-                    "required": [
-                      "recipientEmail"
-                    ]
-                  }
-                ],
-                "description": "Provide recipientId from the member directory or an explicitly supplied recipientEmail; recipientId takes precedence if both are present."
+                }
               }
             }
           }
@@ -604,56 +587,6 @@
           },
           "409": {
             "$ref": "#/components/responses/Error"
-          }
-        }
-      },
-      "get": {
-        "tags": [
-          "Player"
-        ],
-        "summary": "List card gifts sent by the current member",
-        "description": "Requires trade:write for an agent. This is distinct from received administrative gift awards.",
-        "responses": {
-          "200": {
-            "description": "Sent card gifts",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "items"
-                  ],
-                  "properties": {
-                    "items": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "required": [
-                          "id",
-                          "status",
-                          "recipient_name",
-                          "card_name"
-                        ],
-                        "properties": {
-                          "id": {
-                            "type": "string"
-                          },
-                          "status": {
-                            "type": "string"
-                          },
-                          "recipient_name": {
-                            "type": "string"
-                          },
-                          "card_name": {
-                            "type": "string"
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
           }
         }
       }
@@ -1753,8 +1686,7 @@
           "200": {
             "description": "Members"
           }
-        },
-        "description": "Active peer directory for the current Bot. Requires inventory:read for an agent. Returns id, display_name and role; email and administrative data are excluded."
+        }
       }
     },
     "/api/v1/members/{id}/trade-items": {
@@ -1970,144 +1902,6 @@
           },
           "403": {
             "description": "Scope required"
-          }
-        }
-      }
-    },
-    "/api/v1/trades/{id}": {
-      "get": {
-        "tags": [
-          "Player"
-        ],
-        "summary": "Get one trade for a participating member",
-        "description": "Requires trade:write for an agent; only the proposer or recipient can read the trade.",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Trade detail including item and acceptance arrays"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/api/v1/gifts/received": {
-      "get": {
-        "tags": [
-          "Player"
-        ],
-        "summary": "List delivered gift awards for the current member and Bot",
-        "description": "Requires trade:write for an agent; includes awards from platform campaigns targeted to this Bot.",
-        "responses": {
-          "200": {
-            "description": "Received gift awards",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "items"
-                  ],
-                  "properties": {
-                    "items": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "required": [
-                          "id",
-                          "campaign_id",
-                          "kind",
-                          "amount",
-                          "description",
-                          "receipt"
-                        ],
-                        "properties": {
-                          "id": {
-                            "type": "string"
-                          },
-                          "campaign_id": {
-                            "type": "string"
-                          },
-                          "kind": {
-                            "type": "string"
-                          },
-                          "amount": {
-                            "type": "number"
-                          },
-                          "description": {
-                            "type": "string"
-                          },
-                          "receipt": {
-                            "type": "object"
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/admin/people": {
-      "get": {
-        "tags": [
-          "Administration"
-        ],
-        "summary": "List member names for operational pickers",
-        "description": "Requires the same Bot operations authority as the surrounding screen: owner, content/economy/grants capability, or an agent with ops:read. Returns id, display_name and role only, without contact details. Email and membership administration fields are excluded; use /api/v1/admin/members for contact data.",
-        "responses": {
-          "200": {
-            "description": "Active member names and roles without contact details"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/api/v1/admin/members": {
-      "get": {
-        "tags": [
-          "Administration"
-        ],
-        "summary": "Read member contact records for people administration",
-        "description": "Human-only. Requires the Bot Owner, Super Admin, or a Bot Admin with the members capability. Agent grants are denied. Returns membership records including email addresses.",
-        "responses": {
-          "200": {
-            "description": "Member records including contact details"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/api/v1/admin/team": {
-      "get": {
-        "tags": [
-          "Administration"
-        ],
-        "summary": "Read Bot administrators and pending invitations",
-        "description": "Human-only. Requires the Bot Owner, Super Admin, or a Bot Admin with the members capability. Returns Bot settings, administrator contact records and pending invitation addresses. Bot settings without contact data remain at /api/v1/admin/bot.",
-        "responses": {
-          "200": {
-            "description": "Bot administrators and pending invitations"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
           }
         }
       }

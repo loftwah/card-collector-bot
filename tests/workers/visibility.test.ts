@@ -7,6 +7,12 @@ import { effectiveCardAudience, canViewCard, viewerAccess } from "../../src/serv
 import type { Ctx } from "../../src/server/context";
 import { readConfig } from "../../src/server/config";
 
+async function strongOwner(): Promise<Ctx> {
+  const owner=await ctxFor('cabinet','owner@foilbury.local');const now=new Date().toISOString(),id=`visibility-session-${crypto.randomUUID()}`;
+  await runtime.DB.prepare("INSERT INTO fb_sessions (id,token_hash,user_id,tenant_id,csrf_token,created_at,expires_at,last_seen_at,assurance,auth_time) VALUES (?,?,?,?,'test',?,?,?,'passkey',?)").bind(id,id,owner.user!.id,owner.tenant.id,now,new Date(Date.now()+60000).toISOString(),now,now).run();
+  return {...owner,sessionId:id,sessionAssurance:'passkey',sessionAuthTime:now};
+}
+
 function anonymous(ctx: Ctx): Ctx {
   return {
     ...ctx,
@@ -40,7 +46,7 @@ async function nonMember(email: string): Promise<Ctx> {
 describe("explicit collection visibility", () => {
   it("keeps a member collection out of anonymous and non-member catalogue reads", async () => {
     await bootstrap();
-    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const owner = await strongOwner();
     const fixture = await fixturePool(owner);
     const collection = await createCollection(owner, {
       name: "Member Only",
@@ -70,7 +76,7 @@ describe("explicit collection visibility", () => {
 
   it("never widens a card because one permissive collection link was added", async () => {
     await bootstrap();
-    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const owner = await strongOwner();
     const fixture = await fixturePool(owner);
     const privateCollection = await createCollection(owner, {
       name: "Private World",
@@ -89,7 +95,7 @@ describe("explicit collection visibility", () => {
 
   it("allows an explicitly invited viewer into a private collection only", async () => {
     await bootstrap();
-    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const owner = await strongOwner();
     const fixture = await fixturePool(owner);
     const collection = await createCollection(owner, {
       name: "Private Invitation",
@@ -112,7 +118,7 @@ describe("explicit collection visibility", () => {
 
   it("denies a revoked member immediately", async () => {
     await bootstrap();
-    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const owner = await strongOwner();
     const fixture = await fixturePool(owner);
     const collection = await createCollection(owner, {
       name: "Member Revocation",

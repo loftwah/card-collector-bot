@@ -20,6 +20,7 @@ import {
   type Role,
 } from "../context";
 import { apiErrorResponse, audit, json, pagination, readJson, idempotencyInput } from "../http";
+import { listCardNameAliases, replaceCardNameAliases } from "../modules/card-name-aliases";
 import {
   archiveCard,
   archiveTaxonomyItem,
@@ -54,6 +55,8 @@ import {
   listPools,
   listEligiblePools,
   publishPool,
+  readAuthorizedScopedDrawReplay,
+  recoverScopedDrawFailure,
   retirePool,
   updatePool,
 } from "../modules/pools";
@@ -62,7 +65,6 @@ import type { DiscordInstallation } from "../discord/types";
 import {
   claimDailyReward,
   adjustWallet,
-  listGrantRecipients,
   createShareLink,
   getEconomy,
   getLedger,
@@ -77,12 +79,6 @@ import {
   updatePreferences,
 } from "../modules/economy";
 import {
-  PROFILE_AVATAR_DECORATIONS,
-  PROFILE_EFFECTS,
-  PROFILE_FRAMES,
-  PROFILE_NAME_TREATMENTS,
-} from "../modules/profile-presentation";
-import {
   assignPlatformRole,
   listPlatformPeople,
   listPlatformRoleAssignments,
@@ -92,11 +88,13 @@ import {
 import {
   countInventory,
   getInstance,
+  recordCardInspection,
   getInventory,
   getMemberTradeInventory,
   getWishlist,
   listTenantMembers,
   recycleCommit,
+  cancelRecycle,
   recyclePreview,
   setLocked,
   toggleFavourite,
@@ -128,7 +126,7 @@ import {
   listRenderJobs,
   previewImport,
 } from "../modules/imports";
-import { getAsset, listAssets, uploadAsset, type AssetKind } from "../modules/assets";
+import { abandonCollectionBrandUpload, approveCollectionBrandRelease, previewCollectionBrandRelease, getAsset, listAssets, uploadAsset, uploadCollectionBrand, type AssetKind } from "../modules/assets";
 import { getWalletSummary } from "../modules/wallet";
 import {
   adoptGeneration,
@@ -194,7 +192,7 @@ import {
 import {
   claimDailyMission,
   getDailyMissions,
-  recordOwnedInspection,
+  recordCollectionExploration,
 } from "../modules/missions";
 import {
   compareNpc,
@@ -207,6 +205,8 @@ import {
   listNpcProfiles,
   listNpcs,
   playNpcOnce,
+  reconcileNpcAction,
+  reconcileNpcActionById,
   previewNpcAction,
   requireNpcManager,
   requireNpcRead,
@@ -216,15 +216,6 @@ import {
   setNpcStatus,
   updateNpc,
 } from "../modules/npcs";
-import {
-  cancelNpcTrade,
-  confirmNpcTrade,
-  createNpcTrade,
-  getNpcTrade,
-  listNpcTrades,
-  npcTradeOffers,
-  previewNpcTrade,
-} from "../modules/npc-trades";
 
 const idSchema = z.string().min(3).max(80);
 const cardBody = z.object({
@@ -310,6 +301,9 @@ const giftSchema = z.object({
   botId: z.string().min(3).max(80).nullable().optional(),
   amount: z.number().int().positive().max(10000).optional(),
   openings: z.number().int().min(1).max(20).optional(),
+  expectedOpeningPrice: z.number().int().positive().optional(),
+  expectedPoolRevision: z.number().int().positive().optional(),
+  expectedRecipientsDigest: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   cardId: idSchema.nullable().optional(),
   variantId: idSchema.nullable().optional(),
   message: z.string().max(280).nullable().optional(),
@@ -326,7 +320,7 @@ const importManifest = z.object({
 function ensureContentRead(ctx: Ctx) {
   if (ctx.actor.type === "agent") {
     requireScope(ctx, "content:read");
-    if (!["owner", "editor"].includes(ctx.user?.role ?? ""))
+    if (!ctx.user?.agentBotCapabilities?.includes("content"))
       throw new ApiError(
         403,
         "insufficient_role",
@@ -342,7 +336,7 @@ function ensureContentRead(ctx: Ctx) {
 function ensureContentWrite(ctx: Ctx) {
   if (ctx.actor.type === "agent") {
     requireScope(ctx, "content:write");
-    if (!["owner", "editor"].includes(ctx.user?.role ?? ""))
+    if (!ctx.user?.agentBotCapabilities?.includes("content"))
       throw new ApiError(403, "insufficient_role", "The represented member cannot edit content.");
     return;
   }
@@ -390,7 +384,7 @@ function ensureStudioCatalogueRead(ctx: Ctx) {
 function ensureEconomyRead(ctx: Ctx) {
   if (ctx.actor.type === "agent") {
     requireScope(ctx, "economy:read");
-    if (!["owner", "economy_admin"].includes(ctx.user?.role ?? ""))
+    if (!ctx.user?.agentBotCapabilities?.some((capability) => ["economy", "inventory", "grants"].includes(capability)))
       throw new ApiError(
         403,
         "insufficient_role",
@@ -412,7 +406,7 @@ function ensureEconomyRead(ctx: Ctx) {
 function ensureEconomyWrite(ctx: Ctx) {
   if (ctx.actor.type === "agent") {
     requireScope(ctx, "economy:write");
-    if (!["owner", "economy_admin"].includes(ctx.user?.role ?? ""))
+    if (!ctx.user?.agentBotCapabilities?.some((capability) => ["economy", "grants"].includes(capability)))
       throw new ApiError(
         403,
         "insufficient_role",
@@ -440,7 +434,7 @@ function ensureOwner(ctx: Ctx) {
 function ensureOps(ctx: Ctx) {
   if (ctx.actor.type === "agent") {
     requireScope(ctx, "ops:read");
-    if (!["owner", "editor", "economy_admin"].includes(ctx.user?.role ?? ""))
+    if (!ctx.user?.agentBotCapabilities?.some((capability) => ["content", "economy", "grants"].includes(capability)))
       throw new ApiError(
         403,
         "insufficient_role",
@@ -457,28 +451,6 @@ function ensureOps(ctx: Ctx) {
   ) {
     throw new ApiError(403, "insufficient_role", "Your Bot role cannot read operations.");
   }
-}
-
-/**
- * Contact and membership records are a people-administration boundary. A
- * content, economy or grants operator can pick a member by name, but cannot
- * enumerate email addresses. Only the Bot Owner or a Bot Admin explicitly
- * granted `members` can read the contact directory, and an agent never can.
- */
-function ensureMemberAdmin(ctx: Ctx) {
-  if (ctx.actor.type === "agent")
-    throw new ApiError(
-      403,
-      "human_admin_required",
-      "Agent grants cannot read member contact records.",
-    );
-  const user = requireUser(ctx);
-  if (!user.platformAdmin && user.role !== "owner" && !hasCapability(user, "members"))
-    throw new ApiError(
-      403,
-      "insufficient_capability",
-      "Your role does not include member management.",
-    );
 }
 
 function ensureStepUp(ctx: Ctx): void {
@@ -524,17 +496,17 @@ async function installationScopeFor(
   if (!installation.game_enabled) {
     throw new ApiError(403, "discord_game_disabled", "Discord gameplay is paused for that installation.");
   }
-  return resolveDiscordScope(ctx, installation, channelId);
+  const {requireAllowedInstallationChannel}=await import('../discord/context');
+  requireAllowedInstallationChannel(installation,channelId);
+  const scope=await resolveDiscordScope(ctx, installation, channelId);
+  return {...scope,installationSnapshot:{id:installation.id,revision:Number(installation.configuration_revision ?? 1),botId:installation.bot_id ?? null,channelAllowlist:installation.channel_allowlist_json,collectionAllowlist:installation.collection_allowlist_json ?? null,channelAudience:installation.channel_audience_json ?? null,channelKey:installation.channel_key ?? null}};
 }
 
 export async function routeApi(request: Request, ctx: Ctx, path: string): Promise<Response> {
-  // Preserve one optional leading/trailing slash, but do not turn empty
-  // interior segments into a different, valid operation.
-  const normalizedPath = path.replace(/^\//, "").replace(/\/$/, "");
-  if (normalizedPath.split("/").some((segment) => segment === "")) {
-    throw new ApiError(404, "not_found", "No matching API route.");
-  }
-  const segments = normalizedPath.split("/");
+  // The catch-all parameter has no leading slash. Preserve a single trailing
+  // slash, but do not collapse empty segments into a different endpoint.
+  if (path.startsWith('/') || path.includes('//')) throw new ApiError(404, 'not_found', 'That API endpoint was not found.');
+  const segments = path.split("/").filter(Boolean);
   const isStudio = segments[0] === "studio";
   if (isStudio) segments[0] = "admin";
   const method = request.method.toUpperCase();
@@ -556,8 +528,13 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({
       collection,
       cards: await listCollectionCards(ctx, collection.id),
-      progress: await collectionProgress(ctx, collection.id),
+      progress: ctx.actor.type === "agent" && !ctx.scopes?.includes("inventory:read")
+        ? null : await collectionProgress(ctx, collection.id),
     });
+  }
+  if (segments[0] === "collections" && segments[1] && segments.length === 3 && segments[2] === "explore" && method === "POST") {
+    playerWrite(ctx);
+    return json(await recordCollectionExploration(ctx, segments[1]));
   }
 
   // Public catalogue and pool previews
@@ -572,7 +549,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     });
     return json({ items: cards.map(publicCard), release: await activeRelease(ctx) });
   }
-  if (segments.length === 2 && segments[0] === "cards" && segments[1] && method === "GET") {
+  if (segments[0] === "cards" && segments[1] && segments.length === 2 && method === "GET") {
     const card = await getCard(ctx, segments[1]);
     if (card.status !== "published")
       throw new ApiError(404, "card_not_found", "That card is not published.");
@@ -623,6 +600,8 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     });
   }
   if (segments[0] === "pools" && segments[1] && segments.length === 2 && method === "GET") {
+    playerWrite(ctx);
+    requireScope(ctx, "inventory:read");
     const scope = await installationScopeFor(
       ctx,
       url.searchParams.get("installation"),
@@ -641,12 +620,12 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
 
   // Player and agent-authenticated collection workflows
-  if (segments.length === 2 && segments[0] === "me" && segments[1] === "preferences" && method === "GET") {
+  if (segments[0] === "me" && segments[1] === "preferences" && segments.length === 2 && method === "GET") {
     playerWrite(ctx);
     requireScope(ctx, "profile:read");
     return json(await getPreferences(ctx));
   }
-  if (segments.length === 2 && segments[0] === "me" && segments[1] === "preferences" && method === "PATCH") {
+  if (segments[0] === "me" && segments[1] === "preferences" && segments.length === 2 && method === "PATCH") {
     playerWrite(ctx);
     requireScope(ctx, "profile:write");
     const body = await readJson(
@@ -657,22 +636,6 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
         reducedMotion: z.boolean().optional(),
         soundEnabled: z.boolean().optional(),
         sharingEnabled: z.boolean().optional(),
-        profileLook: z.enum(["quiet", "signal", "binder", "night"]).optional(),
-        profileBio: z.string().max(160).optional(),
-        profilePresentation: z
-          .object({
-            portrait: z.string().max(120),
-            banner: z.string().max(120),
-            frame: z.enum(PROFILE_FRAMES),
-            avatarDecoration: z.enum(PROFILE_AVATAR_DECORATIONS),
-            nameTreatment: z.enum(PROFILE_NAME_TREATMENTS),
-            effect: z.enum(PROFILE_EFFECTS),
-            featuredInstanceId: idSchema.nullable().optional(),
-            favouriteInstanceIds: z.array(idSchema).max(8).optional(),
-            badgeIds: z.array(z.string().max(80)).max(6).optional(),
-          })
-          .optional(),
-        profilePresentationVersion: z.number().int().positive().optional(),
       }),
     );
     return json(await updatePreferences(ctx, body));
@@ -692,20 +655,12 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     requireScope(ctx, "inventory:read");
     const limit = Math.min(120, Math.max(1, Number(url.searchParams.get("limit") ?? 48) || 48));
     const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0) || 0);
-    const sortParam = url.searchParams.get("sort");
-    const sort: "newest" | "name" | "finish" | undefined =
-      sortParam === "name" || sortParam === "finish" || sortParam === "newest"
-        ? sortParam
-        : undefined;
     const query = {
       status: url.searchParams.get("status") ?? undefined,
       search: url.searchParams.get("search") ?? undefined,
       favourite: url.searchParams.get("favourite") === "true",
       setSlug: url.searchParams.get("set") ?? undefined,
       collection: url.searchParams.get("collection") ?? undefined,
-      finish: url.searchParams.get("finish") ?? undefined,
-      duplicates: url.searchParams.get("duplicates") === "true",
-      sort,
       limit,
       offset,
     };
@@ -719,6 +674,10 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     playerWrite(ctx);
     requireScope(ctx, "inventory:read");
     return json(await getInstance(ctx, segments[1]));
+  }
+  if (segments[0] === "instances" && segments[1] && segments.length === 3 && segments[2] === "inspect" && method === "POST") {
+    playerWrite(ctx);
+    return json(await recordCardInspection(ctx, segments[1]));
   }
   if (
     segments[0] === "instances" &&
@@ -780,14 +739,14 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       }),
     );
   }
-  if (segments.length === 2 && segments[0] === "rewards" && segments[1] === "claim" && method === "POST") {
+  if (segments[0] === "rewards" && segments[1] === "claim" && segments.length === 2 && method === "POST") {
     playerWrite(ctx);
     requireScope(ctx, "reward:claim");
     const body = await readJson(request, z.object({}));
     const idempotency = await idempotencyInput(request, body);
     return json(await claimDailyReward(ctx, idempotency));
   }
-  if (segments.length === 1 && segments[0] === "draws" && method === "POST") {
+  if (segments[0] === "draws" && segments.length === 1 && method === "POST") {
     playerWrite(ctx);
     requireScope(ctx, "draw:execute");
     const body = await readJson(
@@ -802,13 +761,17 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       }),
     );
     const idempotency = await idempotencyInput(request, body);
-    const scope = await installationScopeFor(
-      ctx,
-      body.installationId ?? null,
-      body.channelId ?? null,
-    );
-    if (scope?.emptyReason) {
-      throw new ApiError(403, "discord_scope_empty", scope.emptyReason);
+    let scope: Awaited<ReturnType<typeof installationScopeFor>>;
+    try {
+      if (body.installationId) {
+        const replay=await readAuthorizedScopedDrawReplay(ctx,idempotency);
+        if (replay) return json(replay);
+      }
+      scope = await installationScopeFor(ctx, body.installationId ?? null, body.channelId ?? null);
+      if (scope?.emptyReason) throw new ApiError(403, "discord_scope_empty", scope.emptyReason);
+    } catch (error) {
+      if (!body.installationId) throw error;
+      return json(await recoverScopedDrawFailure(ctx, idempotency, error));
     }
     return json(
       await executeDraw(ctx, {
@@ -820,6 +783,8 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
         // must use the same value or the commit sees a different distribution.
         channelKey: body.channelKey ?? body.channelId,
         scope: scope ? poolScopeFromDiscord(scope) : undefined,
+        discordInstallation: scope?.installationSnapshot,
+        authorizedReplayOnly: Boolean(scope),
         idempotency,
       }),
     );
@@ -829,6 +794,13 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     requireScope(ctx, "inventory:read");
     const body = await readJson(request, z.object({ instanceId: idSchema }));
     return json(await recyclePreview(ctx, body.instanceId));
+  }
+  if (segments[0] === 'recycle' && segments[1] === 'cancel' && segments.length === 2 && method === 'POST') {
+    playerWrite(ctx);
+    requireScope(ctx,'recycle:write');
+    const body=await readJson(request,z.object({instanceId:idSchema,expectedCredit:z.number().int().nonnegative()}));
+    const idempotency=await idempotencyInput(request,body);
+    return json(await cancelRecycle(ctx,{instanceId:body.instanceId,expectedCredit:body.expectedCredit,idempotencyKey:idempotency.key}));
   }
   if (segments[0] === "recycle" && segments.length === 1 && method === "POST") {
     playerWrite(ctx);
@@ -849,8 +821,12 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   if (segments[0] === "sets" && segments[1] && segments[2] === "claim" && segments.length === 3 && method === "POST") {
     playerWrite(ctx);
     requireScope(ctx, "reward:claim");
-    const body = await readJson(request, z.object({}));
+    const body = await readJson(request, z.object({ memberReleaseId: idSchema.optional() }));
     const idempotency = await idempotencyInput(request, body);
+    if (body.memberReleaseId) {
+      const { claimMemberSetCompletion } = await import("../modules/member-set-releases");
+      return json(await claimMemberSetCompletion(ctx, segments[1], body.memberReleaseId, idempotency.key));
+    }
     return json(await claimSetCompletion(ctx, segments[1], idempotency.key));
   }
   if (segments[0] === "trades" && segments.length === 1 && method === "GET") {
@@ -880,10 +856,10 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await getTrade(ctx, segments[1]));
   }
   if (
-    segments.length === 3 &&
     segments[0] === "trades" &&
     segments[1] &&
     ["accept", "decline", "cancel"].includes(segments[2] ?? "") &&
+    segments.length === 3 &&
     method === "POST"
   ) {
     playerWrite(ctx);
@@ -893,7 +869,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     if (action === "decline") return json(await declineTrade(ctx, segments[1]));
     return json(await cancelTrade(ctx, segments[1]));
   }
-  if (segments.length === 2 && segments[0] === "trades" && segments[1] === "expire" && method === "POST") {
+  if (segments[0] === "trades" && segments[1] === "expire" && segments.length === 2 && method === "POST") {
     ensureOps(ctx);
     return json(await expireTrades(ctx));
   }
@@ -928,14 +904,13 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await joinMainAlbum(ctx));
   }
   if (
-    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "members" &&
     segments[2] &&
     segments[3] === "status" &&
+    segments.length === 4 &&
     method === "POST"
   ) {
-    ensureMemberAdmin(ctx);
     ensureStepUp(ctx);
     const body = await readJson(
       request,
@@ -988,10 +963,6 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
 
   // Daily missions: trusted committed events, one claim per mission per UTC day.
-  if (segments[0] === "missions" && segments[1] === "inspect" && segments.length === 3 && segments[2] && method === "POST") {
-    playerWrite(ctx);
-    return json(await recordOwnedInspection(ctx, segments[2]));
-  }
   if (segments[0] === "missions" && segments[1] === "daily" && segments.length === 2 && method === "GET") {
     playerWrite(ctx);
     requireScope(ctx, "missions:read");
@@ -1097,48 +1068,19 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     if (segments.length === 3 && segments[2] === "compare" && method === "GET") {
       return json(await compareNpc(ctx, npcId));
     }
-    if (segments.length === 3 && segments[2] === "trade-offers" && method === "GET") {
-      requireNpcRead(ctx);
-      return json(await npcTradeOffers(ctx, npcId));
-    }
-    if (segments.length === 3 && segments[2] === "trade-preview" && method === "POST") {
-      playerWrite(ctx);
-      if (ctx.actor.type === "agent") requireScope(ctx, "trade:write");
-      const body = await readJson(
-        request,
-        z.object({
-          giveInstanceIds: z.array(idSchema).min(1).max(5),
-          takeInstanceIds: z.array(idSchema).min(1).max(5),
-        }),
-      );
-      return json(await previewNpcTrade(ctx, { npcId, ...body }));
-    }
-    if (segments.length === 3 && segments[2] === "trades" && method === "POST") {
-      playerWrite(ctx);
-      if (ctx.actor.type === "agent") requireScope(ctx, "trade:write");
-      const body = await readJson(
-        request,
-        z.object({
-          giveInstanceIds: z.array(idSchema).min(1).max(5),
-          takeInstanceIds: z.array(idSchema).min(1).max(5),
-          idempotencyKey: z.string().min(8).max(200).optional(),
-        }),
-      );
-      return json(
-        await createNpcTrade(ctx, {
-          npcId,
-          ...body,
-          idempotencyKey: body.idempotencyKey ?? request.headers.get("idempotency-key") ?? undefined,
-        }),
-        201,
-      );
-    }
     if (segments.length === 3 && segments[2] === "preview" && method === "POST") {
       return json(await previewNpcAction(ctx, npcId));
     }
     if (segments.length === 3 && segments[2] === "play" && method === "POST") {
       const body = await readJson(request, z.object({ idempotencyKey: z.string().min(8).max(200).optional() }).optional());
       return json(await playNpcOnce(ctx, npcId, body?.idempotencyKey));
+    }
+    if (segments.length === 3 && segments[2] === "reconcile" && method === "POST") {
+      const body = await readJson(request, z.union([
+        z.object({ idempotencyKey: z.string().min(8).max(200) }).strict(),
+        z.object({ actionId: z.string().min(1).max(200) }).strict(),
+      ]));
+      return json('actionId' in body ? await reconcileNpcActionById(ctx, npcId, body.actionId) : await reconcileNpcAction(ctx, npcId, body.idempotencyKey));
     }
     if (segments.length === 3 && segments[2] === "run" && method === "POST") {
       const body = await readJson(request, z.object({ count: z.number().int().min(1).max(10).default(1) }));
@@ -1147,29 +1089,6 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     if (segments.length === 3 && ["pause", "resume", "retire"].includes(segments[2] ?? "") && method === "POST") {
       return json(await setNpcStatus(ctx, npcId, segments[2] === "pause" ? "paused" : segments[2] === "retire" ? "retired" : "active"));
     }
-  }
-
-  // Human-initiated NPC exchanges. The trade itself uses the shared trade
-  // lifecycle; these routes only expose the NPC decision and confirmation.
-  if (segments[0] === "npc-trades" && segments.length === 1 && method === "GET") {
-    playerWrite(ctx);
-    if (ctx.actor.type === "agent") requireScope(ctx, "trade:write");
-    return json({ items: await listNpcTrades(ctx) });
-  }
-  if (segments[0] === "npc-trades" && segments[1] && segments.length === 2 && method === "GET") {
-    playerWrite(ctx);
-    if (ctx.actor.type === "agent") requireScope(ctx, "trade:write");
-    return json(await getNpcTrade(ctx, segments[1]));
-  }
-  if (segments[0] === "npc-trades" && segments[1] && segments[2] === "confirm" && segments.length === 3 && method === "POST") {
-    playerWrite(ctx);
-    if (ctx.actor.type === "agent") requireScope(ctx, "trade:write");
-    return json(await confirmNpcTrade(ctx, segments[1]));
-  }
-  if (segments[0] === "npc-trades" && segments[1] && segments[2] === "cancel" && segments.length === 3 && method === "POST") {
-    playerWrite(ctx);
-    if (ctx.actor.type === "agent") requireScope(ctx, "trade:write");
-    return json(await cancelNpcTrade(ctx, segments[1]));
   }
 
   // Content administration
@@ -1238,10 +1157,10 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ card }, 201);
   }
   if (
-    segments.length === 3 &&
     segments[0] === "admin" &&
     segments[1] === "cards" &&
     segments[2] === "bulk" &&
+    segments.length === 3 &&
     method === "POST"
   ) {
     ensureContentWrite(ctx);
@@ -1254,6 +1173,14 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       }),
     );
     return json(await bulkSetStatus(ctx, body.ids, body.status));
+  }
+  if (segments[0] === "admin" && segments[1] === "cards" && segments[2] && segments[3] === "aliases" && segments.length === 4) {
+    if (method === "GET") return json(await listCardNameAliases(ctx, segments[2]));
+    if (method === "PUT") {
+      requireRecentStrongAuth(ctx, 30);
+      const body = await readJson(request, z.object({ expectedVersion: z.number().int().positive(), aliases: z.array(z.string().max(160)).max(20) }));
+      return json(await replaceCardNameAliases(ctx, segments[2], body.expectedVersion, body.aliases));
+    }
   }
   if (segments[0] === "admin" && segments[1] === "cards" && segments[2] && segments.length === 3) {
     if (method === "PATCH") {
@@ -1268,11 +1195,11 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     }
   }
   if (
-    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "cards" &&
     segments[2] &&
     segments[3] === "editions" &&
+    segments.length === 4 &&
     method === "POST"
   ) {
     ensureContentWrite(ctx);
@@ -1362,19 +1289,6 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
         201,
       );
     }
-  }
-  if (
-    segments.length === 4 &&
-    segments[0] === "admin" &&
-    segments[1] === "cards" &&
-    segments[2] &&
-    segments[3] === "merge" &&
-    method === "POST"
-  ) {
-    ensureContentWrite(ctx);
-    ensureStepUp(ctx);
-    const body = await readJson(request, z.object({ targetId: idSchema }));
-    return json(await mergeCards(ctx, segments[2], body.targetId));
   }
   if (
     segments[0] === "admin" &&
@@ -1492,7 +1406,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       }),
     });
   }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "recipes" && method === "GET") {
+  if (segments[0] === "admin" && segments[1] === "recipes" && segments.length === 2 && method === "GET") {
     ensureContentRead(ctx);
     return json({
       items: await all(
@@ -1503,11 +1417,11 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     });
   }
   if (
-    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "cards" &&
     segments[2] &&
     segments[3] === "status" &&
+    segments.length === 4 &&
     method === "POST"
   ) {
     ensureContentWrite(ctx);
@@ -1518,11 +1432,11 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json({ card: await setCardStatus(ctx, segments[2], body.status) });
   }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "tenant" && method === "GET") {
+  if (segments[0] === "admin" && segments[1] === "tenant" && segments.length === 2 && method === "GET") {
     ensureContentRead(ctx);
     return json(await getTenantPublication(ctx));
   }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "tenant" && method === "PATCH") {
+  if (segments[0] === "admin" && segments[1] === "tenant" && segments.length === 2 && method === "PATCH") {
     ensureContentWrite(ctx);
     const body = await readJson(
       request,
@@ -1533,11 +1447,11 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json(await updateTenantPublication(ctx, body));
   }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "taxonomy" && method === "GET") {
+  if (segments[0] === "admin" && segments[1] === "taxonomy" && segments.length === 2 && method === "GET") {
     ensureContentRead(ctx);
     return json(await getTaxonomy(ctx));
   }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "taxonomy" && method === "POST") {
+  if (segments[0] === "admin" && segments[1] === "taxonomy" && segments.length === 2 && method === "POST") {
     ensureContentWrite(ctx);
     const body = await readJson(
       request,
@@ -1553,16 +1467,53 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await createTaxonomyItem(ctx, body.kind as TaxonomyKind, body), 201);
   }
   if (
-    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "taxonomy" &&
     segments[2] &&
     segments[3] &&
+    segments.length === 4 &&
     method === "DELETE"
   ) {
     ensureContentWrite(ctx);
     await archiveTaxonomyItem(ctx, segments[2] as TaxonomyKind, segments[3]);
     return json({ ok: true });
+  }
+  if (segments[0] === "platform" && segments[1] === "public-set-review-candidates" && segments.length === 2 && method === "GET") {
+    const { listPublicSetReviewCandidates } = await import("../modules/public-set-releases");
+    return json(await listPublicSetReviewCandidates(ctx));
+  }
+  if ((segments[0] === "admin" || segments[0] === "platform") && segments[1] === "sets" && segments[2] && segments[3] === "public-reviews" && segments.length === 4 && method === "GET") {
+    const { listPublicSetReviews } = await import("../modules/public-set-releases");
+    return json(await listPublicSetReviews(ctx, segments[2]));
+  }
+  if (segments[0] === "admin" && segments[1] === "sets" && segments[2] && segments[3] === "member-reviews" && segments.length === 4 && method === "GET") {
+    const { listMemberSetReviews } = await import("../modules/member-set-releases");
+    return json(await listMemberSetReviews(ctx, segments[2]));
+  }
+  if (segments[0] === "admin" && segments[1] === "sets" && segments[2] && segments[3] === "member-review" && segments.length === 4) {
+    const { previewMemberSetRelease, approveMemberSetRelease } = await import("../modules/member-set-releases");
+    if (method === "GET") return json(await previewMemberSetRelease(ctx, segments[2]));
+    if (method === "POST") {
+      const body = await readJson(request, z.object({ snapshotHash: z.string().regex(/^[a-f0-9]{64}$/) }));
+      return json(await approveMemberSetRelease(ctx, segments[2], body.snapshotHash), 201);
+    }
+  }
+  if (segments[0] === "admin" && segments[1] === "member-set-releases" && segments[2] && segments[3] === "revoke" && segments.length === 4 && method === "POST") {
+    const { revokeMemberSetRelease } = await import("../modules/member-set-releases");
+    return json(await revokeMemberSetRelease(ctx, segments[2]));
+  }
+  if ((segments[0] === "admin" || segments[0] === "platform") && segments[1] === "sets" && segments[2] && segments[3] === "public-review" && segments.length === 4) {
+    const { previewPublicSetRelease, approvePublicSetRelease } = await import("../modules/public-set-releases");
+    if (method === "GET") return json(await previewPublicSetRelease(ctx, segments[2]));
+    if (method === "POST") {
+      const body = await readJson(request, z.object({ snapshotHash: z.string().regex(/^[a-f0-9]{64}$/), note: z.string().min(20).max(2000) }));
+      return json(await approvePublicSetRelease(ctx, segments[2], body.snapshotHash, body.note), 201);
+    }
+  }
+  if ((segments[0] === "admin" || segments[0] === "platform") && segments[1] === "public-set-releases" && segments[2] && segments[3] === "revoke" && segments.length === 4 && method === "POST") {
+    const body = await readJson(request, z.object({ reason: z.string().min(20).max(2000) }));
+    const { revokePublicSetRelease } = await import("../modules/public-set-releases");
+    return json(await revokePublicSetRelease(ctx, segments[2], body.reason));
   }
   if (
     segments[0] === "admin" &&
@@ -1571,7 +1522,8 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     method === "GET"
   ) {
     ensureContentRead(ctx);
-    return json({ items: await listSets(ctx) });
+    const { listManagedSets } = await import("../modules/set-management");
+    return json({ items: await listManagedSets(ctx) });
   }
   if (
     segments[0] === "admin" &&
@@ -1592,11 +1544,11 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ set: await createSet(ctx, body) }, 201);
   }
   if (
-    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "sets" &&
     segments[2] &&
     segments[3] === "members" &&
+    segments.length === 4 &&
     method === "PUT"
   ) {
     ensureContentWrite(ctx);
@@ -1604,21 +1556,21 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ set: await replaceSetMembership(ctx, segments[2], body.cardIds) });
   }
   if (
-    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "sets" &&
     segments[2] &&
     segments[3] === "publish" &&
+    segments.length === 4 &&
     method === "POST"
   ) {
     ensureContentWrite(ctx);
     return json({ set: await publishSet(ctx, segments[2]) });
   }
   if (
-    segments.length === 3 &&
     segments[0] === "admin" &&
     segments[1] === "catalogue" &&
     segments[2] === "publish" &&
+    segments.length === 3 &&
     method === "POST"
   ) {
     ensureContentWrite(ctx);
@@ -1627,10 +1579,10 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await publishCatalogue(ctx));
   }
   if (
-    segments.length === 3 &&
     segments[0] === "admin" &&
     segments[1] === "catalogue" &&
     segments[2] === "status" &&
+    segments.length === 3 &&
     method === "GET"
   ) {
     ensureContentRead(ctx);
@@ -1705,22 +1657,22 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ pool: await updatePool(ctx, segments[2], body) });
   }
   if (
-    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "pools" &&
     segments[2] &&
     segments[3] === "publish" &&
+    segments.length === 4 &&
     method === "POST"
   ) {
     ensureContentWrite(ctx);
     return json({ pool: await publishPool(ctx, segments[2]) });
   }
   if (
-    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "pools" &&
     segments[2] &&
     segments[3] === "retire" &&
+    segments.length === 4 &&
     method === "POST"
   ) {
     ensureContentWrite(ctx);
@@ -1729,17 +1681,13 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
 
   // Economy and wallet administration
-  if (isStudio && segments.length === 2 && segments[1] === "wallet-recipients" && method === "GET") {
-    ensureEconomyWrite(ctx);
-    return json({ items: await listGrantRecipients(ctx) });
-  }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "economy" && method === "GET") {
+  if (segments[0] === "admin" && segments[1] === "economy" && segments.length === 2 && method === "GET") {
     ensureEconomyRead(ctx);
     return json(await getEconomy(ctx));
   }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "economy" && method === "PATCH") {
+  if (segments[0] === "admin" && segments[1] === "economy" && segments.length === 2 && method === "PATCH") {
     ensureEconomyWrite(ctx);
-    requireRecentStrongAuth(ctx, 30);
+    ensureStepUp(ctx);
     const body = await readJson(
       request,
       z.object({
@@ -1761,11 +1709,11 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await updateEconomy(ctx, body));
   }
   if (
-    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "wallets" &&
     segments[2] &&
     segments[3] === "adjust" &&
+    segments.length === 4 &&
     method === "POST"
   ) {
     ensureEconomyWrite(ctx);
@@ -1800,17 +1748,17 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     ensureEconomyRead(ctx);
     return json(await getWalletSummary(ctx.db, ctx.tenant.id, segments[2], 100));
   }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "audit" && method === "GET") {
+  if (segments[0] === "admin" && segments[1] === "audit" && segments.length === 2 && method === "GET") {
     ensureEconomyRead(ctx);
     return json({ items: await listAudit(ctx, Number(url.searchParams.get("limit") ?? 100)) });
   }
 
   // Agents and members
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "agents" && method === "GET") {
+  if (segments[0] === "admin" && segments[1] === "agents" && segments.length === 2 && method === "GET") {
     ensureOwner(ctx);
     return json({ items: await listAgentGrants(ctx) });
   }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "agents" && method === "POST") {
+  if (segments[0] === "admin" && segments[1] === "agents" && segments.length === 2 && method === "POST") {
     ensureOwner(ctx);
     const body = await readJson(
       request,
@@ -1824,47 +1772,29 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await createAgentGrant(ctx, body), 201);
   }
   if (
-    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "agents" &&
     segments[2] &&
     segments[3] === "revoke" &&
+    segments.length === 4 &&
     method === "POST"
   ) {
     ensureOwner(ctx);
     await revokeAgentGrant(ctx, segments[2]);
     return json({ ok: true });
   }
-  // Operational pickers need a name and role, never contact data. Economy,
-  // gift and agent screens use this directory; the contact-bearing member
-  // records below stay behind the people-administration capability.
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "people" && method === "GET") {
-    ensureOps(ctx);
-    return json({ items: await listTenantMembers(ctx) });
-  }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "members" && method === "GET") {
-    ensureMemberAdmin(ctx);
+  if (segments[0] === "admin" && segments[1] === "members" && segments.length === 2 && method === "GET") {
+    if (ctx.actor.type === "agent") requireScope(ctx, "ops:read");
     return json({ items: await listMembers(ctx) });
-  }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "team" && method === "GET") {
-    ensureMemberAdmin(ctx);
-    const { botForTenant } = await import("../modules/bots");
-    const bot = await botForTenant(ctx.db, ctx.tenant.id);
-    if (!bot)
-      throw new ApiError(404, "bot_not_found", "No Bot is attached to this administration area.");
-    return json({
-      bot,
-      admins: await listBotAdmins(ctx, bot.id),
-      invitations: await listBotInvitations(ctx, bot.id),
-      current_role: ctx.user?.platformAdmin
-        ? "Super Admin"
-        : ctx.user?.role === "owner"
-          ? "Bot Owner"
-          : "Bot Admin",
-    });
   }
 
   // Assets, imports and render jobs
+  if (segments[0]==='admin' && segments[1]==='assets' && segments[2]==='uploads' && segments[3]==='abandon' && segments.length===4 && method==='POST') {
+    ensureCollectionsWrite(ctx);ensureStepUp(ctx);requireScope(ctx,'import:write');
+    const body=await readJson(request,z.object({key:z.string().min(8).max(200),scope:z.enum(['global','bot'])}));
+    await abandonCollectionBrandUpload(ctx,body.key,body.scope);
+    return json({ok:true});
+  }
   if (
     segments[0] === "admin" &&
     segments[1] === "assets" &&
@@ -1904,6 +1834,15 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     if (!["subject", "background", "frame", "material", "effect", "brand"].includes(kind)) {
       throw new ApiError(422, "kind_invalid", "Unsupported asset kind.");
     }
+    const collectionScope=form.get('collectionScope');
+    if (collectionScope !== null) {
+      const uploadKey=request.headers.get('idempotency-key');
+      const access=String(form.get('access') ?? 'private');
+      if (kind!=='brand' || (collectionScope!=='global' && collectionScope!=='bot') || !uploadKey || !['public','member','private'].includes(access))
+        throw new ApiError(422,'brand_upload_invalid','A collection image requires a scope and request key.');
+      const asset=await uploadCollectionBrand(ctx,{bytes:new Uint8Array(await file.arrayBuffer()),declaredMime:file.type || undefined,name:String(form.get('name') ?? file.name),role:String(form.get('role') ?? ''),scope:collectionScope,access:access as 'public'|'member'|'private',provenance:String(form.get('provenance') ?? '')},uploadKey);
+      return json({asset},201);
+    }
     const asset = await uploadAsset(ctx, {
       kind,
       name: String(form.get("name") ?? file.name ?? "Asset"),
@@ -1941,11 +1880,11 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ asset }, 201);
   }
   if (
-    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "variants" &&
     segments[2] &&
     segments[3] === "back" &&
+    segments.length === 4 &&
     method === "POST"
   ) {
     ensureContentWrite(ctx);
@@ -1973,11 +1912,11 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
   }
   if (
-    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "assets" &&
     segments[2] &&
     segments[3] === "derivatives" &&
+    segments.length === 4 &&
     method === "POST"
   ) {
     ensureContentWrite(ctx);
@@ -2000,17 +1939,22 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
   }
   if (
-    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "assets" &&
     segments[2] &&
     segments[3] === "bytes" &&
+    segments.length === 4 &&
     method === "GET"
   ) {
     ensureContentRead(ctx);
     const asset = await getAsset(ctx, segments[2]);
+    if (asset.r2_key.startsWith('collection-brand-v1/')) throw new ApiError(404,'asset_not_found','Asset not found.');
+    if (asset.r2_key.startsWith('bound-render-stage-v1/')) {
+      const { serveAsset } = await import('../../pages/media/asset/[id]');
+      return serveAsset(ctx,asset.id);
+    }
     const { readAsset } = await import("../modules/assets");
-    const bytes = await readAsset(ctx.media, asset);
+    const bytes = await readAsset(ctx.media, asset, ctx.db);
     return new Response(bytes, {
       headers: {
         "content-type": asset.mime,
@@ -2020,10 +1964,10 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     });
   }
   if (
-    segments.length === 3 &&
     segments[0] === "admin" &&
     segments[1] === "imports" &&
     segments[2] === "preview" &&
+    segments.length === 3 &&
     method === "POST"
   ) {
     ensureContentRead(ctx);
@@ -2053,10 +1997,10 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await commitImport(ctx, body));
   }
   if (
-    segments.length === 3 &&
     segments[0] === "admin" &&
     segments[1] === "renders" &&
     segments[2] === "queue" &&
+    segments.length === 3 &&
     method === "POST"
   ) {
     ensureContentWrite(ctx);
@@ -2066,16 +2010,16 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     }));
     return json(await createRenderJobs(ctx, { force: Boolean(body?.force) }));
   }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "jobs" && method === "GET") {
+  if (segments[0] === "admin" && segments[1] === "jobs" && segments.length === 2 && method === "GET") {
     ensureOps(ctx);
     return json({ items: await listRenderJobs(ctx, url.searchParams.get("status") ?? undefined) });
   }
   if (
-    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "jobs" &&
     segments[2] &&
     segments[3] === "claim" &&
+    segments.length === 4 &&
     method === "POST"
   ) {
     ensureOps(ctx);
@@ -2085,11 +2029,11 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     });
   }
   if (
-    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "jobs" &&
     segments[2] &&
     segments[3] === "complete" &&
+    segments.length === 4 &&
     method === "POST"
   ) {
     ensureOps(ctx);
@@ -2114,11 +2058,11 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
   }
   if (
-    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "jobs" &&
     segments[2] &&
     segments[3] === "fail" &&
+    segments.length === 4 &&
     method === "POST"
   ) {
     ensureOps(ctx);
@@ -2133,10 +2077,10 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await failRenderJob(ctx, segments[2], body.message, body.attempt));
   }
   if (
-    segments.length === 3 &&
     segments[0] === "admin" &&
     segments[1] === "generation" &&
     segments[2] === "plan" &&
+    segments.length === 3 &&
     method === "POST"
   ) {
     ensureContentWrite(ctx);
@@ -2173,24 +2117,24 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await getGenerationJob(ctx, segments[3]));
   }
   if (
-    segments.length === 5 &&
     segments[0] === "admin" &&
     segments[1] === "generation" &&
     segments[2] === "jobs" &&
     segments[3] &&
     segments[4] === "submit" &&
+    segments.length === 5 &&
     method === "POST"
   ) {
     ensureContentWrite(ctx);
     return json(await submitGeneration(ctx, segments[3]));
   }
   if (
-    segments.length === 5 &&
     segments[0] === "admin" &&
     segments[1] === "generation" &&
     segments[2] === "jobs" &&
     segments[3] &&
     segments[4] === "review" &&
+    segments.length === 5 &&
     method === "POST"
   ) {
     ensureContentWrite(ctx);
@@ -2198,12 +2142,12 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await reviewGeneration(ctx, segments[3], body.decision));
   }
   if (
-    segments.length === 5 &&
     segments[0] === "admin" &&
     segments[1] === "generation" &&
     segments[2] === "jobs" &&
     segments[3] &&
     segments[4] === "adopt" &&
+    segments.length === 5 &&
     method === "POST"
   ) {
     ensureContentWrite(ctx);
@@ -2211,11 +2155,11 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
 
   // Topics and operations
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "topics" && method === "GET") {
+  if (segments[0] === "admin" && segments[1] === "topics" && segments.length === 2 && method === "GET") {
     ensureContentRead(ctx);
     return json({ items: await listTopicPolicies(ctx) });
   }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "topics" && method === "POST") {
+  if (segments[0] === "admin" && segments[1] === "topics" && segments.length === 2 && method === "POST") {
     ensureContentWrite(ctx);
     const body = await readJson(
       request,
@@ -2227,36 +2171,47 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json({ policy: await createTopicPolicy(ctx, body) }, 201);
   }
-  if (segments.length === 3 && segments[0] === "admin" && segments[1] === "topics" && segments[2] && method === "PATCH") {
+  if (segments[0] === "admin" && segments[1] === "topics" && segments[2] && segments.length === 3 && method === "PATCH") {
     ensureContentWrite(ctx);
     const body = await readJson(request, z.object({ active: z.boolean() }));
     await setTopicPolicyActive(ctx, segments[2], body.active);
     return json({ ok: true });
   }
   if (
+    segments[0] === "admin" &&
+    segments[1] === "backup" &&
+    segments[2] === "visible-summary" &&
     segments.length === 3 &&
+    method === "GET"
+  ) {
+    requireScope(ctx,'inventory:read');
+    const {visibleOwnerInventorySummary}=await import('../modules/collection');
+    return json(await visibleOwnerInventorySummary(ctx));
+  }
+  if (
     segments[0] === "admin" &&
     segments[1] === "backup" &&
     segments[2] === "manifest" &&
+    segments.length === 3 &&
     method === "GET"
   ) {
-    ensureOps(ctx);
+    requireScope(ctx, 'ops:read');
     return json(await backupManifest(ctx));
   }
   if (
-    segments.length === 3 &&
     segments[0] === "admin" &&
     segments[1] === "outbox" &&
     segments[2] === "process" &&
+    segments.length === 3 &&
     method === "POST"
   ) {
     ensureOps(ctx);
     return json(await processOutbox(ctx));
   }
   if (
-    segments.length === 2 &&
     (segments[0] === "ops" || segments[0] === "admin") &&
     segments[1] === "status" &&
+    segments.length === 2 &&
     method === "GET"
   ) {
     ensureOps(ctx);
@@ -2281,7 +2236,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     const result = await createBot(ctx, body);
     return json(result, result.created ? 201 : 200);
   }
-  if (segments.length === 2 && segments[0] === "invitations" && segments[1] === "accept" && method === "POST") {
+  if (segments[0] === "invitations" && segments[1] === "accept" && segments.length === 2 && method === "POST") {
     const body = await readJson(request, z.object({ token: z.string().min(20).max(300) }));
     return json(await acceptBotInvitation(ctx, body.token));
   }
@@ -2296,9 +2251,17 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     const bot = await botForTenant(ctx.db, ctx.tenant.id);
     if (!bot)
       throw new ApiError(404, "bot_not_found", "No Bot is attached to this administration area.");
-    // Bot settings, not the people directory. Contact records and invitations
-    // are served by GET /admin/team behind the `members` capability.
-    return json({ bot, aiArtEnabled: Number(bot.ai_art_enabled ?? 0) === 1 });
+    return json({
+      bot,
+      aiArtEnabled: Number(bot.ai_art_enabled ?? 0) === 1,
+      admins: await listBotAdmins(ctx, bot.id),
+      invitations: await listBotInvitations(ctx, bot.id),
+      current_role: ctx.user?.platformAdmin
+        ? "Super Admin"
+        : ctx.user?.role === "owner"
+          ? "Bot Owner"
+          : "Bot Admin",
+    });
   }
   if (
     segments[0] === "admin" &&
@@ -2342,10 +2305,10 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ bot: { ...bot, ai_art_enabled: body.aiArtEnabled ? 1 : 0 }, aiArtEnabled: body.aiArtEnabled });
   }
   if (
-    segments.length === 3 &&
     segments[0] === "admin" &&
     segments[1] === "bot" &&
     segments[2] === "invitations" &&
+    segments.length === 3 &&
     method === "POST"
   ) {
     ensureStepUp(ctx);
@@ -2373,6 +2336,8 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   ) {
     ensureOwner(ctx);
     ensureStepUp(ctx);
+    if (ctx.actor.type !== 'user' || ctx.actor.id !== ctx.user?.id || ctx.actor.representedUserId !== ctx.user.id)
+      throw new ApiError(403, 'owner_required', 'Only the signed-in Bot Owner or Super Admin can do that.');
     const { botForTenant } = await import("../modules/bots");
     const { validateCapabilities } = await import("../modules/bots");
     const bot = await botForTenant(ctx.db, ctx.tenant.id);
@@ -2399,21 +2364,39 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
         "Enable the grant capability before enabling self-grants.",
       );
     }
-    const existing = await first<{ role: string }>(
+    const existing = await first<{ role: string; capability_revision: number; capabilities_json: string | null; self_grants_enabled: number; grant_limit: number; grant_id: string | null; grant_role: string | null; grant_status: string | null; grant_revoked_at: string | null; grant_capabilities: string | null }>(
       ctx.db,
-      "SELECT role FROM fb_memberships WHERE tenant_id = ? AND user_id = ? AND status = 'active'",
+      `SELECT m.role,m.capability_revision,m.capabilities_json,m.self_grants_enabled,m.grant_limit,ba.id AS grant_id,ba.role AS grant_role,ba.status AS grant_status,ba.revoked_at AS grant_revoked_at,ba.capabilities_json AS grant_capabilities
+       FROM fb_memberships m LEFT JOIN fb_bot_admins ba ON ba.bot_id=? AND ba.user_id=m.user_id
+       WHERE m.tenant_id=? AND m.user_id=? AND m.status='active' AND m.revoked_at IS NULL`,
+      bot.id,
       ctx.tenant.id,
       targetUserId,
     );
     if (!existing) throw new ApiError(404, "admin_not_found", "That Bot Admin was not found.");
+    if (existing.role === 'owner') throw new ApiError(422, 'owner_capability_fixed', "The Bot Owner's authority is not edited as a Bot Admin grant.");
+    if (existing.grant_id && (existing.grant_role !== 'admin' || existing.grant_status !== 'active' || existing.grant_revoked_at))
+      throw new ApiError(409, 'admin_changed', 'This administrator grant is no longer active. Reload the team.');
     const now = nowIso();
-    const updated = await ctx.db.batch([
+    try {
+    await ctx.db.batch([
       ctx.db
         .prepare(
           `UPDATE fb_memberships
               SET capabilities_json = ?, self_grants_enabled = ?, grant_limit = ?,
                   capability_revision = capability_revision + 1
-            WHERE tenant_id = ? AND user_id = ? AND status = 'active'`,
+            WHERE tenant_id = ? AND user_id = ? AND status = 'active' AND revoked_at IS NULL
+              AND role = ? AND role <> 'owner' AND capability_revision = ? AND capabilities_json IS ? AND self_grants_enabled IS ? AND grant_limit IS ?
+              AND EXISTS (SELECT 1 FROM fb_users target_user WHERE target_user.id=fb_memberships.user_id AND target_user.disabled_at IS NULL)
+              AND EXISTS (SELECT 1 FROM fb_bots b JOIN fb_memberships actor ON actor.tenant_id=b.tenant_id AND actor.user_id=? AND actor.status='active' AND actor.revoked_at IS NULL
+                JOIN fb_users u ON u.id=actor.user_id AND u.disabled_at IS NULL
+                JOIN fb_sessions s ON s.id=? AND s.user_id=u.id AND s.tenant_id=actor.tenant_id AND s.revoked_at IS NULL
+                  AND s.expires_at>strftime('%Y-%m-%dT%H:%M:%fZ','now') AND s.assurance=? AND s.assurance IN ('passkey','mfa')
+                  AND s.auth_time>=strftime('%Y-%m-%dT%H:%M:%fZ','now','-30 minutes') AND s.auth_time<=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+                WHERE b.id=? AND b.tenant_id=? AND b.status='active' AND b.owner_user_id<>?
+                  AND ((actor.role='owner' AND b.owner_user_id=u.id) OR (u.platform_admin=1 AND EXISTS (SELECT 1 FROM fb_platform_admins pa WHERE pa.user_id=u.id AND pa.status='active' AND pa.revoked_at IS NULL))))
+              AND ((? IS NULL AND NOT EXISTS (SELECT 1 FROM fb_bot_admins ba WHERE ba.bot_id=? AND ba.user_id=?))
+                OR EXISTS (SELECT 1 FROM fb_bot_admins ba WHERE ba.id=? AND ba.bot_id=? AND ba.user_id=? AND ba.role IS ? AND ba.status IS ? AND ba.revoked_at IS ? AND ba.capabilities_json IS ?))`,
         )
         .bind(
           JSON.stringify(capabilities),
@@ -2421,7 +2404,11 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
           body.grantLimit,
           ctx.tenant.id,
           targetUserId,
+          existing.role,existing.capability_revision,existing.capabilities_json,existing.self_grants_enabled,existing.grant_limit,
+          ctx.user!.id,ctx.sessionId,ctx.sessionAssurance,bot.id,ctx.tenant.id,targetUserId,
+          existing.grant_id,bot.id,targetUserId,existing.grant_id,bot.id,targetUserId,existing.grant_role,existing.grant_status,existing.grant_revoked_at,existing.grant_capabilities,
         ),
+      ctx.db.prepare("SELECT CASE WHEN changes()=1 THEN 1 ELSE json('admin_not_found') END"),
       ctx.db
         .prepare(
           `UPDATE fb_bot_admins
@@ -2452,8 +2439,9 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
           now,
         ),
     ]);
-    if ((updated[0]?.meta?.changes ?? 0) !== 1) {
-      throw new ApiError(409, "admin_not_found", "That Bot Admin was not updated; reload the team.");
+    } catch (error) {
+      if (String(error).includes('malformed JSON')) throw new ApiError(409, "admin_changed", "The team or your access changed. Reload before updating this administrator.");
+      throw error;
     }
     return json({
       ok: true,
@@ -2463,12 +2451,12 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     });
   }
   if (
-    segments.length === 5 &&
     segments[0] === "admin" &&
     segments[1] === "bot" &&
     segments[2] === "admins" &&
     segments[3] &&
     segments[4] === "revoke" &&
+    segments.length === 5 &&
     method === "POST"
   ) {
     ensureStepUp(ctx);
@@ -2480,7 +2468,97 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ ok: true });
   }
 
+  if (segments[0] === "admin" && segments[1] === "local-subject-drafts" && segments.length === 2 && method === "POST") {
+    ensureContentWrite(ctx);
+    ensureStepUp(ctx);
+    const body = await readJson(request, z.object({ recordJson: z.string().max(50000), sha256: z.string().regex(/^[a-f0-9]{64}$/) }));
+    const { importLocalSubjectDraft } = await import("../modules/local-subject-import");
+    return json(await importLocalSubjectDraft(ctx, body), 201);
+  }
+
   // Collections (global and Bot-scoped)
+  if (segments[0] === 'admin' && segments[1] === 'collections' && segments[2] === 'brand-reference-index' && segments[3] === 'reconcile' && segments.length === 4 && method === 'POST') {
+    ensureCollectionsWrite(ctx);ensureStepUp(ctx);
+    const {reconcileBrandUrlIndex}=await import('../modules/collections');
+    const body=await readJson(request,z.object({collectionId:z.string().min(1).max(200).optional()}));
+    return json(await reconcileBrandUrlIndex(ctx,body.collectionId));
+  }
+  if (segments[0] === 'admin' && segments[1] === 'collections' && segments[2] === 'brand-reference-index' && segments[3] === 'rebuild' && segments.length === 4 && method === 'POST') {
+    ensureCollectionsWrite(ctx);ensureStepUp(ctx);
+    const {startBrandUrlRebuild}=await import('../modules/collections');
+    return json(await startBrandUrlRebuild(ctx));
+  }
+  if (segments[0] === 'admin' && segments[1] === 'collections' && segments[2] === 'brand-reference-index' && segments[3] === 'issues' && segments.length === 4 && method === 'GET') {
+    ensureCollectionsWrite(ctx);ensureStepUp(ctx);
+    const {listBrandUrlIssues}=await import('../modules/collections');
+    return json(await listBrandUrlIssues(ctx));
+  }
+  if (segments[0] === 'admin' && segments[1] === 'collections' && segments[2] === 'brand-reference-index' && segments[3] === 'clear' && segments.length === 4 && method === 'POST') {
+    ensureCollectionsWrite(ctx);ensureStepUp(ctx);
+    const body=await readJson(request,z.object({collectionId:z.string().min(1).max(200),slot:z.enum(['logo','banner','back']),collectionVersion:z.number().int().positive()}));
+    const {clearBrandUrlIssue}=await import('../modules/collections');
+    await clearBrandUrlIssue(ctx,body.collectionId,body.slot,body.collectionVersion);
+    return json({ok:true});
+  }
+  if (segments[0] === 'admin' && segments[1] === 'collections' && segments[2] && segments[3] === 'brand-release' && segments.length === 4 && method === 'GET') {
+    ensureCollectionsWrite(ctx);ensureStepUp(ctx);
+    const assetId=url.searchParams.get('assetId');
+    if (!assetId || assetId.length>200) throw new ApiError(422,'brand_release_invalid','Choose an image to review.');
+    return json({review:await previewCollectionBrandRelease(ctx,segments[2],assetId)});
+  }
+  if (segments[0] === 'admin' && segments[1] === 'collections' && segments[2] && segments[3] === 'brand-release' && segments.length === 4 && method === 'POST') {
+    ensureCollectionsWrite(ctx);
+    ensureStepUp(ctx);
+    const body=await readJson(request,z.object({assetId:z.string().min(1).max(200),collectionVersion:z.number().int().positive(),assetRevision:z.number().int().positive(),objectVersion:z.string().min(1).max(200),sha256:z.string().regex(/^[a-f0-9]{64}$/)}));
+    await approveCollectionBrandRelease(ctx,segments[2],body.assetId,body.collectionVersion,body.sha256,body.assetRevision,body.objectVersion);
+    return json({ok:true});
+  }
+  if (segments[0] === "admin" && segments[1] === "collections" && segments[2] && segments[3] === "art-reviews" && segments.length === 4 && method === "POST") {
+    const selection = z.object({ id: z.string().min(1).max(100), sha256: z.string().regex(/^[a-f0-9]{64}$/) });
+    const body = await readJson(request, z.object({
+      decision: z.enum(["approved", "rejected"]), note: z.string().min(20).max(2000),
+      mark: selection, cover: selection, back: selection, evidence: selection,
+    }));
+    const { recordCollectionArtReview } = await import("../modules/collection-art-reviews");
+    return json(await recordCollectionArtReview(ctx, segments[2], body), 201);
+  }
+  if (segments[0] === "admin" && segments[1] === "discord-installations" && segments[2] && segments[3] === "availability" && segments.length === 4 && method === "PATCH") {
+    if (ctx.actor.type === "agent") throw new ApiError(403, "human_auth_required", "Server availability changes require a signed-in administrator.");
+    requireUser(ctx);
+    ensureStepUp(ctx);
+    const body = await readJson(request,z.object({revision:z.number().int().positive(),surface:z.literal('game'),enabled:z.boolean()}));
+    const {updateDiscordInstallationAvailability}=await import('../modules/discord-installation-settings');
+    return json(await updateDiscordInstallationAvailability(ctx,segments[2],body));
+  }
+  if (segments[0] === "admin" && segments[1] === "discord-installations" && (segments.length === 2 || (segments.length === 3 && method === "PATCH"))) {
+    if (method === "GET" && segments.length === 2) {
+      if (ctx.actor.type === 'agent') ensureContentRead(ctx);
+      else requireUser(ctx);
+      const { listDiscordInstallationSettings } = await import("../modules/discord-installation-settings");
+      return json(await listDiscordInstallationSettings(ctx));
+    }
+    if (method === "PATCH" && segments[2]) {
+      ensureContentWrite(ctx);
+      if (ctx.actor.type === "agent") throw new ApiError(403, "human_auth_required", "Server collection changes require a signed-in administrator with recent strong authentication.");
+      ensureStepUp(ctx);
+      const body = await readJson(request, z.object({
+        revision: z.number().int().positive(),
+        collectionIds: z.array(z.string().min(1).max(100)).max(500).nullable(),
+      }));
+      const { updateDiscordInstallationSettings } = await import("../modules/discord-installation-settings");
+      return json(await updateDiscordInstallationSettings(ctx, segments[2], body));
+    }
+  }
+  if (
+    segments[0] === "admin" &&
+    segments[1] === "collections" &&
+    segments[2] === "recovery" && segments[3] && segments.length === 4 && method === "GET"
+  ) {
+    ensureCollectionsWrite(ctx);
+    ensureStepUp(ctx);
+    const {recoverCollectionCreation}=await import('../modules/collections');
+    return json(await recoverCollectionCreation(ctx,segments[3]));
+  }
   if (
     segments[0] === "admin" &&
     segments[1] === "collections" &&
@@ -2517,7 +2595,8 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
         featured: z.boolean().optional(),
       }),
     );
-    return json({ collection: await createCollection(ctx, body) }, 201);
+    const idempotency = request.headers.has('idempotency-key') ? await idempotencyInput(request,body) : undefined;
+    return json({ collection: await createCollection(ctx, body,idempotency) }, 201);
   }
   if (
     segments[0] === "admin" &&
@@ -2563,11 +2642,11 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ collection: await updateCollection(ctx, segments[2], body) });
   }
   if (
-    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "collections" &&
     segments[2] &&
     segments[3] === "cards" &&
+    segments.length === 4 &&
     method === "POST"
   ) {
     ensureCollectionsWrite(ctx);
@@ -2576,12 +2655,12 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await addCollectionCards(ctx, segments[2], body.cardIds));
   }
   if (
-    segments.length === 5 &&
     segments[0] === "admin" &&
     segments[1] === "collections" &&
     segments[2] &&
     segments[3] === "cards" &&
     segments[4] &&
+    segments.length === 5 &&
     method === "DELETE"
   ) {
     ensureCollectionsWrite(ctx);
@@ -2590,11 +2669,11 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ ok: true });
   }
   if (
-    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "collections" &&
     segments[2] &&
     segments[3] === "enable" &&
+    segments.length === 4 &&
     method === "POST"
   ) {
     ensureContentWrite(ctx);
@@ -2604,22 +2683,22 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ ok: true });
   }
   if (
-    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "collections" &&
     segments[2] &&
     segments[3] === "viewers" &&
+    segments.length === 4 &&
     method === "GET"
   ) {
     ensureCollectionsRead(ctx);
     return json({ items: await listCollectionViewers(ctx, segments[2]) });
   }
   if (
-    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "collections" &&
     segments[2] &&
     segments[3] === "viewers" &&
+    segments.length === 4 &&
     method === "POST"
   ) {
     ensureCollectionsWrite(ctx);
@@ -2628,11 +2707,11 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await setCollectionViewers(ctx, segments[2], body.userIds));
   }
   if (
-    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "collections" &&
     segments[2] &&
     segments[3] === "progress" &&
+    segments.length === 4 &&
     method === "GET"
   ) {
     ensureCollectionsRead(ctx);
@@ -2650,10 +2729,10 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ items: await listAchievements(ctx, ctx.user?.id) });
   }
   if (
-    segments.length === 3 &&
     segments[0] === "admin" &&
     segments[1] === "achievements" &&
     segments[2] === "backfill" &&
+    segments.length === 3 &&
     method === "POST"
   ) {
     ensureContentWrite(ctx);
@@ -2686,6 +2765,31 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json({ id: await createAchievement(ctx, body) }, 201);
   }
+  if (segments[0] === "admin" && segments[1] === "gifts" && segments[2] === "cards" && segments.length === 3 && method === "GET") {
+    ensureEconomyWrite(ctx);
+    const { listGiftCards } = await import('../modules/admin-gifts');
+    return json({items:await listGiftCards(ctx)});
+  }
+  if (segments[0] === "admin" && segments[1] === "gifts" && segments[2] === "recipients" && segments.length === 3 && method === "GET") {
+    ensureEconomyWrite(ctx);
+    const { listGiftRecipients } = await import('../modules/admin-gifts');
+    return json({items:await listGiftRecipients(ctx)});
+  }
+  if (segments[0] === "admin" && segments[1] === "gifts" && segments[2] === "policy" && segments.length === 3 && method === "GET") {
+    ensureEconomyWrite(ctx);
+    const { getGiftPolicy } = await import('../modules/admin-gifts');
+    return json(await getGiftPolicy(ctx));
+  }
+  if (
+    segments[0] === "admin" &&
+    segments[1] === "gifts" &&
+    segments[2] === "recovery" &&
+    segments[3] && segments.length === 4 && method === "GET"
+  ) {
+    ensureEconomyWrite(ctx);
+    const {recoverAdminGift}=await import('../modules/admin-gifts');
+    return json(await recoverAdminGift(ctx,segments[3]));
+  }
   if (
     segments[0] === "admin" &&
     segments[1] === "gifts" &&
@@ -2696,10 +2800,10 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json({ items: await listAdminGiftCampaigns(ctx) });
   }
   if (
-    segments.length === 3 &&
     segments[0] === "admin" &&
     segments[1] === "gifts" &&
     segments[2] === "preview" &&
+    segments.length === 3 &&
     method === "POST"
   ) {
     ensureEconomyWrite(ctx);
@@ -2726,11 +2830,11 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
   }
   if (
-    segments.length === 4 &&
     segments[0] === "admin" &&
     segments[1] === "gifts" &&
     segments[2] &&
     segments[3] === "retry" &&
+    segments.length === 4 &&
     method === "POST"
   ) {
     ensureEconomyWrite(ctx);
@@ -2739,7 +2843,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
 
   // Platform Administration. Access admission is never treated as a role.
-  if (segments.length === 2 && segments[0] === "platform" && segments[1] === "overview" && method === "GET") {
+  if (segments[0] === "platform" && segments[1] === "overview" && segments.length === 2 && method === "GET") {
     requireSuperAdmin(ctx);
     const counts = await first<Record<string, number>>(
       ctx.db,
@@ -2786,7 +2890,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json({ counts, bots, installations, access, admins, audit, current_user: ctx.user });
   }
-  if (segments.length === 2 && segments[0] === "platform" && segments[1] === "accounts" && method === "GET") {
+  if (segments[0] === "platform" && segments[1] === "accounts" && segments.length === 2 && method === "GET") {
     requireSuperAdmin(ctx);
     const accounts = await all<Record<string, unknown>>(
       ctx.db,
@@ -2799,7 +2903,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json({ items: accounts });
   }
-  if (segments.length === 2 && segments[0] === "platform" && segments[1] === "people" && method === "GET") {
+  if (segments[0] === "platform" && segments[1] === "people" && segments.length === 2 && method === "GET") {
     requireSuperAdmin(ctx);
     return json({
       items: await listPlatformPeople(ctx, {
@@ -2843,11 +2947,11 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     return json(await assignPlatformRole(ctx, body), 201);
   }
   if (
-    segments.length === 4 &&
     segments[0] === "platform" &&
     segments[1] === "roles" &&
     segments[2] &&
     segments[3] === "revoke" &&
+    segments.length === 4 &&
     method === "POST"
   ) {
     requireSuperAdmin(ctx);
@@ -2861,87 +2965,27 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json(await revokePlatformRole(ctx, segments[2], body.role, body.reason));
   }
-  if (
-    segments.length === 3 &&
-    segments[0] === "platform" &&
-    segments[1] === "installations" &&
-    segments[2] &&
-    method === "PATCH"
-  ) {
+  if (segments[0] === "platform" && segments[1] === "installations" && segments[2] && segments.length === 3 && method === "PATCH") {
     requireSuperAdmin(ctx);
     ensureStepUp(ctx);
-    const body = await readJson(
-      request,
-      z.object({
-        channelAllowlist: z
-          .array(z.string().regex(/^\d{15,22}$/))
-          .max(20)
-          .optional(),
-        gameEnabled: z.boolean().optional(),
-        websiteEnabled: z.boolean().optional(),
-        apiEnabled: z.boolean().optional(),
-        publicCatalogueEnabled: z.boolean().optional(),
-        adminGuiEnabled: z.boolean().optional(),
-        active: z.boolean().optional(),
-      }),
-    );
-    const installation = await first<{ id: string }>(
-      ctx.db,
-      "SELECT id FROM fb_discord_installations WHERE id = ?",
-      segments[2],
-    );
-    if (!installation)
-      throw new ApiError(404, "installation_not_found", "That installation does not exist.");
-    const fields: string[] = [];
-    const values: unknown[] = [];
-    if (body.channelAllowlist !== undefined) {
-      fields.push("channel_allowlist_json = ?");
-      values.push(JSON.stringify(body.channelAllowlist));
-    }
-    for (const key of [
-      "gameEnabled",
-      "websiteEnabled",
-      "apiEnabled",
-      "publicCatalogueEnabled",
-      "adminGuiEnabled",
-      "active",
-    ] as const) {
-      if (body[key] !== undefined) {
-        fields.push(`${key.replace(/[A-Z]/g, (c) => "_" + c.toLowerCase())} = ?`);
-        values.push(body[key] ? 1 : 0);
-      }
-    }
-    if (!fields.length) return json({ ok: true });
-    fields.push("updated_at = ?");
-    values.push(nowIso(), installation.id);
-    await ctx.db
-      .prepare(`UPDATE fb_discord_installations SET ${fields.join(", ")} WHERE id = ?`)
-      .bind(...values)
-      .run();
-    await ctx.db
-      .prepare(
-        `INSERT INTO fb_audit_events (id, tenant_id, actor_type, actor_id, represented_user_id, action, object_type, object_id, metadata_json, request_id, created_at)
-       VALUES (?, ?, 'user', ?, ?, 'platform.installation.updated', 'discord_installation', ?, ?, ?, ?)`,
-      )
-      .bind(
-        newId("aud"),
-        ctx.tenant.id,
-        ctx.user!.id,
-        ctx.user!.id,
-        installation.id,
-        JSON.stringify(body),
-        ctx.requestId,
-        nowIso(),
-      )
-      .run();
-    return json({ ok: true });
+    const body = await readJson(request, z.object({
+      revision: z.number().int().positive(),
+      channelAllowlist: z.array(z.string().regex(/^\d{15,22}$/)).max(20).optional(),
+      gameEnabled: z.boolean().optional(), active: z.boolean().optional(),
+      websiteEnabled: z.boolean().optional(), apiEnabled: z.boolean().optional(),
+      publicCatalogueEnabled: z.boolean().optional(), adminGuiEnabled: z.boolean().optional(),
+    }).strict());
+    if (body.websiteEnabled !== undefined || body.apiEnabled !== undefined || body.publicCatalogueEnabled !== undefined || body.adminGuiEnabled !== undefined)
+      throw new ApiError(422,"installation_surface_unavailable","Those interface controls are not yet enforced; no settings were changed.");
+    const {updatePlatformInstallation}=await import('../modules/discord-installation-settings');
+    return json(await updatePlatformInstallation(ctx,segments[2],{revision:body.revision,channelAllowlist:body.channelAllowlist,gameEnabled:body.gameEnabled,active:body.active}));
   }
   if (
-    segments.length === 4 &&
     segments[0] === "platform" &&
     segments[1] === "bots" &&
     segments[2] &&
     segments[3] === "status" &&
+    segments.length === 4 &&
     method === "POST"
   ) {
     requireSuperAdmin(ctx);

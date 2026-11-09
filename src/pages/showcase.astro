@@ -3,58 +3,50 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 import manifest from "../../public/media/showcase/manifest.json";
 
 const stills = manifest.outputs.filter((item) => item.file.endsWith(".png"));
-const videos = manifest.outputs.filter((item) => item.file.endsWith(".mp4"));
+const stillDescriptions: Record<string, string> = {
+  "card-16x9-1920.png": "Drop Bear card and back in a landscape Foilbury showcase",
+  "card-1x1-1080.png": "Drop Bear card in a square Foilbury showcase",
+  "card-4x5-1080.png": "Drop Bear card in a portrait Foilbury showcase",
+  "card-9x16-1080.png": "Drop Bear card in a vertical Foilbury showcase",
+  "finish-mastery-16x9-1920.png": "Foilbury card finish mastery showcase",
+  "og-1200x630.png": "Foilbury public showcase image",
+};
+const publicPath = (file: string) => `/${file.replace(/^public\//, "")}`;
+const generated = new Date(manifest.generated_at);
+const parts = Object.fromEntries(
+  new Intl.DateTimeFormat("en-AU", {
+    timeZone: "Australia/Melbourne",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  })
+    .formatToParts(generated)
+    .map(({ type, value }) => [type, value]),
+);
+const generatedLabel = `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute} Australia/Melbourne · ${generated.toISOString().replace("T", " ").slice(0, 16).replaceAll("-", "/")} UTC`;
 ---
 
 <BaseLayout
-  title="Foilbury showcase · real cards, stills and video"
-  description="Public-safe Foilbury showcase assets: real card stills, front/back presentations, finish mastery, a playable 18-second trailer and a silent 9:16 teaser."
+  title="Foilbury showcase · cards worth keeping"
+  description="Explore Foilbury's public showcase, from original character cards to shareable stills and short films."
   shareImage="/media/showcase/og-1200x630.png"
 >
   <section class="signal-rule" aria-hidden="true"></section>
-  <section class="container py-12 md:py-16">
-    <div class="grid gap-8 lg:grid-cols-[1fr_1fr] lg:items-end">
+  <section class="container py-8 md:py-16">
+    <div class="grid gap-6 lg:grid-cols-[0.8fr_1.2fr] lg:items-center lg:gap-10">
       <div>
-        <p class="studio-kicker">Showcase · public-safe</p>
-        <h1 class="display mt-3 text-[clamp(3rem,8vw,7rem)] uppercase">
-          Real cards. Real exports.
-        </h1>
-        <p class="mt-5 max-w-2xl text-lg leading-relaxed text-[var(--muted)]">
-          These are generated from the real public renderer and real persisted state, not stock art
-          or a mock-up. The public trailer uses only approved original-IP showcase cards. Member
-          artwork and private receipts stay private.
+        <h1 class="display text-[clamp(2.75rem,6vw,6rem)] uppercase">Cards worth keeping.</h1>
+        <p class="mt-4 max-w-xl text-lg leading-relaxed text-[var(--muted)]">
+          Meet the characters, explore their cards and take a little of Foilbury with you.
+          Everything here is from our public collection.
         </p>
       </div>
-      <div class="border border-[var(--line)] bg-[var(--paper-2)]/45 p-5">
-        <p class="studio-stat__label">Export manifest</p>
-        <p class="mt-2 text-sm text-[var(--muted)]">
-          Source commit{" "}
-          <span class="font-mono text-[0.62rem]">{manifest.source_commit.slice(0, 12)}</span> ·
-          generated{" "}
-          {new Date(manifest.generated_at).toLocaleString("en-AU", {
-            timeZone: "Australia/Melbourne",
-          })}
-          .
-        </p>
-        <p class="mt-2 text-sm text-[var(--muted)]">
-          Every output records a SHA-256. The export action never draws, spends, grants or mutates
-          gameplay.
-        </p>
-        <div class="mt-4 flex flex-wrap gap-2">
-          <a class="btn btn-signal btn-sm" href="/media/showcase/manifest.json" download>
-            Download manifest
-          </a>
-          <a class="btn btn-secondary btn-sm" href="/brand-kit">
-            Brand kit
-          </a>
-        </div>
-      </div>
-    </div>
-
-    <section class="mt-10 grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
-      <article class="border border-[var(--line)] bg-[var(--paper)] p-3">
+      <article>
         <video
-          class="w-full border border-[var(--line)]"
+          class="w-full border border-[var(--line)] bg-[var(--ink)]"
           controls
           preload="none"
           poster="/media/showcase/card-16x9-1920.png"
@@ -66,9 +58,9 @@ const videos = manifest.outputs.filter((item) => item.file.endsWith(".mp4"));
         </video>
         <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p class="font-semibold">Public product trailer · 18 seconds</p>
+            <p class="font-semibold">A glimpse of Foilbury · 18 seconds</p>
             <p class="font-mono text-[0.56rem] uppercase tracking-[0.1em] text-[var(--muted)]">
-              1920×1080 · H.264 · silent · real public renders
+              Silent · public collection
             </p>
           </div>
           <a
@@ -80,6 +72,16 @@ const videos = manifest.outputs.filter((item) => item.file.endsWith(".mp4"));
           </a>
         </div>
       </article>
+    </div>
+
+    <section class="mt-12 grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
+      <div class="self-center">
+        <h2 class="display-sm text-3xl uppercase">Made to share</h2>
+        <p class="mt-3 max-w-xl leading-relaxed text-[var(--muted)]">
+          Save a still or download the short vertical film. These images feature Foilbury's public
+          original worlds; your member artwork and private receipts stay private.
+        </p>
+      </div>
       <article class="border border-[var(--line)] bg-[var(--paper)] p-3">
         <video
           class="mx-auto w-full max-w-[360px] border border-[var(--line)]"
@@ -121,8 +123,11 @@ const videos = manifest.outputs.filter((item) => item.file.endsWith(".mp4"));
         {stills.map((item) => (
           <article class="border border-[var(--line)] bg-[var(--paper)] p-3">
             <img
-              src={`/${item.file}`}
-              alt="Foilbury showcase still"
+              src={publicPath(item.file)}
+              alt={
+                stillDescriptions[item.file.split("/").pop() ?? ""] ??
+                "Foilbury public showcase still"
+              }
               loading="lazy"
               class="w-full border border-[var(--line)]"
             />
@@ -130,7 +135,7 @@ const videos = manifest.outputs.filter((item) => item.file.endsWith(".mp4"));
               <p class="font-mono text-[0.56rem] uppercase tracking-[0.08em] text-[var(--muted)]">
                 {item.file.split("/").pop()} · {(item.bytes / 1024).toFixed(0)} KB
               </p>
-              <a class="btn btn-ghost btn-sm" href={`/${item.file}`} download>
+              <a class="btn btn-ghost btn-sm" href={publicPath(item.file)} download>
                 Download
               </a>
             </div>
@@ -138,6 +143,22 @@ const videos = manifest.outputs.filter((item) => item.file.endsWith(".mp4"));
         ))}
       </div>
     </section>
+
+    <details class="mt-10 border-t border-[var(--line)] pt-5">
+      <summary class="cursor-pointer font-semibold">Export details</summary>
+      <p class="mt-3 text-sm text-[var(--muted)]">
+        Source commit <span class="font-mono">{manifest.source_commit.slice(0, 12)}</span> ·
+        generated {generatedLabel}. The manifest records a SHA-256 for each output.
+      </p>
+      <div class="mt-4 flex flex-wrap gap-2">
+        <a class="btn btn-secondary btn-sm" href="/media/showcase/manifest.json" download>
+          Download manifest
+        </a>
+        <a class="btn btn-secondary btn-sm" href="/brand-kit">
+          Brand kit
+        </a>
+      </div>
+    </details>
 
     <section class="mt-10 grid gap-5 md:grid-cols-2">
       <div class="border border-[var(--line)] p-5">

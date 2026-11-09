@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Box, RotateCcw, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/client";
 
 interface Props {
-  inspectionInstanceId?: string;
+  instanceId?: string;
   frontUrl: string | null;
   backUrl: string | null;
   name: string;
@@ -15,9 +15,6 @@ interface Props {
   collection?: string | null;
   serial?: string | null;
   fallbackUrl?: string | null;
-  initialEnabled?: boolean;
-  initialFlipped?: boolean;
-  framed?: boolean;
 }
 
 /**
@@ -28,6 +25,7 @@ interface Props {
  * tab is hidden.
  */
 export default function CardInspector({
+  instanceId,
   frontUrl,
   backUrl,
   name,
@@ -36,33 +34,21 @@ export default function CardInspector({
   collection,
   serial,
   fallbackUrl,
-  initialEnabled = false,
-  initialFlipped = false,
-  framed = false,
-  inspectionInstanceId,
 }: Props) {
-  const [hydrated, setHydrated] = useState(false);
-  const [enabled, setEnabled] = useState(initialEnabled);
-  const [flipped, setFlipped] = useState(initialFlipped);
+  const [enabled, setEnabled] = useState(false);
+  const [flipped, setFlipped] = useState(false);
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
-  const [reduced, setReduced] = useState<boolean | null>(null);
+  const [reduced, setReduced] = useState(false);
   const [active, setActive] = useState(true);
-  const [inspection, setInspection] = useState<"idle" | "saving" | "saved" | "failed">("idle");
-  const inspectionInFlight = useRef(false);
+  const [inspectionMessage, setInspectionMessage] = useState("");
+  const recording = useRef(false);
   const shell = useRef<HTMLDivElement>(null);
-  const modeButton = useRef<HTMLButtonElement>(null);
   const frame = useRef<number | null>(null);
   const dragging = useRef(false);
   const last = useRef({ x: 0, y: 0 });
 
   const front = frontUrl ?? fallbackUrl;
   const back = backUrl ?? fallbackUrl;
-
-  useEffect(() => { setHydrated(true); }, []);
-
-  useLayoutEffect(() => {
-    if (hydrated && initialEnabled) modeButton.current?.focus({ preventScroll: true });
-  }, [hydrated, initialEnabled]);
 
   useEffect(() => {
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -100,7 +86,7 @@ export default function CardInspector({
     };
   }, []);
 
-  const canTilt = enabled && reduced === false && active;
+  const canTilt = enabled && !reduced && active;
   // The selected side is independent of the presentation mode. Flat, reduced
   // motion and temporarily inactive views still rotate to the chosen face;
   // only the pointer/keyboard tilt is suppressed when interaction is off.
@@ -154,25 +140,15 @@ export default function CardInspector({
     dragging.current = false;
   }
 
-  async function recordInspection() {
-    if (!inspectionInstanceId || inspectionInFlight.current) return;
-    inspectionInFlight.current = true;
-    setInspection("saving");
-    try {
-      const result = await api<{ recorded?: boolean; day?: string }>(`/api/v1/missions/inspect/${encodeURIComponent(inspectionInstanceId)}`, { method: "POST", body: {} });
-      if (result?.recorded !== true || typeof result.day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(result.day)) throw new Error("Inspection not confirmed");
-      setInspection("saved");
-    } catch {
-      setInspection("failed");
-    } finally {
-      inspectionInFlight.current = false;
-    }
-  }
-
-  function flipCard() {
-    const showBack = !flipped;
-    setFlipped(showBack);
-    if (showBack) void recordInspection();
+  function flip() {
+    const next = !flipped;
+    setFlipped(next);
+    if (!next || !instanceId || recording.current) return;
+    recording.current = true;
+    void api(`/api/v1/instances/${encodeURIComponent(instanceId)}/inspect`, { method: 'POST' })
+      .then(() => { setInspectionMessage(""); })
+      .catch(() => setInspectionMessage("Inspection progress could not be recorded. View the front, then the back, to try again."))
+      .finally(() => { recording.current = false; });
   }
 
   function onKeyDown(event: React.KeyboardEvent) {
@@ -190,7 +166,7 @@ export default function CardInspector({
       setTilt((current) => ({ ...current, x: clamp(current.x + 4, -18, 18) }));
     } else if (event.key.toLowerCase() === "f") {
       event.preventDefault();
-      flipCard();
+      flip();
     } else if (event.key === "Escape") {
       setTilt({ x: 0, y: 0 });
       setFlipped(false);
@@ -199,66 +175,54 @@ export default function CardInspector({
 
   return (
     <div className="card-inspector">
-      <div className={framed ? "card-rail p-3" : "contents"}>
-        <div
-          ref={shell}
-          className={cn(
-            "card-inspector__stage",
-            framed && "card-inspector__stage--framed",
-            enabled && "is-3d",
-            canTilt && "is-live",
-          )}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerLeave={() => {
-            onPointerUp();
-            if (canTilt) setTilt({ x: 0, y: 0 });
-          }}
-          onKeyDown={onKeyDown}
-          tabIndex={0}
-          role="group"
-          aria-label={`${name} card inspector. Use left and right arrows to tilt, F to flip, Escape to reset.`}
-          data-active={active ? "true" : "false"}
-          data-flipped={flipped ? "true" : "false"}
-          data-mode={enabled ? (canTilt ? "interactive" : "static") : "flat"}
-        >
-          <div className="card-inspector__object" style={style}>
-            <div className="card-inspector__face card-inspector__front" aria-hidden={flipped}>
-              {front ? (
-                <img
-                  src={front}
-                  alt={`${name} front, ${finish} finish`}
-                  width={750}
-                  height={1050}
-                />
-              ) : (
-                <div className="card-face-fallback">{name.charAt(0)}</div>
-              )}
-            </div>
-            <div className="card-inspector__face card-inspector__back" aria-hidden={!flipped}>
-              {back ? (
-                <img
-                  src={back}
-                  alt={`${name} back, ${finish} finish`}
-                  width={750}
-                  height={1050}
-                  loading="lazy"
-                />
-              ) : (
-                <div className="card-face-fallback">Back</div>
-              )}
-            </div>
-            <div className="card-inspector__edge" aria-hidden="true" />
+      <div
+        ref={shell}
+        className={cn("card-inspector__stage", enabled && "is-3d", canTilt && "is-live")}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerLeave={() => {
+          onPointerUp();
+          if (canTilt) setTilt({ x: 0, y: 0 });
+        }}
+        onKeyDown={onKeyDown}
+        tabIndex={0}
+        role="group"
+        aria-label={`${name} card inspector. Use left and right arrows to tilt, F to flip, Escape to reset.`}
+        data-active={active ? "true" : "false"}
+        data-flipped={flipped ? "true" : "false"}
+        data-mode={enabled ? (canTilt ? "interactive" : "static") : "flat"}
+      >
+        <div className="card-inspector__object" style={style}>
+          <div className="card-inspector__face card-inspector__front" aria-hidden={flipped}>
+            {front ? (
+              <img src={front} alt={`${name} front, ${finish} finish`} width={750} height={1050} />
+            ) : (
+              <div className="card-face-fallback">{name.charAt(0)}</div>
+            )}
           </div>
+          <div className="card-inspector__face card-inspector__back" aria-hidden={!flipped}>
+            {back ? (
+              <img
+                src={back}
+                alt={`${name} back, ${finish} finish`}
+                width={750}
+                height={1050}
+                loading="lazy"
+              />
+            ) : (
+              <div className="card-face-fallback">Back</div>
+            )}
+          </div>
+          <div className="card-inspector__edge" aria-hidden="true" />
         </div>
       </div>
+
       <div className="card-inspector__controls">
         <button
           type="button"
           className="btn btn-secondary btn-sm"
-          onClick={flipCard}
-          disabled={!hydrated}
+          onClick={flip}
           aria-pressed={flipped}
         >
           <RotateCcw size={14} /> {flipped ? "View front" : "View back"}
@@ -266,8 +230,6 @@ export default function CardInspector({
         <button
           type="button"
           className={cn("btn btn-sm", enabled ? "btn-primary" : "btn-secondary")}
-          ref={modeButton}
-          disabled={!hydrated}
           onClick={() => {
             setEnabled((value) => {
               const next = !value;
@@ -299,15 +261,13 @@ export default function CardInspector({
             ? "Drag or use arrow keys · F flips · Escape resets"
             : `Flat view · ${collection ?? "Cabinet"}${serial ? ` · ${serial}` : ""}`}
       </p>
-      {inspectionInstanceId ? <div className="mt-2 min-h-5 text-xs text-[var(--muted)]" role="status" aria-live="polite">
-        {inspection === "saving" ? "Recording inspection…" : inspection === "saved" ? "Inspection recorded for today’s missions." : inspection === "failed" ? <span>Couldn’t record this inspection. <button type="button" className="underline underline-offset-4" onClick={() => void recordInspection()}>Retry</button></span> : null}
-      </div> : null}
       <p className="sr-only" aria-live="polite">
         {flipped ? "Showing card back" : "Showing card front"}.
         {canTilt
           ? ` Tilt ${Math.round(tilt.y)} degrees horizontally, ${Math.round(tilt.x)} degrees vertically.`
           : ""}
       </p>
+      {inspectionMessage ? <p className="mt-2 text-sm text-[var(--muted)]" role="status">{inspectionMessage}</p> : null}
     </div>
   );
 }

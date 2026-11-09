@@ -296,7 +296,6 @@ function assertPublicUrl(
     fail("invalid_url", path, "Expected a valid absolute URL.");
   }
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    console.error("DEBUG invalid url", path, raw, parsed.protocol);
     fail("invalid_url", path, "Only http(s) links may be used in Discord buttons.");
   }
   if (parsed.username || parsed.password) {
@@ -1015,6 +1014,7 @@ export interface CapsulePickerInput {
   openIdPrefix?: string;
   browseUrl?: string;
   packsCustomId?: string;
+  pendingOpening?: boolean;
 }
 
 function assertPoolSlug(value: string, path: string): string {
@@ -1092,7 +1092,8 @@ export function capsulePickerMessage(input: CapsulePickerInput): DiscordCallback
     embed: {
       title: "Choose a capsule",
       description:
-        "Each capsule shows its ordinary price and the real odds of its eligible cards. Viewing this picker charges nothing; opening spends the listed price only when you press an open button.",
+        "Each capsule shows its ordinary price and the real odds of its eligible cards. Viewing this picker charges nothing; opening spends the listed price only when you press an open button." +
+        (input.pendingOpening ? " An earlier opening with this request may have completed; check your collection before opening again." : ""),
       accent: FOILBURY_PALETTE.electricAqua,
       fields: [
         ...shown.map((choice) => ({
@@ -1151,7 +1152,7 @@ export interface RevealReceiptDomainFields {
   pool_name: string;
   price: number;
   currency: { name: string; symbol: string };
-  balance_after: number;
+  balance_after?: number;
   probability_bps: number;
   drawn_at: string;
   replayed: boolean;
@@ -1175,6 +1176,8 @@ export interface RevealReceiptInput extends RevealReceiptDomainFields {
   balance_after_debit?: number;
   credits_total?: number;
   achievement_credits?: Array<{ name: string; amount: number }>;
+  settlement_status?: "settled" | "pending";
+  settlement_pending?: boolean;
 }
 
 function publicRenderUrl(input: RevealReceiptInput): string | undefined {
@@ -1193,7 +1196,8 @@ export function revealReceiptMessage(input: RevealReceiptInput): DiscordCallback
   const serial = visibleText(input.serial, "serial");
   const symbol = assertCurrencySymbol(input.currency.symbol);
   const price = assertNonNegative(input.price, "price");
-  const balance = assertNonNegative(input.balance_after, "balance_after");
+  const balance = input.balance_after === undefined ? null : assertNonNegative(input.balance_after, "balance_after");
+  const settlementPending = input.settlement_pending === true || input.settlement_status !== "settled" || balance === null;
   const probability = assertNonNegative(input.probability_bps, "probability_bps");
   if (probability > 10000) fail("invalid_input", "probability_bps", "Odds must use basis points.");
   const drawnAt = assertIsoTimestamp(input.drawn_at, "drawn_at");
@@ -1216,10 +1220,7 @@ export function revealReceiptMessage(input: RevealReceiptInput): DiscordCallback
     { name: "Serial", value: `\`${serial}\``, inline: true },
     { name: "Opened from", value: `${poolName} · ${price} ${symbol}`, inline: true },
     { name: "Opening debit", value: `−${price} ${symbol}`, inline: true },
-    ...(debitBalance === null
-      ? []
-      : [{ name: "After debit", value: `${debitBalance} ${symbol}`, inline: true }]),
-    ...(credits > 0
+    ...(!settlementPending && credits > 0
       ? [
           {
             name: "Reward credited",
@@ -1227,13 +1228,15 @@ export function revealReceiptMessage(input: RevealReceiptInput): DiscordCallback
               input.achievement_credits?.length
                 ? ` · ${input.achievement_credits.map((item) => item.name).join(", ")}`
                 : ""
-            }`,
+            }${debitBalance === null ? "" : `\nBalance after opening: ${debitBalance} ${symbol}`}`,
             inline: false,
           },
         ]
       : []),
-    { name: "Settled balance", value: `${balance} ${symbol}`, inline: true },
-    { name: "Odds", value: `${(probability / 100).toFixed(2)}% for this copy`, inline: false },
+    ...(settlementPending
+      ? [{ name: "Balance and rewards", value: "Not yet confirmed · check your wallet before opening another capsule.", inline: false }]
+      : [{ name: "Settled balance", value: `${balance} ${symbol}`, inline: true }]),
+    { name: "Odds", value: `${(probability / 100).toFixed(2)}% for this copy`, inline: true },
   ];
   if (!canShare) {
     fields.push({
@@ -1286,7 +1289,7 @@ export function revealReceiptMessage(input: RevealReceiptInput): DiscordCallback
     attachments: attachment ? [attachment] : [],
     embed: {
       title: `${cardName} — ${finish}`,
-      description: `Pulled from **${poolName}**. This copy is in your cabinet immediately. **Open again** is a new, priced pull; this receipt is committed and cannot re-draw.`,
+      description: `From **${poolName}** · Saved to your cabinet.\n**Open again** starts a new ${price} ${symbol} opening.`,
       accent: FOILBURY_PALETTE.deepAqua,
       fields,
       footer: `Foilbury · committed receipt${input.scope_name ? ` · ${visibleText(input.scope_name, "scope_name")}` : ""}`,
@@ -1350,10 +1353,12 @@ export function cabinetSummaryMessage(input: CabinetSummaryInput): DiscordCallba
   return buildMessage({
     visibility: "private",
     embed: {
-      title: input.owned === 0 ? "Your cabinet is empty" : "Your cabinet",
+      title: input.owned === 0 ? (input.scopeNotice ? "No cards available here" : "Your cabinet is empty") : "Your cabinet",
       description:
         input.owned === 0
-          ? "Claim the daily allowance, then open a capsule. Your cards are tied to this Bot and appear on every server where it is installed."
+          ? input.scopeNotice
+            ? `No cards from your cabinet are available in this server. ${visibleText(input.scopeNotice, "cabinet.scopeNotice")}`
+            : "Claim the daily allowance, then open a capsule. Your cards are tied to this Bot and appear on every server where it is installed."
           : `${items
               .map(
                 (item) =>
@@ -1864,17 +1869,9 @@ export interface ProfileInput {
   achievementsEarned?: number;
   publicBadgeCount?: number;
   isBotAdmin?: boolean;
-  lookLabel?: string;
-  note?: string;
-  featured?: { name: string; variant: string; finish: string };
-  badgeNames?: string[];
-  imageAttachment?: string;
-  attachment?: DiscordAttachment;
   profileUrl: string;
-  customiseUrl?: string;
   dailyCustomId?: string;
   collectionCustomId?: string;
-  shareCustomId?: string;
 }
 
 export function profileMessage(input: ProfileInput): DiscordCallback {
@@ -1885,34 +1882,7 @@ export function profileMessage(input: ProfileInput): DiscordCallback {
     input.dailyAvailable || !input.nextDailyAt
       ? "Ready now"
       : formatDiscordTimestamp(input.nextDailyAt);
-  const look = input.lookLabel ? visibleText(input.lookLabel, "lookLabel") : null;
-  const note = input.note ? visibleText(input.note, "note", { multiline: true }) : null;
-  const featured = input.featured
-    ? {
-        name: visibleText(input.featured.name, "featured.name"),
-        variant: visibleText(input.featured.variant, "featured.variant"),
-        finish: visibleText(input.featured.finish, "featured.finish"),
-      }
-    : null;
-  const badgeNames = (input.badgeNames ?? [])
-    .map((name) => visibleText(name, "badgeNames"))
-    .slice(0, 6);
-  const fields: FieldInput[] = [];
-  if (featured) {
-    const meta =
-      featured.finish && featured.finish !== featured.variant
-        ? `${featured.variant} · ${featured.finish}`
-        : featured.variant;
-    fields.push({
-      name: "Featured copy",
-      value: `**${featured.name}**\n${meta}`,
-      inline: false,
-    });
-  }
-  if (look) {
-    fields.push({ name: "Look", value: look, inline: true });
-  }
-  fields.push(
+  const fields: FieldInput[] = [
     {
       name: "Balance",
       value: `${assertNonNegative(input.balance, "balance")} ${symbol}`,
@@ -1923,7 +1893,7 @@ export function profileMessage(input: ProfileInput): DiscordCallback {
       value: String(assertNonNegative(input.ownedCards, "ownedCards")),
       inline: true,
     },
-  );
+  ];
   if (input.uniqueCards !== undefined) {
     fields.push({
       name: "Unique cards",
@@ -1939,51 +1909,34 @@ export function profileMessage(input: ProfileInput): DiscordCallback {
       inline: true,
     });
   }
-  if (badgeNames.length) {
-    fields.push({
-      name: "Selected badges",
-      value: badgeNames.join(" · ").slice(0, 1000),
-      inline: false,
-    });
-  }
-  if (note) {
-    fields.push({ name: "Collector note", value: note.slice(0, 1000), inline: false });
-  }
   fields.push({ name: "Inventory scope", value: "This Bot across every server", inline: false });
   fields.push({
     name: "Privacy",
     value:
-      "This response is private. Your share preview shows exactly what the channel will receive.",
+      "This response is private. Public profile sharing is separate, explicit and limited to approved counts.",
     inline: false,
   });
-  const rows: ButtonInput[][] = [];
-  const primary: ButtonInput[] = [];
-  if (input.dailyCustomId)
-    primary.push({ label: "Daily", customId: input.dailyCustomId, style: 2 });
-  if (input.collectionCustomId)
-    primary.push({ label: "Collection", customId: input.collectionCustomId, style: 2 });
-  primary.push({ label: "View showcase", url: input.profileUrl });
-  if (primary.length) rows.push(primary);
-  const secondary: ButtonInput[] = [];
-  if (input.customiseUrl)
-    secondary.push({ label: "Customise", url: input.customiseUrl });
-  if (input.shareCustomId)
-    secondary.push({ label: "Share preview", customId: input.shareCustomId, style: 2 });
-  if (secondary.length) rows.push(secondary);
+  const rows: ButtonInput[][] = [
+    [
+      ...(input.dailyCustomId
+        ? [{ label: "Daily", customId: input.dailyCustomId, style: 2 } as ButtonInput]
+        : []),
+      ...(input.collectionCustomId
+        ? [{ label: "Collection", customId: input.collectionCustomId, style: 2 } as ButtonInput]
+        : []),
+      { label: "Open profile", url: input.profileUrl },
+    ],
+  ];
   return buildMessage({
     visibility: "private",
     embed: {
       title: displayName,
-      description: `Collector in **${scopeName}**${look ? ` · ${look}` : ""}${input.isBotAdmin ? " · Bot administration available" : ""}.`,
+      description: `Collector in **${scopeName}**${input.isBotAdmin ? " · Bot administration available" : ""}.`,
       accent: FOILBURY_PALETTE.deepAqua,
       fields,
-      ...(input.imageAttachment
-        ? { image: { attachment: input.imageAttachment, width: 750, height: 1050 } }
-        : {}),
       footer: "Private response · sharing is separate and explicit",
     },
     rows,
-    ...(input.attachment ? { attachments: [input.attachment] } : {}),
   });
 }
 
@@ -2115,6 +2068,7 @@ export interface StateInput {
   retryLabel?: string;
   helpUrl?: string;
   correlationId?: string;
+  footer?: string;
 }
 
 const STATE_TITLES: Record<StateKind, string> = {
@@ -2172,7 +2126,7 @@ export function stateMessage(input: StateInput): DiscordCallback {
       description: input.message,
       accent: input.kind === "empty" ? FOILBURY_PALETTE.ice : FOILBURY_PALETTE.ink,
       fields,
-      footer: STATE_FOOTERS[input.kind],
+      footer: input.footer ?? STATE_FOOTERS[input.kind],
     },
     rows,
   });
@@ -2186,6 +2140,18 @@ export interface SafeErrorCopy {
 }
 
 export const SAFE_ERROR_COPY: Record<string, SafeErrorCopy> = {
+  scoped_draw_temporarily_unavailable: {
+    kind: "empty",
+    title: "Capsules temporarily unavailable",
+    message: "New server-scoped capsule openings are temporarily unavailable. Check your collection for any opening already completed.",
+    nextStep: "Try again later. Your collection and any completed openings remain available.",
+  },
+  session_required: {
+    kind: "denied",
+    title: "Confirm in Studio",
+    message: "A Discord confirmation alone cannot authorize a Foil adjustment. No Foil was changed.",
+    nextStep: "Open Foilbury Studio on the web, confirm with a passkey or authenticator, and make the adjustment there.",
+  },
   reward_cooldown: {
     kind: "empty",
     title: "Allowance not ready",
@@ -2209,27 +2175,27 @@ export const SAFE_ERROR_COPY: Record<string, SafeErrorCopy> = {
     kind: "denied",
     title: "This channel is not enabled",
     message:
-      "Foilbury is not enabled in this channel. Nothing was charged and no player was created.",
+      "Foilbury is not enabled in this channel. Check your collection for any opening that already completed.",
     nextStep: "Use the configured play channel or ask a Bot Admin to enable this one.",
   },
   discord_channel_not_allowed: {
     kind: "denied",
     title: "This channel is not enabled",
     message:
-      "Foilbury is not enabled in this channel. Nothing was charged and no player was created.",
+      "Foilbury is not enabled in this channel. Check your collection for any opening that already completed.",
     nextStep: "Use the configured play channel or ask a Bot Admin to enable this one.",
   },
   discord_game_disabled: {
     kind: "denied",
     title: "Gameplay is paused",
-    message: "Discord gameplay is paused for this Bot. Nothing was charged.",
+    message: "Discord gameplay is paused for this Bot. Check your collection for any opening that already completed.",
     nextStep:
       "Ask a Bot Admin to re-enable gameplay; administration remains available to authorised staff.",
   },
   discord_installation_missing: {
     kind: "denied",
     title: "This server is not connected",
-    message: "This server is not bound to a Foilbury Bot. No player, card or charge was created.",
+    message: "This server is not connected to an active Foilbury Bot. Check your collection for any opening that already completed.",
     nextStep: "Ask the Bot Owner to connect the Bot to this server.",
   },
   discord_guild_required: {
@@ -2261,8 +2227,8 @@ export const SAFE_ERROR_COPY: Record<string, SafeErrorCopy> = {
     kind: "denied",
     title: "This channel is not verified for that artwork",
     message:
-      "The card or album is wider than this channel's verified audience. Nothing was posted.",
-    nextStep: "Choose a public item, or ask a Bot Admin to verify the channel audience.",
+      "Only public items can currently be shared to a channel. Nothing was posted.",
+    nextStep: "Choose a public item; member artwork remains private.",
   },
   share_private_not_available: {
     kind: "denied",
@@ -2270,11 +2236,41 @@ export const SAFE_ERROR_COPY: Record<string, SafeErrorCopy> = {
     message: "Private collection artwork cannot be shared to a channel. Nothing was posted.",
     nextStep: "Choose an approved public or member-safe item.",
   },
+  share_summary_unavailable: {
+    kind: "denied",
+    title: "Summary sharing is unavailable",
+    message: "This summary cannot be shared safely right now. Nothing was posted.",
+    nextStep: "Your collection and progress remain available privately.",
+  },
+  discord_scope_changed: {
+    kind: "denied",
+    title: "Server settings changed",
+    message: "The available collection changed while this view was loading. Nothing was posted.",
+    nextStep: "Run the command again to see the current collection.",
+  },
   share_already_delivered: {
     kind: "empty",
     title: "Already shared here",
     message: "That item was already shared in this channel. Nothing was posted again.",
     nextStep: "Open the existing message, or share a different item.",
+  },
+  share_reconciliation_required: {
+    kind: "denied",
+    title: "Share needs reconciliation",
+    message: "A previous share may still be in progress or may have been posted. Nothing was posted again.",
+    nextStep: "Check the channel and contact the Bot Owner before trying again.",
+  },
+  share_temporarily_unavailable: {
+    kind: "denied",
+    title: "Card sharing temporarily unavailable",
+    message: "Card sharing is temporarily unavailable. Nothing was posted.",
+    nextStep: "Try again later or contact the Bot Owner.",
+  },
+  share_access_changed: {
+    kind: "denied",
+    title: "Card sharing changed",
+    message: "The card or your access changed. Nothing was posted.",
+    nextStep: "Check the card and your access before trying again.",
   },
   mission_incomplete: {
     kind: "empty",
@@ -2394,6 +2390,7 @@ export interface ErrorPresentationInput {
   retryLabel?: string;
   helpUrl?: string;
   correlationId?: string;
+  outcomeUncertain?: boolean;
 }
 
 /**
@@ -2410,8 +2407,13 @@ export function stateFromError(input: ErrorPresentationInput = {}): DiscordCallb
   return stateMessage({
     kind: copy.kind,
     title: copy.title,
-    message: input.message ?? copy.message,
-    nextStep: input.nextStep ?? copy.nextStep,
+    message: input.outcomeUncertain
+      ? "An opening with this request may have completed. Check your collection before starting a new opening."
+      : input.message ?? copy.message,
+    nextStep: input.outcomeUncertain
+      ? `Check your collection first. ${input.nextStep ?? copy.nextStep}`
+      : input.nextStep ?? copy.nextStep,
+    ...(input.outcomeUncertain || input.code === "scoped_draw_temporarily_unavailable" ? { footer: "Check your collection for completed openings." } : {}),
     ...(input.retryCustomId ? { retryCustomId: input.retryCustomId } : {}),
     ...(input.retryLabel ? { retryLabel: input.retryLabel } : {}),
     ...(input.helpUrl ? { helpUrl: input.helpUrl } : {}),

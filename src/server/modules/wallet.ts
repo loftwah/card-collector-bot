@@ -96,6 +96,9 @@ export async function creditWallet(
     metadata?: Record<string, unknown>;
     actorType?: string;
     actorId?: string;
+    requireActiveMember?: boolean;
+    /** Optional trusted domain predicate evaluated in the same credit batch. */
+    transactionGuard?: D1PreparedStatement;
   },
 ): Promise<{ balance: number; ledgerId: string }> {
   if (!Number.isInteger(input.amount) || input.amount <= 0) {
@@ -119,16 +122,19 @@ export async function creditWallet(
   const ledgerId = newId("led");
   const now = nowIso();
   await db.batch([
+    ...(input.transactionGuard ? [input.transactionGuard] : []),
     db
-      .prepare("UPDATE fb_wallets SET balance = balance + ?, updated_at = ? WHERE tenant_id = ? AND user_id = ?")
-      .bind(input.amount, now, input.tenantId, input.userId),
+      .prepare(`UPDATE fb_wallets SET balance = balance + ?, updated_at = ? WHERE tenant_id = ? AND user_id = ?
+        AND (? = 0 OR EXISTS (SELECT 1 FROM fb_memberships m JOIN fb_users u ON u.id=m.user_id
+          WHERE m.tenant_id=fb_wallets.tenant_id AND m.user_id=fb_wallets.user_id AND m.status='active' AND m.revoked_at IS NULL AND u.disabled_at IS NULL))`)
+      .bind(input.amount, now, input.tenantId, input.userId, input.requireActiveMember ? 1 : 0),
     db
       .prepare(
         `INSERT INTO fb_ledger_entries
           (id, tenant_id, user_id, kind, amount, balance_after, reference_type, reference_id,
            description, idempotency_key, metadata_json, actor_type, actor_id, created_at)
          SELECT ?, ?, ?, ?, ?, balance, ?, ?, ?, ?, ?, ?, ?, ?
-           FROM fb_wallets WHERE tenant_id = ? AND user_id = ?`,
+           FROM fb_wallets WHERE tenant_id = ? AND user_id = ? AND changes() = 1`,
       )
       .bind(
         ledgerId,

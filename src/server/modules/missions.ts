@@ -2,6 +2,7 @@ import { ApiError, checkRateLimit, type Ctx } from "../context";
 import { all, first, nowIso } from "../db";
 import { newId } from "../ids";
 import { auditStatement } from "../http";
+import { liveHumanCollectionSelection } from "./discord-installation-settings";
 
 export interface MissionDefinition {
   key: string;
@@ -26,7 +27,7 @@ export const DAILY_MISSION_CATALOGUE: MissionDefinition[] = [
     key: "explore",
     version: 1,
     title: "Visit a world",
-    description: "Look around a world, then record your visit.",
+    description: "Explore a world you can access, then record your visit.",
     eventTypes: ["collection.explored"],
     target: 1,
     reward: 60,
@@ -102,29 +103,33 @@ export interface DailyMissionState {
       complete: boolean;
       claimed: boolean;
       claimable: boolean;
+      cap_reached: boolean;
       claimed_at: string | null;
     }
   >;
 }
 
-async function inventorySummary(ctx: Ctx, userId: string) {
+async function inventorySummary(ctx: Ctx, userId: string, authority: ReturnType<typeof missionClaimAuthority>) {
   const [owned, balance, cheapest] = await Promise.all([
     first<{ cards: number }>(
       ctx.db,
-      "SELECT COUNT(DISTINCT card_id) AS cards FROM fb_card_instances WHERE tenant_id = ? AND user_id = ? AND status IN ('owned','reserved')",
+      `SELECT COUNT(DISTINCT card_id) AS cards FROM fb_card_instances WHERE tenant_id = ? AND user_id = ? AND status IN ('owned','reserved') AND ${authority.sql}`,
       ctx.tenant.id,
       userId,
+      ...authority.args,
     ),
     first<{ balance: number }>(
       ctx.db,
-      "SELECT balance FROM fb_wallets WHERE tenant_id = ? AND user_id = ?",
+      `SELECT balance FROM fb_wallets WHERE tenant_id = ? AND user_id = ? AND ${authority.sql}`,
       ctx.tenant.id,
       userId,
+      ...authority.args,
     ),
     first<{ price: number }>(
       ctx.db,
-      "SELECT MIN(price) AS price FROM fb_pools WHERE tenant_id = ? AND status = 'active'",
+      `SELECT MIN(price) AS price FROM fb_pools WHERE tenant_id = ? AND status = 'active' AND ${authority.sql}`,
       ctx.tenant.id,
+      ...authority.args,
     ),
   ]);
   return {
@@ -143,15 +148,18 @@ function selectedKeys(input: { cards: number; balance: number; cheapestPrice: nu
   return [...new Set(keys)].slice(0, 3);
 }
 
-export async function getDailyMissions(ctx: Ctx): Promise<DailyMissionState> {
+export async function getDailyMissions(ctx: Ctx, scope: 'missions:read'|'missions:claim' = 'missions:read'): Promise<DailyMissionState> {
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in to see today's missions.");
   if (user.synthetic) throw new ApiError(403, "synthetic_mission_blocked", "NPC collectors do not receive human daily missions.");
+  const authority=missionClaimAuthority(ctx,scope);
+  if (!await first<{ok:number}>(ctx.db,`SELECT 1 AS ok WHERE ${authority.sql}`,...authority.args))
+    throw new ApiError(403,'mission_access_changed','Your mission access changed. Sign in again.');
   const now = new Date();
   const day = utcDayKey(now);
   const pkey = periodKey(now);
   const start = periodStart(now);
-  const summary = await inventorySummary(ctx, user.id);
+  const summary = await inventorySummary(ctx, user.id, authority);
   const keys = selectedKeys(summary);
   let assigned = await all<{
     mission_key: string;
@@ -161,38 +169,27 @@ export async function getDailyMissions(ctx: Ctx): Promise<DailyMissionState> {
     definition_json: string;
   }>(
     ctx.db,
-    "SELECT mission_key, version, target, reward, definition_json FROM fb_mission_assignments WHERE tenant_id = ? AND user_id = ? AND period_key = ? ORDER BY mission_key",
+    `SELECT mission_key, version, target, reward, definition_json FROM fb_mission_assignments WHERE tenant_id = ? AND user_id = ? AND period_key = ? AND ${authority.sql} ORDER BY mission_key`,
     ctx.tenant.id,
     user.id,
     pkey,
+    ...authority.args,
   );
   if (assigned.length === 0) {
     const chosen = keys
       .map((key) => DAILY_MISSION_CATALOGUE.find((mission) => mission.key === key))
       .filter((mission): mission is MissionDefinition => Boolean(mission));
     const now = nowIso();
-    await ctx.db.batch(
-      chosen.map((mission) =>
-        ctx.db
-          .prepare(
-            `INSERT INTO fb_mission_assignments
-              (tenant_id, user_id, period_key, mission_key, version, target, reward, definition_json, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT(tenant_id, user_id, period_key, mission_key) DO NOTHING`,
-          )
-          .bind(
-            ctx.tenant.id,
-            user.id,
-            pkey,
-            mission.key,
-            mission.version,
-            mission.target,
-            mission.reward,
-            JSON.stringify(mission),
-            now,
-          ),
-      ),
-    );
+    // Select the whole first assignment in one statement. Per-key conflicts
+    // can merge two different concurrent choices and exceed the daily cap.
+    await ctx.db.batch([
+      ctx.db.prepare(`INSERT INTO fb_mission_assignments
+        (tenant_id,user_id,period_key,mission_key,version,target,reward,definition_json,created_at)
+        SELECT ?,?,?,json_extract(value,'$.key'),json_extract(value,'$.version'),json_extract(value,'$.target'),
+          json_extract(value,'$.reward'),json(value),? FROM json_each(?)
+        WHERE NOT EXISTS (SELECT 1 FROM fb_mission_assignments WHERE tenant_id=? AND user_id=? AND period_key=?) AND ${authority.sql}`)
+        .bind(ctx.tenant.id,user.id,pkey,now,JSON.stringify(chosen),ctx.tenant.id,user.id,pkey,...authority.args),
+    ]);
     assigned = await all<{
       mission_key: string;
       version: number;
@@ -201,10 +198,11 @@ export async function getDailyMissions(ctx: Ctx): Promise<DailyMissionState> {
       definition_json: string;
     }>(
       ctx.db,
-      "SELECT mission_key, version, target, reward, definition_json FROM fb_mission_assignments WHERE tenant_id = ? AND user_id = ? AND period_key = ? ORDER BY mission_key",
+      `SELECT mission_key, version, target, reward, definition_json FROM fb_mission_assignments WHERE tenant_id = ? AND user_id = ? AND period_key = ? AND ${authority.sql} ORDER BY mission_key`,
       ctx.tenant.id,
       user.id,
       pkey,
+      ...authority.args,
     );
   }
   const definitions = assigned
@@ -220,31 +218,35 @@ export async function getDailyMissions(ctx: Ctx): Promise<DailyMissionState> {
   const eventTypes = [...new Set(definitions.flatMap((mission) => mission.eventTypes))];
   const economy = await first<{ currency_symbol: string }>(
     ctx.db,
-    "SELECT currency_symbol FROM fb_economy_settings WHERE tenant_id = ?",
+    `SELECT currency_symbol FROM fb_economy_settings WHERE tenant_id = ? AND ${authority.sql}`,
     ctx.tenant.id,
+    ...authority.args,
   );
   const [events, claims] = await Promise.all([
     eventTypes.length
       ? ctx.db
           .prepare(
             `SELECT event_type, COUNT(*) AS count FROM fb_domain_events
-              WHERE tenant_id = ? AND user_id = ? AND created_at >= ? AND event_type IN (${eventTypes.map(() => "?").join(",")})
+              WHERE tenant_id = ? AND user_id = ? AND created_at >= ? AND event_type IN (${eventTypes.map(() => "?").join(",")}) AND ${authority.sql}
               GROUP BY event_type`,
           )
-          .bind(ctx.tenant.id, user.id, start, ...eventTypes)
+          .bind(ctx.tenant.id, user.id, start, ...eventTypes, ...authority.args)
           .all<{ event_type: string; count: number }>()
           .then((result) => result.results ?? [])
       : Promise.resolve([]),
     ctx.db
       .prepare(
-        "SELECT rule_key, amount, created_at FROM fb_reward_claims WHERE tenant_id = ? AND user_id = ? AND period_key = ? AND rule_key LIKE 'mission:%'",
+        `SELECT rule_key, amount, created_at FROM fb_reward_claims WHERE tenant_id = ? AND user_id = ? AND period_key = ? AND rule_key LIKE 'mission:%' AND ${authority.sql}`,
       )
-      .bind(ctx.tenant.id, user.id, pkey)
+      .bind(ctx.tenant.id, user.id, pkey, ...authority.args)
       .all<{ rule_key: string; amount: number; created_at: string }>()
       .then((result) => result.results ?? []),
   ]);
+  if (!await first<{ok:number}>(ctx.db,`SELECT 1 AS ok WHERE ${authority.sql}`,...authority.args))
+    throw new ApiError(403,'mission_access_changed','Your mission access changed. Sign in again.');
   const progress = new Map(events.map((row) => [row.event_type, row.count]));
   const claimMap = new Map(claims.map((row) => [row.rule_key, row]));
+  const earnedToday = claims.reduce((sum, row) => sum + row.amount, 0);
   const missions = definitions.map((mission) => {
     const count = Math.max(...mission.eventTypes.map((eventType) => progress.get(eventType) ?? 0));
     const progressValue = Math.min(mission.target, count);
@@ -254,7 +256,8 @@ export async function getDailyMissions(ctx: Ctx): Promise<DailyMissionState> {
       progress: progressValue,
       complete: progressValue >= mission.target,
       claimed: Boolean(claim),
-      claimable: progressValue >= mission.target && !claim,
+      claimable: progressValue >= mission.target && !claim && earnedToday + mission.reward <= DAILY_MISSION_CAP,
+      cap_reached: !claim && earnedToday + mission.reward > DAILY_MISSION_CAP,
       claimed_at: claim?.created_at ?? null,
     };
   });
@@ -268,45 +271,79 @@ export async function getDailyMissions(ctx: Ctx): Promise<DailyMissionState> {
       timeStyle: "short",
     }).format(new Date(nextUtcReset(now)))} Melbourne time`,
     cap: DAILY_MISSION_CAP,
-    earned_today: claims.reduce((sum, row) => sum + row.amount, 0),
+    earned_today: earnedToday,
     currency_symbol: economy?.currency_symbol ?? "✦",
     missions,
   };
+}
+
+function missionClaimAuthority(ctx: Ctx, scope: 'missions:read'|'missions:claim' = 'missions:claim') {
+  const user=ctx.user;
+  if (!user || ctx.actor.representedUserId!==user.id || (ctx.actor.type==='user' && ctx.actor.id!==user.id))
+    throw new ApiError(403,'mission_access_changed','Your mission access changed. Sign in again.');
+  const access=ctx.sessionAssurance==='access' && ctx.accessStatus==='linked' ? ctx.accessIdentity : null;
+  return {sql:`EXISTS (SELECT 1 FROM fb_memberships m JOIN fb_users u ON u.id=m.user_id AND u.disabled_at IS NULL AND u.is_synthetic=0
+    JOIN fb_bots b ON b.tenant_id=m.tenant_id AND b.status='active'
+    WHERE m.tenant_id=? AND m.user_id=? AND m.status='active' AND m.revoked_at IS NULL AND (
+      (?='user' AND (EXISTS (SELECT 1 FROM fb_sessions s WHERE s.id=? AND s.user_id=u.id AND s.tenant_id=m.tenant_id AND s.revoked_at IS NULL AND s.expires_at>strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+        OR (?='access' AND ?>unixepoch('now') AND EXISTS (SELECT 1 FROM fb_access_identities ai WHERE ai.user_id=u.id AND ai.team_domain=? AND ai.subject=? AND ai.email=? AND ai.revoked_at IS NULL) AND u.email=? COLLATE NOCASE)))
+      OR (?='user' AND EXISTS (SELECT 1 FROM fb_discord_identities d WHERE d.tenant_id=m.tenant_id AND d.user_id=u.id AND d.discord_user_id=? AND d.revoked_at IS NULL))
+      OR (?='agent' AND EXISTS (SELECT 1 FROM fb_agent_tokens t JOIN fb_agent_grants g ON g.id=t.grant_id WHERE t.id=? AND g.id=? AND t.revoked_at IS NULL AND g.agent_id=? AND g.represented_user_id=u.id AND g.tenant_id=m.tenant_id AND g.status='active' AND g.revoked_at IS NULL AND g.expires_at>strftime('%Y-%m-%dT%H:%M:%fZ','now')
+        AND json_type(CASE WHEN json_valid(g.scopes_json) THEN g.scopes_json ELSE 'null' END)='array' AND NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(g.scopes_json) THEN g.scopes_json ELSE '[]' END) WHERE type<>'text')
+        AND EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(g.scopes_json) THEN g.scopes_json ELSE '[]' END) WHERE value=?)))))`,
+    args:[ctx.tenant.id,user.id,ctx.actor.type,ctx.sessionId,ctx.sessionAssurance,access?.payload.exp ?? 0,ctx.config.access.teamDomain,access?.subject ?? '',access?.email ?? '',access?.email ?? '',ctx.actor.type,ctx.discordPrincipal?.discordUserId ?? '',ctx.actor.type,ctx.agentCredential?.tokenId ?? '',ctx.agentCredential?.grantId ?? '',ctx.actor.id,scope]};
+}
+
+/** Record an intentional world visit with live viewer and principal checks. */
+export async function recordCollectionExploration(ctx: Ctx, collectionId: string) {
+  if (!ctx.user || ctx.user.synthetic || ctx.actor.type !== 'user' || ctx.actor.id !== ctx.user.id || ctx.actor.representedUserId !== ctx.user.id)
+    throw new ApiError(403,'exploration_unavailable','Sign in as a member to record a world visit.');
+  const authority=missionClaimAuthority(ctx,'missions:read');
+  const visible=liveHumanCollectionSelection(ctx,collectionId);
+  const keyPrefix=`explore:${ctx.user.id}:${collectionId}:`;
+  const result=await ctx.db.prepare(`INSERT OR IGNORE INTO fb_domain_events (id,tenant_id,user_id,event_type,object_type,object_id,dedupe_key,payload_json,created_at)
+    SELECT ?,?,?,'collection.explored','collection',?,? || strftime('%Y-%m-%d','now'),'{}',strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE EXISTS (SELECT 1 FROM fb_collections WHERE id=? AND status='published' AND archived_at IS NULL) AND ${authority.sql} AND ${visible.sql}`)
+    .bind(newId('evt'),ctx.tenant.id,ctx.user.id,collectionId,keyPrefix,collectionId,...authority.args,...visible.args).run();
+  const current=await first<{ok:number}>(ctx.db,`SELECT 1 AS ok WHERE EXISTS (SELECT 1 FROM fb_collections WHERE id=? AND status='published' AND archived_at IS NULL) AND ${authority.sql} AND ${visible.sql}`,
+    collectionId,...authority.args,...visible.args);
+  if (!current) throw new ApiError(404,'collection_not_found','That collection is not available.');
+  return {recorded:result.meta.changes===1,already_recorded:result.meta.changes===0};
 }
 
 export async function claimDailyMission(ctx: Ctx, key: string, idempotencyKey?: string) {
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in to claim a mission.");
   if (user.synthetic) throw new ApiError(403, "synthetic_mission_blocked", "NPC collectors do not receive human daily missions.");
+  const authority=missionClaimAuthority(ctx);
+  if (!await first<{ok:number}>(ctx.db,`SELECT 1 AS ok WHERE ${authority.sql}`,...authority.args))
+    throw new ApiError(403,'mission_access_changed','Your mission access changed. Sign in again.');
   await checkRateLimit(ctx.db, `mission-claim:${ctx.tenant.id}:${user.id}`, 20, 3600);
-  const state = await getDailyMissions(ctx);
+  const state = await getDailyMissions(ctx,'missions:claim');
   const mission = state.missions.find((item) => item.key === key);
   if (!mission) throw new ApiError(404, "mission_not_assigned", "That mission is not part of today's assignment.");
-  const existing = await first<{ id: string; amount: number; created_at: string }>(
+  const readReceipt=()=>first<{ id: string; amount: number; created_at: string; balance: number }>(
     ctx.db,
-    "SELECT id, amount, created_at FROM fb_reward_claims WHERE tenant_id = ? AND user_id = ? AND rule_key = ? AND period_key = ?",
+    `SELECT r.id,r.amount,r.created_at,COALESCE(w.balance,0) AS balance FROM fb_reward_claims r LEFT JOIN fb_wallets w ON w.tenant_id=r.tenant_id AND w.user_id=r.user_id WHERE r.tenant_id = ? AND r.user_id = ? AND r.rule_key = ? AND r.period_key = ? AND ${authority.sql}`,
     ctx.tenant.id,
     user.id,
     `${state.period_key}:${mission.key}`,
     state.period_key,
+    ...authority.args,
   );
+  const existing = await readReceipt();
   if (existing) {
-    const wallet = await first<{ balance: number }>(
-      ctx.db,
-      "SELECT balance FROM fb_wallets WHERE tenant_id = ? AND user_id = ?",
-      ctx.tenant.id,
-      user.id,
-    );
     return {
       replayed: true,
       claim_id: existing.id,
       amount: existing.amount,
-      balance_after: wallet?.balance ?? 0,
+      balance_after: existing.balance,
       period_key: state.period_key,
       mission_key: mission.key,
       claimed_at: existing.created_at,
     };
   }
+  if (!await first<{ok:number}>(ctx.db,`SELECT 1 AS ok WHERE ${authority.sql}`,...authority.args))
+    throw new ApiError(403,'mission_access_changed','Your mission access changed. Sign in again.');
   if (!mission.complete) {
     throw new ApiError(409, "mission_incomplete", "That mission is not complete yet. Nothing was credited.", {
       progress: mission.progress,
@@ -319,9 +356,13 @@ export async function claimDailyMission(ctx: Ctx, key: string, idempotencyKey?: 
     await ctx.db.batch([
       ctx.db
         .prepare(
-          "INSERT INTO fb_reward_claims (id, tenant_id, user_id, rule_key, rule_version, period_key, amount, created_at, idempotency_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          `INSERT INTO fb_reward_claims (id, tenant_id, user_id, rule_key, rule_version, period_key, amount, created_at, idempotency_key)
+           SELECT ?,?,?,?,?,?,?,?,? WHERE COALESCE((SELECT SUM(amount) FROM fb_reward_claims
+             WHERE tenant_id=? AND user_id=? AND period_key=? AND rule_key LIKE 'mission:%'),0)+?<=? AND ${authority.sql}`,
         )
-        .bind(claimId, ctx.tenant.id, user.id, `${state.period_key}:${mission.key}`, mission.version, state.period_key, mission.reward, now, `mission:${state.period_key}:${mission.key}`),
+        .bind(claimId, ctx.tenant.id, user.id, `${state.period_key}:${mission.key}`, mission.version, state.period_key, mission.reward, now, `mission:${state.period_key}:${mission.key}`,
+          ctx.tenant.id,user.id,state.period_key,mission.reward,DAILY_MISSION_CAP,...authority.args),
+      ctx.db.prepare("SELECT CASE WHEN changes()=1 THEN 1 ELSE json('mission_cap_reached') END"),
       auditStatement(ctx, "mission.claimed", "daily_mission", mission.key, {
         amount: mission.reward,
         period_key: state.period_key,
@@ -329,46 +370,37 @@ export async function claimDailyMission(ctx: Ctx, key: string, idempotencyKey?: 
       }),
     ]);
   } catch (error) {
-    if (String(error).includes("UNIQUE") || String(error).includes("reward_cooldown")) {
-      const replay = await first<{ id: string; amount: number; created_at: string }>(
-        ctx.db,
-        "SELECT id, amount, created_at FROM fb_reward_claims WHERE tenant_id = ? AND user_id = ? AND rule_key = ? AND period_key = ?",
-        ctx.tenant.id,
-        user.id,
-        `${state.period_key}:${mission.key}`,
-        state.period_key,
-      );
+    if (String(error).includes("UNIQUE") || String(error).includes("reward_cooldown") || String(error).includes('malformed JSON')) {
+      const replay = await readReceipt();
       if (replay) {
-        const replayWallet = await first<{ balance: number }>(
-          ctx.db,
-          "SELECT balance FROM fb_wallets WHERE tenant_id = ? AND user_id = ?",
-          ctx.tenant.id,
-          user.id,
-        );
         return {
           replayed: true,
           claim_id: replay.id,
           amount: replay.amount,
-          balance_after: replayWallet?.balance ?? 0,
+          balance_after: replay.balance,
           period_key: state.period_key,
           mission_key: mission.key,
           claimed_at: replay.created_at,
         };
       }
+      if (!await first<{ok:number}>(ctx.db,`SELECT 1 AS ok WHERE ${authority.sql}`,...authority.args))
+        throw new ApiError(403,'mission_access_changed','Your mission access changed. Sign in again.');
+    }
+    if (String(error).includes('malformed JSON')) {
+      const total=await first<{amount:number}>(ctx.db,`SELECT COALESCE(SUM(amount),0) AS amount FROM fb_reward_claims WHERE tenant_id=? AND user_id=? AND period_key=? AND rule_key LIKE 'mission:%'`,ctx.tenant.id,user.id,state.period_key);
+      if (Number(total?.amount ?? 0)+mission.reward>DAILY_MISSION_CAP)
+        throw new ApiError(409,'mission_daily_cap','The daily mission reward limit has been reached.');
     }
     throw error;
   }
-  const wallet = await first<{ balance: number }>(
-    ctx.db,
-    "SELECT balance FROM fb_wallets WHERE tenant_id = ? AND user_id = ?",
-    ctx.tenant.id,
-    user.id,
-  );
+  let committed:Awaited<ReturnType<typeof readReceipt>>;
+  try { committed=await readReceipt(); } catch { committed=null; }
+  if (!committed) throw new ApiError(503,'mission_receipt_unavailable','The mission may already have been credited. Sign in again and retry this same mission before doing anything else.');
   return {
     replayed: false,
     claim_id: claimId,
     amount: mission.reward,
-    balance_after: wallet?.balance ?? 0,
+    balance_after: committed.balance,
     currency: { name: "Foil", symbol: "✦" },
     period_key: state.period_key,
     mission_key: mission.key,
@@ -395,80 +427,4 @@ export async function recordDailyInteraction(
     dedupeKey: `${eventType}:${user.id}:${utcDayKey()}`,
     userId: user.id,
   });
-}
-
-/** Record a deliberate world visit with live authority in the same statement. */
-export async function recordWorldExploration(ctx: Ctx, collectionId: string): Promise<{recorded: true; day: string}> {
-  const user = ctx.user;
-  if (!user || ctx.actor.type !== "user" || ctx.actor.id !== user.id || !ctx.sessionId)
-    throw new ApiError(403, "exploration_unavailable", "This visit could not be recorded.");
-  const date = new Date(), now = date.toISOString(), day = utcDayKey(date);
-  const key = `explore:${user.id}:${collectionId}:${day}`;
-  // Conservative: current member, explicit viewer and Bot owner access only.
-  // Broader curator/administrator rights need a reusable live policy predicate.
-  const live = `FROM fb_collections c JOIN fb_users u ON u.id=? AND u.disabled_at IS NULL AND u.is_synthetic=0
-    JOIN fb_memberships m ON m.tenant_id=? AND m.user_id=u.id AND m.status='active' AND m.revoked_at IS NULL
-    JOIN fb_sessions s ON s.id=? AND s.user_id=u.id AND s.tenant_id=m.tenant_id AND s.revoked_at IS NULL AND julianday(s.expires_at)>julianday('now')
-    WHERE c.id=? AND c.status='published' AND c.archived_at IS NULL AND (c.scope='global' OR c.owner_tenant_id=m.tenant_id)
-      AND ((c.view_audience='public' AND c.public_approved_at IS NOT NULL)
-        OR (c.view_audience='members' AND (c.scope='global' OR c.owner_tenant_id=m.tenant_id))
-        OR (c.view_audience='private' AND (
-          EXISTS (SELECT 1 FROM fb_collection_viewers cv WHERE cv.collection_id=c.id AND cv.user_id=u.id AND cv.revoked_at IS NULL)
-          OR EXISTS (SELECT 1 FROM fb_bots b JOIN fb_memberships om ON om.tenant_id=b.tenant_id AND om.user_id=u.id
-            WHERE b.tenant_id=c.owner_tenant_id AND b.owner_user_id=u.id AND b.status<>'archived'
-              AND om.role='owner' AND om.status='active' AND om.revoked_at IS NULL))))`;
-  const args = [user.id, ctx.tenant.id, ctx.sessionId, collectionId];
-  const inserted = await first<{id:string}>(ctx.db, `INSERT INTO fb_domain_events
-    (id,tenant_id,user_id,event_type,object_type,object_id,dedupe_key,payload_json,created_at)
-    SELECT ?,m.tenant_id,u.id,'collection.explored','collection',c.id,?,'{}',? ${live}
-    ON CONFLICT(tenant_id,dedupe_key) DO NOTHING RETURNING id`,newId('evt'),key,now,...args);
-  if (inserted) return {recorded:true,day};
-  const existing = await first<{id:string}>(ctx.db, `SELECT c.id ${live} AND EXISTS
-    (SELECT 1 FROM fb_domain_events e WHERE e.tenant_id=m.tenant_id AND e.user_id=u.id AND e.event_type='collection.explored'
-      AND e.object_type='collection' AND e.object_id=c.id AND e.dedupe_key=?)`,...args,key);
-  if (!existing) throw new ApiError(404, "exploration_unavailable", "This visit could not be recorded.");
-  return {recorded:true,day};
-}
-
-/** Record an explicit inspection only while this human session still owns the copy. */
-export async function recordOwnedInspection(ctx: Ctx, instanceId: string): Promise<{ recorded: true; day: string }> {
-  const user = ctx.user;
-  if (!user || ctx.actor.type !== "user" || ctx.actor.id !== user.id || !ctx.sessionId) {
-    throw new ApiError(403, "inspection_unavailable", "This inspection could not be recorded.");
-  }
-  const nowDate = new Date();
-  const now = nowDate.toISOString();
-  const day = utcDayKey(nowDate);
-  const dedupeKey = `card.inspected:${user.id}:${day}`;
-  const liveCopy = `FROM fb_card_instances ci
-    JOIN fb_card_definitions cd ON cd.id=ci.card_id AND cd.status='published' AND cd.archived_at IS NULL
-    JOIN fb_variants v ON v.id=ci.variant_id AND v.card_id=cd.id AND v.status='published' AND v.archived_at IS NULL
-    JOIN fb_artwork_editions e ON e.id=v.edition_id AND e.tenant_id=v.tenant_id AND e.card_id=cd.id AND e.status='published' AND e.archived_at IS NULL
-    JOIN fb_users u ON u.id=ci.user_id AND u.disabled_at IS NULL AND u.is_synthetic=0
-    JOIN fb_memberships m ON m.tenant_id=ci.tenant_id AND m.user_id=ci.user_id AND m.status='active' AND m.revoked_at IS NULL
-    JOIN fb_sessions s ON s.id=? AND s.tenant_id=ci.tenant_id AND s.user_id=ci.user_id AND s.revoked_at IS NULL AND julianday(s.expires_at)>julianday('now')
-    WHERE ci.id=? AND ci.tenant_id=? AND ci.user_id=? AND ci.status IN ('owned','reserved')
-      AND (EXISTS (SELECT 1 FROM fb_collection_cards x WHERE x.card_id=cd.id) OR cd.tenant_id=ci.tenant_id)
-      AND NOT EXISTS (
-        SELECT 1 FROM fb_collection_cards cc JOIN fb_collections c ON c.id=cc.collection_id
-        WHERE cc.card_id=cd.id AND NOT COALESCE(
-          c.status='published' AND c.archived_at IS NULL AND (c.scope='global' OR c.owner_tenant_id=ci.tenant_id)
-          AND ((c.view_audience='public' AND c.public_approved_at IS NOT NULL)
-            OR (c.view_audience='members' AND (c.scope='global' OR c.owner_tenant_id=ci.tenant_id))
-            OR (c.view_audience='private' AND (
-              EXISTS (SELECT 1 FROM fb_collection_viewers cv WHERE cv.collection_id=c.id AND cv.user_id=u.id AND cv.revoked_at IS NULL)
-              OR EXISTS (SELECT 1 FROM fb_bots b JOIN fb_memberships om ON om.tenant_id=b.tenant_id AND om.user_id=u.id
-                WHERE b.tenant_id=c.owner_tenant_id AND b.owner_user_id=u.id AND b.status<>'archived'
-                  AND om.role='owner' AND om.status='active' AND om.revoked_at IS NULL)
-            ))), 0)
-      )`;
-  const args = [ctx.sessionId, instanceId, ctx.tenant.id, user.id];
-  const inserted = await first<{ id: string }>(ctx.db, `INSERT INTO fb_domain_events
-    (id,tenant_id,user_id,event_type,object_type,object_id,dedupe_key,payload_json,created_at)
-    SELECT ?,ci.tenant_id,ci.user_id,'card.inspected','card',ci.card_id,?,'{}',? ${liveCopy}
-    ON CONFLICT(tenant_id,dedupe_key) DO NOTHING RETURNING id`, newId("evt"), dedupeKey, now, ...args);
-  if (inserted) return { recorded: true, day };
-  const existing = await first<{ id: string }>(ctx.db, `SELECT ci.id ${liveCopy} AND EXISTS (SELECT 1 FROM fb_domain_events e WHERE e.tenant_id=ci.tenant_id AND e.user_id=ci.user_id AND e.event_type='card.inspected' AND e.object_type='card' AND e.dedupe_key=?)`, ...args, dedupeKey);
-  if (!existing) throw new ApiError(404, "inspection_unavailable", "This inspection could not be recorded.");
-  return { recorded: true, day };
 }

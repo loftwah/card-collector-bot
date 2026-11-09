@@ -85,10 +85,60 @@ authorised by its source card's current effective audience on every request.
 - Maximum upload is 8 MB and 5,000 px per side.
 - A render job is `pending → running → succeeded|failed|cancelled`; retrying
   never re-rolls a draw or creates another instance.
-- A failed upload or render does not publish a partial asset.
+- Render-job publication is currently held; see the recovery boundary below.
 - Reference-aware cleanup must keep assets referenced by historical awards,
   renders, collection marks and covers.
 - A catalogue restore restores asset IDs and compatible render references.
+
+### Render-job publication hold
+
+New render-job queueing, claiming and completion return
+`render_publication_unavailable`. Existing renders and job rows are preserved;
+an in-flight job is not marked successful and neither side is published by the
+completion endpoint. Do not repeatedly requeue or cancel old work to clear this
+hold. Inspect existing job state and retain source and output evidence.
+
+The current worker reads mutable R2 keys, separately fetched card and collection
+metadata, local back files and local renderer layers. Its job payload does not
+bind every input or object version, and the old completion path publishes front,
+back and job state in separate transactions. A database-only source-hash check
+cannot prove the worker used the claimed bytes. Recovery requires a version-bound
+input manifest covering every actual renderer input and output, immutable or
+verified object versions, and one guarded D1 transaction for both render links,
+job transition, audit and outbox. Review how to reconcile old pending/running
+jobs without guessing their provenance, then rerun local concurrency, mutation,
+rollback and real renderer checks. Production render batches remain separately
+approval-gated. Manual back uploads use a different path and are not covered by
+this job hold. The separate `renders:publish-public` script is also held for both
+dry-run and apply invocations before it reads or writes local or remote state;
+existing artifacts and published rows are retained. Its former upload and SQL
+path did not establish immutable input provenance or atomic front/back publication.
+The unused `readVerifiedRenderInput` helper verifies a recorded R2 version, size
+and SHA-256 against returned bytes; it does not establish that a renderer consumed
+those bytes or make publication safe on its own.
+The separate, unused `render-manifest` prototype commits explicit display,
+composition, registered asset and renderer-dependency inputs. Its D1 check is a
+point-in-time comparison of references, display/composition/recipe fields and
+selected asset state/provenance, not an atomic publication fence or a review
+decision. No immutable manifest is persisted and no executor
+has proved that it consumed those inputs or produced the submitted output. A
+registered card back and collection mark (or explicit absence of the mark) are
+required; the legacy worker's local back/mark discovery does not satisfy this
+contract. A future executor must use the manifest's explicit collection rather
+than independently selecting its first linked collection. The reference check
+binds the edition-derived print subtitle; the two legacy worker scripts choose
+text differently and cannot be treated as equivalent. Existing jobs cannot be
+upgraded by guessing those inputs.
+
+The legacy worker uses a separate temporary directory per job. To inspect
+possible leftover directories without changing them, run
+`node scripts/content/inspect-render-temp.mjs` from the project root. The
+bounded listing identifies names and modification times only: it does not prove
+ownership, process liveness, or that any directory is safe to remove. An
+incomplete listing is marked `truncated`. All job outputs are retained, including
+successful outputs: pathname-based deletion cannot exclude a concurrent swap.
+Crash recovery, orphan verification and retention enforcement
+remain open; this inspection does not enable rendering or publication.
 
 ## Visual approach
 

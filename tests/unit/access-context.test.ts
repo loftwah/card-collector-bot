@@ -73,13 +73,13 @@ beforeEach(() => {
 });
 
 describe("Access assurance at the request boundary", () => {
-  it("uses fresh platform Access proof with an existing OAuth session without persisting stronger assurance", async () => {
+  it("verifies platform Access identity without treating request time as recent login proof", async () => {
     const ctx = await buildContext(request());
     expect(ctx.user?.id).toBe(owner.id);
     expect(ctx.sessionId).toBe("session-test");
     expect(ctx.csrfToken).toBe("csrf-stored");
     expect(ctx.sessionAssurance).toBe("access");
-    expect(() => requireRecentStrongAuth(ctx)).not.toThrow();
+    expect(() => requireRecentStrongAuth(ctx)).toThrow(/recent strong authentication/);
     expect(state.verifyAccessToken).toHaveBeenCalledWith("verified-by-token-boundary", expect.anything(), "platform-api");
     expect(state.assertPlatformAccessIdentity).toHaveBeenCalledWith(identity, expect.anything());
     expect(state.resolveAccessIdentityProvider).not.toHaveBeenCalled();
@@ -111,12 +111,12 @@ describe("Access assurance at the request boundary", () => {
     expect(() => requireRecentStrongAuth(ctx)).toThrow();
   });
 
-  it("accepts a confirmed Cloudflare-account provider for a Bot admin mutation", async () => {
+  it("recognises a confirmed Cloudflare provider but requires a recent local factor for mutation", async () => {
     state.resolveAccessIdentityProvider.mockResolvedValue("cloudflare");
     const ctx = await buildContext(request("/api/v1/admin/collections"));
     expect(state.resolveAccessIdentityProvider).toHaveBeenCalledWith("verified-by-token-boundary", identity, expect.anything());
     expect(ctx.sessionAssurance).toBe("access");
-    expect(() => requireRecentStrongAuth(ctx)).not.toThrow();
+    expect(() => requireRecentStrongAuth(ctx)).toThrow(/recent strong authentication/);
   });
 
   it("does not promote an email PIN or unconfirmed provider to Access assurance", async () => {
@@ -140,14 +140,15 @@ describe("Access assurance at the request boundary", () => {
     expect(state.resolveAccessIdentityProvider).not.toHaveBeenCalled();
   });
 
-  it("uses current Cloudflare proof when a local factor is too old for a gift", async () => {
+  it("applies the gift's shorter freshness window to local MFA without substituting Access request time", async () => {
     session.assurance = "mfa";
     session.auth_time = new Date(Date.now() - 16 * 60_000).toISOString();
     state.resolveAccessIdentityProvider.mockResolvedValue("cloudflare");
     const ctx = await buildContext(request("/api/v1/admin/gifts/preview"));
-    expect(state.resolveAccessIdentityProvider).toHaveBeenCalled();
-    expect(ctx.sessionAssurance).toBe("access");
-    expect(() => requireRecentStrongAuth(ctx, 15)).not.toThrow();
+    expect(state.resolveAccessIdentityProvider).not.toHaveBeenCalled();
+    expect(ctx.sessionAssurance).toBe("mfa");
+    expect(() => requireRecentStrongAuth(ctx, 20)).not.toThrow();
+    expect(() => requireRecentStrongAuth(ctx, 15)).toThrow();
   });
 
   it("never grants Super Admin from successful Access authentication", async () => {

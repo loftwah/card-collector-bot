@@ -4,8 +4,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { spawnSync } from "node:child_process";
 import { inspectBundle, artifactManifest } from "../../scripts/lib/release-artifact.mjs";
 import { validateReleaseEvidence } from "../../scripts/lib/release-evidence.mjs";
+import { requireLiveTourEvidence } from "../../scripts/lib/live-tour-evidence.mjs";
+import { requireCandidateServer } from "../../scripts/lib/candidate-server-evidence.mjs";
 import {
   contentHashForFiles,
   workingTreeHash,
@@ -72,17 +75,121 @@ function withManifest(value, callback) {
 
 test("accepts current, tree-bound, passing evidence", () => {
   withManifest(manifest(), (file) => {
-    const result = validateReleaseEvidence({ treeHash: TREE, requiredChecks: REQUIRED, file });
+    const result = validateReleaseEvidence({ treeHash: TREE, requiredChecks: REQUIRED, requiredCriteria: ["discord.deferred-private"], file });
     assert.equal(result.source_tree_hash, TREE);
     assert.equal(result.criteria.length, 2);
   });
+});
+
+test("requires the validator's baseline and refuses to make it optional", () => {
+  const incomplete = manifest();
+  withManifest(incomplete, (file) => assert.throws(
+    () => validateReleaseEvidence({ treeHash: TREE, requiredChecks: REQUIRED, file }),
+    /Required acceptance criterion missing or optional/,
+  ));
+  const optional = manifest();
+  optional.criteria[0].required = false;
+  withManifest(optional, (file) => assert.throws(
+    () => validateReleaseEvidence({ treeHash: TREE, requiredChecks: REQUIRED, requiredCriteria: ["discord.deferred-private"], file }),
+    /Required acceptance criterion missing or optional/,
+  ));
+});
+
+test("rejects a fabricated pass that reused skipped checks", () => {
+  const value = manifest();
+  value.checks[0].reused = true;
+  withManifest(value, (file) => {
+    assert.throws(
+      () => validateReleaseEvidence({ treeHash: TREE, requiredChecks: REQUIRED, requiredCriteria: ["discord.deferred-private"], file }),
+      /skipped or reused/,
+    );
+  });
+});
+
+test("rejects ambiguous checks, future checks and duplicate criteria", () => {
+  const duplicateCheck = manifest();
+  duplicateCheck.checks.push({ ...duplicateCheck.checks[0], exit_code: 1 });
+  withManifest(duplicateCheck, (file) => assert.throws(
+    () => validateReleaseEvidence({ treeHash: TREE, requiredChecks: REQUIRED, requiredCriteria: ["discord.deferred-private"], file }), /ambiguous/,
+  ));
+  const futureCheck = manifest();
+  futureCheck.checks[0].completed_at = new Date(Date.now() + 86_400_000).toISOString();
+  withManifest(futureCheck, (file) => assert.throws(
+    () => validateReleaseEvidence({ treeHash: TREE, requiredChecks: REQUIRED, requiredCriteria: ["discord.deferred-private"], file }), /no recent completion time/,
+  ));
+  const duplicateCriterion = manifest();
+  duplicateCriterion.criteria.push({ ...duplicateCriterion.criteria[0], result: "fail" });
+  withManifest(duplicateCriterion, (file) => assert.throws(
+    () => validateReleaseEvidence({ treeHash: TREE, requiredChecks: REQUIRED, requiredCriteria: ["discord.deferred-private"], file }), /unique, non-empty IDs/,
+  ));
+});
+
+test("binds each required check to working-tree content when supplied", () => {
+  const contentHash = "1".repeat(64);
+  const value = manifest({ source_content_hash: contentHash });
+  value.checks = value.checks.map((check) => ({ ...check, source_content_hash: contentHash }));
+  value.checks[0].source_content_hash = "2".repeat(64);
+  withManifest(value, (file) => assert.throws(
+    () => validateReleaseEvidence({ treeHash: TREE, contentHash, requiredChecks: REQUIRED, requiredCriteria: ["discord.deferred-private"], file }), /different working-tree content/,
+  ));
+});
+
+test("rejects unbound optional passes that could satisfy release scope", () => {
+  const value = manifest();
+  value.criteria.push({ id: "observability.fake", required: false, result: "pass", issue: [33] });
+  withManifest(value, (file) => assert.throws(
+    () => validateReleaseEvidence({ treeHash: TREE, requiredChecks: REQUIRED, requiredCriteria: ["discord.deferred-private"], file }),
+    /criterion observability.fake is incomplete/,
+  ));
+  value.criteria[2].test_command = "node fake.mjs";
+  value.criteria[2].evidence = "A claim without the tested tree.";
+  withManifest(value, (file) => assert.throws(
+    () => validateReleaseEvidence({ treeHash: TREE, requiredChecks: REQUIRED, requiredCriteria: ["discord.deferred-private"], file }),
+    /was not tested against this tree/,
+  ));
+});
+
+test("release recorder refuses to fabricate skipped checks", () => {
+  const result = spawnSync(process.execPath, ["scripts/record-release-acceptance.mjs", "--skip-checks"], { encoding: "utf8" });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /Refusing to record acceptance with skipped checks/);
+});
+
+test("release recorder refuses an unverified browser and database harness", () => {
+  const result = spawnSync(process.execPath, ["scripts/record-release-acceptance.mjs"], { encoding: "utf8" });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /isolated, artifact-bound browser and database harness has not been verified/);
+});
+
+test("deployment check refuses an unverified browser and database harness", () => {
+  const result = spawnSync(process.execPath, ["scripts/deploy-production.mjs", "--check"], { encoding: "utf8" });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /isolated, artifact-bound browser and database harness has not been verified/);
+});
+
+test("live tour evidence must be fresh, production-specific and unambiguous", () => {
+  const now = Date.now();
+  const report = { mode: "production", origin: "https://foilbury.loftwah.com", generated_at: new Date(now).toISOString(), checks: [{ id: "tour entry", status: "PASS" }] };
+  assert.equal(requireLiveTourEvidence(report, now).status, "PASS");
+  assert.throws(() => requireLiveTourEvidence({ ...report, mode: "local" }, now), /production origin/);
+  assert.throws(() => requireLiveTourEvidence({ ...report, origin: "https://example.com" }, now), /production origin/);
+  assert.throws(() => requireLiveTourEvidence({ ...report, generated_at: new Date(now - 11 * 60_000).toISOString() }, now), /stale/);
+  assert.throws(() => requireLiveTourEvidence({ ...report, checks: [{ id: "tour entry", status: "BLOCKED" }] }, now), /not verified/);
+  assert.throws(() => requireLiveTourEvidence({ ...report, checks: [report.checks[0], report.checks[0]] }, now), /not verified/);
+});
+
+test("browser evidence requires a loopback server reporting the candidate revision", () => {
+  assert.doesNotThrow(() => requireCandidateServer("http://localhost:5173", SHA, SHA));
+  assert.throws(() => requireCandidateServer("https://foilbury.loftwah.com", SHA, SHA), /loopback/);
+  assert.throws(() => requireCandidateServer("http://127.0.0.1:5173", SHA, "c".repeat(40)), /exact candidate/);
+  assert.throws(() => requireCandidateServer("http://localhost:5173", SHA, null), /exact candidate/);
 });
 
 test("rejects evidence for another tree", () => {
   const value = manifest({ source_tree_hash: "c".repeat(64) });
   withManifest(value, (file) => {
     assert.throws(
-      () => validateReleaseEvidence({ treeHash: TREE, requiredChecks: REQUIRED, file }),
+      () => validateReleaseEvidence({ treeHash: TREE, requiredChecks: REQUIRED, requiredCriteria: ["discord.deferred-private"], file }),
       /targets .* but the reviewed tree/,
     );
   });
@@ -96,7 +203,7 @@ test("rejects evidence recorded from different working-tree content", () => {
         validateReleaseEvidence({
           treeHash: TREE,
           contentHash: "2".repeat(64),
-          requiredChecks: REQUIRED,
+          requiredChecks: REQUIRED, requiredCriteria: ["discord.deferred-private"],
           file,
         }),
       /working-tree content/,
@@ -110,7 +217,7 @@ test("rejects a stale manifest", () => {
   value.checks = value.checks.map((check) => ({ ...check, completed_at: stale }));
   withManifest(value, (file) => {
     assert.throws(
-      () => validateReleaseEvidence({ treeHash: TREE, requiredChecks: REQUIRED, file }),
+      () => validateReleaseEvidence({ treeHash: TREE, requiredChecks: REQUIRED, requiredCriteria: ["discord.deferred-private"], file }),
       /stale/,
     );
   });
@@ -121,7 +228,7 @@ test("rejects a missing or failed required check", () => {
   missing.checks = missing.checks.slice(0, 1);
   withManifest(missing, (file) => {
     assert.throws(
-      () => validateReleaseEvidence({ treeHash: TREE, requiredChecks: REQUIRED, file }),
+      () => validateReleaseEvidence({ treeHash: TREE, requiredChecks: REQUIRED, requiredCriteria: ["discord.deferred-private"], file }),
       /Required check missing/,
     );
   });
@@ -129,7 +236,7 @@ test("rejects a missing or failed required check", () => {
   failed.checks[0].exit_code = 1;
   withManifest(failed, (file) => {
     assert.throws(
-      () => validateReleaseEvidence({ treeHash: TREE, requiredChecks: REQUIRED, file }),
+      () => validateReleaseEvidence({ treeHash: TREE, requiredChecks: REQUIRED, requiredCriteria: ["discord.deferred-private"], file }),
       /Required check failed/,
     );
   });
@@ -140,7 +247,7 @@ test("rejects a required criterion that is partial, blocked or tested elsewhere"
   partial.criteria[0].result = "partial";
   withManifest(partial, (file) => {
     assert.throws(
-      () => validateReleaseEvidence({ treeHash: TREE, requiredChecks: REQUIRED, file }),
+      () => validateReleaseEvidence({ treeHash: TREE, requiredChecks: REQUIRED, requiredCriteria: ["discord.deferred-private"], file }),
       /cannot be released as pass/,
     );
   });
@@ -148,7 +255,7 @@ test("rejects a required criterion that is partial, blocked or tested elsewhere"
   elsewhere.criteria[0].tested_tree_hash = "d".repeat(64);
   withManifest(elsewhere, (file) => {
     assert.throws(
-      () => validateReleaseEvidence({ treeHash: TREE, requiredChecks: REQUIRED, file }),
+      () => validateReleaseEvidence({ treeHash: TREE, requiredChecks: REQUIRED, requiredCriteria: ["discord.deferred-private"], file }),
       /not tested against this tree/,
     );
   });

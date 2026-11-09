@@ -1,6 +1,5 @@
 import { all, first, nowIso } from "../db";
 import type { DrawReceipt } from "./draw-types";
-import { redactDiscordText } from "./redaction";
 import type { DiscordEmbed, DiscordMessage } from "./types";
 
 /**
@@ -40,7 +39,7 @@ export interface DiscordDrawReceipt {
   pool_name: string;
   price: number;
   currency_symbol: string;
-  balance_after: number;
+  balance_after?: number;
   balance_after_debit?: number;
   credits_total?: number;
   achievement_credits?: DiscordDrawCredit[];
@@ -82,14 +81,18 @@ function logReceiptIssue(
   fields: Record<string, string | number>,
   error?: unknown,
 ): void {
+  const interaction = fields.interaction_id;
+  const draw = fields.draw_id;
   console.error(
     JSON.stringify({
       level: "error",
+      event_code: "discord.receipt.operation_failed",
       message,
-      ...fields,
-      ...(error === undefined
-        ? {}
-        : { detail: redactDiscordText(error instanceof Error ? error.message : String(error)) }),
+      ...(typeof interaction === "string" && /^\d{15,22}$/.test(interaction) ? { interaction_id: interaction } : {}),
+      ...(typeof draw === "string" && /^drw_[a-z0-9]{1,80}$/i.test(draw) ? { draw_id: draw } : {}),
+      ...(fields.receipt_kind === "draw" ? { receipt_kind: "draw" } : {}),
+      ...(typeof fields.attempt === "number" && Number.isInteger(fields.attempt) && fields.attempt >= 0 && fields.attempt <= 10 ? { attempt: fields.attempt } : {}),
+      ...(error === undefined ? {} : { error: "operation_failed" }),
     }),
   );
 }
@@ -201,7 +204,7 @@ interface DrawRow {
 }
 
 interface SettlementSnapshot {
-  balance_after: number;
+  balance_after: number | null;
   balance_after_debit: number | null;
   credits_total: number;
   achievement_credits: DiscordDrawCredit[];
@@ -251,7 +254,7 @@ async function readDrawRow(
 
 async function readSettlementSnapshot(
   db: D1Database,
-  input: { tenantId: string; userId: string; drawId: string; idempotencyKey: string },
+  input: { tenantId: string; userId: string; drawId: string; idempotencyKey: string; price: number },
 ): Promise<SettlementSnapshot> {
   let pending = false;
   let stored: Record<string, unknown> | null = null;
@@ -279,36 +282,34 @@ async function readSettlementSnapshot(
     );
   }
 
-  let credits: DiscordDrawCredit[] | null = null;
-  if (stored && Array.isArray(stored.achievement_credits)) {
-    credits = stored.achievement_credits
-      .map((item) => {
-        if (!item || typeof item !== "object") return null;
-        const credit = item as Record<string, unknown>;
-        const amount = numberOrNull(credit.amount);
-        if (amount === null || amount <= 0) return null;
-        return {
-          id: typeof credit.id === "string" ? credit.id : "",
-          name: typeof credit.name === "string" ? credit.name : "Achievement",
-          amount,
-        };
-      })
-      .filter((item): item is DiscordDrawCredit => item !== null);
-  } else {
-    try {
-      const rows = await all<{
-        id: string;
-        name: string;
-        amount: number;
-        ledger_amount: number | null;
-      }>(
-        db,
-        `SELECT u.achievement_id AS id, d.name,
+  // The event alone does not prove evaluation finished. Only a persisted
+  // settled receipt is a completion marker; older or interrupted records
+  // remain pending until the evaluator records completion.
+  if (stored?.settlement_status !== "settled" || stored?.settlement_pending !== false) pending = true;
+  let credits: DiscordDrawCredit[] = [];
+  try {
+    const event = await first<{ id: string }>(
+      db,
+      "SELECT id FROM fb_domain_events WHERE tenant_id = ? AND user_id = ? AND dedupe_key = ?",
+      input.tenantId,
+      input.userId,
+      `draw:${input.drawId}`,
+    );
+    if (!event) pending = true;
+    const rows = await all<{
+      id: string;
+      name: string;
+      amount: number;
+      ledger_amount: number | null;
+    }>(
+      db,
+      `SELECT u.achievement_id AS id, d.name,
                 u.reward_amount AS amount, l.amount AS ledger_amount
            FROM fb_achievement_unlocks u
            JOIN fb_achievement_definitions d ON d.id = u.achievement_id
            LEFT JOIN fb_ledger_entries l
-             ON l.tenant_id = u.tenant_id AND l.user_id = u.user_id
+             ON l.id = u.reward_ledger_id AND l.tenant_id = u.tenant_id AND l.user_id = u.user_id
+            AND u.reward_state = 'granted' AND l.kind = 'issue' AND l.amount = u.reward_amount
             AND l.reference_type = 'achievement' AND l.reference_id = u.id
           WHERE u.tenant_id = ? AND u.user_id = ?
             AND u.event_id IN (
@@ -316,43 +317,46 @@ async function readSettlementSnapshot(
                WHERE e.tenant_id = ? AND e.user_id = ? AND e.dedupe_key = ?
             )
           ORDER BY u.earned_at, u.rowid`,
-        input.tenantId,
-        input.userId,
-        input.tenantId,
-        input.userId,
-        `draw:${input.drawId}`,
-      );
-      credits = rows
-        .map((row) => {
-          const amount =
-            row.ledger_amount !== null ? Number(row.ledger_amount) : Number(row.amount);
-          if (!Number.isFinite(amount) || amount <= 0) return null;
-          return { id: row.id, name: row.name, amount };
-        })
-        .filter((item): item is DiscordDrawCredit => item !== null);
-    } catch (error) {
+      input.tenantId,
+      input.userId,
+      input.tenantId,
+      input.userId,
+      `draw:${input.drawId}`,
+    );
+    if (rows.some((row) => Number(row.amount) > 0 && row.ledger_amount === null)) {
       pending = true;
-      credits = [];
-      logReceiptIssue(
-        "Discord draw achievement credits could not be read",
-        { draw_id: input.drawId },
-        error,
-      );
     }
+    credits = rows
+      .map((row) => {
+        // An unlock is not a credit until a matching ledger entry exists.
+        const amount = row.ledger_amount !== null ? Number(row.ledger_amount) : 0;
+        if (!Number.isFinite(amount) || amount <= 0) return null;
+        return { id: row.id, name: row.name, amount };
+      })
+      .filter((item): item is DiscordDrawCredit => item !== null);
+  } catch (error) {
+    pending = true;
+    credits = [];
+    logReceiptIssue(
+      "Discord draw achievement credits could not be read",
+      { draw_id: input.drawId },
+      error,
+    );
   }
-  const creditRows = credits ?? [];
-  const storedCredits = numberOrNull(stored?.credits_total);
-  const creditsTotal = storedCredits ?? creditRows.reduce((sum, item) => sum + item.amount, 0);
+  const creditRows = credits;
+  const creditsTotal = creditRows.reduce((sum, item) => sum + item.amount, 0);
 
   let debitBalance: number | null = null;
   try {
     const debit = await first<{ balance_after: number }>(
       db,
       `SELECT balance_after FROM fb_ledger_entries
-        WHERE tenant_id = ? AND user_id = ? AND reference_type = 'draw' AND reference_id = ?
-        ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+        WHERE id = ? AND tenant_id = ? AND user_id = ? AND kind = 'spend' AND amount = ?
+          AND reference_type = 'draw' AND reference_id = ?`,
+      `led_${input.drawId}`,
       input.tenantId,
       input.userId,
+      -input.price,
       input.drawId,
     );
     debitBalance = numberOrNull(debit?.balance_after);
@@ -364,33 +368,9 @@ async function readSettlementSnapshot(
     );
   }
 
-  const storedDebitBalance = numberOrNull(stored?.balance_after_debit);
-  const balanceAfterDebit = storedDebitBalance ?? debitBalance;
-  let balanceAfter = numberOrNull(stored?.balance_after);
-  if (balanceAfter === null && balanceAfterDebit !== null) {
-    balanceAfter = balanceAfterDebit + creditsTotal;
-  }
-  if (balanceAfter === null) {
-    try {
-      const wallet = await first<{ balance: number }>(
-        db,
-        "SELECT balance FROM fb_wallets WHERE tenant_id = ? AND user_id = ?",
-        input.tenantId,
-        input.userId,
-      );
-      balanceAfter = numberOrNull(wallet?.balance);
-    } catch (error) {
-      logReceiptIssue(
-        "Discord draw balance could not be read during recovery",
-        { draw_id: input.drawId },
-        error,
-      );
-    }
-  }
-  if (balanceAfter === null) {
-    balanceAfter = 0;
-    pending = true;
-  }
+  const balanceAfterDebit = debitBalance;
+  const balanceAfter = balanceAfterDebit === null ? null : balanceAfterDebit + creditsTotal;
+  if (balanceAfter === null) pending = true;
 
   return {
     balance_after: balanceAfter,
@@ -409,10 +389,7 @@ function normaliseReceipt(
   settlement: SettlementSnapshot,
 ): DiscordDrawReceipt {
   const base = interactionReceipt;
-  const credits =
-    settlement.achievement_credits.length > 0
-      ? settlement.achievement_credits
-      : (base?.achievement_credits ?? []);
+  const credits = settlement.achievement_credits;
   const creditsTotal =
     credits.length > 0
       ? credits.reduce((sum, item) => sum + item.amount, 0)
@@ -435,17 +412,14 @@ function normaliseReceipt(
     pool_name: base?.pool_name || parsed.pool_name || row.pool_name,
     price: numberOrNull(parsed.price) ?? row.price,
     currency_symbol: currencySymbol,
-    balance_after:
-      typeof base?.balance_after === "number" ? base.balance_after : settlement.balance_after,
-    ...(base?.balance_after_debit !== undefined
-      ? { balance_after_debit: base.balance_after_debit }
-      : settlement.balance_after_debit !== null
-        ? { balance_after_debit: settlement.balance_after_debit }
-        : {}),
+    ...(settlement.balance_after !== null ? { balance_after: settlement.balance_after } : {}),
+    ...(settlement.balance_after_debit !== null
+      ? { balance_after_debit: settlement.balance_after_debit }
+      : {}),
     credits_total: creditsTotal,
     achievement_credits: credits,
-    settlement_status: base?.settlement_status ?? settlement.settlement_status,
-    settlement_pending: base?.settlement_pending ?? settlement.settlement_pending,
+    settlement_status: settlement.settlement_status,
+    settlement_pending: settlement.settlement_pending,
     drawn_at: row.drawn_at,
     replayed: base?.replayed ?? true,
   };
@@ -493,14 +467,12 @@ export async function recoverDrawReceipt(
       userId: input.userId,
       drawId: row.draw_id,
       idempotencyKey: drawIdempotencyKey(input.interactionId),
+      price: row.price,
     });
   } catch (error) {
     logReceiptIssue("Discord draw settlement recovery failed", { draw_id: row.draw_id }, error);
     settlement = {
-      balance_after:
-        typeof interactionReceipt?.balance_after === "number"
-          ? interactionReceipt.balance_after
-          : (numberOrNull(parsedReceipt(row).balance_after) ?? 0),
+      balance_after: null,
       balance_after_debit: interactionReceipt?.balance_after_debit ?? null,
       credits_total: interactionReceipt?.credits_total ?? 0,
       achievement_credits: interactionReceipt?.achievement_credits ?? [],
@@ -537,7 +509,7 @@ export function drawRecoveryMessage(input: {
   const credits = receipt.credits_total ?? 0;
   const creditNames = receipt.achievement_credits?.map((item) => item.name).filter(Boolean) ?? [];
   const settlementNote = receipt.settlement_pending
-    ? "Reward settlement is still being confirmed from the ledger. The draw, serial and debit are already recorded; rewards are never paid twice."
+    ? "Reward settlement has not yet been confirmed from the ledger. The draw, serial and debit are already recorded; rewards are never paid twice."
     : credits > 0
       ? `Settled rewards: **+${receiptNumber(credits)} ${receipt.currency_symbol}**${creditNames.length ? ` · ${creditNames.join(", ")}` : ""}.`
       : null;
@@ -547,7 +519,7 @@ export function drawRecoveryMessage(input: {
         title: "Draw completed — display interrupted",
         description: [
           `Your draw **did** complete before the display failed. ${title} is already in your cabinet as serial \`${receipt.serial}\`.`,
-          `${receipt.price} ${receipt.currency_symbol} was charged once from **${receipt.pool_name}**. Current balance: **${receiptNumber(receipt.balance_after)} ${receipt.currency_symbol}**.`,
+          `${receipt.price} ${receipt.currency_symbol} was charged once from **${receipt.pool_name}**.${!receipt.settlement_pending && typeof receipt.balance_after === "number" ? ` Balance after draw: **${receiptNumber(receipt.balance_after)} ${receipt.currency_symbol}**.` : " Balance after draw is not yet confirmed."}`,
           ...(settlementNote ? [settlementNote] : []),
           input.reason,
           "Do not open again to recover this result. Use View cabinet, or Re-send receipt to retry only the display of this same card.",
@@ -555,11 +527,11 @@ export function drawRecoveryMessage(input: {
         color: 0xd97757,
         fields: [
           { name: "Serial", value: `\`${receipt.serial}\``, inline: true },
-          {
-            name: "Balance",
+          ...(!receipt.settlement_pending && typeof receipt.balance_after === "number" ? [{
+            name: "Balance after draw",
             value: `${receiptNumber(receipt.balance_after)} ${receipt.currency_symbol}`,
             inline: true,
-          },
+          }] : []),
           { name: "Receipt", value: `\`${receipt.draw_id}\``, inline: false },
         ],
         footer: {

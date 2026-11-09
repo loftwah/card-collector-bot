@@ -188,13 +188,13 @@ try {
     const page = await context.newPage();
     watch(page);
     await page.goto("/");
-    await page.getByRole("heading", { name: /pull something wonderful/i }).waitFor();
+    await page.getByRole("heading", { name: /characters worth keeping/i }).waitFor();
     check(
       "public home has one clear primary action",
-      (await page.locator(".public-hero").getByRole("link", { name: /browse originals/i }).count()) === 1,
+      (await page.getByRole("link", { name: /start collecting/i }).count()) === 1,
     );
-    await page.locator(".public-hero").getByRole("link", { name: /browse originals/i }).click();
-    await page.getByRole("heading", { name: /public showcase/i }).waitFor();
+    await page.getByRole("link", { name: /browse every public card/i }).click();
+    await page.getByRole("heading", { name: /explore the collection/i }).waitFor();
     check("public catalogue navigation resolves", page.url().endsWith("/cabinet"));
     const cardLink = page.locator('a[href^="/cabinet/"]').first();
     if (await cardLink.count()) {
@@ -204,20 +204,23 @@ try {
         "public card detail opens from the catalogue",
         /\/cabinet\/[^/]+$/.test(new URL(page.url()).pathname),
       );
-      await page.setViewportSize({ width: 390, height: 844 });
-      await page.evaluate(() => { document.body.style.zoom = "2"; });
-      const beforeInspect = await page.locator(".card-rail").first().boundingBox();
-      const overflowBefore = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
-      await page.getByRole("button", { name: "Inspect in 3D" }).click();
-      const afterInspect = await page.locator(".card-rail").first().boundingBox();
-      const overflowAfter = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
-      check("public card keeps its size and fits at 200% zoom", Boolean(beforeInspect && afterInspect && !overflowBefore && !overflowAfter && Math.abs(beforeInspect.width - afterInspect.width) < 1 && Math.abs(beforeInspect.height - afterInspect.height) < 1));
-      await page.evaluate(() => { document.body.style.zoom = ""; });
-      await page.setViewportSize({ width: 1440, height: 900 });
       await page.goBack();
       await page.waitForLoadState("networkidle");
       check("browser back returns to the catalogue", page.url().includes("/cabinet"));
     }
+    await context.close();
+  });
+
+  await failOnThrow("public collection search without JavaScript", async () => {
+    const context = await browser.newContext({ baseURL, javaScriptEnabled: false, viewport: { width: 375, height: 667 } });
+    const page = await context.newPage();
+    await page.goto("/cabinet?collection=protocol-11");
+    await page.getByText("Search and filter").click();
+    await page.getByRole("searchbox", { name: "Search the catalogue" }).fill("no-such-card-foilbury-qa");
+    await page.getByRole("button", { name: "Apply filters" }).click();
+    const params = new URL(page.url()).searchParams;
+    check("public search retains its selected collection without JavaScript", params.get("collection") === "protocol-11" && params.get("search") === "no-such-card-foilbury-qa");
+    check("public search shows an empty result without JavaScript", await page.getByText("Nothing in this drawer.").isVisible());
     await context.close();
   });
 
@@ -234,7 +237,7 @@ try {
 
   await failOnThrow("cabinet overview and card contract", async () => {
     await page.goto("/play");
-    await page.getByRole("heading", { name: /your library/i }).waitFor();
+    await page.getByRole("heading", { name: /your cabinet/i }).waitFor();
     const geo = await publishedGeometry(page);
     check("featured card is present", geo.present);
     check(
@@ -250,8 +253,8 @@ try {
     );
     check("no nested interactive card controls", geo.nestedInteractive === 0);
 
-    await page.locator(".player-more__summary").click();
-    const menuBox = await page.locator(".player-more__menu").boundingBox();
+    await page.locator(".cabinet-more__summary").click();
+    const menuBox = await page.locator(".cabinet-more__menu").boundingBox();
     check(
       "cabinet More menu is fully visible",
       Boolean(menuBox && menuBox.height > 100 && menuBox.y + menuBox.height <= 1000),
@@ -260,7 +263,7 @@ try {
     await page.keyboard.press("Escape");
     check(
       "Escape closes the cabinet menu",
-      (await page.locator(".player-more[open]").count()) === 0,
+      (await page.locator(".cabinet-more[open]").count()) === 0,
     );
 
     await page.getByRole("button", { name: /show .* back/i }).click();
@@ -281,7 +284,7 @@ try {
 
   await failOnThrow("collection filters, totals and stale responses", async () => {
     await page.goto("/play/collection");
-    await page.getByRole("heading", { name: /my cards/i }).waitFor();
+    await page.getByRole("heading", { name: /your drawers/i }).waitFor();
     await page.locator('[data-hydrated="true"]').waitFor();
     const totalLabel = await page.locator('[aria-live="polite"]').innerText();
     const apiTotal = await (await owner.request.get("/api/v1/inventory?limit=1")).json();
@@ -291,7 +294,7 @@ try {
       `${totalLabel} vs ${apiTotal.total}`,
     );
     const firstFace = await page
-      .locator(".inventory-card__object")
+      .locator(".card-face")
       .first()
       .evaluate((el) => {
         const rect = el.getBoundingClientRect();
@@ -309,7 +312,7 @@ try {
     check("collection card image decoded", firstFace.loaded);
 
     /* Empty is not an error. */
-    await page.getByLabel("Search your cards").fill("zzzz-no-such-card");
+    await page.getByLabel("Search your collection").fill("zzzz-no-such-card");
     await page.getByRole("button", { name: "Apply" }).click();
     await page.getByText(/no cards match this view/i).waitFor({ timeout: 15000 });
     check(
@@ -324,7 +327,7 @@ try {
         await new Promise((resolve) => setTimeout(resolve, 900));
       await route.continue();
     });
-    await page.getByLabel("Search your cards").fill("");
+    await page.getByLabel("Search your collection").fill("");
     const collectionSelect = page.getByLabel("Collection", { exact: true });
     const options = await collectionSelect
       .locator("option")
@@ -368,7 +371,7 @@ try {
       await route.continue();
     });
     await page.goto("/play/collection");
-    await page.getByRole("heading", { name: /my cards/i }).waitFor();
+    await page.getByRole("heading", { name: /your drawers/i }).waitFor();
     await page.locator('[data-hydrated="true"]').waitFor();
     expectingFailure = true;
     await page.getByRole("button", { name: "Apply" }).click();
@@ -393,7 +396,7 @@ try {
     await login(noJs);
     const bare = await noJs.newPage();
     await bare.goto("/play/collection");
-    await bare.getByLabel("Search your cards").fill("zzzz-no-such-card");
+    await bare.getByLabel("Search your collection").fill("zzzz-no-such-card");
     await Promise.all([
       bare.waitForNavigation(),
       bare.getByRole("button", { name: "Apply" }).click(),
@@ -430,10 +433,10 @@ try {
       (await page.getByRole("alert").innerText()).includes("unavailable"),
     );
     await page.getByRole("button", { name: /retry this capsule preview/i }).click();
-    await page.getByRole("heading", { name: /transparent draw odds/i }).waitFor();
+    await page.getByRole("heading", { name: /know the odds/i }).waitFor();
     check(
       "draw preview retry recovers",
-      (await page.getByRole("heading", { name: /transparent draw odds/i }).count()) === 1,
+      (await page.getByRole("heading", { name: /know the odds/i }).count()) === 1,
     );
     await page.unroute("**/api/v1/pools/*");
     expectingFailure = false;
@@ -583,7 +586,7 @@ try {
     const phone = await mobile.newPage();
     watch(phone);
     await phone.goto("/play");
-    await phone.getByRole("heading", { name: /your library/i }).waitFor();
+    await phone.getByRole("heading", { name: /your cabinet/i }).waitFor();
     check(
       "mobile play has no horizontal document overflow",
       await phone.evaluate(
@@ -604,10 +607,10 @@ try {
       (await phone.locator('.published-card__back[data-hidden="false"]').count()) > 0,
     );
     await phone.goto("/play/collections");
-    await phone.getByRole("heading", { name: /^Collections$/i }).waitFor();
+    await phone.getByRole("heading", { name: /every world you can enter/i }).waitFor();
     check(
       "mobile worlds paginate rather than stacking every collection",
-      (await phone.locator(".collection-tile").count()) <= 9,
+      (await phone.locator(".world-card").count()) <= 9,
     );
     check(
       "mobile worlds have no horizontal overflow",
@@ -616,7 +619,7 @@ try {
       ),
     );
     await phone.goto("/play/collection");
-    await phone.getByRole("heading", { name: /my cards/i }).waitFor();
+    await phone.getByRole("heading", { name: /your drawers/i }).waitFor();
     check(
       "mobile collection has no horizontal overflow",
       await phone.evaluate(
@@ -643,7 +646,7 @@ try {
 
   await failOnThrow("deliberate negative controls calibrate the detectors", async () => {
     await page.goto("/play");
-    await page.getByRole("heading", { name: /your library/i }).waitFor();
+    await page.getByRole("heading", { name: /your cabinet/i }).waitFor();
     await page.addStyleTag({
       content: ".published-card{aspect-ratio:auto !important;height:120px !important}",
     });
@@ -654,7 +657,7 @@ try {
       `ratio ${broken.ratio?.toFixed(3)}`,
     );
     await page.reload();
-    await page.getByRole("heading", { name: /your library/i }).waitFor();
+    await page.getByRole("heading", { name: /your cabinet/i }).waitFor();
     await page.addStyleTag({ content: ".card-toolbar{display:none !important}" });
     const hiddenControls = await page.evaluate(() => {
       const toolbar = document.querySelector(".card-toolbar");

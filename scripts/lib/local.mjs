@@ -32,9 +32,25 @@ export function readVarFile(file) {
 }
 
 function writeVarFile(file, map, header) {
-  const lines = [header, ...ALLOWED_DEV_VARS.map((key) => `${key}=${map.get(key) ?? ""}`)];
-  fs.writeFileSync(file, lines.join("\n") + "\n", { mode: 0o600 });
-  fs.chmodSync(file, 0o600);
+  // Retain configuration owned by the operator or other tools. Only the
+  // explicitly managed keys may be changed by local setup.
+  const original = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+  const newline = original.includes("\r\n") ? "\r\n" : "\n";
+  const lines = original ? original.split(/\r?\n/) : [header];
+  if (original && lines.at(-1) === "") lines.pop();
+  const seen = new Set();
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line || line.trimStart().startsWith("#")) continue;
+    const index = line.indexOf("=");
+    if (index < 1) continue;
+    const key = line.slice(0, index).trim();
+    if (!ALLOWED_DEV_VARS.includes(key)) continue;
+    lines[i] = `${key}=${map.get(key) ?? ""}`;
+    seen.add(key);
+  }
+  for (const key of ALLOWED_DEV_VARS) if (!seen.has(key)) lines.push(`${key}=${map.get(key) ?? ""}`);
+  fs.writeFileSync(file, lines.join(newline) + newline, { mode: 0o600 });
 }
 
 export function ensureDevVars() {
@@ -44,12 +60,16 @@ export function ensureDevVars() {
   next.set("FOILBURY_DEV_LOGIN", existing.get("FOILBURY_DEV_LOGIN") ?? "true");
   next.set("EMDASH_SITE_URL", next.get("EMDASH_SITE_URL") || "http://localhost:5173");
   for (const key of ["FOILBURY_SESSION_SECRET", "FOILBURY_CSRF_SECRET", "FOILBURY_AGENT_TOKEN_PEPPER", "FOILBURY_BOOTSTRAP_TOKEN"]) {
-    if (!next.get(key) || next.get(key).length < 32) next.set(key, crypto.randomBytes(32).toString("base64url"));
+    const current = next.get(key);
+    if (!current) next.set(key, crypto.randomBytes(32).toString("base64url"));
+    else if (current.length < 32) throw new Error(`${key} is configured but too short. Correct it explicitly; local setup did not change it.`);
   }
-  if (!next.get("EMDASH_ENCRYPTION_KEY")?.startsWith("emdash_enc_v1_")) {
+  if (!next.get("EMDASH_ENCRYPTION_KEY")) {
     next.set("EMDASH_ENCRYPTION_KEY", `emdash_enc_v1_${crypto.randomBytes(32).toString("base64url")}`);
+  } else if (!next.get("EMDASH_ENCRYPTION_KEY").startsWith("emdash_enc_v1_")) {
+    throw new Error("EMDASH_ENCRYPTION_KEY has an unsupported format. Correct it explicitly; local setup did not change it.");
   }
-  writeVarFile(DEV_VARS, next, "# Local Worker secrets. Generated locally; never commit. Allowlisted names only.");
+  writeVarFile(DEV_VARS, next, "# Local Worker secrets. Generated locally; never commit.");
   return next;
 }
 

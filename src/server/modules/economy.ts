@@ -2,6 +2,7 @@ import {
   ApiError,
   canIssueScopedGrant,
   checkRateLimit,
+  requireScope,
   requireRecentStrongAuth,
   type Ctx,
   type CurrentUser,
@@ -12,16 +13,7 @@ import { auditStatement, findIdempotent, idempotencyStatement, type IdempotencyI
 import { getWalletSummary } from "./wallet";
 import { nextDailyEligibleAt } from "./daily-time";
 import { listCollections } from "./collections";
-import { canViewCollection } from "./visibility";
-import { cardShareAudience } from "./shares";
-import {
-  getProfilePresentationOptions,
-  parseProfilePresentation,
-  profilePresentationVersion,
-  profileSharePresentation,
-  resolveProfilePresentation,
-  validateProfilePresentation,
-} from "./profile-presentation";
+import { DRAW_EPOCH_TRIGGER_CHECK, DRAW_EPOCH_TRIGGER_DATA, readDrawScopeEpoch } from './draw-scope-epoch';
 
 export interface EconomySettings {
   currency_name: string;
@@ -59,8 +51,6 @@ export async function updateEconomy(
     recycleRates?: { rarity: Record<string, number>; material: Record<string, number> };
   },
 ): Promise<EconomySettings> {
-  // Scoped agent credentials do not establish recent human authentication.
-  requireRecentStrongAuth(ctx, 30);
   const current = await getEconomy(ctx);
   if (current.version !== input.expectedVersion) {
     throw new ApiError(409, "stale_write", "Economy settings changed since you opened them.", {
@@ -120,8 +110,28 @@ export async function updateEconomy(
 export async function claimDailyReward(ctx: Ctx, idempotency: IdempotencyInput) {
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in to claim your allowance.");
-  const replay = await findIdempotent(ctx, "reward.claim", idempotency);
-  if (replay) {
+  if (ctx.actor.representedUserId !== user.id || (ctx.actor.type === 'user' && ctx.actor.id !== user.id))
+    throw new ApiError(403, 'reward_access_changed', 'Your allowance access changed. Sign in again.');
+  const access = ctx.sessionAssurance === 'access' && ctx.accessStatus === 'linked' ? ctx.accessIdentity : null;
+  const livePrincipal = `EXISTS (SELECT 1 FROM fb_memberships m JOIN fb_users u ON u.id=m.user_id AND u.disabled_at IS NULL
+    JOIN fb_bots b ON b.tenant_id=m.tenant_id AND b.status='active'
+    WHERE m.tenant_id=? AND m.user_id=? AND m.status='active' AND m.revoked_at IS NULL AND (
+      (?='user' AND (EXISTS (SELECT 1 FROM fb_sessions s WHERE s.id=? AND s.user_id=u.id AND s.tenant_id=m.tenant_id AND s.revoked_at IS NULL AND s.expires_at>strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+        OR (?='access' AND ?>unixepoch('now') AND EXISTS (SELECT 1 FROM fb_access_identities ai WHERE ai.user_id=u.id AND ai.team_domain=? AND ai.subject=? AND ai.email=? AND ai.revoked_at IS NULL) AND u.email=? COLLATE NOCASE)
+        OR EXISTS (SELECT 1 FROM fb_discord_identities d WHERE d.tenant_id=m.tenant_id AND d.user_id=u.id AND d.discord_user_id=? AND d.revoked_at IS NULL)))
+      OR (?='agent' AND EXISTS (SELECT 1 FROM fb_agent_tokens t JOIN fb_agent_grants g ON g.id=t.grant_id
+        WHERE t.id=? AND t.token_hash=? AND t.token_hash<>'' AND t.revoked_at IS NULL AND g.id=? AND g.agent_id=? AND g.represented_user_id=u.id AND g.tenant_id=m.tenant_id
+          AND g.status='active' AND g.revoked_at IS NULL AND g.expires_at>strftime('%Y-%m-%dT%H:%M:%fZ','now')
+          AND json_type(CASE WHEN json_valid(g.scopes_json) THEN g.scopes_json ELSE 'null' END)='array'
+          AND NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(g.scopes_json) THEN g.scopes_json ELSE '[]' END) WHERE type<>'text')
+          AND EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(g.scopes_json) THEN g.scopes_json ELSE '[]' END) WHERE value='reward:claim')))))`;
+  const principalArgs = [ctx.tenant.id,user.id,ctx.actor.type,ctx.sessionId,ctx.sessionAssurance,access?.payload.exp ?? 0,ctx.config.access.teamDomain,access?.subject ?? '',access?.email ?? '',access?.email ?? '',ctx.discordPrincipal?.discordUserId ?? '',ctx.actor.type,ctx.agentCredential?.tokenId ?? '',ctx.agentCredential?.verifiedTokenHash ?? '',ctx.agentCredential?.grantId ?? '',ctx.actor.id];
+  const checkPrincipal = async () => {
+    if (!await first<{ok:number}>(ctx.db, `SELECT 1 AS ok WHERE ${livePrincipal}`, ...principalArgs))
+      throw new ApiError(403, 'reward_access_changed', 'Your allowance access changed. Sign in again.');
+  };
+  await checkPrincipal();
+  const replayReceipt = async (replay: { response: unknown }) => {
     const settings = await getEconomy(ctx);
     const wallet = await getWalletSummary(ctx.db, ctx.tenant.id, user.id, 1);
     const last = await first<{ created_at: string }>(
@@ -130,6 +140,7 @@ export async function claimDailyReward(ctx: Ctx, idempotency: IdempotencyInput) 
       ctx.tenant.id,
       user.id,
     );
+    await checkPrincipal();
     return {
       ...(replay.response as object),
       balance_after: wallet.balance,
@@ -140,7 +151,9 @@ export async function claimDailyReward(ctx: Ctx, idempotency: IdempotencyInput) 
       ),
       replayed: true,
     };
-  }
+  };
+  const replay = await findIdempotent(ctx, "reward.claim", idempotency);
+  if (replay) return replayReceipt(replay);
   const settings = await getEconomy(ctx);
   if (settings.daily_reward <= 0) throw new ApiError(409, "reward_disabled", "The daily allowance is disabled.");
   await checkRateLimit(ctx.db, `reward:${ctx.tenant.id}:${user.id}`, 12, 3600);
@@ -158,6 +171,8 @@ export async function claimDailyReward(ctx: Ctx, idempotency: IdempotencyInput) 
   };
   try {
     await ctx.db.batch([
+      ctx.db.prepare(`SELECT CASE WHEN ${livePrincipal} AND strftime('%Y-%m-%d','now')=? AND EXISTS (SELECT 1 FROM fb_economy_settings e WHERE e.tenant_id=? AND e.version=? AND e.daily_reward=? AND e.daily_cooldown_seconds=? AND e.daily_reward>0) THEN 1 ELSE json('daily_guard') END`)
+        .bind(...principalArgs,now.toISOString().slice(0,10),ctx.tenant.id,settings.version,settings.daily_reward,settings.daily_cooldown_seconds),
       idempotencyStatement(ctx, "reward.claim", idempotency, response),
       ctx.db
         .prepare(
@@ -172,9 +187,10 @@ export async function claimDailyReward(ctx: Ctx, idempotency: IdempotencyInput) 
     ]);
   } catch (error) {
     const message = String(error);
+    if (message.includes('malformed JSON')) throw new ApiError(409, 'reward_changed', 'Your access or allowance changed. Refresh before trying again.');
     if (message.includes("UNIQUE") && message.includes("fb_idempotency_keys")) {
       const existing = await findIdempotent(ctx, "reward.claim", idempotency);
-      if (existing) return { ...(existing.response as object), replayed: true };
+      if (existing) return replayReceipt(existing);
     }
     if (message.includes("reward_cooldown") || message.includes("UNIQUE")) {
       const last = await first<{ created_at: string }>(
@@ -195,6 +211,7 @@ export async function claimDailyReward(ctx: Ctx, idempotency: IdempotencyInput) 
     throw error;
   }
   const wallet = await getWalletSummary(ctx.db, ctx.tenant.id, user.id, 1);
+  await checkPrincipal();
   return {
     ...response,
     balance_after: wallet.balance,
@@ -203,43 +220,7 @@ export async function claimDailyReward(ctx: Ctx, idempotency: IdempotencyInput) 
   };
 }
 
-/** Minimal, Bot-scoped recipient choices for the signed-in Studio grant form. */
-export async function listGrantRecipients(ctx: Ctx) {
-  const user = ctx.user;
-  if (!user || ctx.actor.type !== "user" || !ctx.sessionId)
-    throw new ApiError(403, "grant_recipients_unavailable", "Sign in to Studio to choose a recipient.");
-  return all<{ id: string; display_name: string }>(ctx.db, `
-    SELECT target.id, target.display_name
-    FROM fb_users actor JOIN fb_memberships am ON am.user_id=actor.id AND am.tenant_id=?
-    JOIN fb_sessions session ON session.user_id=actor.id AND session.tenant_id=am.tenant_id AND session.id=?
-    JOIN fb_memberships tm ON tm.tenant_id=am.tenant_id
-    JOIN fb_users target ON target.id=tm.user_id
-    JOIN fb_wallets w ON w.tenant_id=tm.tenant_id AND w.user_id=target.id
-    WHERE actor.id=? AND actor.disabled_at IS NULL AND actor.is_synthetic=0
-      AND am.status='active' AND am.revoked_at IS NULL
-      AND session.revoked_at IS NULL AND julianday(session.expires_at)>julianday('now')
-      AND (am.role='owner' OR (actor.platform_admin=1 AND EXISTS (SELECT 1 FROM fb_platform_admins pa WHERE pa.user_id=actor.id AND pa.status='active' AND pa.revoked_at IS NULL)) OR EXISTS (
-        SELECT 1 FROM json_each(CASE WHEN json_valid(am.capabilities_json) THEN am.capabilities_json ELSE '[]' END) cap
-        WHERE json_type(CASE WHEN json_valid(am.capabilities_json) THEN am.capabilities_json ELSE '[]' END)='array'
-          AND cap.type='text' AND cap.value='grants'))
-      AND tm.status='active' AND tm.revoked_at IS NULL AND target.disabled_at IS NULL AND target.is_synthetic=0
-      AND (target.id<>actor.id OR am.role='owner' OR (actor.platform_admin=1 AND EXISTS (SELECT 1 FROM fb_platform_admins pa WHERE pa.user_id=actor.id AND pa.status='active' AND pa.revoked_at IS NULL)) OR am.self_grants_enabled=1)
-    ORDER BY target.display_name, target.id`,ctx.tenant.id,ctx.sessionId,user.id);
-}
-
 export async function adjustWallet(
-  ctx: Ctx,
-  input: { userId: string; amount: number; reason: string; idempotency: IdempotencyInput },
-) {
-  try {
-    return await adjustWalletGuarded(ctx, input);
-  } catch (error) {
-    if (error instanceof ApiError) throw error;
-    throw new ApiError(503,"grant_outcome_unavailable","The grant outcome could not be confirmed. Retry the same grant or check the ledger.");
-  }
-}
-
-async function adjustWalletGuarded(
   ctx: Ctx,
   input: {
     userId: string;
@@ -250,9 +231,10 @@ async function adjustWalletGuarded(
 ) {
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in first.");
-  if (ctx.actor.type === "agent") {
-    throw new ApiError(403, "strong_auth_required", "Foil adjustments require a human with recent strong authentication. Open Studio and confirm with a passkey, authenticator or Cloudflare Access.");
-  }
+  if (ctx.actor.type !== "user") throw new ApiError(403, "human_strong_auth_required", "Foil adjustments require a signed-in human with recent strong authentication.");
+  if (ctx.actor.id !== user.id || ctx.actor.representedUserId !== user.id) throw new ApiError(403, "session_required", "Sign in with strong authentication before adjusting Foil.");
+  if (!ctx.sessionId || ctx.sessionAssurance === "access") throw new ApiError(403, "session_required", "Open Studio on the web and confirm with a passkey or authenticator before adjusting Foil.");
+  requireRecentStrongAuth(ctx, 30);
   // Re-read authority at the mutation boundary. A session or stale form that
   // loaded before a revocation must not keep the removed capability.
   const live = await first<{
@@ -262,15 +244,14 @@ async function adjustWalletGuarded(
     grant_limit: number;
     capability_revision: number;
     status: string;
-    revoked_at: string | null;
   }>(
     ctx.db,
-    `SELECT role, capabilities_json, self_grants_enabled, grant_limit, capability_revision, status, revoked_at
+    `SELECT role, capabilities_json, self_grants_enabled, grant_limit, capability_revision, status
        FROM fb_memberships WHERE tenant_id = ? AND user_id = ?`,
     ctx.tenant.id,
     user.id,
   );
-  if (!live || live.status !== "active" || live.revoked_at) {
+  if (!live || live.status !== "active") {
     throw new ApiError(403, "membership_revoked", "This membership is no longer active.");
   }
   let liveCapabilities: string[] = [];
@@ -308,104 +289,69 @@ async function adjustWalletGuarded(
   if (!input.reason.trim() || input.reason.trim().length < 3) {
     throw new ApiError(422, "reason_required", "Record a reason for this adjustment.");
   }
-  // Bind the same live actor policy and exact credential to the balance write.
-  // A Discord button is not a strong-auth proof; Discord directs humans to Studio.
-  let proofSql: string;
-  let proofArgs: unknown[];
-  if (ctx.actor.type === "user" && ctx.actor.id === user.id && ctx.accessIdentity && ctx.accessStatus === "linked" && ctx.sessionAssurance === "access") {
-    proofSql = `? > unixepoch('now') AND EXISTS (SELECT 1 FROM fb_access_identities ai
-      WHERE ai.user_id=u.id AND ai.team_domain=? AND ai.subject=? AND ai.revoked_at IS NULL)`;
-    proofArgs = [Number(ctx.accessIdentity.payload.exp ?? 0), ctx.config.access.teamDomain, ctx.accessIdentity.subject];
-  } else if (ctx.actor.type === "user" && ctx.actor.id === user.id && ctx.sessionId) {
-    proofSql = `EXISTS (SELECT 1 FROM fb_sessions sess WHERE sess.id=? AND sess.user_id=u.id
-      AND sess.tenant_id=m.tenant_id AND sess.revoked_at IS NULL AND julianday(sess.expires_at)>julianday('now')
-      AND sess.assurance IN ('passkey','mfa') AND julianday(sess.auth_time)<=julianday('now')
-      AND julianday(sess.auth_time)>=julianday('now','-30 minutes'))`;
-    proofArgs = [ctx.sessionId];
-  } else {
-    throw new ApiError(403, "strong_auth_required", "Foil grants need recent strong authentication. Open Studio and confirm with a passkey, authenticator or Cloudflare Access.");
-  }
-  const authoritySql = `EXISTS (SELECT 1 FROM fb_users u JOIN fb_memberships m ON m.user_id=u.id
-    WHERE u.id=? AND m.tenant_id=? AND u.disabled_at IS NULL AND u.is_synthetic=0 AND u.platform_admin=?
-      AND m.status='active' AND m.revoked_at IS NULL AND m.role=?
-      AND (u.platform_admin=0 OR m.role='owner' OR EXISTS (SELECT 1 FROM fb_platform_admins pa WHERE pa.user_id=u.id AND pa.status='active' AND pa.revoked_at IS NULL))
-      AND COALESCE(m.capabilities_json,'[]')=? AND m.self_grants_enabled=? AND m.grant_limit=? AND m.capability_revision=?
-      AND (${proofSql}))`;
-  const authorityArgs: unknown[] = [user.id,ctx.tenant.id,user.platformAdmin?1:0,live.role,live.capabilities_json ?? '[]',live.self_grants_enabled,live.grant_limit,live.capability_revision,...proofArgs];
-  const targetSql = `EXISTS (SELECT 1 FROM fb_memberships tm JOIN fb_users tu ON tu.id=tm.user_id
-    WHERE tm.tenant_id=? AND tm.user_id=? AND tm.status='active' AND tm.revoked_at IS NULL
-      AND tu.disabled_at IS NULL AND tu.is_synthetic=0)`;
-  const targetArgs = [ctx.tenant.id,input.userId];
-  const isCurrent = async () => Boolean(await first<{ok:number}>(ctx.db,
-    `SELECT 1 AS ok WHERE ${authoritySql} AND ${targetSql}`,...authorityArgs,...targetArgs));
-  if (!await isCurrent()) throw new ApiError(409,"grant_authority_changed","The grant outcome cannot be confirmed with current access. Check the ledger with an authorised administrator.");
-  const readReceipt = async () => {
-    try {
-    const row = await first<{ request_digest: string; response_json: string; status: string }>(ctx.db,
-      `SELECT request_digest,response_json,status FROM fb_idempotency_keys
-       WHERE tenant_id=? AND actor_type=? AND actor_id=? AND operation='economy.adjust' AND idempotency_key=?
-         AND ${authoritySql} AND ${targetSql}`,
-      ctx.tenant.id,ctx.actor.type,ctx.actor.id,input.idempotency.key,...authorityArgs,...targetArgs);
+  const member = await first<{ user_id: string }>(
+    ctx.db,
+    "SELECT user_id FROM fb_memberships WHERE tenant_id = ? AND user_id = ? AND status = 'active' AND revoked_at IS NULL",
+    ctx.tenant.id,
+    input.userId,
+  );
+  if (!member) throw new ApiError(404, "member_not_found", "That user is not a member of this tenant.");
+  const authority = `EXISTS (SELECT 1 FROM fb_memberships m JOIN fb_users u ON u.id = m.user_id
+        JOIN fb_bots b ON b.tenant_id = m.tenant_id AND b.status = 'active'
+        LEFT JOIN fb_bot_admins ba ON ba.bot_id = b.id AND ba.user_id = m.user_id
+        WHERE m.tenant_id = ? AND m.user_id = ? AND m.status = 'active' AND m.revoked_at IS NULL AND u.disabled_at IS NULL
+          AND (? IN ('passkey','mfa') AND EXISTS (SELECT 1 FROM fb_sessions s WHERE s.id = ? AND s.user_id = m.user_id AND s.tenant_id = m.tenant_id AND s.revoked_at IS NULL AND s.expires_at > strftime('%Y-%m-%dT%H:%M:%fZ','now') AND s.assurance = ? AND s.auth_time >= strftime('%Y-%m-%dT%H:%M:%fZ','now','-30 minutes') AND s.auth_time <= strftime('%Y-%m-%dT%H:%M:%fZ','now')))
+          AND m.role = ? AND m.capabilities_json = ? AND m.self_grants_enabled = ? AND m.grant_limit = ? AND m.capability_revision = ?
+          AND ((m.role = 'owner' AND b.owner_user_id = u.id)
+            OR (u.platform_admin = 1 AND EXISTS (SELECT 1 FROM fb_platform_admins pa WHERE pa.user_id = u.id AND pa.status = 'active' AND pa.revoked_at IS NULL))
+            OR (m.role <> 'owner' AND ? > 0 AND ? <= m.grant_limit AND (? <> u.id OR m.self_grants_enabled = 1)
+              AND EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(m.capabilities_json) THEN m.capabilities_json ELSE '[]' END) WHERE value = 'grants')
+              AND (ba.id IS NULL OR (ba.status = 'active' AND ba.revoked_at IS NULL AND EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(ba.capabilities_json) THEN ba.capabilities_json ELSE '[]' END) WHERE value = 'grants'))))))`;
+  const authorityArgs = [ctx.tenant.id, user.id, ctx.sessionAssurance, ctx.sessionId, ctx.sessionAssurance, live.role, live.capabilities_json,
+      live.self_grants_enabled, live.grant_limit, live.capability_revision, input.amount, input.amount, input.userId];
+  const authorized = await first<{ ok: number }>(ctx.db, `SELECT ${authority} AS ok`, ...authorityArgs);
+  if (!authorized?.ok) throw new ApiError(403, "adjustment_forbidden", "The session or grant is no longer authorized. Sign in or ask the Bot Owner.");
+  const authorizedReceipt = async () => {
+    const row = await first<{request_digest:string;response_json:string}>(ctx.db,
+      `SELECT request_digest,response_json FROM fb_idempotency_keys WHERE tenant_id=? AND actor_type='user' AND actor_id=? AND operation='economy.adjust' AND idempotency_key=? AND ${authority}`,
+      ctx.tenant.id,user.id,input.idempotency.key,...authorityArgs);
     if (!row) return null;
     if (row.request_digest !== input.idempotency.digest) throw new ApiError(409,"idempotency_conflict","This idempotency key was already used with a different request.");
-    if (row.status !== 'completed') throw new ApiError(503,"grant_outcome_unavailable","The grant outcome could not be confirmed. Check the ledger before trying again.");
-    const receipt=JSON.parse(row.response_json) as Record<string,unknown>;
-    if (receipt.user_id !== input.userId || receipt.amount !== input.amount || receipt.reason !== input.reason.trim())
-      throw new ApiError(409,"idempotency_conflict","This idempotency key was already used with a different grant.");
-    return receipt;
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      throw new ApiError(503,"grant_outcome_unavailable","The grant outcome could not be confirmed. Retry the same grant or check the ledger.");
-    }
+    return {response:JSON.parse(row.response_json)};
   };
-  const replay = await readReceipt();
-  if (replay) return { ...replay, replayed: true };
-  const now=nowIso(), ledgerId=newId("led"), idemKey=`adjust:${input.idempotency.key}`;
-  try {
-    await ctx.db.batch([
-      ctx.db.prepare(`INSERT INTO fb_idempotency_keys
-        (tenant_id,actor_type,actor_id,operation,idempotency_key,request_digest,status,response_json,created_at)
-        VALUES (?,?,?,'economy.adjust',?,?,'in_progress','{}',?)`)
-        .bind(ctx.tenant.id,ctx.actor.type,ctx.actor.id,input.idempotency.key,input.idempotency.digest,now),
-      ctx.db.prepare(`UPDATE fb_wallets SET balance=balance+?,updated_at=? WHERE tenant_id=? AND user_id=?
-        AND balance+?>=0 AND ${authoritySql} AND ${targetSql}`)
-        .bind(input.amount,now,ctx.tenant.id,input.userId,input.amount,...authorityArgs,...targetArgs),
-      ctx.db.prepare(`SELECT CASE WHEN changes()=1 THEN 1 ELSE json('grant_authority_changed') END`),
-      ctx.db.prepare(`INSERT INTO fb_ledger_entries
-        (id,tenant_id,user_id,kind,amount,balance_after,reference_type,reference_id,description,idempotency_key,metadata_json,actor_type,actor_id,created_at)
-        SELECT ?,?,?,'correction',?,balance,'admin_adjustment',NULL,?,?,?,?,?,? FROM fb_wallets WHERE tenant_id=? AND user_id=?`)
-        .bind(ledgerId,ctx.tenant.id,input.userId,input.amount,input.reason.trim(),idemKey,JSON.stringify({reason:input.reason.trim(),actor:ctx.actor.id}),ctx.actor.type,ctx.actor.id,now,ctx.tenant.id,input.userId),
-      ctx.db.prepare(`SELECT CASE WHEN changes()=1 THEN 1 ELSE json('grant_ledger_missing') END`),
-      ctx.db.prepare(`UPDATE fb_idempotency_keys SET status='completed',response_json=(SELECT json_object(
-        'user_id',?,'amount',?,'balance_after',balance,'ledger_id',?,'reason',?) FROM fb_wallets WHERE tenant_id=? AND user_id=?)
-        WHERE tenant_id=? AND actor_type=? AND actor_id=? AND operation='economy.adjust' AND idempotency_key=? AND request_digest=?`)
-        .bind(input.userId,input.amount,ledgerId,input.reason.trim(),ctx.tenant.id,input.userId,ctx.tenant.id,ctx.actor.type,ctx.actor.id,input.idempotency.key,input.idempotency.digest),
-      ctx.db.prepare(`SELECT CASE WHEN changes()=1 THEN 1 ELSE json('grant_receipt_missing') END`),
-      auditStatement(ctx,"wallet.adjusted","wallet",input.userId,{amount:input.amount,reason:input.reason.trim(),ledger_id:ledgerId}),
-      ctx.db.prepare(`SELECT CASE WHEN changes()=1 THEN 1 ELSE json('grant_audit_missing') END`),
-    ]);
-  } catch (error) {
-    // A batch may have committed even when its response was lost.
-    const reconciled = await readReceipt();
-    if (reconciled) return { ...reconciled, replayed:true };
-    if (String(error).includes('UNIQUE')) {
-      if (!await isCurrent()) throw new ApiError(409,"grant_authority_changed","The grant could not be confirmed. Refresh Studio and check access and recipient eligibility.");
-      const prior=await readReceipt();
-      if (prior) return { ...prior, replayed:true };
-      throw new ApiError(409,"idempotency_conflict","This idempotency key was already used for another grant.");
-    }
-    if (String(error).includes('malformed JSON')) {
-      const insufficient = input.amount < 0 && await first<{ok:number}>(ctx.db,
-        `SELECT 1 AS ok FROM fb_wallets WHERE tenant_id=? AND user_id=? AND balance+?<0 AND ${authoritySql} AND ${targetSql}`,
-        ctx.tenant.id,input.userId,input.amount,...authorityArgs,...targetArgs);
-      if (insufficient) throw new ApiError(409,"insufficient_funds","The correction would make this wallet negative.");
-      throw new ApiError(409,"grant_authority_changed","The grant outcome cannot be confirmed with current access. Check the ledger with an authorised administrator.");
-    }
-    throw new ApiError(503,"grant_outcome_unavailable","The grant outcome could not be confirmed. Retry the same grant or check the ledger.");
+  const replay = await authorizedReceipt();
+  if (replay) return { ...(replay.response as object), replayed: true };
+  const ledgerId = newId("led");
+  const now = nowIso();
+  const update = ctx.db.prepare(`UPDATE fb_wallets SET balance = balance + ?, updated_at = ?
+    WHERE tenant_id = ? AND user_id = ? AND balance + ? >= 0
+      AND EXISTS (SELECT 1 FROM fb_memberships target JOIN fb_users tu ON tu.id = target.user_id WHERE target.tenant_id = ? AND target.user_id = ? AND target.status = 'active' AND target.revoked_at IS NULL AND tu.disabled_at IS NULL)
+      AND NOT EXISTS (SELECT 1 FROM fb_idempotency_keys WHERE tenant_id = ? AND actor_type = 'user' AND actor_id = ? AND operation = 'economy.adjust' AND idempotency_key = ?)
+      AND NOT EXISTS (SELECT 1 FROM fb_ledger_entries WHERE tenant_id = ? AND user_id = ? AND idempotency_key = ?)
+      AND ${authority}`)
+    .bind(input.amount, now, ctx.tenant.id, input.userId, input.amount, ctx.tenant.id, input.userId,
+      ctx.tenant.id, user.id, input.idempotency.key, ctx.tenant.id, input.userId, `adjust:${input.idempotency.key}`, ...authorityArgs);
+  const ledger = ctx.db.prepare(`INSERT INTO fb_ledger_entries (id, tenant_id, user_id, kind, amount, balance_after, reference_type, description, idempotency_key, metadata_json, actor_type, actor_id, created_at)
+    SELECT ?, ?, ?, 'correction', ?, balance, 'admin_adjustment', ?, ?, ?, 'user', ?, ? FROM fb_wallets WHERE tenant_id = ? AND user_id = ? AND changes() = 1`)
+    .bind(ledgerId, ctx.tenant.id, input.userId, input.amount, input.reason.trim(), `adjust:${input.idempotency.key}`, JSON.stringify({ reason: input.reason.trim(), actor: user.id }), user.id, now, ctx.tenant.id, input.userId);
+  const idem = ctx.db.prepare(`INSERT INTO fb_idempotency_keys (tenant_id, actor_type, actor_id, operation, idempotency_key, request_digest, status, response_json, created_at)
+    SELECT ?, 'user', ?, 'economy.adjust', ?, ?, 'completed', json_object('user_id', ?, 'amount', ?, 'balance_after', balance_after, 'ledger_id', id, 'reason', ?), ? FROM fb_ledger_entries WHERE id = ? AND tenant_id = ?`)
+    .bind(ctx.tenant.id, user.id, input.idempotency.key, input.idempotency.digest, input.userId, input.amount, input.reason.trim(), now, ledgerId, ctx.tenant.id);
+  const audit = ctx.db.prepare(`INSERT INTO fb_audit_events (id, tenant_id, actor_type, actor_id, represented_user_id, action, object_type, object_id, metadata_json, request_id, created_at)
+    SELECT ?, ?, 'user', ?, ?, 'wallet.adjusted', 'wallet', ?, json_object('amount', ?, 'reason', ?, 'ledger_id', id, 'balance_before', balance_after - ?, 'balance_after', balance_after), ?, ? FROM fb_ledger_entries WHERE id = ? AND tenant_id = ?`)
+    .bind(newId("aud"), ctx.tenant.id, user.id, user.id, input.userId, input.amount, input.reason.trim(), input.amount, ctx.requestId, now, ledgerId, ctx.tenant.id);
+  const [updated] = await ctx.db.batch([update, ledger, idem, audit]);
+  if (updated?.meta.changes !== 1) {
+    const stillAuthorized = await first<{ ok: number }>(ctx.db, `SELECT ${authority} AS ok`, ...authorityArgs);
+    if (!stillAuthorized?.ok) throw new ApiError(409, "adjustment_not_applied", "The permission or session changed. Reload before trying again.");
+    const prior = await authorizedReceipt();
+    if (prior) return { ...(prior.response as object), replayed: true };
+    throw new ApiError(409, "adjustment_not_applied", "The balance, permission or session changed. Reload before trying again.");
   }
-  const result=await readReceipt();
-  if (!result) throw new ApiError(503,"grant_outcome_unavailable","The grant outcome could not be confirmed. Check the ledger before trying again.");
-  return { ...result, replayed:false };
+  let saved: Awaited<ReturnType<typeof authorizedReceipt>> = null;
+  try { saved = await authorizedReceipt(); } catch { /* The write already committed; do not present a read failure as a failed adjustment. */ }
+  if (!saved) throw new ApiError(503, "adjustment_receipt_missing", "The adjustment was applied, but its receipt is unavailable. Restore access and retry with the same idempotency key.");
+  return { ...(saved.response as object), replayed: false };
 }
 
 export async function getLedger(ctx: Ctx, userId: string, limit = 100) {
@@ -414,9 +360,6 @@ export async function getLedger(ctx: Ctx, userId: string, limit = 100) {
   }
   return getWalletSummary(ctx.db, ctx.tenant.id, userId, Math.min(200, Math.max(1, limit)));
 }
-
-const PROFILE_LOOKS = ["quiet", "signal", "binder", "night"] as const;
-export type ProfileLook = (typeof PROFILE_LOOKS)[number];
 
 export async function getPreferences(ctx: Ctx) {
   const user = ctx.user;
@@ -427,14 +370,10 @@ export async function getPreferences(ctx: Ctx) {
     reduced_motion: number;
     sound_enabled: number;
     sharing_enabled: number;
-    profile_look: string;
-    profile_bio: string;
-    profile_presentation_json: string;
-    profile_presentation_version: number;
     updated_at: string;
   }>(
     ctx.db,
-    "SELECT hide_tags_json, hidden_collection_ids_json, reduced_motion, sound_enabled, sharing_enabled, profile_look, profile_bio, profile_presentation_json, profile_presentation_version, updated_at FROM fb_player_preferences WHERE tenant_id = ? AND user_id = ?",
+    "SELECT hide_tags_json, hidden_collection_ids_json, reduced_motion, sound_enabled, sharing_enabled, updated_at FROM fb_player_preferences WHERE tenant_id = ? AND user_id = ?",
     ctx.tenant.id,
     user.id,
   );
@@ -444,12 +383,6 @@ export async function getPreferences(ctx: Ctx) {
     reduced_motion: Boolean(row?.reduced_motion),
     sound_enabled: Boolean(row?.sound_enabled),
     sharing_enabled: Boolean(row?.sharing_enabled),
-    profile_look: (row && PROFILE_LOOKS.includes(row.profile_look as ProfileLook)
-      ? row.profile_look
-      : "quiet") as ProfileLook,
-    profile_bio: row?.profile_bio ?? "",
-    profile_presentation: parseProfilePresentation(row?.profile_presentation_json),
-    profile_presentation_version: profilePresentationVersion(row),
     updated_at: row?.updated_at ?? null,
   };
 }
@@ -472,10 +405,6 @@ export async function updatePreferences(
     reducedMotion?: boolean;
     soundEnabled?: boolean;
     sharingEnabled?: boolean;
-    profileLook?: ProfileLook;
-    profileBio?: string;
-    profilePresentation?: unknown;
-    profilePresentationVersion?: number;
   },
 ) {
   const user = ctx.user;
@@ -504,49 +433,17 @@ export async function updatePreferences(
     }
   }
   const current = await getPreferences(ctx);
-  const profileLook = input.profileLook ?? current.profile_look;
-  if (!PROFILE_LOOKS.includes(profileLook)) {
-    throw new ApiError(422, "profile_look_invalid", "Choose one of the available profile looks.");
-  }
-  const profileBio = (input.profileBio ?? current.profile_bio).trim();
-  if (profileBio.length > 160) {
-    throw new ApiError(422, "profile_bio_too_long", "Keep the collector note to 160 characters or fewer.");
-  }
-  if (
-    input.profilePresentationVersion !== undefined &&
-    input.profilePresentationVersion !== current.profile_presentation_version
-  ) {
-    throw new ApiError(
-      409,
-      "profile_presentation_stale",
-      "Your profile changed in another tab. Reload the latest saved composition before saving again.",
-      {
-        current_version: current.profile_presentation_version,
-        current_presentation: current.profile_presentation,
-      },
-    );
-  }
-  const profilePresentation = input.profilePresentation
-    ? validateProfilePresentation(input.profilePresentation, await getProfilePresentationOptions(ctx))
-    : current.profile_presentation;
-  const nextProfilePresentationVersion = input.profilePresentation
-    ? current.profile_presentation_version + 1
-    : current.profile_presentation_version;
   await ctx.db.batch([
     ctx.db
       .prepare(
-        `INSERT INTO fb_player_preferences (tenant_id, user_id, hide_tags_json, hidden_collection_ids_json, reduced_motion, sound_enabled, sharing_enabled, profile_look, profile_bio, profile_presentation_json, profile_presentation_version, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO fb_player_preferences (tenant_id, user_id, hide_tags_json, hidden_collection_ids_json, reduced_motion, sound_enabled, sharing_enabled, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(tenant_id, user_id) DO UPDATE SET
            hide_tags_json = excluded.hide_tags_json,
            hidden_collection_ids_json = excluded.hidden_collection_ids_json,
            reduced_motion = excluded.reduced_motion,
            sound_enabled = excluded.sound_enabled,
            sharing_enabled = excluded.sharing_enabled,
-           profile_look = excluded.profile_look,
-           profile_bio = excluded.profile_bio,
-           profile_presentation_json = excluded.profile_presentation_json,
-           profile_presentation_version = excluded.profile_presentation_version,
            updated_at = excluded.updated_at`,
       )
       .bind(
@@ -557,10 +454,6 @@ export async function updatePreferences(
         (input.reducedMotion ?? current.reduced_motion) ? 1 : 0,
         (input.soundEnabled ?? current.sound_enabled) ? 1 : 0,
         (input.sharingEnabled ?? current.sharing_enabled) ? 1 : 0,
-        profileLook,
-        profileBio,
-        JSON.stringify(profilePresentation),
-        nextProfilePresentationVersion,
         nowIso(),
       ),
     auditStatement(ctx, "preferences.updated", "preferences", user.id, {
@@ -569,20 +462,6 @@ export async function updatePreferences(
       reduced_motion: input.reducedMotion ?? current.reduced_motion,
       sound_enabled: input.soundEnabled ?? current.sound_enabled,
       sharing_enabled: input.sharingEnabled ?? current.sharing_enabled,
-      profile_look: profileLook,
-      profile_bio_length: profileBio.length,
-      profile_presentation: {
-        version: nextProfilePresentationVersion,
-        portrait: profilePresentation.portrait,
-        banner: profilePresentation.banner,
-        frame: profilePresentation.frame,
-        avatar_decoration: profilePresentation.avatarDecoration,
-        name_treatment: profilePresentation.nameTreatment,
-        effect: profilePresentation.effect,
-        featured: Boolean(profilePresentation.featuredInstanceId),
-        favourites: profilePresentation.favouriteInstanceIds.length,
-        badges: profilePresentation.badgeIds.length,
-      },
     }),
   ]);
   return getPreferences(ctx);
@@ -720,6 +599,9 @@ export async function createShareLink(
   const options = typeof input === "number" ? { expiresInDays: input } : input;
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in to share your cabinet.");
+  const { liveViewerContext } = await import("./live-viewer");
+  const sharer = await liveViewerContext(ctx, user.id);
+  if (!sharer) throw new ApiError(403, "membership_revoked", "Your membership is no longer active.");
   const prefs = await getPreferences(ctx);
   if (!prefs.sharing_enabled) {
     throw new ApiError(409, "sharing_disabled", "Enable explicit sharing in preferences before creating a public link.");
@@ -741,9 +623,16 @@ export async function createShareLink(
   }
   let audience: "public" | "member" | "private" = "private";
   let payload: Record<string, unknown> = { label: "Cabinet snapshot" };
-  let ownerDisplayName = user.displayName;
+  let wishlistSnapshot: {global_epoch:number;tenant_epoch:number;user_epoch:number;wishes:string} | null=null;
+  let cardSnapshot: {global_epoch:number;tenant_epoch:number;user_epoch:number;instanceId:string;cardId:string;variantId:string;serial:string;backUrl:string|null} | null=null;
+  let collectionSnapshot: {global_epoch:number;tenant_epoch:number;user_epoch:number} | null=null;
+  let profileSnapshot: {global_epoch:number;tenant_epoch:number;user_epoch:number;pins:string} | null=null;
+  let achievementSnapshot: {global_epoch:number;tenant_epoch:number;user_epoch:number;achievementId:string;version:number;earnedAt:string;criteria:string;visibility:string} | null=null;
 
   if (kind === "card" || kind === "latest") {
+    requireScope(ctx,'inventory:read');
+    const epoch=await readDrawScopeEpoch(ctx);
+    if (!epoch) throw new ApiError(503,'share_temporarily_unavailable','Card sharing is temporarily unavailable.');
     const instance = await first<{
       id: string; card_id: string; variant_id: string; card_name: string; card_slug: string; subtitle: string | null;
       variant_name: string; material_key: string; effect_key: string | null; serial: string; collection_id: string | null;
@@ -764,6 +653,7 @@ export async function createShareLink(
          LEFT JOIN fb_collection_cards cc ON cc.card_id = ci.card_id
          LEFT JOIN fb_collections c ON c.id = cc.collection_id
         WHERE ci.id = ? AND ci.tenant_id = ? AND ci.user_id = ? AND ci.status IN ('owned','reserved')
+          AND cd.status='published' AND cd.archived_at IS NULL AND v.status='published' AND v.archived_at IS NULL
         ORDER BY CASE c.view_audience WHEN 'public' THEN 0 WHEN 'members' THEN 1 ELSE 2 END
         LIMIT 1`,
       targetId,
@@ -771,15 +661,11 @@ export async function createShareLink(
       user.id,
     );
     if (!instance) throw new ApiError(404, "instance_not_found", "That copy is not in your collection.");
-    const effective = await cardShareAudience(ctx, instance.card_id);
-    audience = effective.audience === "public" ? "public" : "member";
-    const effectiveCollection = effective.collectionId
-      ? await first<{ id: string; name: string }>(
-          ctx.db,
-          "SELECT id, name FROM fb_collections WHERE id = ? AND archived_at IS NULL",
-          effective.collectionId,
-        )
-      : null;
+    const { canViewCard, effectiveCardAudience } = await import("./visibility");
+    if (!(await canViewCard(sharer, instance.card_id, { liveContentAdmin: true }))) throw new ApiError(404, "instance_not_found", "That copy is not available to share.");
+    cardSnapshot={global_epoch:epoch.global,tenant_epoch:epoch.tenant,user_epoch:epoch.user,instanceId:instance.id,cardId:instance.card_id,variantId:instance.variant_id,serial:instance.serial,backUrl:instance.back_url};
+    const currentAudience = await effectiveCardAudience(ctx, instance.card_id);
+    audience = currentAudience === "public" ? "public" : currentAudience === "members" ? "member" : "private";
     payload = {
       label: kind === "latest" ? "Latest pull" : "Card",
       card_id: instance.card_id,
@@ -789,23 +675,25 @@ export async function createShareLink(
       variant_name: instance.variant_name,
       finish: instance.effect_key && instance.effect_key !== "none" ? `${instance.material_key} · ${instance.effect_key}` : instance.variant_name,
       serial: instance.serial,
-      collection_id: effectiveCollection?.id ?? instance.collection_id,
-      collection_name: effectiveCollection?.name ?? instance.collection_name,
+      collection_id: instance.collection_id,
+      collection_name: instance.collection_name,
       render_url: instance.render_url,
       back_url: instance.back_url,
       audience,
       captured_at: nowIso(),
     };
   } else if (kind === "collection") {
+    const epoch=await readDrawScopeEpoch(ctx);
+    if (!epoch) throw new ApiError(503,'share_temporarily_unavailable','Collection sharing is temporarily unavailable.');
+    collectionSnapshot={global_epoch:epoch.global,tenant_epoch:epoch.tenant,user_epoch:epoch.user};
     const collection = await first<{ id: string; name: string; slug: string; view_audience: string; public_approved_at: string | null; logo_url: string | null; description: string }>(
       ctx.db,
-      "SELECT id, name, slug, view_audience, public_approved_at, logo_url, description FROM fb_collections WHERE id = ? AND archived_at IS NULL",
+      "SELECT id, name, slug, view_audience, public_approved_at, logo_url, description FROM fb_collections WHERE id = ? AND status = 'published' AND archived_at IS NULL",
       targetId,
     );
     if (!collection) throw new ApiError(404, "collection_not_found", "That collection does not exist.");
-    if (!(await canViewCollection(ctx, collection.id))) {
-      throw new ApiError(404, "collection_not_found", "That collection is not available to this account.");
-    }
+    const { canViewCollection } = await import("./visibility");
+    if (!(await canViewCollection(sharer, collection.id, { liveContentAdmin: true }))) throw new ApiError(404, "collection_not_found", "That collection does not exist.");
     audience = collection.view_audience === "public" && collection.public_approved_at ? "public" : "member";
     payload = {
       label: "Collection",
@@ -818,89 +706,55 @@ export async function createShareLink(
       captured_at: nowIso(),
     };
   } else if (kind === "achievement") {
-    const unlock = await first<{ id: string; achievement_id: string; earned_at: string; name: string; description: string; art_key: string; category: string }>(
-      ctx.db,
-      `SELECT u.id, u.achievement_id, u.earned_at, d.name, d.description, d.art_key, d.category
-         FROM fb_achievement_unlocks u JOIN fb_achievement_definitions d ON d.id = u.achievement_id
-        WHERE u.id = ? AND u.tenant_id = ? AND u.user_id = ?`,
-      targetId,
-      ctx.tenant.id,
-      user.id,
-    );
-    if (!unlock) throw new ApiError(404, "achievement_not_found", "That badge is not in your cabinet.");
-    const definitionRow = await first<{ criteria_json: string }>(ctx.db, "SELECT criteria_json FROM fb_achievement_definitions WHERE id = ?", unlock.achievement_id);
-    let collectionLogo: string | null = null;
-    try {
-      const criteria = JSON.parse(definitionRow?.criteria_json ?? "{}") as { collection_id?: string };
-      if (criteria.collection_id) {
-        const logo = await first<{ logo_url: string | null }>(ctx.db, "SELECT logo_url FROM fb_collections WHERE id = ?", criteria.collection_id);
-        collectionLogo = logo?.logo_url ?? null;
-      }
-    } catch {}
+    const epoch=await readDrawScopeEpoch(ctx);
+    if (!epoch) throw new ApiError(503,'share_temporarily_unavailable','Achievement sharing is temporarily unavailable.');
+    const { authorizedAchievementShare } = await import("./achievement-share");
+    const achievement = await authorizedAchievementShare(sharer, sharer, targetId!);
+    if (!achievement) throw new ApiError(409, "achievement_share_unavailable", "This badge cannot be shared until its collection and roster can be verified.");
+    achievementSnapshot={global_epoch:epoch.global,tenant_epoch:epoch.tenant,user_epoch:epoch.user,...achievement.fence};
     audience = "member";
-    payload = {
-      label: "Achievement",
-      achievement_id: unlock.achievement_id,
-      achievement_name: unlock.name,
-      achievement_description: unlock.description,
-      art_key: unlock.art_key,
-      category: unlock.category,
-      earned_at: unlock.earned_at,
-      collection_logo_url: collectionLogo,
-      audience,
-      captured_at: nowIso(),
-    };
+    payload = { ...achievement.payload, achievement_version: 1, achievement_id: achievement.achievementId, criteria_hash: achievement.criteriaHash, captured_at: nowIso() };
+  } else if (kind === "profile") {
+    const epoch=await readDrawScopeEpoch(ctx);
+    if (!epoch) throw new ApiError(503,'share_temporarily_unavailable','Profile sharing is temporarily unavailable.');
+    const { getProfileFavouriteInventory } = await import("./collection");
+    const { canViewCard } = await import("./visibility");
+    const pinned = await getProfileFavouriteInventory(sharer);
+    const favouriteCards: Array<Record<string, unknown>> = [];
+    const pins: string[][] = [];
+    for (const item of pinned) {
+      if (favouriteCards.length >= 8) break;
+      const published = await first<{ id: string }>(ctx.db, "SELECT id FROM fb_card_definitions WHERE id = ? AND tenant_id = ? AND status = 'published' AND archived_at IS NULL", item.card_id, ctx.tenant.id);
+      if (!published || !(await canViewCard(sharer, item.card_id, { liveContentAdmin: true }))) continue;
+      favouriteCards.push({ card_id: item.card_id, name: item.card_name, variant_name: item.variant_name, render_url: item.render_url });
+      pins.push([item.id,item.card_id,item.variant_id]);
+    }
+    profileSnapshot={global_epoch:epoch.global,tenant_epoch:epoch.tenant,user_epoch:epoch.user,pins:JSON.stringify(pins)};
+    audience = "member";
+    payload = { label: "Pinned cards", profile_version: 1, favourite_cards: favouriteCards, audience, captured_at: nowIso() };
   } else if (kind === "wishlist") {
-    const wishes = await all<{ card_name: string; card_slug: string; target_material_key: string | null; target_effect_key: string | null; variant_name: string | null }>(
-      ctx.db,
-      `SELECT cd.name AS card_name, cd.slug AS card_slug, w.target_material_key, w.target_effect_key, v.name AS variant_name
-         FROM fb_wishlists w JOIN fb_card_definitions cd ON cd.id = w.card_id
-         LEFT JOIN fb_variants v ON v.id = w.target_variant_id
-        WHERE w.tenant_id = ? AND w.user_id = ? ORDER BY cd.name LIMIT 100`,
-      ctx.tenant.id,
-      user.id,
-    );
+    requireScope(ctx, 'inventory:read');
+    try { wishlistSnapshot=await first(ctx.db,`SELECT g.revision AS global_epoch,
+      COALESCE((SELECT revision FROM fb_draw_scope_tenant_epochs WHERE tenant_id=?),0) AS tenant_epoch,
+      COALESCE((SELECT revision FROM fb_draw_scope_user_epochs WHERE user_id=?),0) AS user_epoch,
+      (SELECT json_group_array(json_array(card_id,target_material_key,target_effect_key,target_variant_id,created_at)) FROM
+        (SELECT card_id,target_material_key,target_effect_key,target_variant_id,created_at FROM fb_wishlists WHERE tenant_id=? AND user_id=? ORDER BY card_id)) AS wishes
+      FROM fb_draw_scope_global_epoch g WHERE g.id=1 AND ${DRAW_EPOCH_TRIGGER_CHECK}`,ctx.tenant.id,user.id,ctx.tenant.id,user.id,DRAW_EPOCH_TRIGGER_DATA);
+    } catch(error) {
+      if (!/no such table: fb_draw_scope_(?:global_epoch|tenant_epochs|user_epochs)\b/.test(String(error))) throw error;
+    }
+    if (!wishlistSnapshot) throw new ApiError(503,'share_temporarily_unavailable','Wishlist sharing is temporarily unavailable.');
+    const { getWishlist } = await import("./collection");
+    const wishes = (await getWishlist(ctx)).slice(0, 100);
     audience = "member";
     payload = {
       label: "Wishlist",
       items: wishes.map((wish) => ({
-        card_name: wish.card_name,
-        card_slug: wish.card_slug,
-        target: wish.variant_name ?? ([wish.target_material_key, wish.target_effect_key].filter(Boolean).join(" · ") || null),
+        card_id: wish.card_id,
+        card_name: wish.name,
+        card_slug: wish.slug,
+        target: wish.target_variant_id || wish.target_material_key || wish.target_effect_key ? "Selected finish" : null,
       })),
-      audience,
-      captured_at: nowIso(),
-    };
-  } else if (kind === "profile") {
-    const [counts, options] = await Promise.all([
-      first<{ cards: number; favourites: number }>(
-        ctx.db,
-        "SELECT COUNT(*) AS cards, COALESCE(SUM(favourite), 0) AS favourites FROM fb_card_instances WHERE tenant_id = ? AND user_id = ? AND status IN ('owned','reserved')",
-        ctx.tenant.id,
-        user.id,
-      ),
-      getProfilePresentationOptions(ctx),
-    ]);
-    const resolved = resolveProfilePresentation(prefs.profile_presentation, options);
-    audience = "member";
-    payload = {
-      label: "Collector profile",
-      display_name: user.displayName,
-      profile_look: prefs.profile_look,
-      profile_bio: prefs.profile_bio,
-      cards: counts?.cards ?? 0,
-      favourites: counts?.favourites ?? 0,
-      favourite_cards: resolved.favourites.map((copy) => ({
-        name: copy.cardName,
-        variant_name: copy.variantName,
-        render_url: copy.renderUrl,
-      })),
-      badges: resolved.badges.map((badge) => ({
-        name: badge.name,
-        art_key: badge.artKey,
-        category: badge.category,
-      })),
-      presentation: profileSharePresentation(resolved),
       audience,
       captured_at: nowIso(),
     };
@@ -914,27 +768,80 @@ export async function createShareLink(
     payload = { label: "Cabinet", cards: counts?.cards ?? 0, favourites: counts?.favourites ?? 0, audience: "private", captured_at: nowIso() };
   }
 
+  const currentOwner = await first<{display_name:string}>(ctx.db,
+    "SELECT display_name FROM fb_users WHERE id=? AND disabled_at IS NULL",user.id);
+  if (!currentOwner) throw new ApiError(409,'share_access_changed','Your sharing access changed. Sign in again.');
+  const ownerDisplayName = currentOwner.display_name;
   const raw = token("fbshare");
   const { sha256Hex } = await import("../ids");
   const id = newId("shr");
   const now = nowIso();
   const expiresInDays = options.expiresInDays ?? 7;
   const expiresAt = new Date(Date.now() + Math.min(30, Math.max(1, expiresInDays)) * 86400 * 1000).toISOString();
-  await ctx.db.batch([
-    ctx.db
-      .prepare(
-        "INSERT INTO fb_share_links (id, tenant_id, user_id, token_hash, status, expires_at, created_at, kind, target_id, payload_json) VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)",
-      )
-      .bind(id, ctx.tenant.id, user.id, await sha256Hex(raw), expiresAt, now, kind, targetId, JSON.stringify(payload)),
-    auditStatement(ctx, "share.created", "share_link", id, { kind, target_id: targetId, audience, expires_at: expiresAt }),
-  ]);
+  const hash=await sha256Hex(raw);
+  if (kind==='wishlist') {
+    const {wishlistShareFence}=await import('./collection');
+    const fence=wishlistShareFence(ctx,wishlistSnapshot!);
+    const results=await ctx.db.batch([
+      ctx.db.prepare(`INSERT INTO fb_share_links (id,tenant_id,user_id,token_hash,status,expires_at,created_at,kind,target_id,payload_json)
+        SELECT ?,?,?,?,'active',?,?,?,?,? WHERE ${fence.sql}`)
+        .bind(id,ctx.tenant.id,user.id,hash,expiresAt,now,kind,targetId,JSON.stringify(payload),...fence.args),
+      ctx.db.prepare(`INSERT INTO fb_audit_events(id,tenant_id,actor_type,actor_id,represented_user_id,action,object_type,object_id,metadata_json,request_id,created_at)
+        SELECT ?,?,?,?,?,'share.created','share_link',?,?,?,? WHERE changes()=1`)
+        .bind(newId('aud'),ctx.tenant.id,ctx.actor.type,ctx.actor.id,ctx.actor.representedUserId,id,JSON.stringify({kind,target_id:targetId,audience,expires_at:expiresAt}),ctx.requestId,now),
+    ]);
+    if (results[0]?.meta.changes!==1) throw new ApiError(409,'share_access_changed','Your wishlist or access changed. Review it and try again.');
+  } else if (cardSnapshot) {
+    const {sharePrincipalEpochFence}=await import('./collection');
+    const fence=sharePrincipalEpochFence(ctx,cardSnapshot);
+    const results=await ctx.db.batch([
+      ctx.db.prepare(`INSERT INTO fb_share_links (id,tenant_id,user_id,token_hash,status,expires_at,created_at,kind,target_id,payload_json)
+        SELECT ?,?,?,?,'active',?,?,?,?,? WHERE ${fence.sql}
+          AND EXISTS (SELECT 1 FROM fb_card_instances ci JOIN fb_card_definitions cd ON cd.id=ci.card_id AND cd.tenant_id=ci.tenant_id
+            JOIN fb_variants v ON v.id=ci.variant_id AND v.tenant_id=ci.tenant_id AND v.card_id=ci.card_id
+            WHERE ci.id=? AND ci.tenant_id=? AND ci.user_id=? AND ci.card_id=? AND ci.variant_id=? AND ci.serial=? AND ci.status IN ('owned','reserved')
+              AND cd.status='published' AND cd.archived_at IS NULL AND v.status='published' AND v.archived_at IS NULL
+              AND (SELECT '/media/back/' || br.asset_id FROM fb_variant_back_renders br WHERE br.variant_id=v.id AND br.status='published' LIMIT 1) IS ?)
+        RETURNING id`)
+        .bind(id,ctx.tenant.id,user.id,hash,expiresAt,now,kind,targetId,JSON.stringify(payload),...fence.args,cardSnapshot.instanceId,ctx.tenant.id,user.id,cardSnapshot.cardId,cardSnapshot.variantId,cardSnapshot.serial,cardSnapshot.backUrl),
+      ctx.db.prepare(`INSERT INTO fb_audit_events(id,tenant_id,actor_type,actor_id,represented_user_id,action,object_type,object_id,metadata_json,request_id,created_at)
+        SELECT ?,?,?,?,?,'share.created','share_link',?,?,?,? WHERE changes()=1`)
+        .bind(newId('aud'),ctx.tenant.id,ctx.actor.type,ctx.actor.id,ctx.actor.representedUserId,id,JSON.stringify({kind,target_id:targetId,audience,expires_at:expiresAt}),ctx.requestId,now),
+    ]);
+    if (results[0]?.results?.length!==1) throw new ApiError(409,'share_access_changed','The card or your access changed. Review it and try again.');
+  } else if (collectionSnapshot || profileSnapshot || achievementSnapshot) {
+    const {sharePrincipalEpochFence}=await import('./collection');
+    const fence=sharePrincipalEpochFence(ctx,(collectionSnapshot || profileSnapshot || achievementSnapshot)!,false);
+    const results=await ctx.db.batch([
+      ctx.db.prepare(`INSERT INTO fb_share_links (id,tenant_id,user_id,token_hash,status,expires_at,created_at,kind,target_id,payload_json)
+        SELECT ?,?,?,?,'active',?,?,?,?,? WHERE ${fence.sql}
+          AND NOT EXISTS (SELECT 1 FROM json_each(?) p WHERE NOT EXISTS (SELECT 1 FROM fb_card_instances ci
+            WHERE ci.id=json_extract(p.value,'$[0]') AND ci.card_id=json_extract(p.value,'$[1]') AND ci.variant_id=json_extract(p.value,'$[2]')
+              AND ci.tenant_id=? AND ci.user_id=? AND ci.status IN ('owned','reserved') AND ci.favourite=1))
+          AND (?<>'achievement' OR EXISTS (SELECT 1 FROM fb_achievement_unlocks u JOIN fb_achievement_definitions d ON d.id=u.achievement_id AND d.version=u.achievement_version
+            WHERE u.id=? AND u.tenant_id=? AND u.user_id=? AND u.achievement_id=? AND u.achievement_version=? AND u.earned_at=?
+              AND d.status='active' AND d.archived_at IS NULL AND (d.scope='platform' OR (d.scope='bot' AND d.tenant_id=?)) AND d.criteria_json=? AND d.visibility=?)) RETURNING id`)
+        .bind(id,ctx.tenant.id,user.id,hash,expiresAt,now,kind,targetId,JSON.stringify(payload),...fence.args,profileSnapshot?.pins ?? '[]',ctx.tenant.id,user.id,
+          kind,targetId,ctx.tenant.id,user.id,achievementSnapshot?.achievementId ?? '',achievementSnapshot?.version ?? -1,achievementSnapshot?.earnedAt ?? '',ctx.tenant.id,achievementSnapshot?.criteria ?? '',achievementSnapshot?.visibility ?? ''),
+      ctx.db.prepare(`INSERT INTO fb_audit_events(id,tenant_id,actor_type,actor_id,represented_user_id,action,object_type,object_id,metadata_json,request_id,created_at)
+        SELECT ?,?,?,?,?,'share.created','share_link',?,?,?,? WHERE changes()=1`)
+        .bind(newId('aud'),ctx.tenant.id,ctx.actor.type,ctx.actor.id,ctx.actor.representedUserId,id,JSON.stringify({kind,target_id:targetId,audience,expires_at:expiresAt}),ctx.requestId,now),
+    ]);
+    if (results[0]?.results?.length!==1) throw new ApiError(409,'share_access_changed','Your selection or access changed. Review it and try again.');
+  } else {
+    await ctx.db.batch([
+      ctx.db.prepare("INSERT INTO fb_share_links (id, tenant_id, user_id, token_hash, status, expires_at, created_at, kind, target_id, payload_json) VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)")
+        .bind(id,ctx.tenant.id,user.id,hash,expiresAt,now,kind,targetId,JSON.stringify(payload)),
+      auditStatement(ctx,"share.created","share_link",id,{kind,target_id:targetId,audience,expires_at:expiresAt}),
+    ]);
+  }
   return {
     id,
     token: raw,
     url: `${ctx.config.publicOrigin}/s/${raw}`,
     kind,
     audience,
-    preview: payload,
+    preview: kind === "wishlist" ? { ...payload, items: (payload.items as Array<Record<string, unknown>>).map(({ card_id: _cardId, ...item }) => item) } : kind === "profile" ? { ...payload, favourite_cards: (payload.favourite_cards as Array<Record<string, unknown>>).map(({ card_id: _cardId, ...item }) => item) } : kind === "achievement" ? (({ achievement_id: _id, criteria_hash: _hash, ...safe }) => safe)(payload) : payload,
     owner_display_name: ownerDisplayName,
     expires_at: expiresAt,
   };
@@ -983,33 +890,30 @@ export async function processOutbox(ctx: Ctx) {
 }
 
 export async function backupManifest(ctx: Ctx) {
-  const [schema, cards, variants, instances, ledger, wallets, assets, balance, release] = await Promise.all([
-    first<{ value: string }>(ctx.db, "SELECT value FROM fb_schema_meta WHERE key = 'domain_schema_version'"),
-    first<{ count: number }>(ctx.db, "SELECT COUNT(*) AS count FROM fb_card_definitions WHERE tenant_id = ?", ctx.tenant.id),
-    first<{ count: number }>(ctx.db, "SELECT COUNT(*) AS count FROM fb_variants WHERE tenant_id = ?", ctx.tenant.id),
-    first<{ count: number }>(ctx.db, "SELECT COUNT(*) AS count FROM fb_card_instances WHERE tenant_id = ?", ctx.tenant.id),
-    first<{ count: number }>(ctx.db, "SELECT COUNT(*) AS count FROM fb_ledger_entries WHERE tenant_id = ?", ctx.tenant.id),
-    first<{ count: number }>(ctx.db, "SELECT COUNT(*) AS count FROM fb_wallets WHERE tenant_id = ?", ctx.tenant.id),
-    first<{ count: number; bytes: number }>(ctx.db, "SELECT COUNT(*) AS count, COALESCE(SUM(bytes), 0) AS bytes FROM fb_assets WHERE tenant_id = ?", ctx.tenant.id),
-    first<{ total: number }>(ctx.db, "SELECT COALESCE(SUM(balance), 0) AS total FROM fb_wallets WHERE tenant_id = ?", ctx.tenant.id),
-    first<{ version: number; checksum: string; published_at: string }>(ctx.db, "SELECT version, checksum, published_at FROM fb_catalogue_releases WHERE tenant_id = ? AND status = 'active' ORDER BY version DESC LIMIT 1", ctx.tenant.id),
-  ]);
-  return {
-    schemaVersion: schema?.value ?? "unknown",
-    tenant: ctx.tenant.slug,
-    counts: {
-      cards: cards?.count ?? 0,
-      variants: variants?.count ?? 0,
-      instances: instances?.count ?? 0,
-      ledger: ledger?.count ?? 0,
-      wallets: wallets?.count ?? 0,
-      assets: assets?.count ?? 0,
-      assetBytes: assets?.bytes ?? 0,
-    },
-    walletTotal: balance?.total ?? 0,
-    release: release ?? null,
-    generatedAt: nowIso(),
-  };
+  const user=ctx.user;
+  if (!user || ctx.actor.type!=='user' || ctx.actor.id!==user.id || ctx.actor.representedUserId!==user.id)
+    throw new ApiError(403,'backup_access_changed','A signed-in Super Admin is required.');
+  const principal=JSON.stringify({tenant:ctx.tenant.id,user:user.id,session:ctx.sessionId,assurance:ctx.sessionAssurance});
+  const row=await first<{schema_version:string|null;cards:number;variants:number;instances:number;ledger:number;wallets:number;assets:number;asset_bytes:number;wallet_total:number;release_json:string|null}>(ctx.db,`/* backup:manifest */ WITH x AS (SELECT json(?) p)
+    SELECT (SELECT value FROM fb_schema_meta WHERE key='domain_schema_version') AS schema_version,
+      (SELECT COUNT(*) FROM fb_card_definitions WHERE tenant_id=json_extract(x.p,'$.tenant')) AS cards,
+      (SELECT COUNT(*) FROM fb_variants WHERE tenant_id=json_extract(x.p,'$.tenant')) AS variants,
+      (SELECT COUNT(*) FROM fb_card_instances WHERE tenant_id=json_extract(x.p,'$.tenant')) AS instances,
+      (SELECT COUNT(*) FROM fb_ledger_entries WHERE tenant_id=json_extract(x.p,'$.tenant')) AS ledger,
+      (SELECT COUNT(*) FROM fb_wallets WHERE tenant_id=json_extract(x.p,'$.tenant')) AS wallets,
+      (SELECT COUNT(*) FROM fb_assets WHERE tenant_id=json_extract(x.p,'$.tenant')) AS assets,
+      (SELECT COALESCE(SUM(bytes),0) FROM fb_assets WHERE tenant_id=json_extract(x.p,'$.tenant')) AS asset_bytes,
+      (SELECT COALESCE(SUM(balance),0) FROM fb_wallets WHERE tenant_id=json_extract(x.p,'$.tenant')) AS wallet_total,
+      (SELECT json_object('version',version,'checksum',checksum,'published_at',published_at) FROM fb_catalogue_releases WHERE tenant_id=json_extract(x.p,'$.tenant') AND status='active' ORDER BY version DESC LIMIT 1) AS release_json
+      FROM x WHERE EXISTS (SELECT 1 FROM fb_memberships m JOIN fb_users u ON u.id=m.user_id AND u.disabled_at IS NULL
+        JOIN fb_bots b ON b.tenant_id=m.tenant_id AND b.status='active'
+        JOIN fb_sessions s ON s.id=json_extract(x.p,'$.session') AND s.user_id=u.id AND s.tenant_id=m.tenant_id AND s.revoked_at IS NULL
+          AND s.expires_at>strftime('%Y-%m-%dT%H:%M:%fZ','now') AND s.assurance=json_extract(x.p,'$.assurance') AND s.assurance IN ('passkey','mfa')
+          AND s.auth_time>=strftime('%Y-%m-%dT%H:%M:%fZ','now','-30 minutes') AND s.auth_time<=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+        WHERE m.tenant_id=json_extract(x.p,'$.tenant') AND m.user_id=json_extract(x.p,'$.user') AND m.status='active' AND m.revoked_at IS NULL
+        AND u.platform_admin=1 AND EXISTS (SELECT 1 FROM fb_platform_admins pa WHERE pa.user_id=u.id AND pa.status='active' AND pa.revoked_at IS NULL))`,principal);
+  if (!row) throw new ApiError(403,'backup_access_changed','Your Super Admin access or recent sign-in changed.');
+  return {schemaVersion:row.schema_version ?? 'unknown',tenant:ctx.tenant.slug,counts:{cards:row.cards,variants:row.variants,instances:row.instances,ledger:row.ledger,wallets:row.wallets,assets:row.assets,assetBytes:row.asset_bytes},walletTotal:row.wallet_total,release:row.release_json ? JSON.parse(row.release_json) : null,generatedAt:nowIso()};
 }
 
 export async function revokeShareLink(ctx: Ctx, id: string) {
@@ -1034,8 +938,8 @@ export async function listShareLinks(ctx: Ctx) {
     user.id,
   );
   return rows.map((row) => {
-    let preview: Record<string, unknown> = {};
-    try { preview = JSON.parse(row.payload_json) as Record<string, unknown>; } catch { preview = {}; }
-    return { ...row, payload_json: undefined, preview };
+    // Historical snapshot metadata may no longer be visible to its creator.
+    // Management needs kind, status and expiry, not the captured content.
+    return { ...row, payload_json: undefined, preview: {} };
   });
 }

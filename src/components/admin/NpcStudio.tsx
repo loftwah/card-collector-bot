@@ -55,7 +55,7 @@ interface ActionRow {
   pool_slug: string | null;
   amount: number;
   created_at: string;
-  after: { card_name?: string; variant_name?: string; serial?: string; balance_after?: number };
+  after: { card_name?: string; variant_name?: string; serial?: string; balance_after?: number; previous_status?: string };
 }
 
 export default function NpcStudio() {
@@ -68,6 +68,8 @@ export default function NpcStudio() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [detail, setDetail] = useState<{ npc: NpcItem; actions: ActionRow[] } | null>(null);
+  const [reconcileAction, setReconcileAction] = useState<string | null>(null);
+  const [reconcileMessage, setReconcileMessage] = useState("");
   const [editing, setEditing] = useState<NpcItem | null>(null);
   const [edit, setEdit] = useState({ name: "", bio: "", presetKey: "rookie", goalCollectionId: "", poolSlug: "", scheduleEnabled: false, intervalMinutes: 1440 });
 
@@ -122,7 +124,11 @@ export default function NpcStudio() {
     const result = await act(`/api/v1/npcs/${npc.id}/play`, "POST", {}, `play-${npc.id}`);
     if (result) {
       const receipt = result.receipt as { card_name?: string; serial?: string } | undefined;
-      setNotice(`${npc.name} opened a real capsule: ${receipt?.card_name ?? "a card"}${receipt?.serial ? ` · ${receipt.serial}` : ""}.`);
+      setNotice(result.status === "completed"
+        ? `${npc.name} opened a real capsule: ${receipt?.card_name ?? "a card"}${receipt?.serial ? ` · ${receipt.serial}` : ""}.`
+        : result.status === "skipped"
+          ? `${npc.name}'s action stopped without a draw.`
+          : `${npc.name}'s action is still being reconciled; check its receipts before trying another.`);
       await load();
     }
   }
@@ -164,6 +170,26 @@ export default function NpcStudio() {
     } finally {
       setBusy("");
     }
+  }
+
+  async function reconcile(npc: NpcItem, actionId: string) {
+    setBusy(`reconcile-${actionId}`);
+    setReconcileMessage("");
+    try {
+      const result = await api<{ status: string; resolution: string; message?: string }>(`/api/v1/npcs/${npc.id}/reconcile`, { method: "POST", body: { actionId } });
+      const message = result.resolution === "no_draw_committed" ? "Action stopped. No draw was committed; you can try another action when limits allow." : result.resolution === "draw_recorded" ? "A draw was recorded. Check the receipt; no second draw was started." : result.message ?? "The outcome still needs reconciliation. No second draw was started.";
+      setReconcileMessage(message);
+      setReconcileAction(null);
+      try {
+        const actions = await api<{ items: ActionRow[] }>(`/api/v1/npcs/${npc.id}/actions`);
+        setDetail({ npc, actions: actions.items });
+      } catch {
+        setReconcileMessage(`${message} The action list could not refresh; close and reopen it to check.`);
+      }
+      await load();
+    } catch (cause) {
+      setReconcileMessage(describeError(cause));
+    } finally { setBusy(""); }
   }
 
   function beginEdit(npc: NpcItem) {
@@ -333,18 +359,20 @@ export default function NpcStudio() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(detail)} onOpenChange={(open) => { if (!open) setDetail(null); }}>
+      <Dialog open={Boolean(detail)} onOpenChange={(open) => { if (!open) { setDetail(null); setReconcileAction(null); setReconcileMessage(""); } }}>
         <DialogContent>
           {detail ? (
             <>
               <DialogTitle>{detail.npc.name} · action receipts</DialogTitle>
-              <DialogDescription>Real persisted actions for this NPC. Skipped and failed rows explain why no card or Foil moved.</DialogDescription>
+              <DialogDescription>Real persisted actions for this NPC. An unresolved action may still have a draw; check its outcome before starting another.</DialogDescription>
+              {reconcileMessage ? <p className="mt-3 text-sm" role="status">{reconcileMessage}</p> : null}
               <div className="mt-4 grid max-h-[28rem] gap-2 overflow-auto">
                 {detail.actions.map((action) => (
                   <div key={action.id} className="border border-[var(--line)] p-3 text-xs">
-                    <p className="font-semibold">{action.status} · {action.pool_slug ?? "no pool"} · {action.amount} Foil</p>
-                    <p className="mt-1 text-[var(--muted)]">{action.after.card_name ? `${action.after.card_name} · ${action.after.variant_name} · ${action.after.serial} · balance ${action.after.balance_after}` : action.reason ?? "No award recorded."}</p>
+                    <p className="font-semibold">{action.status}{action.after.previous_status === "failed" ? " · previously failed" : ""} · {action.pool_slug ?? "no pool"} · {action.amount} Foil</p>
+                    <p className="mt-1 text-[var(--muted)]">{action.after.card_name ? `${action.after.card_name} · ${action.after.variant_name} · ${action.after.serial} · balance ${action.after.balance_after}` : action.status === "planned" || action.status === "failed" ? "Outcome not yet confirmed." : action.after.previous_status === "failed" ? "The earlier failure is retained in the action history. No draw was committed." : action.reason ?? "No award recorded."}</p>
                     <p className="mt-1 font-mono text-[0.55rem] uppercase tracking-[0.08em] text-[var(--muted)]">{new Date(action.created_at).toLocaleString("en-AU")}</p>
+                    {action.status === "planned" || action.status === "failed" ? reconcileAction === action.id ? <div className="mt-3 grid gap-2 text-sm"><p>This checks for a committed draw and may stop an opening still in progress. It will not start another draw. If the evidence is incomplete, the action stays unresolved.</p><div className="flex flex-wrap gap-2"><Button size="sm" disabled={Boolean(busy)} onClick={() => void reconcile(detail.npc, action.id)}>Confirm reconciliation</Button><Button size="sm" variant="secondary" disabled={Boolean(busy)} onClick={() => setReconcileAction(null)}>Keep waiting</Button></div></div> : <Button className="mt-3" size="sm" variant="secondary" disabled={Boolean(busy)} onClick={() => { setReconcileMessage(""); setReconcileAction(action.id); }}>Review unresolved action</Button> : null}
                   </div>
                 ))}
                 {detail.actions.length === 0 ? <p className="text-sm text-[var(--muted)]">No actions yet.</p> : null}

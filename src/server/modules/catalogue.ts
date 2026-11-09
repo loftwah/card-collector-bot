@@ -4,9 +4,10 @@ import { all, first, nowIso, statement } from "../db";
 import { newId, sha256Hex } from "../ids";
 import { auditStatement } from "../http";
 import { assertTransition } from "../state";
-import { cardVisibilitySql, publicCollectionSql, viewerAccess } from "./visibility";
+import { cardVisibilitySql, currentViewerAccess, publicCollectionSql } from "./visibility";
 import { botAllowsAiArt, isAiArtOrigin } from "./bots";
 import { normalizeCardName } from "./card-name-aliases";
+import { currentPublicSetRelease, currentPublicSetReleases, currentReleaseSql } from "./public-set-releases";
 
 export interface CardRow {
   id: string;
@@ -127,6 +128,8 @@ export async function listCards(
     id?: string;
     slug?: string;
     search?: string;
+    /** Match normalized canonical/alternate names only, not descriptions. */
+    exactName?: boolean;
     category?: string;
     tag?: string;
     set?: string;
@@ -163,17 +166,28 @@ export async function listCards(
        WHERE cc_hidden.card_id = cd.id AND NOT (${hidden})
     )`);
   } else if (options.viewerScope !== false && !options.includeDrafts) {
-    const access = await viewerAccess(ctx);
+    const access = await currentViewerAccess(ctx);
     const visibility = cardVisibilitySql(access);
     where.push(visibility.sql);
     params.push(...visibility.params);
   }
   if (options.search) {
-    where.push(
-      "(cd.name LIKE ? OR cd.description LIKE ? OR cd.subtitle LIKE ? OR EXISTS (SELECT 1 FROM fb_card_name_aliases na WHERE na.tenant_id = cd.tenant_id AND na.card_id = cd.id AND na.normalized = ?))",
-    );
-    const query = `%${options.search}%`;
-    params.push(query, query, query, normalizeCardName(options.search));
+    const normalized = normalizeCardName(options.search);
+    // SQLite's LOWER/LIKE do not implement Unicode NFKC case normalization.
+    // Include canonical names using the same normalization as aliases so a
+    // later rename cannot silently hide an ambiguous identity.
+    const names = await all<{ id: string; name: string }>(ctx.db, `SELECT cd.id, cd.name FROM fb_card_definitions cd WHERE ${where.join(" AND ")}`, ...params);
+    const exactNames = names.filter(row => normalizeCardName(row.name) === normalized).map(row => row.id);
+    if (exactNames.length > 80) throw new ApiError(409, "card_name_ambiguous", "Too many cards share that name. Use a card's exact slug.");
+    const exactClause = `EXISTS (SELECT 1 FROM fb_card_name_aliases na WHERE na.tenant_id = cd.tenant_id AND na.card_id = cd.id AND na.normalized = ?)${exactNames.length ? ` OR cd.id IN (${exactNames.map(() => "?").join(",")})` : ""}`;
+    if (options.exactName) {
+      where.push(`(${exactClause})`);
+      params.push(normalized, ...exactNames);
+    } else {
+      where.push(`(cd.name LIKE ? OR cd.description LIKE ? OR cd.subtitle LIKE ? OR ${exactClause})`);
+      const query = `%${options.search}%`;
+      params.push(query, query, query, normalized, ...exactNames);
+    }
   }
   if (options.category) {
     where.push("cat.slug = ?");
@@ -242,11 +256,12 @@ export async function getCard(
   idOrSlug: string,
   options?: { includeDrafts?: boolean; includeAi?: boolean; includeArchived?: boolean },
 ): Promise<CardView> {
-  const access = await viewerAccess(ctx);
+  const access = await currentViewerAccess(ctx);
   const visibility = cardVisibilitySql(access);
-  const administrative = Boolean(options?.includeDrafts || access.managesCurrentTenant);
-  const gate = administrative ? "1 = 1" : `(cd.status = 'published' AND (${visibility.sql}))`;
-  const gateParams = administrative ? [] : visibility.params;
+  const administrative = Boolean(options?.includeDrafts && (access.managesCurrentTenant ||
+    (ctx.actor.type === "agent" && ctx.scopes?.includes("content:write") && ctx.user?.agentBotCapabilities?.includes("content"))));
+  const gate = `(${administrative ? "1 = 1" : "cd.status = 'published'"} AND (${visibility.sql}))`;
+  const gateParams = visibility.params;
   // Archived rows are normally invisible, including to the administrative
   // catalogue. Restoration is the one explicit exception: the caller must ask
   // for the archived row before it can clear the archive marker.
@@ -840,6 +855,7 @@ export async function archiveCard(ctx: Ctx, id: string): Promise<void> {
   if (!instances?.count && card.status === "draft") {
     try {
       await ctx.db.batch([
+        ctx.db.prepare("DELETE FROM fb_card_name_aliases WHERE tenant_id = ? AND card_id = ?").bind(ctx.tenant.id, card.id),
         ctx.db
           .prepare("DELETE FROM fb_card_tags WHERE tenant_id = ? AND card_id = ?")
           .bind(ctx.tenant.id, card.id),
@@ -1070,7 +1086,7 @@ export interface SetView {
   published_at: string | null;
   cards: Array<{ id: string; slug: string; name: string; sort: number }>;
   reward_amount: number;
-  progress?: { owned: number; total: number; complete: boolean; claimed: boolean };
+  progress?: { owned: number; total: number; complete: boolean | null; claimed: boolean | null };
 }
 
 export async function listSets(
@@ -1078,7 +1094,10 @@ export async function listSets(
   userId?: string,
   options?: { publicOnly?: boolean; viewerScope?: boolean },
 ): Promise<SetView[]> {
-  const access = await viewerAccess(ctx);
+  if (ctx.actor.type === "agent" && !ctx.scopes?.includes("inventory:read")) userId = undefined;
+  const access = await currentViewerAccess(ctx);
+  if (!access.signedIn) userId = undefined;
+  if (userId && !access.platformAdmin) options = { ...options, viewerScope: true, publicOnly: false };
   let cardFilter = "";
   const cardParams: unknown[] = [];
   if (options?.publicOnly) {
@@ -1094,7 +1113,8 @@ export async function listSets(
     cardFilter = `AND ${visibility.sql}`;
     cardParams.push(...visibility.params);
   }
-  const rows = await all<{
+  const requiresRelease = Boolean(options?.publicOnly || !access.platformAdmin);
+  let rows: Array<{
     id: string;
     slug: string;
     name: string;
@@ -1103,232 +1123,171 @@ export async function listSets(
     version: number;
     published_at: string | null;
     reward_amount: number | null;
-  }>(
+  }>;
+  try { rows = await all(
     ctx.db,
     `SELECT s.id, s.slug, s.name, s.description, s.status, s.version, s.published_at, r.reward_amount
        FROM fb_sets s LEFT JOIN fb_set_reward_rules r ON r.set_id = s.id AND r.set_version = s.version
-      WHERE s.tenant_id = ? ORDER BY s.status = 'published' DESC, s.name`,
+      WHERE s.tenant_id = ? ${requiresRelease ? `AND EXISTS (SELECT 1 FROM fb_public_set_releases pr WHERE pr.tenant_id=s.tenant_id AND pr.set_id=s.id AND ${currentReleaseSql})` : ""}
+      ORDER BY s.status = 'published' DESC, s.name LIMIT 101`,
     ctx.tenant.id,
-  );
+  ); } catch (error) {
+    if (requiresRelease && /no such table: (?:fb_public_set_releases|fb_public_set_release_revocations)\b/.test(String(error))) return [];
+    throw error;
+  }
+  if (rows.length > 100) throw new ApiError(503,"set_list_overloaded","Too many sets to check safely. Please contact an administrator.");
+  const releases = requiresRelease ? await currentPublicSetReleases(ctx, rows.map((row) => row.id)) : new Map();
+  const selected = rows.filter((row) => !requiresRelease || releases.has(row.id));
+  const targets = selected.map((row) => {
+    const release = releases.get(row.id);
+    return { id: row.id, version: release?.set_version ?? row.version, roster: release ? JSON.parse(release.roster_json) : null };
+  });
+  const targetsJson = JSON.stringify(targets);
+  const cards = targets.length ? await all<{ set_id: string; id: string; slug: string; name: string; sort: number }>(ctx.db,
+    `SELECT sm.set_id,cd.id,cd.slug,cd.name,sm.sort FROM fb_set_memberships sm
+      JOIN json_each(?) target ON sm.set_id=json_extract(target.value,'$.id') AND sm.set_version=json_extract(target.value,'$.version')
+      JOIN fb_card_definitions cd ON cd.id=sm.card_id
+      WHERE sm.tenant_id=? ${cardFilter} ORDER BY sm.sort,cd.name`, targetsJson,ctx.tenant.id,...cardParams) : [];
+  const bySet = new Map<string, Array<{id:string;slug:string;name:string;sort:number}>>();
+  for (const { set_id, ...card } of cards) { const group = bySet.get(set_id) ?? []; group.push(card); bySet.set(set_id,group); }
+  const ownedRows = userId && targets.length ? await all<{set_id:string;count:number}>(ctx.db,
+    `SELECT sm.set_id,COUNT(DISTINCT ci.card_id) AS count FROM fb_set_memberships sm
+      JOIN json_each(?) target ON sm.set_id=json_extract(target.value,'$.id') AND sm.set_version=json_extract(target.value,'$.version')
+      JOIN fb_card_definitions cd ON cd.id=sm.card_id JOIN fb_card_instances ci ON ci.card_id=sm.card_id AND ci.tenant_id=sm.tenant_id
+      WHERE sm.tenant_id=? AND ci.user_id=? AND ci.status IN ('owned','reserved') ${cardFilter}
+      AND (json_type(target.value,'$.roster')='null' OR ci.card_id IN (SELECT json_extract(value,'$[0]') FROM json_each(target.value,'$.roster')))
+      GROUP BY sm.set_id`, targetsJson,ctx.tenant.id,userId,...cardParams) : [];
+  const ownedBySet = new Map(ownedRows.map((row) => [row.set_id,Number(row.count)]));
+  const claimRows = userId && targets.length ? await all<{set_id:string}>(ctx.db,
+    `SELECT sc.set_id FROM fb_set_completion_claims sc JOIN json_each(?) target ON sc.set_id=json_extract(target.value,'$.id') AND sc.set_version=json_extract(target.value,'$.version') WHERE sc.tenant_id=? AND sc.user_id=?`, targetsJson,ctx.tenant.id,userId) : [];
+  const claimedSets = new Set(claimRows.map((row) => row.set_id));
+  const stillCurrent = requiresRelease ? await currentPublicSetReleases(ctx, selected.map((row) => row.id)) : new Map();
   const result: SetView[] = [];
-  for (const row of rows) {
-    const cards = await all<{ id: string; slug: string; name: string; sort: number }>(
-      ctx.db,
-      `SELECT cd.id, cd.slug, cd.name, sm.sort FROM fb_set_memberships sm
-        JOIN fb_card_definitions cd ON cd.id = sm.card_id
-       WHERE sm.tenant_id = ? AND sm.set_id = ? AND sm.set_version = ? ${cardFilter} ORDER BY sm.sort, cd.name`,
-      ctx.tenant.id,
-      row.id,
-      row.version,
-      ...cardParams,
-    );
+  for (const row of selected) {
+    // Unreviewed free-form set metadata is not public-safe merely because a
+    // member card is visible. Only an explicit still-current release can be
+    // shown outside the platform administrator's management view.
+    const release = releases.get(row.id) ?? null;
+    if (requiresRelease && !release) continue;
+    if (release && stillCurrent.get(row.id)?.id !== release.id) continue;
+    const setVersion = release?.set_version ?? row.version;
+    let setCards = bySet.get(row.id) ?? [];
+    if (release) {
+      const roster = JSON.parse(release.roster_json) as Array<[string, string, string, number]>;
+      const visibleIds = new Set(setCards.map((card) => card.id));
+      if (visibleIds.size !== roster.length || roster.some(([id]) => !visibleIds.has(id))) continue;
+      // Never return stale or newly edited set/card labels read before review.
+      setCards = roster.map(([id, slug, name, sort]) => ({ id, slug, name, sort })).sort((a,b) => a.sort-b.sort || a.name.localeCompare(b.name));
+    }
     if (options?.publicOnly || options?.viewerScope) {
-      if (cards.length === 0) continue;
+      if (setCards.length === 0) continue;
     }
     let progress: SetView["progress"];
     if (userId) {
-      const owned = await first<{ count: number }>(
-        ctx.db,
-        `SELECT COUNT(DISTINCT ci.card_id) AS count FROM fb_card_instances ci
-          JOIN fb_set_memberships sm ON sm.card_id = ci.card_id AND sm.tenant_id = ci.tenant_id
-         WHERE ci.tenant_id = ? AND ci.user_id = ? AND sm.set_id = ? AND sm.set_version = ?
-           AND ci.status IN ('owned','reserved')`,
-        ctx.tenant.id,
-        userId,
-        row.id,
-        row.version,
-      );
-      const claimed = await first<{ id: string }>(
-        ctx.db,
-        "SELECT id FROM fb_set_completion_claims WHERE tenant_id = ? AND user_id = ? AND set_id = ? AND set_version = ?",
-        ctx.tenant.id,
-        userId,
-        row.id,
-        row.version,
-      );
-      const ownedCount = owned?.count ?? 0;
+      const ownedCount = ownedBySet.get(row.id) ?? 0;
       progress = {
         owned: ownedCount,
-        total: cards.length,
-        complete: cards.length > 0 && ownedCount >= cards.length,
-        claimed: Boolean(claimed),
+        total: setCards.length,
+        complete: access.platformAdmin || release ? setCards.length > 0 && ownedCount >= setCards.length : null,
+        claimed: access.platformAdmin || release ? claimedSets.has(row.id) : null,
       };
     }
     result.push({
       id: row.id,
-      slug: row.slug,
-      name: row.name,
-      description: row.description,
+      slug: release?.slug ?? row.slug,
+      name: release?.name ?? row.name,
+      description: release?.description ?? row.description,
       status: row.status,
-      version: row.version,
-      published_at: row.published_at,
-      cards,
-      reward_amount: row.reward_amount ?? 0,
+      version: setVersion,
+      published_at: release ? null : row.published_at,
+      cards: setCards,
+      reward_amount: release?.reward_amount ?? row.reward_amount ?? 0,
       progress,
     });
   }
   return result;
 }
 
-export async function createSet(
-  ctx: Ctx,
-  input: { slug: string; name: string; description: string; rewardAmount: number },
-): Promise<SetView> {
-  const slug = normalizeSlug(input.slug);
-  const id = newId("set");
-  const now = nowIso();
-  try {
-    await ctx.db.batch([
-      ctx.db
-        .prepare(
-          "INSERT INTO fb_sets (id, tenant_id, slug, name, description, status, version, created_at) VALUES (?, ?, ?, ?, ?, 'draft', 1, ?)",
-        )
-        .bind(id, ctx.tenant.id, slug, input.name.trim(), input.description.trim(), now),
-      ctx.db
-        .prepare(
-          "INSERT INTO fb_set_reward_rules (id, tenant_id, set_id, set_version, reward_amount, created_at) VALUES (?, ?, ?, 1, ?, ?)",
-        )
-        .bind(newId("sr"), ctx.tenant.id, id, Math.max(0, Math.floor(input.rewardAmount)), now),
-      auditStatement(ctx, "set.created", "set", id, { slug }),
-    ]);
-  } catch (error) {
-    if (String(error).includes("UNIQUE"))
-      throw new ApiError(409, "set_exists", "That set slug already exists.");
-    throw error;
-  }
-  return (await listSets(ctx)).find((set) => set.id === id)!;
+export async function createSet(ctx: Ctx, input: { slug: string; name: string; description: string; rewardAmount: number }): Promise<SetView> {
+  const { changeManagedSet } = await import("./set-management");
+  return changeManagedSet(ctx, "create", input);
 }
 
-export async function replaceSetMembership(
-  ctx: Ctx,
-  setId: string,
-  cardIds: string[],
-): Promise<SetView> {
-  const set = await first<{ id: string; version: number; status: string; slug: string }>(
-    ctx.db,
-    "SELECT id, version, status, slug FROM fb_sets WHERE id = ? AND tenant_id = ?",
-    setId,
-    ctx.tenant.id,
-  );
-  if (!set) throw new ApiError(404, "set_not_found", "Set not found.");
-  if (new Set(cardIds).size !== cardIds.length)
-    throw new ApiError(422, "duplicate_card", "A card can appear once in a set.");
-  if (cardIds.length > 0) {
-    const found = await all<{ id: string }>(
-      ctx.db,
-      `SELECT id FROM fb_card_definitions WHERE tenant_id = ? AND id IN (${cardIds.map(() => "?").join(",")}) AND archived_at IS NULL`,
-      ctx.tenant.id,
-      ...cardIds,
-    );
-    if (found.length !== cardIds.length)
-      throw new ApiError(422, "card_invalid", "Every set member must be an active card.");
-  }
-  const oldVersion = set.version;
-  const nextVersion = set.status === "published" ? oldVersion + 1 : oldVersion;
-  const now = nowIso();
-  const statements = [
-    ctx.db
-      .prepare(
-        "UPDATE fb_sets SET version = ?, status = CASE WHEN status = 'published' THEN 'draft' ELSE status END WHERE id = ? AND tenant_id = ? AND version = ?",
-      )
-      .bind(nextVersion, set.id, ctx.tenant.id, oldVersion),
-    ...(nextVersion !== oldVersion
-      ? [
-          ctx.db
-            .prepare(
-              "INSERT INTO fb_set_reward_rules (id, tenant_id, set_id, set_version, reward_amount, created_at) SELECT ?, tenant_id, id, ?, COALESCE((SELECT reward_amount FROM fb_set_reward_rules WHERE set_id = ? AND set_version = ?), 0), ? FROM fb_sets WHERE id = ?",
-            )
-            .bind(newId("sr"), nextVersion, set.id, oldVersion, now, set.id),
-        ]
-      : []),
-    ...(nextVersion === oldVersion
-      ? [
-          ctx.db
-            .prepare(
-              "DELETE FROM fb_set_memberships WHERE tenant_id = ? AND set_id = ? AND set_version = ?",
-            )
-            .bind(ctx.tenant.id, set.id, oldVersion),
-        ]
-      : []),
-    ...cardIds.map((cardId, index) =>
-      ctx.db
-        .prepare(
-          "INSERT INTO fb_set_memberships (id, tenant_id, set_id, set_version, card_id, sort, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        )
-        .bind(newId("smi"), ctx.tenant.id, set.id, nextVersion, cardId, index, now),
-    ),
-    auditStatement(ctx, "set.membership.changed", "set", set.id, {
-      version: nextVersion,
-      cards: cardIds.length,
-    }),
-  ];
-  await ctx.db.batch(statements);
-  return (await listSets(ctx)).find((item) => item.id === set.id)!;
+export async function replaceSetMembership(ctx: Ctx, setId: string, cardIds: string[]): Promise<SetView> {
+  const { changeManagedSet } = await import("./set-management");
+  return changeManagedSet(ctx, "members", { id: setId, cardIds });
 }
 
 export async function publishSet(ctx: Ctx, setId: string): Promise<SetView> {
-  const set = (await listSets(ctx)).find((item) => item.id === setId);
-  if (!set) throw new ApiError(404, "set_not_found", "Set not found.");
-  if (set.cards.length === 0)
-    throw new ApiError(422, "set_empty", "Add cards before publishing a set.");
-  const draftCards = set.cards.filter((card) => !card.name); // names are always present; kept for clarity
-  if (draftCards.length) throw new ApiError(422, "set_invalid", "Set contains an invalid card.");
-  await ctx.db.batch([
-    ctx.db
-      .prepare(
-        "UPDATE fb_sets SET status = 'published', published_at = ? WHERE id = ? AND tenant_id = ? AND version = ?",
-      )
-      .bind(nowIso(), set.id, ctx.tenant.id, set.version),
-    auditStatement(ctx, "set.published", "set", set.id, { version: set.version }),
-  ]);
-  return (await listSets(ctx)).find((item) => item.id === setId)!;
+  const { changeManagedSet } = await import("./set-management");
+  return changeManagedSet(ctx, "publish", { id: setId });
 }
 
 export async function claimSetCompletion(ctx: Ctx, setId: string, idempotencyKey: string) {
-  const user = ctx.user!;
-  const set = (await listSets(ctx, user.id)).find((item) => item.id === setId);
-  if (!set) throw new ApiError(404, "set_not_found", "Set not found.");
-  if (set.status !== "published")
-    throw new ApiError(409, "set_not_published", "This set is not published.");
-  if (!set.progress?.complete)
-    throw new ApiError(409, "set_incomplete", "Collect every card in this release first.");
-  if (set.progress.claimed)
-    throw new ApiError(409, "already_claimed", "This set reward was already claimed.");
+  const user = ctx.user;
+  if (!user || ctx.actor.type !== "user" || ctx.actor.id !== user.id || ctx.actor.representedUserId !== user.id)
+    throw new ApiError(403, "set_claim_unavailable", "A signed-in member is required for this claim.");
+  if (!idempotencyKey || idempotencyKey.length > 200) throw new ApiError(422,"idempotency_key_required","A valid idempotency key is required.");
+  const accessIdentity = ctx.sessionAssurance === "access" && ctx.accessStatus === "linked" ? ctx.accessIdentity : null;
+  const sessionFence = `(EXISTS (SELECT 1 FROM fb_sessions sess WHERE sess.id=? AND sess.user_id=m.user_id AND sess.tenant_id=m.tenant_id AND sess.revoked_at IS NULL AND sess.expires_at > strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    OR (? = 'access' AND ? > unixepoch('now') AND EXISTS (SELECT 1 FROM fb_access_identities ai WHERE ai.user_id=m.user_id AND ai.team_domain=? AND ai.subject=? AND ai.email=? AND ai.revoked_at IS NULL) AND u.email=? COLLATE NOCASE))`;
+  const sessionParams = [ctx.sessionId, ctx.sessionAssurance, accessIdentity?.payload.exp ?? 0, ctx.config.access.teamDomain, accessIdentity?.subject ?? "", accessIdentity?.email ?? "", accessIdentity?.email ?? ""];
+  const active = await first<{id: string}>(ctx.db, `SELECT m.user_id AS id FROM fb_memberships m JOIN fb_users u ON u.id=m.user_id WHERE m.tenant_id=? AND m.user_id=? AND m.status='active' AND m.revoked_at IS NULL AND u.disabled_at IS NULL AND ${sessionFence}`, ctx.tenant.id,user.id,...sessionParams);
+  if (!active) throw new ApiError(403,"membership_required","Your access to this Bot has changed.");
+  const existing = async () => {
+    const rows = await all<{id: string; set_id: string; set_version: number; reward_amount: number}>(ctx.db,
+    `SELECT id,set_id,set_version,reward_amount FROM fb_set_completion_claims sc WHERE tenant_id=? AND user_id=? AND idempotency_key=?
+     AND EXISTS (SELECT 1 FROM fb_memberships m JOIN fb_users u ON u.id=m.user_id WHERE m.tenant_id=sc.tenant_id AND m.user_id=sc.user_id AND m.status='active' AND m.revoked_at IS NULL AND u.disabled_at IS NULL AND ${sessionFence}) LIMIT 2`,ctx.tenant.id,user.id,idempotencyKey,...sessionParams);
+    if (rows.length > 1) throw new ApiError(409,"idempotency_conflict","That key has ambiguous historical claims. Contact an administrator.");
+    return rows[0] ?? null;
+  };
+  const replay = await existing();
+  if (replay) {
+    if (replay.set_id !== setId) throw new ApiError(409,"idempotency_conflict","That key was used for another claim.");
+    return { claim_id: replay.id, set_id: replay.set_id, set_version: replay.set_version, amount: replay.reward_amount };
+  }
+  const release = await currentPublicSetRelease(ctx, setId);
+  if (!release) throw new ApiError(409,"set_completion_unavailable","Whole-set completion is temporarily unavailable. Your existing rewards remain recorded.");
   const claimId = newId("swd");
   const now = nowIso();
   const response = {
     claim_id: claimId,
-    set_id: set.id,
-    set_version: set.version,
-    amount: set.reward_amount,
+    set_id: setId,
+    set_version: release.set_version,
+    amount: release.reward_amount,
   };
   try {
-    await ctx.db.batch([
+    const [inserted] = await ctx.db.batch([
       ctx.db
         .prepare(
-          "INSERT INTO fb_set_completion_claims (id, tenant_id, user_id, set_id, set_version, reward_amount, created_at, idempotency_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+          `INSERT INTO fb_set_completion_claims (id,tenant_id,user_id,set_id,set_version,reward_amount,created_at,idempotency_key)
+           SELECT ?,pr.tenant_id,?,pr.set_id,pr.set_version,pr.reward_amount,?,? FROM fb_public_set_releases pr
+            WHERE pr.id=? AND pr.tenant_id=? AND ${currentReleaseSql}
+              AND EXISTS (SELECT 1 FROM fb_memberships m JOIN fb_users u ON u.id=m.user_id WHERE m.tenant_id=pr.tenant_id AND m.user_id=? AND m.status='active' AND m.revoked_at IS NULL AND u.disabled_at IS NULL AND ${sessionFence})
+              AND EXISTS (SELECT 1 FROM fb_wallets w WHERE w.tenant_id=pr.tenant_id AND w.user_id=?)
+              AND NOT EXISTS (SELECT 1 FROM fb_set_completion_claims prior WHERE prior.tenant_id=pr.tenant_id AND prior.user_id=? AND prior.idempotency_key=?)
+              AND NOT EXISTS (SELECT 1 FROM fb_set_memberships sm WHERE sm.tenant_id=pr.tenant_id AND sm.set_id=pr.set_id AND sm.set_version=pr.set_version
+                AND NOT EXISTS (SELECT 1 FROM fb_card_instances ci WHERE ci.tenant_id=sm.tenant_id AND ci.user_id=? AND ci.card_id=sm.card_id AND ci.status IN ('owned','reserved')))`,
         )
-        .bind(
-          claimId,
-          ctx.tenant.id,
-          user.id,
-          set.id,
-          set.version,
-          set.reward_amount,
-          now,
-          idempotencyKey,
-        ),
-      auditStatement(ctx, "set.reward.claimed", "set", set.id, {
-        version: set.version,
-        amount: set.reward_amount,
-      }),
+        .bind(claimId,user.id,now,idempotencyKey,release.id,ctx.tenant.id,user.id,...sessionParams,user.id,user.id,idempotencyKey,user.id),
+      ctx.db.prepare(`INSERT INTO fb_audit_events (id,tenant_id,actor_type,actor_id,represented_user_id,action,object_type,object_id,metadata_json,request_id,created_at)
+        SELECT ?,?,'user',?,?,'set.reward.claimed','set',?,?,?,? WHERE changes()=1`).bind(newId("aud"),ctx.tenant.id,user.id,user.id,setId,JSON.stringify({version:release.set_version,amount:release.reward_amount,release_id:release.id}),ctx.requestId,now),
     ]);
+    if (!inserted?.meta.changes) {
+      const raced = await existing();
+      if (raced && raced.set_id === setId) return { claim_id: raced.id, set_id: raced.set_id, set_version: raced.set_version, amount: raced.reward_amount };
+      if (raced) throw new ApiError(409,"idempotency_conflict","That key was used for another claim.");
+      throw new ApiError(409,"set_completion_unavailable","The set or your access changed, or the reviewed roster is incomplete. Your existing rewards remain recorded.");
+    }
   } catch (error) {
-    const message = String(error);
-    if (message.includes("UNIQUE"))
-      throw new ApiError(409, "already_claimed", "This set reward was already claimed.");
-    if (message.includes("set_version_missing"))
-      throw new ApiError(409, "set_version_invalid", "This set release is no longer available.");
+    if (String(error).includes("UNIQUE")) {
+      const retried = await existing();
+      if (retried && retried.set_id === setId) return { claim_id: retried.id, set_id: retried.set_id, set_version: retried.set_version, amount: retried.reward_amount };
+      if (retried) throw new ApiError(409,"idempotency_conflict","That key was used for another claim.");
+      const prior = await first<{id:string}>(ctx.db, `SELECT sc.id FROM fb_set_completion_claims sc WHERE sc.tenant_id=? AND sc.user_id=? AND sc.set_id=? AND sc.set_version=?
+        AND EXISTS (SELECT 1 FROM fb_memberships m JOIN fb_users u ON u.id=m.user_id WHERE m.tenant_id=sc.tenant_id AND m.user_id=sc.user_id AND m.status='active' AND m.revoked_at IS NULL AND u.disabled_at IS NULL AND ${sessionFence})`,ctx.tenant.id,user.id,setId,release.set_version,...sessionParams);
+      if (prior) throw new ApiError(409,"already_claimed","This set reward has already been claimed.");
+    }
     throw error;
   }
   return response;
@@ -1588,6 +1547,10 @@ export async function mergeCards(ctx: Ctx, sourceId: string, targetId: string) {
         "INSERT INTO fb_card_aliases (tenant_id, source_card_id, target_card_id, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(tenant_id, source_card_id) DO UPDATE SET target_card_id = excluded.target_card_id, created_at = excluded.created_at",
       )
       .bind(ctx.tenant.id, source.id, target.id, now),
+    ctx.db.prepare("UPDATE fb_card_name_aliases SET card_id = ? WHERE tenant_id = ? AND card_id = ?")
+      .bind(target.id, ctx.tenant.id, source.id),
+    ctx.db.prepare("UPDATE fb_card_definitions SET version = version + 1, updated_at = ? WHERE tenant_id = ? AND id = ?")
+      .bind(now, ctx.tenant.id, target.id),
     ctx.db
       .prepare(
         "UPDATE fb_card_definitions SET status = 'retired', archived_at = ?, updated_at = ?, version = version + 1 WHERE tenant_id = ? AND id = ?",

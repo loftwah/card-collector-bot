@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { acceptTrade, createGift, createTrade } from "../../src/server/modules/trades";
 import { recycleCommit, recyclePreview } from "../../src/server/modules/collection";
+import { createSession } from "../../src/server/modules/identity";
+import { resolveSession } from "../../src/server/context";
 import { bootstrap, ctxFor, fixturePool, makeInstance, runtime, walletBalance } from "./helpers";
 
 describe("trades, gifts and recycling", () => {
@@ -36,7 +38,9 @@ describe("trades, gifts and recycling", () => {
 
   it("protects favourites and locked cards, then credits an audited recycle", async () => {
     await bootstrap();
-    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const base = await ctxFor("cabinet", "owner@foilbury.local");
+    const session=await createSession(base.db,base.tenant,base.user!,{authMethod:"magic_link",assurance:"email"});
+    const owner={...base,sessionId:(await resolveSession(base.db,session.token))!.sessionId};
     const fixture = await fixturePool(owner);
     const instanceId = await makeInstance(owner, owner.user!.id, fixture, "OWNER-RECYCLE-1");
     await runtime.DB.prepare("UPDATE fb_card_instances SET favourite = 1 WHERE id = ?").bind(instanceId).run();

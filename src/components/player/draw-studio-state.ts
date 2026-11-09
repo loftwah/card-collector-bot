@@ -100,6 +100,8 @@ export interface DrawReceipt {
   balance_after_debit?: number;
   current_balance?: number;
   credits_total?: number;
+  settlement_status?: "settled" | "pending";
+  settlement_pending?: boolean;
   achievement_credits?: Array<{ id: string; name: string; amount: number }>;
   probability_bps: number;
   pool_revision: number;
@@ -299,7 +301,7 @@ export type DrawStudioEvent =
   | { type: "reveal/show"; scopeKey: string; operationKey: string }
   | { type: "reveal/hide"; scopeKey: string; operationKey: string }
   | { type: "reveal/replay"; scopeKey: string; operationKey: string }
-  | { type: "operation/reset"; scopeKey: string };
+  | { type: "operation/reset"; scopeKey: string; balance?: number; notice?: string };
 
 export interface OperationStorage {
   readonly length: number;
@@ -492,10 +494,10 @@ export function phaseForPreview(preview: DrawPreview, balance: number): DrawPhas
   return blocked ? { status: "blocked", ...blocked } : { status: "ready" };
 }
 
-/** Reduced motion reveals immediately; motion-safe reveals after one beat. */
-export function revealDelayMs(reducedMotion: boolean, replay = false): number {
+/** Null waits for an intentional reveal; reduced motion reveals immediately. */
+export function revealDelayMs(reducedMotion: boolean, _replay = false): number | null {
   if (reducedMotion) return 0;
-  return replay ? 850 : 950;
+  return null;
 }
 
 export function classifyDrawFailure(input: {
@@ -838,16 +840,18 @@ export function reduceDrawStudio(state: DrawStudioState, event: DrawStudioEvent)
 
     case "operation/reset": {
       if (state.phase.status !== "revealed") return state;
+      const balance = event.balance ?? state.balance;
       return {
         ...state,
+        balance,
         phase: state.preview
-          ? phaseForPreview(state.preview, state.balance)
+          ? phaseForPreview(state.preview, balance)
           : {
               status: "blocked",
               reason: "no_preview",
               message: "Review the live odds before opening another capsule.",
             },
-        notice: null,
+        notice: event.notice ?? null,
         previewChange: null,
       };
     }

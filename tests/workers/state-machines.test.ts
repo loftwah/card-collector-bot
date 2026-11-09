@@ -26,19 +26,31 @@ describe("render job state machine enforcement", () => {
     await bootstrap();
   });
 
-  it("claims a failed retry exactly once and fences the attempt", async () => {
+  it("holds a retryable job without changing its attempt while publication is unavailable", async () => {
     const owner = await ctxFor("cabinet", "owner@foilbury.local");
     await job(owner.tenant.id, "job_retryable", "failed", 1, 3);
-    const claimed = await claimRenderJob(owner, "job_retryable");
-    expect(claimed?.status).toBe("running");
+    await expect(claimRenderJob(owner, "job_retryable")).rejects.toMatchObject({ code: "render_publication_unavailable" });
     const row = await runtime.DB.prepare(
       "SELECT status, attempts, locked_at FROM fb_jobs WHERE id = 'job_retryable'",
     ).first<{ status: string; attempts: number; locked_at: string | null }>();
-    expect(row?.status).toBe("running");
-    expect(row?.attempts).toBe(2);
-    expect(row?.locked_at).toBeTruthy();
+    expect(row?.status).toBe("failed");
+    expect(row?.attempts).toBe(1);
+    expect(row?.locked_at).toBeNull();
+  });
 
-    await expect(claimRenderJob(owner, "job_retryable")).resolves.toBeNull();
+  it("does not write objects, front/back rows, job state or receipts for an in-flight completion", async () => {
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    await job(owner.tenant.id, "job_inflight", "running", 1, 3);
+    let puts = 0;
+    const media = new Proxy(owner.media, { get(target, key) {
+      if (key === "put") return async () => { puts++; throw new Error("unexpected object write"); };
+      const value = Reflect.get(target,key,target); return typeof value === "function" ? value.bind(target) : value;
+    } });
+    const before = await runtime.DB.prepare("SELECT (SELECT COUNT(*) FROM fb_variant_renders) fronts,(SELECT COUNT(*) FROM fb_variant_back_renders) backs,(SELECT COUNT(*) FROM fb_assets) assets,(SELECT COUNT(*) FROM fb_outbox) outbox,(SELECT COUNT(*) FROM fb_audit_events) audit").first();
+    await expect(completeRenderJob({ ...owner, media }, "job_inflight", new Uint8Array([1]), new Uint8Array([2]), 1)).rejects.toMatchObject({ code: "render_publication_unavailable" });
+    expect(puts).toBe(0);
+    expect(await runtime.DB.prepare("SELECT (SELECT COUNT(*) FROM fb_variant_renders) fronts,(SELECT COUNT(*) FROM fb_variant_back_renders) backs,(SELECT COUNT(*) FROM fb_assets) assets,(SELECT COUNT(*) FROM fb_outbox) outbox,(SELECT COUNT(*) FROM fb_audit_events) audit").first()).toEqual(before);
+    expect(await runtime.DB.prepare("SELECT status,attempts,result_json FROM fb_jobs WHERE id='job_inflight'").first()).toMatchObject({status:"running",attempts:1,result_json:null});
   });
 
   it("refuses to claim beyond the retry limit", async () => {

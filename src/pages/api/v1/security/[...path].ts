@@ -10,6 +10,7 @@ import {
 } from "../../../../server/context";
 import { buildContext } from "../../../../server/context";
 import { apiErrorResponse, json, readJson } from "../../../../server/http";
+import { requestReference } from "../../../../server/ids";
 import {
   listSessions,
   revokeOtherSessions,
@@ -155,7 +156,7 @@ export const ALL: APIRoute = async ({ request, params }) => {
     }
     throw new ApiError(404, "not_found", "No matching security action.");
   } catch (error) {
-    return apiErrorResponse(error, request.headers.get("cf-ray") ?? crypto.randomUUID());
+    return apiErrorResponse(error, requestReference(request));
   }
 };
 

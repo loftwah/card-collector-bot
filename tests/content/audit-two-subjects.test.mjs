@@ -1,0 +1,54 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
+import { auditTwoSubjects } from "../../scripts/content/audit-two-subjects.mjs";
+
+test("reports missing finishes and disabled distribution without claiming visual review", () => {
+  const db = new DatabaseSync(":memory:");
+  try {
+    db.exec(`CREATE TABLE fb_card_definitions (id,tenant_id,slug,logical_id,name,status,review_status);
+      CREATE TABLE fb_card_name_aliases (tenant_id,card_id,alias,normalized);
+      CREATE TABLE fb_collections (id,slug,status,view_audience,scope,owner_tenant_id,archived_at);
+      CREATE TABLE fb_collection_cards (card_id,collection_id);
+      CREATE TABLE fb_bots (id,tenant_id,status);
+      CREATE TABLE fb_bot_collections (bot_id,collection_id,enabled);
+      CREATE TABLE fb_artwork_editions (id,tenant_id,status,archived_at);
+      CREATE TABLE fb_variants (id,tenant_id,card_id,edition_id,material_id,effect_id,status,archived_at);
+      CREATE TABLE fb_materials (id,key); CREATE TABLE fb_effects (id,key);
+      CREATE TABLE fb_variant_renders (variant_id,status); CREATE TABLE fb_variant_back_renders (variant_id,status);
+      CREATE TABLE fb_pools (id,tenant_id,revision,status,slug); CREATE TABLE fb_pool_entries (variant_id,pool_id,pool_revision);
+      INSERT INTO fb_card_definitions VALUES ('card','tenant','gonta-gokuhara','danganronpa:gonta-gokuhara','Gonta Gokuhara','published','reviewed');
+      INSERT INTO fb_card_name_aliases VALUES ('tenant','card','Gonta','gonta');
+      INSERT INTO fb_collections VALUES ('collection','danganronpa-three-games','published','members','global','tenant',NULL);
+      INSERT INTO fb_collection_cards VALUES ('card','collection'); INSERT INTO fb_bots VALUES ('bot','tenant','active');
+      INSERT INTO fb_bot_collections VALUES ('bot','collection',0);
+      INSERT INTO fb_materials VALUES ('plain','plain'); INSERT INTO fb_effects VALUES ('none','none');
+      INSERT INTO fb_artwork_editions VALUES ('edition','tenant','published',NULL);
+      INSERT INTO fb_variants VALUES ('variant','tenant','card','edition','plain','none','published',NULL);
+      INSERT INTO fb_variant_renders VALUES ('variant','published');
+      INSERT INTO fb_pools VALUES ('pool','tenant',1,'active','danganronpa-three-games-capsule');
+      INSERT INTO fb_pool_entries VALUES ('variant','pool',1);`);
+    const result = auditTwoSubjects(db, "tenant");
+    assert.equal(result.visual_review_verified, false);
+    assert.equal(result.draw_eligibility_verified, false);
+    assert.equal(result.results[0].identity_conflict, false);
+    assert.equal(result.results[0].collections[0].enabled, 0);
+    assert.equal(result.results[0].finishes[0].fronts, 1);
+    assert.equal(result.results[0].finishes[0].backs, 0);
+    assert.equal(result.results[0].finishes[0].structurally_complete_variants, 0);
+    assert.equal(result.results[0].finishes[1].published_variants, 0);
+    assert.deepEqual(result.results[0].missing_aliases, []);
+    assert.equal(result.results[1].status, "identity_missing_or_ambiguous");
+    db.exec("INSERT INTO fb_variants VALUES ('other_variant','tenant','card','edition','plain','none','published',NULL); INSERT INTO fb_variant_back_renders VALUES ('other_variant','published'); INSERT INTO fb_pool_entries VALUES ('other_variant','pool',1)");
+    const split = auditTwoSubjects(db, "tenant").results[0].finishes[0];
+    assert.equal(split.fronts, 1); assert.equal(split.backs, 1); assert.equal(split.structurally_complete_variants, 0);
+    db.exec("UPDATE fb_collections SET owner_tenant_id = 'other' WHERE id = 'collection'");
+    assert.deepEqual(auditTwoSubjects(db, "tenant").results[0].collections, []);
+    db.exec("UPDATE fb_collections SET owner_tenant_id = 'tenant' WHERE id = 'collection'");
+    db.exec("UPDATE fb_artwork_editions SET status = 'retired' WHERE id = 'edition'");
+    assert.equal(auditTwoSubjects(db, "tenant").results[0].finishes[0].published_variants, 0);
+    db.exec("INSERT INTO fb_card_definitions VALUES ('duplicate','tenant','other','other','Ｇｏｎｔａ','draft','draft')");
+    assert.equal(auditTwoSubjects(db, "tenant").results[0].identity_conflict, true);
+    assert.equal(db.prepare("SELECT enabled FROM fb_bot_collections").get().enabled, 0);
+  } finally { db.close(); }
+});

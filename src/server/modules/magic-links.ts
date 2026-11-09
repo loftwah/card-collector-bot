@@ -1,10 +1,12 @@
 import type { D1Database } from "@cloudflare/workers-types";
-import { ApiError, checkRateLimit, requireRecentStrongAuth, requireUser, type Ctx, type CurrentUser } from "../context";
+import { ApiError, rateLimitEmailKey, requireRecentStrongAuth, requireUser, type Ctx, type CurrentUser } from "../context";
 import { first, nowIso } from "../db";
 import { newId, sha256Hex, token } from "../ids";
 import { magicLinkEmail, sendEmail } from "../email";
-import { addPlayerMembershipIfAbsent, createEmailUser, createSession, findUserByEmail, markEmailVerified } from "./identity";
+import { addMembership, createEmailUser, createSession, findUserByEmail, markEmailVerified } from "./identity";
 import { ensureWallet } from "./identity";
+
+import { liveStrongHumanSession, strongHumanArgs } from "./strong-session";
 
 const TTL_MINUTES = 15;
 
@@ -18,6 +20,40 @@ function safeRedirect(value: string | null | undefined): string {
   return value && value.startsWith("/") && !value.startsWith("//") ? value : "/play";
 }
 
+async function checkMagicLinkLimits(ctx: Ctx, email: string): Promise<void> {
+  const now = Math.floor(Date.now() / 1000), start = now - (now % 900);
+  const client = `magic:client:${ctx.clientKey}`;
+  const emailKey = await rateLimitEmailKey(ctx.config, "magic:email", email);
+  const legacy = `magic:email:${await sha256Hex(email)}`;
+  // The serialized batch admits each subsequent bucket only if the previous
+  // limits still allow it. Denied clients never consume service capacity and
+  // an exhausted service never allocates another client or address bucket.
+  const results = await ctx.db.batch([
+    ctx.db.prepare(`INSERT INTO fb_rate_limits(key,window_start,count)
+      SELECT ?,?,1 WHERE NOT EXISTS (SELECT 1 FROM fb_rate_limits WHERE key='magic:service' AND window_start=? AND count>=120)
+      ON CONFLICT(key) DO UPDATE SET count=CASE WHEN window_start<? THEN 1 ELSE count+1 END,
+        window_start=CASE WHEN window_start<? THEN ? ELSE window_start END RETURNING count,window_start`)
+      .bind(client,start,start,start,start,start),
+    ctx.db.prepare(`INSERT INTO fb_rate_limits(key,window_start,count)
+      SELECT 'magic:service',?,1 WHERE EXISTS (SELECT 1 FROM fb_rate_limits WHERE key=? AND window_start=? AND count<=20)
+      ON CONFLICT(key) DO UPDATE SET count=CASE WHEN window_start<? THEN 1 ELSE count+1 END,
+        window_start=CASE WHEN window_start<? THEN ? ELSE window_start END
+      WHERE window_start<? OR count<120 RETURNING count,window_start`)
+      .bind(start,client,start,start,start,start,start),
+    ctx.db.prepare(`INSERT INTO fb_rate_limits(key,window_start,count)
+      SELECT ?,?,1+COALESCE((SELECT count FROM fb_rate_limits WHERE key=? AND window_start=?),0) WHERE changes()=1
+      ON CONFLICT(key) DO UPDATE SET count=CASE WHEN window_start<? THEN excluded.count ELSE count+1 END,
+        window_start=CASE WHEN window_start<? THEN ? ELSE window_start END RETURNING count,window_start`)
+      .bind(emailKey,start,legacy,start,start,start,start),
+  ]);
+  const row = (index: number) => (results[index]?.results?.[0] ?? null) as { count: number; window_start: number } | null;
+  const clientRow = row(0), serviceRow = row(1), emailRow = row(2);
+  if (!clientRow || clientRow.count > 20 || !serviceRow || !emailRow || emailRow.count > 5) {
+    const end = (clientRow && clientRow.count > 20 ? clientRow.window_start : emailRow && emailRow.count > 5 ? emailRow.window_start : start) + 900;
+    throw new ApiError(429, "rate_limited", "Too many attempts. Try again shortly.", { retryAfterSeconds: Math.max(1, Math.min(900, end - now)) });
+  }
+}
+
 export async function requestMagicLink(
   ctx: Ctx,
   input: { email: string; purpose: "signin" | "verify_email" | "link_email"; redirectPath?: string | null; userId?: string | null },
@@ -27,9 +63,7 @@ export async function requestMagicLink(
   // Layered abuse limits. The per-address and service ceilings bound delivery
   // and cost; the per-client bucket comes from a trusted, privacy-preserving
   // network identity, never from the request correlation ID.
-  await checkRateLimit(ctx.db, `magic:email:${await sha256Hex(email)}`, 5, 900);
-  await checkRateLimit(ctx.db, `magic:client:${ctx.clientKey}`, 20, 900);
-  await checkRateLimit(ctx.db, "magic:service", 120, 900);
+  await checkMagicLinkLimits(ctx, email);
 
   const account = await findUserByEmail(ctx.db, email);
   // Synthetic game actors have no mailbox and no human sign-in path.
@@ -157,23 +191,25 @@ export async function confirmEmailChange(ctx: Ctx, rawToken: string): Promise<{ 
     throw new ApiError(409, "email_in_use", "That email is already attached to another Foilbury account. Nothing was changed.");
   }
   const now = nowIso();
-  const consumed = await ctx.db
-    .prepare("UPDATE fb_magic_links SET used_at = ? WHERE id = ? AND used_at IS NULL AND expires_at > ?")
-    .bind(now, row.id, now)
-    .run();
-  if ((consumed.meta?.changes ?? 0) !== 1) {
-    throw new ApiError(401, "email_link_invalid", "This email confirmation link has already been used.");
+  const sessionArgs = strongHumanArgs(ctx);
+  try {
+    await ctx.db.batch([
+      ctx.db.prepare(`SELECT CASE WHEN ${liveStrongHumanSession} AND EXISTS (
+        SELECT 1 FROM fb_magic_links l WHERE l.id=? AND l.user_id=? AND l.token_hash=? AND l.email COLLATE BINARY IS ? AND l.purpose='link_email' AND l.used_at IS NULL AND l.expires_at>strftime('%Y-%m-%dT%H:%M:%fZ','now')
+      ) AND EXISTS (SELECT 1 FROM fb_users WHERE id=? AND email COLLATE BINARY IS ? AND disabled_at IS NULL)
+      AND NOT EXISTS (SELECT 1 FROM fb_users WHERE email=? COLLATE NOCASE AND id<>?) THEN 1 ELSE json('email_change_guard') END`)
+        .bind(...sessionArgs,row.id,user.id,tokenHash,row.email,user.id,user.email,row.email,user.id),
+      ctx.db.prepare("UPDATE fb_magic_links SET used_at=? WHERE id=? AND used_at IS NULL").bind(now,row.id),
+      ctx.db.prepare("UPDATE fb_users SET email=?,email_verified_at=? WHERE id=? AND disabled_at IS NULL").bind(row.email,now,user.id),
+      ctx.db.prepare(`INSERT INTO fb_audit_events
+        (id,tenant_id,actor_type,actor_id,represented_user_id,action,object_type,object_id,metadata_json,request_id,created_at)
+        VALUES (?,?,'user',?,?,'identity.email.verified','user',?,?,?,?)`)
+        .bind(newId('aud'),ctx.tenant.id,user.id,user.id,user.id,JSON.stringify({previous_email:user.email}),ctx.requestId,now),
+    ]);
+  } catch (error) {
+    if (String(error).includes('malformed JSON')) throw new ApiError(409,'email_change_changed','The link or your session changed. Sign in again and request a fresh link if needed.');
+    throw error;
   }
-  await ctx.db.batch([
-    ctx.db.prepare("UPDATE fb_users SET email = ?, email_verified_at = ? WHERE id = ? AND disabled_at IS NULL").bind(row.email, now, user.id),
-    ctx.db
-      .prepare(
-        `INSERT INTO fb_audit_events
-          (id, tenant_id, actor_type, actor_id, represented_user_id, action, object_type, object_id, metadata_json, request_id, created_at)
-         VALUES (?, ?, 'user', ?, ?, 'identity.email.verified', 'user', ?, ?, ?, ?)`,
-      )
-      .bind(newId("aud"), ctx.tenant.id, user.id, user.id, user.id, JSON.stringify({ previous_email: user.email }), ctx.requestId, now),
-  ]);
   return { email: row.email };
 }
 
@@ -231,8 +267,8 @@ export async function redeemMagicLink(
       403,
       "membership_inactive",
       membership.status === "invited"
-        ? "This album invitation has not been accepted by an administrator."
-        : "This album membership is suspended or revoked. Ask an administrator to restore it deliberately.",
+        ? "This album invitation has not been accepted by an administrator. Nothing was changed."
+        : "This album membership is suspended or revoked. Ask an administrator to restore it deliberately. Nothing was changed.",
     );
   }
   if (!membership) {
@@ -240,7 +276,9 @@ export async function redeemMagicLink(
     // account explicitly joins the public album. Deferred registration here is
     // indistinguishable from the explicit /me/join path and never restores an
     // existing row.
-    await addPlayerMembershipIfAbsent(ctx.db, ctx.tenant.id, user.id, now);
+    if (!await addMembership(ctx.db, ctx.tenant.id, user.id, "player", { acceptedAt: now, insertOnly: true }))
+      throw new ApiError(409, "membership_changed", "Membership changed while signing in. Request a new sign-in link or ask an administrator for help.");
+    await ensureWallet(ctx.db, ctx.tenant.id, user.id);
   }
 
   const sessionUser: CurrentUser = {
@@ -256,12 +294,10 @@ export async function redeemMagicLink(
     ctx.db,
     `SELECT m.role, m.capabilities_json, u.platform_admin
        FROM fb_memberships m JOIN fb_users u ON u.id = m.user_id
-      WHERE m.user_id = ? AND m.tenant_id = ? AND m.status = 'active' AND m.revoked_at IS NULL AND u.disabled_at IS NULL AND u.is_synthetic = 0`,
+      WHERE m.user_id = ? AND m.tenant_id = ? AND m.status = 'active'`,
     user.id,
     ctx.tenant.id,
   );
-  if (!role) throw new ApiError(403, "membership_inactive", "This album membership is not active. Ask an administrator for access.");
-  await ensureWallet(ctx.db, ctx.tenant.id, user.id);
   if (role) {
     sessionUser.role = role.role;
     sessionUser.platformAdmin = Boolean(role.platform_admin);
@@ -275,7 +311,6 @@ export async function redeemMagicLink(
   const session = await createSession(ctx.db, ctx.tenant, sessionUser, {
     authMethod: "magic_link",
     assurance: "email",
-    requireActiveMembership: true,
     userAgent: options?.userAgent,
     ipHash: options?.ipHash,
   });

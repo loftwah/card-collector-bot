@@ -34,8 +34,7 @@ import {
   type DiscordDrawPrincipal,
   type DiscordDrawRequest,
 } from "../effect/discord-draw-workflow";
-import { findIdempotent } from "../http";
-import { executeDraw } from "../modules/pools";
+import { executeDraw, readAuthorizedScopedDrawReplay, recoverScopedDrawFailure } from "../modules/pools";
 import { errorCallback, prepareDiscordDraw, presentDiscordDraw } from "./commands";
 import { poolScopeFromDiscord, resolveDiscordScope } from "./scope";
 import {
@@ -59,7 +58,6 @@ import {
   readInteractionReceipt,
   recoverDrawReceipt,
 } from "./receipts";
-import { redactDiscordText } from "./redaction";
 import type { DiscordCallback, DiscordEnv, DiscordInteraction } from "./types";
 
 const KNOWN_COMMIT_FAILURES = new Set([
@@ -84,9 +82,8 @@ const KNOWN_COMMIT_FAILURES = new Set([
   "membership_revoked",
 ]);
 
-function safeMessage(error: unknown): string {
-  if (error instanceof Error) return redactDiscordText(error.message);
-  return "The Discord draw workflow stopped unexpectedly.";
+function safeMessage(_error: unknown): string {
+  return "The Discord draw operation failed.";
 }
 
 function asApiError(error: unknown): ApiError | null {
@@ -231,6 +228,7 @@ function provideServices(
           // Revalidate the server configuration immediately before the
           // mutation. A stale embed/test button must not spend against a
           // collection that was disabled or removed after the preview.
+          try {
           const freshScope = await resolveDiscordScope(
             principal.ctx,
             principal.installation,
@@ -252,18 +250,22 @@ function provideServices(
             expectedDistribution: plan.expectedDistribution,
             channelKey: plan.channelKey,
             scope: poolScopeFromDiscord(freshScope),
+            discordInstallation: {id:principal.installation.id,revision:Number(principal.installation.configuration_revision ?? 1),botId:principal.installation.bot_id ?? null,channelAllowlist:principal.installation.channel_allowlist_json,collectionAllowlist:principal.installation.collection_allowlist_json ?? null,channelAudience:principal.installation.channel_audience_json ?? null,channelKey:principal.installation.channel_key ?? null},
             idempotency: plan.idempotency,
           })) as unknown as DrawReceipt;
           return committedFromResult(result);
+          } catch (error) {
+            return committedFromResult(await recoverScopedDrawFailure(principal.ctx, plan.idempotency, error) as unknown as DrawReceipt);
+          }
         },
         catch: (error) => commitFailure(error),
       }),
     reconcile: ({ principal, plan, interaction }) =>
       Effect.tryPromise({
         try: async () => {
-          const replay = await findIdempotent(principal.ctx, "draw.execute", plan.idempotency);
+          const replay = await readAuthorizedScopedDrawReplay(principal.ctx, plan.idempotency);
           if (!replay) return null;
-          const response = replay.response as DrawReceipt;
+          const response = replay as unknown as DrawReceipt;
           // The idempotency row is the transaction-time receipt and may not
           // include settled rewards or balance. Normalise from the durable draw,
           // wallet and achievement ledger before presenting a recovered result.
@@ -272,6 +274,7 @@ function provideServices(
             userId: principal.user.id,
             interactionId: interaction.id,
           }).catch(() => null);
+          if (!(await readAuthorizedScopedDrawReplay(principal.ctx, plan.idempotency))) return null;
           if (!recovered) return committedFromResult(response);
           return committedFromResult({
             ...response,
@@ -368,7 +371,10 @@ function provideServices(
   const replies: DiscordDrawReplies["Service"] = {
     failure: (failure) => {
       const shape = discordDrawErrorShape(failure);
-      return errorCallback(new ApiError(shape.status, shape.code, shape.message, shape.details));
+      const uncertain = failure._tag === "DiscordDrawUnknownCommitOutcome" ||
+        shape.message.startsWith("This opening's outcome could not be confirmed.");
+      return errorCallback(new ApiError(shape.status, shape.code, shape.message,
+        { ...shape.details, ...(uncertain ? { draw_outcome_uncertain: true } : {}) }));
     },
     recovery: ({ receipt, interactionId, reason }) =>
       privateRecoveryCallback(
@@ -408,10 +414,11 @@ function privateRecoveryCallback(message: ReturnType<typeof drawRecoveryMessage>
   };
 }
 
-function typedFailureFromCause(cause: Cause.Cause<unknown>): DiscordDrawFailure | null {
-  const found = Cause.findErrorOption(cause);
-  if (Option.isSome(found) && isDiscordDrawFailure(found.value)) return found.value;
-  return null;
+export function safeDrawFailureFields(value: unknown): { failure_type: string; operation?: string } {
+  if (!isDiscordDrawFailure(value)) return { failure_type: "unexpected_defect" };
+  const allowed = new Set(["identity", "prepare", "commit", "reconcile", "presentation", "receipt", "delivery", "domain"]);
+  const operation = "operation" in value && typeof value.operation === "string" && allowed.has(value.operation) ? value.operation : undefined;
+  return { failure_type: value._tag, ...(operation ? { operation } : {}) };
 }
 
 /**
@@ -436,13 +443,16 @@ export async function runDiscordDrawForInteraction(input: {
   );
   const exit = await Effect.runPromiseExit(program);
   if (Exit.isSuccess(exit)) return exit.value;
+  const found = Cause.findErrorOption(exit.cause);
+  const fields = safeDrawFailureFields(Option.isSome(found) ? found.value : null);
 
-  const failure = typedFailureFromCause(exit.cause);
   console.error(
     JSON.stringify({
       level: "error",
-      request_id: `discord:${interaction.id}`,
-      message: safeMessage(failure instanceof Error ? failure : Cause.pretty(exit.cause)),
+      event_code: "discord.draw.unexpected_failure",
+      request_id: /^\d{15,22}$/.test(interaction.id) ? `discord:${interaction.id}` : "discord:invalid-id",
+      error: "operation_failed",
+      ...fields,
     }),
   );
   const fallback = errorCallback(

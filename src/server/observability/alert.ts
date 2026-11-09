@@ -1,5 +1,3 @@
-import { redactDiscordText } from "../discord/redaction";
-
 export interface AdminAlert {
   level: "warning" | "error" | "critical";
   message: string;
@@ -21,20 +19,25 @@ export function buildAdminAlert(input: {
   occurredAt?: string;
   secrets?: string[];
 }): { content: string; allowed_mentions: { parse: [] } } {
+  // Only fixed event labels may cross the alert boundary. Free-form exception
+  // messages can contain arbitrary member data, signed URLs or provider secrets
+  // that cannot be reliably scrubbed with a token-pattern list.
+  const scheduled = input.message.match(/^Scheduled maintenance failed: ([a-z_, ]+)$/);
+  const allowedSteps = new Set(["rate_limits", "magic_links", "stale_interactions", "npc_progression", "maintenance_runner", "unknown step"]);
+  const steps = scheduled?.[1]?.split(", ").filter((step) => allowedSteps.has(step)) ?? [];
+  const message = scheduled && steps.length ? `Scheduled maintenance failed: ${steps.join(", ")}` : "Operational issue";
+  const correlation = input.correlationId && /^(?:scheduled:maintenance|scheduled:run:[0-9a-f-]{36}|discord:\d{1,25})$/.test(input.correlationId)
+    ? input.correlationId : undefined;
+  const detailItems = input.detail?.split(" | ") ?? [];
+  const safeDetails = detailItems.map((item) => item.match(/^([a-z_]+): (timeout|operation_failed|failed)$/))
+    .filter((match): match is RegExpMatchArray => Boolean(match && allowedSteps.has(match[1] ?? "")))
+    .map((match) => `${match[1]}: ${match[2]}`);
   const alert: AdminAlert = {
     level: input.level,
-    message: input.message.slice(0, 200),
-    ...(input.correlationId ? { correlation_id: input.correlationId.slice(0, 120) } : {}),
-    ...(input.detail
-      ? {
-          detail: (input.secrets ?? []).reduce(
-            (value, secret) =>
-              secret ? value.replaceAll(secret, "[redacted]") : value,
-            redactDiscordText(input.detail, input.secrets ?? []),
-          ).slice(0, 500),
-        }
-      : {}),
-    occurred_at: input.occurredAt ?? new Date().toISOString(),
+    message,
+    ...(correlation ? { correlation_id: correlation } : {}),
+    ...(input.detail ? { detail: safeDetails.length === detailItems.length && safeDetails.length ? safeDetails.join(" | ") : "Additional diagnostic detail withheld." } : {}),
+    occurred_at: input.occurredAt && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(input.occurredAt) ? input.occurredAt : new Date().toISOString(),
   };
   return {
     content: [
@@ -98,7 +101,7 @@ export async function deliverAdminAlert(
       delivered: false,
       status: null,
       attempts: 1,
-      error: error instanceof Error ? error.message.slice(0, 300) : "alert delivery failed",
+      error: error instanceof Error && error.name === "AbortError" ? "delivery_timeout" : "delivery_transport_error",
     };
   } finally {
     clearTimeout(timeout);

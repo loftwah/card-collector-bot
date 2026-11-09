@@ -149,15 +149,6 @@ const DEFAULT_CAPABILITIES: Record<Role, string[]> = {
   player: [],
 };
 
-/**
- * Create a membership only when no row exists.
- *
- * Admission paths (email, Discord, linking) must never turn an existing
- * suspended/revoked row back into an active one. A deliberate restoration is
- * `setMemberStatus` in membership.ts, which requires the `members` capability,
- * recent strong authentication and a recorded reason. The explicit seed/owner
- * paths use `upsertMembership` below.
- */
 export async function addMembership(
   db: D1Database,
   tenantId: string,
@@ -168,63 +159,23 @@ export async function addMembership(
     status?: "active" | "invited" | "revoked";
     invitedBy?: string | null;
     acceptedAt?: string | null;
+    insertOnly?: boolean;
   },
 ): Promise<boolean> {
   const capabilities = options?.capabilities ?? DEFAULT_CAPABILITIES[role];
   const now = nowIso();
-  const row = await db
+  const result = await db
     .prepare(
       `INSERT INTO fb_memberships
         (tenant_id, user_id, role, created_at, capabilities_json, status, invited_by, accepted_at, revoked_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(tenant_id, user_id) DO NOTHING
-       RETURNING user_id`,
-    )
-    .bind(
-      tenantId,
-      userId,
-      role,
-      now,
-      JSON.stringify(capabilities),
-      options?.status ?? "active",
-      options?.invitedBy ?? null,
-      options?.acceptedAt ?? (options?.status === "invited" ? null : now),
-      options?.status === "revoked" ? now : null,
-    )
-    .first<{ user_id: string }>();
-  return row !== null;
-}
-
-/**
- * Explicit administrative upsert for a new Bot owner or an accepted
- * invitation. Never use this for ordinary sign-in or admission.
- */
-export async function upsertMembership(
-  db: D1Database,
-  tenantId: string,
-  userId: string,
-  role: Role,
-  options?: {
-    capabilities?: string[];
-    status?: "active" | "invited" | "revoked";
-    invitedBy?: string | null;
-    acceptedAt?: string | null;
-  },
-): Promise<void> {
-  const capabilities = options?.capabilities ?? DEFAULT_CAPABILITIES[role];
-  const now = nowIso();
-  await db
-    .prepare(
-      `INSERT INTO fb_memberships
-        (tenant_id, user_id, role, created_at, capabilities_json, status, invited_by, accepted_at, revoked_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(tenant_id, user_id) DO UPDATE SET
+       ON CONFLICT(tenant_id, user_id) ${options?.insertOnly ? 'DO NOTHING' : `DO UPDATE SET
          role = excluded.role,
          capabilities_json = excluded.capabilities_json,
          status = excluded.status,
          invited_by = excluded.invited_by,
          accepted_at = excluded.accepted_at,
-         revoked_at = excluded.revoked_at`,
+         revoked_at = excluded.revoked_at`}`,
     )
     .bind(
       tenantId,
@@ -238,26 +189,7 @@ export async function upsertMembership(
       options?.status === "revoked" ? now : null,
     )
     .run();
-}
-
-/** Self-service admission can create a new row but must never restore or change an existing one. */
-export async function addPlayerMembershipIfAbsent(
-  db: D1Database,
-  tenantId: string,
-  userId: string,
-  acceptedAt = nowIso(),
-): Promise<boolean> {
-  const result = await db
-    .prepare(
-      `INSERT INTO fb_memberships
-        (tenant_id, user_id, role, created_at, capabilities_json, status, accepted_at, revoked_at)
-       SELECT ?, ?, 'player', ?, '[]', 'active', ?, NULL
-       WHERE EXISTS (SELECT 1 FROM fb_users WHERE id = ? AND disabled_at IS NULL AND is_synthetic = 0)
-       ON CONFLICT(tenant_id, user_id) DO NOTHING RETURNING user_id`,
-    )
-    .bind(tenantId, userId, acceptedAt, acceptedAt, userId)
-    .first<{ user_id: string }>();
-  return result !== null;
+  return Boolean(result.meta.changes);
 }
 
 export async function ensureWallet(
@@ -333,8 +265,6 @@ export async function createSession(
     ttlSeconds?: number;
     /** Preserve an existing strong-auth timestamp when minting a switched session. */
     authTime?: string | null;
-    /** Refuse session issuance unless current Bot membership is active at the insert. */
-    requireActiveMembership?: boolean;
   },
 ): Promise<{
   token: string;
@@ -353,17 +283,14 @@ export async function createSession(
   const authMethod = options?.authMethod ?? "password";
   const assurance = options?.assurance ?? "password";
   const authTime = options?.authTime ?? createdAt;
-  const statement = db
+  const inserted = await db
     .prepare(
       `INSERT INTO fb_sessions
         (id, token_hash, user_id, tenant_id, csrf_token, created_at, expires_at, last_seen_at,
          auth_method, assurance, auth_time, user_agent, ip_hash, access_subject)
        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-       WHERE ? = 0 OR EXISTS (
-         SELECT 1 FROM fb_memberships m JOIN fb_users u ON u.id = m.user_id
-         WHERE m.tenant_id = ? AND m.user_id = ? AND m.status = 'active'
-           AND m.revoked_at IS NULL AND u.disabled_at IS NULL AND u.is_synthetic = 0
-       ) RETURNING id`,
+       WHERE EXISTS (SELECT 1 FROM fb_memberships m JOIN fb_users u ON u.id=m.user_id
+         WHERE m.user_id=? AND m.tenant_id=? AND m.status='active' AND m.revoked_at IS NULL AND u.disabled_at IS NULL AND u.is_synthetic=0)`,
     )
     .bind(
       id,
@@ -380,13 +307,11 @@ export async function createSession(
       options?.userAgent ?? null,
       options?.ipHash ?? null,
       options?.accessSubject ?? null,
-      options?.requireActiveMembership ? 1 : 0,
-      tenant.id,
       user.id,
-    );
-  if (!(await statement.first<{ id: string }>())) {
-    throw new ApiError(403, "membership_inactive", "This album membership is not active. Ask an administrator for access.");
-  }
+      tenant.id,
+    )
+    .run();
+  if (!inserted.meta.changes) throw new ApiError(403, "membership_inactive", "This membership is unavailable. Ask an administrator for help.");
   return { token: raw, csrf, expiresAt, user, assurance };
 }
 
@@ -641,13 +566,28 @@ export async function listAgentGrants(ctx: Ctx) {
 }
 
 export async function listMembers(ctx: Ctx) {
-  return all<{ id: string; email: string; display_name: string; role: Role; created_at: string }>(
-    ctx.db,
-    `SELECT u.id, u.email, u.display_name, m.role, m.created_at
-       FROM fb_memberships m JOIN fb_users u ON u.id = m.user_id
-      WHERE m.tenant_id = ? ORDER BY m.created_at`,
-    ctx.tenant.id,
-  );
+  const user=ctx.user;
+  if (!user || ctx.actor.representedUserId!==user.id || (ctx.actor.type==='user' && ctx.actor.id!==user.id)) throw new ApiError(403,'members_access_changed','Your member-management access has changed.');
+  const access=ctx.sessionAssurance==='access' && ctx.accessStatus==='linked' ? ctx.accessIdentity : null;
+  const live = `EXISTS (SELECT 1 FROM fb_memberships am JOIN fb_users au ON au.id=am.user_id AND au.disabled_at IS NULL
+    JOIN fb_bots b ON b.tenant_id=am.tenant_id AND b.status='active' LEFT JOIN fb_bot_admins ba ON ba.bot_id=b.id AND ba.user_id=am.user_id
+    WHERE am.tenant_id=? AND am.user_id=? AND am.status='active' AND am.revoked_at IS NULL AND (
+      (am.role='owner' AND b.owner_user_id=au.id) OR (?='user' AND au.platform_admin=1 AND EXISTS (SELECT 1 FROM fb_platform_admins pa WHERE pa.user_id=au.id AND pa.status='active' AND pa.revoked_at IS NULL))
+      OR (am.role<>'owner' AND json_type(CASE WHEN json_valid(am.capabilities_json) THEN am.capabilities_json ELSE 'null' END)='array'
+        AND NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(am.capabilities_json) THEN am.capabilities_json ELSE '[]' END) WHERE type<>'text')
+        AND EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(am.capabilities_json) THEN am.capabilities_json ELSE '[]' END) WHERE value='members')
+        AND (ba.id IS NULL OR (ba.role='admin' AND ba.status='active' AND ba.revoked_at IS NULL
+          AND json_type(CASE WHEN json_valid(ba.capabilities_json) THEN ba.capabilities_json ELSE 'null' END)='array'
+          AND NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(ba.capabilities_json) THEN ba.capabilities_json ELSE '[]' END) WHERE type<>'text')
+          AND EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(ba.capabilities_json) THEN ba.capabilities_json ELSE '[]' END) WHERE value='members')))))
+    AND ((?='user' AND (EXISTS (SELECT 1 FROM fb_sessions s WHERE s.id=? AND s.user_id=au.id AND s.tenant_id=am.tenant_id AND s.revoked_at IS NULL AND s.expires_at>strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      OR (?='access' AND ?>unixepoch('now') AND EXISTS (SELECT 1 FROM fb_access_identities ai WHERE ai.user_id=au.id AND ai.team_domain=? AND ai.subject=? AND ai.email=? AND ai.revoked_at IS NULL) AND au.email=? COLLATE NOCASE)))
+      OR (?='agent' AND EXISTS (SELECT 1 FROM fb_agent_tokens t JOIN fb_agent_grants g ON g.id=t.grant_id WHERE t.id=? AND g.id=? AND g.agent_id=? AND g.represented_user_id=au.id AND g.tenant_id=am.tenant_id AND t.revoked_at IS NULL AND g.status='active' AND g.revoked_at IS NULL AND g.expires_at>strftime('%Y-%m-%dT%H:%M:%fZ','now')
+        AND json_type(CASE WHEN json_valid(g.scopes_json) THEN g.scopes_json ELSE 'null' END)='array' AND NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(g.scopes_json) THEN g.scopes_json ELSE '[]' END) WHERE type<>'text') AND EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(g.scopes_json) THEN g.scopes_json ELSE '[]' END) WHERE value='ops:read')))))`;
+  const args=[ctx.tenant.id,user.id,ctx.actor.type,ctx.actor.type,ctx.sessionId,ctx.sessionAssurance,access?.payload.exp ?? 0,ctx.config.access.teamDomain,access?.subject ?? '',access?.email ?? '',access?.email ?? '',ctx.actor.type,ctx.agentCredential?.tokenId ?? '',ctx.agentCredential?.grantId ?? '',ctx.actor.id];
+  if (!(await first<{allowed:number}>(ctx.db,`SELECT ${live} AS allowed`,...args))?.allowed) throw new ApiError(403,'members_access_changed','Your member-management access has changed.');
+  return all<{ id: string; email: string; display_name: string; role: Role; created_at: string }>(ctx.db,
+    `SELECT u.id,u.email,u.display_name,m.role,m.created_at FROM fb_memberships m JOIN fb_users u ON u.id=m.user_id WHERE m.tenant_id=? AND ${live} ORDER BY m.created_at`,ctx.tenant.id,...args);
 }
 
 export async function changePassword(

@@ -2,8 +2,9 @@ import type { D1Database, R2Bucket } from "@cloudflare/workers-types";
 import { imageSize } from "image-size";
 import { ApiError, type Ctx } from "../context";
 import { all, first, nowIso } from "../db";
-import { newId, sha256Hex } from "../ids";
+import { canonicalJson, newId, sha256Hex } from "../ids";
 import { audit } from "../http";
+import { collectionWriteGuard, legacyBrandUrlFence } from './collections';
 
 export type AssetKind =
   "subject" | "background" | "frame" | "material" | "effect" | "brand" | "render";
@@ -11,6 +12,24 @@ export type AssetKind =
 const MAX_BYTES = 8 * 1024 * 1024;
 const MAX_DIMENSION = 5000;
 const ALLOWED = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+/** Read exactly the object version and bytes recorded by a future render manifest.
+ * This does not attest that a renderer consumed these bytes or authorise publication.
+ */
+export async function readVerifiedRenderInput(
+  media: R2Bucket,
+  expected: { key: string; version: string; etag: string; sha256: string; bytes: number },
+): Promise<Uint8Array> {
+  const changed = () => new ApiError(409, "render_input_changed", "A render input is unavailable or no longer matches its recorded version.");
+  if (!expected.key || expected.key.length > 1024 || !expected.version || !expected.etag ||
+      !/^[a-f0-9]{64}$/.test(expected.sha256) || !Number.isSafeInteger(expected.bytes) ||
+      expected.bytes < 1 || expected.bytes > MAX_BYTES) throw changed();
+  const object = await media.get(expected.key, { onlyIf: { etagMatches: expected.etag } });
+  if (!object || !("body" in object) || object.version !== expected.version || object.size !== expected.bytes) throw changed();
+  const bytes = new Uint8Array(await object.arrayBuffer());
+  if (bytes.length !== expected.bytes || await sha256Hex(bytes) !== expected.sha256) throw changed();
+  return bytes;
+}
 
 export interface AssetRow {
   id: string;
@@ -50,6 +69,87 @@ export function detectMime(bytes: Uint8Array): string | null {
   if (bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50)
     return "image/webp";
   return null;
+}
+
+/** Idempotent collection-brand upload. Reservations track an isolated R2 key;
+ * existing shared assets are never revised or deleted by this path. */
+export async function uploadCollectionBrand(ctx: Ctx, input:{bytes:Uint8Array;declaredMime?:string;name:string;role:string;scope:'global'|'bot';access:'public'|'member'|'private';provenance:string}, key:string):Promise<AssetRow> {
+  return uploadCollectionBrandCandidate(ctx,input,key);
+}
+
+// Uploading creates private staging only; public release requires separate review.
+async function uploadCollectionBrandCandidate(ctx: Ctx, input:{bytes:Uint8Array;declaredMime?:string;name:string;role:string;scope:'global'|'bot';access:'public'|'member'|'private';provenance:string}, key:string):Promise<AssetRow> {
+  const schema=await first<{n:number}>(ctx.db,"SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('fb_collection_brand_uploads','fb_brand_url_dirty','fb_brand_url_refs')");
+  if (Number(schema?.n ?? 0)!==3) throw new ApiError(503,'brand_upload_schema_unavailable','Collection image uploads are not ready yet.');
+  if (key.length<8 || key.length>200) throw new ApiError(422,'idempotency_key_invalid','Provide an upload request key.');
+  if (!['logo','cover'].includes(input.role) || !['global','bot'].includes(input.scope) || !['public','member','private'].includes(input.access) || (input.scope==='bot' && input.access==='public') || input.name.length>240 || input.provenance.length>2000)
+    throw new ApiError(422,'brand_upload_invalid','The collection image details are invalid.');
+  if (!input.bytes.length || input.bytes.length>MAX_BYTES) throw new ApiError(422,'asset_size_invalid','Choose an image no larger than 8 MB.');
+  const mime=detectMime(input.bytes);
+  if (!mime || !ALLOWED.has(mime) || (input.declaredMime && input.declaredMime!==mime)) throw new ApiError(422,'asset_type_invalid','Choose a valid PNG, JPEG or WebP image.');
+  let dimensions:{width?:number;height?:number};
+  try { dimensions=imageSize(input.bytes); } catch { throw new ApiError(422,'asset_corrupt','The image could not be read.'); }
+  const width=dimensions.width ?? 0,height=dimensions.height ?? 0;
+  if (!width || !height || width>MAX_DIMENSION || height>MAX_DIMENSION) throw new ApiError(422,'asset_dimensions_invalid','Image dimensions are invalid.');
+  const hash=await sha256Hex(input.bytes);
+  const normalized={hash,mime,name:input.name.trim() || 'Untitled asset',role:input.role,scope:input.scope,access:input.access,provenance:input.provenance};
+  const digest=await sha256Hex(canonicalJson(normalized));
+  const baseAuth=collectionWriteGuard(ctx,input.scope,null,input.access==='public');
+  if (!await first<{ok:number}>(ctx.db,`SELECT 1 AS ok WHERE ${baseAuth.sql}`,...baseAuth.args)) throw new ApiError(403,'collection_authority_changed','Your collection access or recent sign-in changed.');
+  const baseRead=()=>first<{request_digest:string;asset_id:string;r2_key:string;status:string;object_version:string|null;object_etag:string|null;content_sha256:string|null}>(ctx.db,`SELECT request_digest,asset_id,r2_key,status,object_version,object_etag,content_sha256 FROM fb_collection_brand_uploads WHERE tenant_id=? AND actor_type=? AND actor_id=? AND idempotency_key=? AND ${baseAuth.sql}`,ctx.tenant.id,ctx.actor.type,ctx.actor.id,key,...baseAuth.args);
+  const existing=await baseRead();
+  const assetId=existing?.asset_id ?? newId('ast'),r2Key=`collection-brand-v1/${hash}/${assetId}`;
+  const makeAuth=async (target:string)=>{const fence=await legacyBrandUrlFence(ctx,target);return {sql:`(${baseAuth.sql}) AND (${fence.sql})`,args:[...baseAuth.args,...fence.args]};};
+  let auth=await makeAuth(assetId);
+  const now=nowIso();
+  await ctx.db.prepare(`INSERT OR IGNORE INTO fb_collection_brand_uploads
+    (tenant_id,actor_type,actor_id,idempotency_key,request_digest,upload_scope,asset_id,r2_key,status,created_at,updated_at)
+    SELECT ?,?,?,?,?,?,?,?,'pending',?,? WHERE ${auth.sql}`)
+    .bind(ctx.tenant.id,ctx.actor.type,ctx.actor.id,key,digest,input.scope,assetId,r2Key,now,now,...auth.args).run();
+  const read=()=>first<{request_digest:string;asset_id:string;r2_key:string;status:string;object_version:string|null;object_etag:string|null;content_sha256:string|null}>(ctx.db,`SELECT request_digest,asset_id,r2_key,status,object_version,object_etag,content_sha256 FROM fb_collection_brand_uploads
+    WHERE tenant_id=? AND actor_type=? AND actor_id=? AND idempotency_key=? AND ${auth.sql}`,ctx.tenant.id,ctx.actor.type,ctx.actor.id,key,...auth.args);
+  let reservation=await baseRead();
+  if (!reservation) throw new ApiError(403,'collection_authority_changed','Your collection access or recent sign-in changed.');
+  if (reservation.asset_id!==assetId) auth=await makeAuth(reservation.asset_id);
+  if (!await first<{ok:number}>(ctx.db,`SELECT 1 AS ok WHERE ${auth.sql}`,...auth.args)) throw new ApiError(409,'brand_reference_changed','Collection image references changed. Retry the upload.');
+  if (reservation.request_digest!==digest) throw new ApiError(409,'idempotency_conflict','This upload key belongs to different image data or details.');
+  if (reservation.status==='abandoned') throw new ApiError(409,'brand_upload_abandoned','This upload was abandoned. Choose the image again to start a new upload.');
+  const completed=async()=>{
+    const row=await first<AssetRow>(ctx.db,`SELECT * FROM fb_assets WHERE id=? AND tenant_id=? AND archived_at IS NULL AND ${auth.sql}`,reservation!.asset_id,ctx.tenant.id,...auth.args);
+    if (!row) throw new ApiError(409,'brand_upload_unavailable','The saved upload is unavailable.');
+    if (!reservation!.object_version || !reservation!.object_etag || reservation!.content_sha256!==hash || row.sha256!==hash || row.r2_key!==reservation!.r2_key)
+      throw new ApiError(409,'brand_upload_changed','The saved upload does not match this request.');
+    await readVerifiedRenderInput(ctx.media,{key:row.r2_key,version:reservation!.object_version,etag:reservation!.object_etag,sha256:hash,bytes:row.bytes});
+    const current=await first<AssetRow>(ctx.db,`SELECT a.* FROM fb_assets a WHERE a.id=? AND a.tenant_id=? AND a.archived_at IS NULL AND a.r2_key=? AND a.sha256=? AND a.revision=? AND a.bytes=? AND a.mime=?
+      AND EXISTS (SELECT 1 FROM fb_collection_brand_uploads p WHERE p.tenant_id=a.tenant_id AND p.asset_id=a.id AND p.r2_key=a.r2_key AND p.status='completed' AND p.object_version=? AND p.object_etag=? AND p.content_sha256=?) AND ${auth.sql}`,
+      row.id,ctx.tenant.id,row.r2_key,row.sha256,row.revision,row.bytes,row.mime,reservation!.object_version,reservation!.object_etag,hash,...auth.args);
+    if (!current) throw new ApiError(403,'collection_authority_changed','Your collection access or recent sign-in changed.');
+    return current;
+  };
+  if (reservation.status==='completed') return completed();
+  await ctx.media.put(reservation.r2_key,input.bytes,{onlyIf:{etagDoesNotMatch:'*'},httpMetadata:{contentType:mime,contentDisposition:'inline'},customMetadata:{tenant:ctx.tenant.id,sha256:hash,kind:'brand'}});
+  const object=await ctx.media.get(reservation.r2_key);
+  if (!object || !('body' in object) || object.size!==input.bytes.length || await sha256Hex(new Uint8Array(await object.arrayBuffer()))!==hash)
+    throw new ApiError(409,'brand_upload_changed','The staged upload does not match this request. It has been retained for review.');
+  try {
+    await ctx.db.batch([
+      ctx.db.prepare(`SELECT CASE WHEN ${auth.sql} AND EXISTS (SELECT 1 FROM fb_collection_brand_uploads WHERE tenant_id=? AND actor_type=? AND actor_id=? AND idempotency_key=? AND request_digest=? AND asset_id=? AND r2_key=? AND status='pending') THEN 1 ELSE json('brand_upload_changed') END`)
+        .bind(...auth.args,ctx.tenant.id,ctx.actor.type,ctx.actor.id,key,digest,reservation.asset_id,reservation.r2_key),
+      ctx.db.prepare(`INSERT INTO fb_assets (id,tenant_id,kind,name,mime,width,height,bytes,r2_key,sha256,visibility,access_classification,role,official,review_status,provenance_json,created_at)
+        VALUES (?,?,'brand',?,?,?,?,?,?,?,?,?,?,0,'unreviewed',?,?)`)
+        .bind(reservation.asset_id,ctx.tenant.id,normalized.name,mime,width,height,input.bytes.length,reservation.r2_key,hash,'private','private',input.role,JSON.stringify({note:input.provenance}),now),
+      ctx.db.prepare("UPDATE fb_collection_brand_uploads SET status='completed',object_version=?,object_etag=?,content_sha256=?,updated_at=? WHERE tenant_id=? AND actor_type=? AND actor_id=? AND idempotency_key=? AND status='pending'")
+        .bind(object.version,object.etag,hash,nowIso(),ctx.tenant.id,ctx.actor.type,ctx.actor.id,key),
+      auditStatementSafe(ctx,'asset.uploaded',reservation.asset_id,{kind:'brand',sha256:hash,staged_receipt:true}),
+    ]);
+  } catch (error) {
+    reservation=await read();
+    if (reservation?.request_digest===digest && reservation.status==='completed') return completed();
+    throw error;
+  }
+  reservation=await read();
+  if (!reservation || reservation.status!=='completed') throw new ApiError(409,'brand_upload_unavailable','The saved upload is unavailable.');
+  return completed();
 }
 
 export async function uploadAsset(
@@ -111,7 +211,7 @@ export async function uploadAsset(
   const hash = await sha256Hex(input.bytes);
   const existing = await first<AssetRow>(
     ctx.db,
-    "SELECT * FROM fb_assets WHERE tenant_id = ? AND sha256 = ? AND kind = ? AND archived_at IS NULL",
+    "SELECT * FROM fb_assets WHERE tenant_id = ? AND sha256 = ? AND kind = ? AND archived_at IS NULL AND r2_key NOT LIKE 'collection-brand-v1/%' AND r2_key NOT LIKE 'bound-render-stage-v1/%'",
     ctx.tenant.id,
     hash,
     input.kind,
@@ -241,7 +341,7 @@ function auditStatementSafe(
 export async function listAssets(ctx: Ctx, kind?: AssetKind) {
   return all<AssetRow>(
     ctx.db,
-    `SELECT * FROM fb_assets WHERE tenant_id = ? AND archived_at IS NULL ${kind ? "AND kind = ?" : ""} ORDER BY created_at DESC LIMIT 500`,
+    `SELECT * FROM fb_assets WHERE tenant_id = ? AND archived_at IS NULL AND r2_key NOT LIKE 'collection-brand-v1/%' AND r2_key NOT LIKE 'bound-render-stage-v1/%' ${kind ? "AND kind = ?" : ""} ORDER BY created_at DESC LIMIT 500`,
     ...(kind ? [ctx.tenant.id, kind] : [ctx.tenant.id]),
   );
 }
@@ -257,7 +357,30 @@ export async function getAsset(ctx: Ctx, id: string): Promise<AssetRow> {
   return asset;
 }
 
-export async function readAsset(media: R2Bucket, asset: AssetRow): Promise<ArrayBuffer> {
+export async function readAsset(media: R2Bucket, asset: AssetRow, db?: D1Database): Promise<ArrayBuffer> {
+  if (asset.r2_key.startsWith('bound-render-stage-v1/')) {
+    if (!db) throw new ApiError(410,'asset_missing','The stored asset is unavailable.');
+    const pin=await first<{object_version:string;object_etag:string;content_sha256:string;bytes:number;mime:string}>(db,`SELECT p.object_version,p.object_etag,p.content_sha256,p.bytes,p.mime FROM fb_bound_render_outputs p
+      JOIN fb_bound_render_jobs j ON j.id=p.job_id AND j.tenant_id=p.tenant_id AND j.status='succeeded'
+      WHERE p.tenant_id=? AND p.asset_id=? AND p.r2_key=?`,asset.tenant_id,asset.id,asset.r2_key);
+    if (!pin || pin.content_sha256!==asset.sha256 || pin.bytes!==asset.bytes || pin.mime!==asset.mime)
+      throw new ApiError(410,'asset_missing','The stored asset is unavailable.');
+    const bytes=await readVerifiedRenderInput(media,{key:asset.r2_key,version:pin.object_version,etag:pin.object_etag,sha256:pin.content_sha256,bytes:pin.bytes});
+    const current=await first(db,`SELECT 1 FROM fb_bound_render_outputs p JOIN fb_bound_render_jobs j ON j.id=p.job_id AND j.tenant_id=p.tenant_id AND j.status='succeeded'
+      JOIN fb_assets a ON a.id=p.asset_id AND a.tenant_id=p.tenant_id AND a.archived_at IS NULL AND a.processing_state='ready'
+      WHERE p.tenant_id=? AND p.asset_id=? AND p.r2_key=? AND p.object_version=? AND p.object_etag=? AND p.content_sha256=? AND p.bytes=? AND p.mime=?
+        AND a.r2_key=p.r2_key AND a.sha256=p.content_sha256 AND a.bytes=p.bytes AND a.mime=p.mime`,asset.tenant_id,asset.id,asset.r2_key,pin.object_version,pin.object_etag,pin.content_sha256,pin.bytes,pin.mime);
+    if (!current) throw new ApiError(410,'asset_missing','The stored asset is unavailable.');
+    return bytes.slice().buffer;
+  }
+  if (asset.r2_key.startsWith('collection-brand-v1/')) {
+    if (!db) throw new ApiError(410,'asset_missing','The stored asset is unavailable.');
+    const pin=await first<{object_version:string;object_etag:string;content_sha256:string}>(db,`SELECT object_version,object_etag,content_sha256 FROM fb_collection_brand_uploads WHERE tenant_id=? AND asset_id=? AND r2_key=? AND status='completed'`,asset.tenant_id,asset.id,asset.r2_key);
+    if (!pin || pin.content_sha256!==asset.sha256 || !pin.object_version || !pin.object_etag)
+      throw new ApiError(410,'asset_missing','The stored asset is unavailable.');
+    const bytes=await readVerifiedRenderInput(media,{key:asset.r2_key,version:pin.object_version,etag:pin.object_etag,sha256:pin.content_sha256,bytes:asset.bytes});
+    return bytes.slice().buffer;
+  }
   const object = await media.get(asset.r2_key);
   if (!object)
     throw new ApiError(
@@ -266,6 +389,85 @@ export async function readAsset(media: R2Bucket, asset: AssetRow): Promise<Array
       "The stored asset is missing. A render job can rebuild a card from its source.",
     );
   return object.arrayBuffer();
+}
+
+/** Explicit human review of an already linked, version-pinned collection image. */
+export async function previewCollectionBrandRelease(ctx: Ctx, collectionId: string, assetId: string) {
+  const auth=collectionWriteGuard(ctx,'global',collectionId,true);
+  const legacy=await legacyBrandUrlFence(ctx,assetId);
+  const load=()=>first<{collection_id:string;collection_name:string;collection_version:number;asset_id:string;asset_revision:number;object_version:string;sha256:string;slot:'logo'|'cover';mime:string;bytes:number}>(ctx.db,`SELECT c.id AS collection_id,c.name AS collection_name,c.release_version AS collection_version,a.id AS asset_id,a.revision AS asset_revision,p.object_version,a.sha256,a.role AS slot,a.mime,a.bytes
+    FROM fb_collections c JOIN fb_assets a ON a.id=? AND a.tenant_id=? AND a.archived_at IS NULL AND a.processing_state='ready'
+    JOIN fb_collection_brand_uploads p ON p.asset_id=a.id AND p.tenant_id=a.tenant_id AND p.r2_key=a.r2_key AND p.status='completed' AND p.content_sha256=a.sha256
+    WHERE c.id=? AND c.scope='global' AND c.status='published' AND c.archived_at IS NULL AND c.view_audience='public' AND c.public_approved_at IS NOT NULL
+      AND ((a.role='logo' AND c.logo_asset_id=a.id) OR (a.role='cover' AND c.banner_asset_id=a.id)) AND ${auth.sql} AND ${legacy.sql}`,assetId,ctx.tenant.id,collectionId,...auth.args,...legacy.args);
+  const before=await load();
+  if (!before) throw new ApiError(404,'brand_review_unavailable','This image is not available for public review.');
+  const asset=await getAsset(ctx,assetId);
+  await readAsset(ctx.media,asset,ctx.db);
+  const after=await load();
+  if (!after || JSON.stringify(after)!==JSON.stringify(before)) throw new ApiError(409,'brand_release_changed','The collection image changed. Reload it before reviewing.');
+  return {...after,preview_url:`/media/asset/${assetId}`};
+}
+
+export async function approveCollectionBrandRelease(ctx: Ctx, collectionId: string, assetId: string, collectionVersion: number, expectedSha256: string, assetRevision: number, objectVersion: string): Promise<void> {
+  if (!Number.isSafeInteger(collectionVersion) || collectionVersion<1 || !Number.isSafeInteger(assetRevision) || assetRevision<1 || !objectVersion || objectVersion.length>200 || !/^[a-f0-9]{64}$/.test(expectedSha256))
+    throw new ApiError(422,'brand_release_invalid','Reload the collection image before reviewing it.');
+  const auth=collectionWriteGuard(ctx,'global',collectionId,true);
+  if (!await first<{ok:number}>(ctx.db,`SELECT 1 AS ok WHERE ${auth.sql}`,...auth.args))
+    throw new ApiError(403,'collection_authority_changed','Your collection authority changed.');
+  const legacy=await legacyBrandUrlFence(ctx,assetId);
+  const asset=await getAsset(ctx,assetId);
+  if (!asset.r2_key.startsWith('collection-brand-v1/') || asset.sha256!==expectedSha256 || asset.revision!==assetRevision || asset.archived_at || asset.processing_state!=='ready' || !['logo','cover'].includes(asset.role ?? '') || !ALLOWED.has(asset.mime))
+    throw new ApiError(409,'brand_release_changed','The collection image changed. Reload it before reviewing.');
+  await readAsset(ctx.media,asset,ctx.db);
+  const id=newId('cbr'),now=nowIso();
+  const pin=await first<{object_version:string;content_sha256:string}>(ctx.db,`SELECT object_version,content_sha256 FROM fb_collection_brand_uploads WHERE tenant_id=? AND asset_id=? AND r2_key=? AND status='completed'`,ctx.tenant.id,asset.id,asset.r2_key);
+  if (!pin?.object_version || pin.object_version!==objectVersion || pin.content_sha256!==expectedSha256) throw new ApiError(409,'brand_release_changed','The collection image changed. Reload it before reviewing.');
+  await ctx.db.batch([
+    ctx.db.prepare(`SELECT CASE WHEN ${auth.sql} AND EXISTS (SELECT 1 FROM fb_collections c JOIN fb_assets a ON a.id=? AND a.tenant_id=? AND a.archived_at IS NULL
+      JOIN fb_collection_brand_uploads p ON p.asset_id=a.id AND p.tenant_id=a.tenant_id AND p.r2_key=a.r2_key AND p.status='completed'
+      WHERE c.id=? AND c.scope='global' AND c.status='published' AND c.archived_at IS NULL AND c.view_audience='public' AND c.public_approved_at IS NOT NULL
+      AND c.release_version=? AND ((a.role='logo' AND c.logo_asset_id=a.id) OR (a.role='cover' AND c.banner_asset_id=a.id)) AND a.sha256=? AND p.content_sha256=? AND p.object_version=?
+      AND a.revision=? AND a.mime=? AND a.bytes=? AND a.role=? AND a.processing_state='ready') AND ${legacy.sql}
+      THEN 1 ELSE json('brand_release_changed') END`).bind(...auth.args,assetId,ctx.tenant.id,collectionId,collectionVersion,expectedSha256,expectedSha256,pin.object_version,asset.revision,asset.mime,asset.bytes,asset.role,...legacy.args),
+    ctx.db.prepare(`INSERT INTO fb_collection_brand_releases (id,tenant_id,collection_id,collection_version,asset_id,object_version,content_sha256,asset_revision,mime,bytes,role,approved_by,approved_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .bind(id,ctx.tenant.id,collectionId,collectionVersion,assetId,pin.object_version,expectedSha256,asset.revision,asset.mime,asset.bytes,asset.role,ctx.user!.id,now),
+    auditStatementSafe(ctx,'collection.brand_approved',assetId,{collection_id:collectionId,collection_version:collectionVersion,sha256:expectedSha256}),
+  ]);
+}
+
+/** Abandon only this actor's unreferenced upload. Objects and asset records remain intact. */
+export async function abandonCollectionBrandUpload(ctx: Ctx, key: string, scope: 'global'|'bot'): Promise<void> {
+  if (key.length<8 || key.length>200 || !['global','bot'].includes(scope)) throw new ApiError(422,'brand_upload_invalid','The upload details are invalid.');
+  const auth=collectionWriteGuard(ctx,scope,null,false);
+  const receipt=await first<{asset_id:string;status:string}>(ctx.db,`SELECT asset_id,status FROM fb_collection_brand_uploads WHERE tenant_id=? AND actor_type=? AND actor_id=? AND idempotency_key=? AND upload_scope=? AND ${auth.sql}`,ctx.tenant.id,ctx.actor.type,ctx.actor.id,key,scope,...auth.args);
+  if (!receipt) throw new ApiError(403,'collection_authority_changed','Your collection access or recent sign-in changed.');
+  if (receipt.status==='abandoned') return;
+  const legacy=await legacyBrandUrlFence(ctx,receipt.asset_id);
+  try { await ctx.db.batch([
+    ctx.db.prepare(`UPDATE fb_collection_brand_uploads SET status='abandoned',updated_at=?
+      WHERE tenant_id=? AND actor_type=? AND actor_id=? AND idempotency_key=? AND upload_scope=? AND status IN ('pending','completed') AND ${auth.sql}
+      AND NOT EXISTS (SELECT 1 FROM fb_collections c WHERE c.logo_asset_id=fb_collection_brand_uploads.asset_id OR c.banner_asset_id=fb_collection_brand_uploads.asset_id)
+      AND ${legacy.sql}
+      AND NOT EXISTS (SELECT 1 FROM fb_artwork_editions e WHERE e.subject_asset_id=fb_collection_brand_uploads.asset_id OR e.background_asset_id=fb_collection_brand_uploads.asset_id)
+      AND NOT EXISTS (SELECT 1 FROM fb_card_definitions c WHERE c.card_back_asset_id=fb_collection_brand_uploads.asset_id)
+      AND NOT EXISTS (SELECT 1 FROM fb_print_proposals p WHERE p.source_asset_id=fb_collection_brand_uploads.asset_id OR p.artwork_asset_id=fb_collection_brand_uploads.asset_id OR p.background_asset_id=fb_collection_brand_uploads.asset_id)
+      AND NOT EXISTS (SELECT 1 FROM fb_variant_renders v WHERE v.asset_id=fb_collection_brand_uploads.asset_id)
+      AND NOT EXISTS (SELECT 1 FROM fb_variant_back_renders v WHERE v.asset_id=fb_collection_brand_uploads.asset_id)
+      AND NOT EXISTS (SELECT 1 FROM fb_asset_derivatives d WHERE d.source_asset_id=fb_collection_brand_uploads.asset_id)
+      AND NOT EXISTS (SELECT 1 FROM fb_collection_art_reviews r WHERE r.mark_asset_id=fb_collection_brand_uploads.asset_id OR r.cover_asset_id=fb_collection_brand_uploads.asset_id OR r.back_asset_id=fb_collection_brand_uploads.asset_id OR r.evidence_asset_id=fb_collection_brand_uploads.asset_id)
+      AND NOT EXISTS (SELECT 1 FROM fb_collection_brand_releases r WHERE r.asset_id=fb_collection_brand_uploads.asset_id)
+      AND NOT EXISTS (SELECT 1 FROM fb_assets a WHERE a.derivative_of_asset_id=fb_collection_brand_uploads.asset_id OR EXISTS
+        (SELECT 1 FROM json_each(CASE WHEN json_valid(a.dependencies_json) THEN a.dependencies_json ELSE '[]' END) d WHERE d.value=fb_collection_brand_uploads.asset_id))`)
+      .bind(nowIso(),ctx.tenant.id,ctx.actor.type,ctx.actor.id,key,scope,...auth.args,...legacy.args),
+    ctx.db.prepare("SELECT CASE WHEN changes()=1 THEN 1 ELSE json('brand_upload_not_abandoned') END"),
+    auditStatementSafe(ctx,'asset.upload_abandoned',key,{scope}),
+  ]); } catch (error) {
+    const previous=await first<{status:string}>(ctx.db,`SELECT status FROM fb_collection_brand_uploads WHERE tenant_id=? AND actor_type=? AND actor_id=? AND idempotency_key=? AND upload_scope=? AND ${auth.sql}`,
+      ctx.tenant.id,ctx.actor.type,ctx.actor.id,key,scope,...auth.args);
+    if (previous?.status==='abandoned') return;
+    throw error;
+  }
 }
 
 export async function assetUrl(asset: AssetRow): Promise<string> {
@@ -491,6 +693,10 @@ export async function createDerivative(
   );
   if (!source)
     throw new ApiError(404, "source_render_not_found", "The source render was not found.");
+  if (source.r2_key.startsWith('collection-brand-v1/'))
+    throw new ApiError(409, 'brand_derivative_unavailable', 'Collection images cannot be used as render derivatives.');
+  if (source.r2_key.startsWith('bound-render-stage-v1/'))
+    throw new ApiError(409, 'bound_derivative_unavailable', 'Version-bound render derivatives are not available yet.');
   const hash = await sha256Hex(input.bytes);
   const key = `tenants/${ctx.tenant.id}/derivatives/${hash}.webp`;
   const existing = await first<{ id: string }>(

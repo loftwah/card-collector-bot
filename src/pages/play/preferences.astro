@@ -1,7 +1,6 @@
 ---
 import PlayerLayout from "../../layouts/PlayerLayout.astro";
 import PreferenceForm from "../../components/player/PreferenceForm";
-import MemberHeader from "../../components/player/MemberHeader.astro";
 import { pageContext } from "../../server/page";
 import { getPreferences } from "../../server/modules/economy";
 import { getTaxonomy } from "../../server/modules/catalogue";
@@ -24,21 +23,13 @@ const choices = collections
     enabled: collection.enabled,
   }));
 ---
-
 <PlayerLayout title="Preferences · Foilbury">
-  <MemberHeader
-    title="Preferences"
-    lede="Choose what can drop for you. These choices change future eligibility only; cards, serials and earned badges stay exactly where they are."
-  >
-    <p class="member-head__note">
-      Sharing is explicit and revocable. Turning off a collection never deletes a card you own.
-    </p>
-    <div slot="aside" class="flex flex-wrap gap-2">
-      <a class="btn btn-secondary btn-sm" href="/account/security">Account security</a>
-    </div>
-  </MemberHeader>
-
-  <div class="mt-6">
+  <div class="border-b border-[var(--line)] pb-5">
+    <p class="eyebrow">Preferences</p>
+    <h2 class="display-sm mt-1 text-4xl">Choose what can drop for you.</h2>
+    <p class="mt-2 max-w-2xl text-sm text-[var(--muted)]">Your collection choices, optional content filters, motion, sound and sharing consent are separate. Only your future eligibility changes; ownership, serials and earned badges stay exactly where they are.</p>
+  </div>
+  <div class="mt-7">
     <PreferenceForm client:load initial={prefs} tags={tags} collections={choices} />
   </div>
 </PlayerLayout>

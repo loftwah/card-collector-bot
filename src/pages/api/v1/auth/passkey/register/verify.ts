@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { z } from "zod";
 import { buildContext } from "../../../../../../server/context";
 import { apiErrorResponse, json, readJson } from "../../../../../../server/http";
+import { requestReference } from "../../../../../../server/ids";
 import { registerPasskey } from "../../../../../../server/modules/passkeys";
 
 export const prerender = false;
@@ -16,6 +17,6 @@ export const POST: APIRoute = async ({ request }) => {
       { "cache-control": "no-store" },
     );
   } catch (error) {
-    return apiErrorResponse(error, request.headers.get("cf-ray") ?? crypto.randomUUID());
+    return apiErrorResponse(error, requestReference(request));
   }
 };

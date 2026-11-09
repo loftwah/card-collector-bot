@@ -1,23 +1,19 @@
 ---
 import PlayerLayout from "../../layouts/PlayerLayout.astro";
 import DailyMissions from "../../components/player/DailyMissions";
-import MemberHeader from "../../components/player/MemberHeader.astro";
 import { pageContext } from "../../server/page";
 import { getDailyMissions } from "../../server/modules/missions";
 
 const ctx = await pageContext(Astro.request);
 const state = await getDailyMissions(ctx);
 ---
-
-<PlayerLayout title="Missions · Foilbury">
-  <MemberHeader
-    title="Missions"
-    lede="Optional daily goals. They use the same wallet and ledger as everything else and never ask you to post, invite or spend."
-  >
-    <p class="member-head__note">Resets {state.reset_local}.</p>
-  </MemberHeader>
-
-  <div class="mt-6">
+<PlayerLayout title="Daily missions · Foilbury">
+  <div class="border-b border-[var(--line)] pb-5">
+    <p class="eyebrow">Daily missions</p>
+    <h2 class="display-sm mt-1 text-4xl">A little extra Foil, fairly earned.</h2>
+    <p class="mt-2 max-w-3xl text-sm text-[var(--muted)]">Missions are optional and shared by the website and Discord. They reward normal collecting actions on the same wallet and ledger — never page reloads, messages, invites or spend pressure.</p>
+  </div>
+  <div class="mt-7">
     <DailyMissions client:load initial={state} />
   </div>
 </PlayerLayout>

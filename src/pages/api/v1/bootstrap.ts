@@ -5,12 +5,12 @@ import { first } from "../../../server/db";
 import { json, apiErrorResponse } from "../../../server/http";
 import { bootstrapInstallation } from "../../../server/modules/bootstrap";
 import { nowIso } from "../../../server/db";
-import { newId } from "../../../server/ids";
+import { newId, requestReference } from "../../../server/ids";
 
 export const prerender = false;
 
 export const POST: APIRoute = async ({ request }) => {
-  const requestId = request.headers.get("cf-ray") ?? newId("req");
+  const requestId = requestReference(request);
   try {
     const raw = runtimeEnv();
     const config = readConfig(raw);

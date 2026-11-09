@@ -1,10 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { bootstrap, ctxFor, fixturePool, makeInstance, runtime, walletBalance } from "./helpers";
 import { evaluateAchievements, listAchievements } from "../../src/server/modules/achievements";
 import { addCollectionCards, createCollection } from "../../src/server/modules/collections";
 import { addMembership, createUser } from "../../src/server/modules/identity";
 import { newId, sha256Hex } from "../../src/server/ids";
 import { nowIso } from "../../src/server/db";
+
+async function collectionSession(ctx: Awaited<ReturnType<typeof ctxFor>>) {
+  const now=new Date().toISOString(),id=`collection-fixture-${crypto.randomUUID()}`;
+  await runtime.DB.prepare("INSERT INTO fb_sessions (id,token_hash,user_id,tenant_id,csrf_token,created_at,expires_at,last_seen_at,assurance,auth_time) VALUES (?,?,?,?,'test',?,?,?,'passkey',?)").bind(id,id,ctx.user!.id,ctx.tenant.id,now,new Date(Date.now()+60000).toISOString(),now,now).run();
+  return {...ctx,sessionId:id,sessionAssurance:'passkey',sessionAuthTime:now};
+}
+
 
 describe("achievements", () => {
   it("awards a first-card badge and reward once, then remains idempotent", async () => {
@@ -57,6 +64,130 @@ describe("achievements", () => {
       .bind(player.tenant.id, player.user!.id)
       .first<{ count: number }>();
     expect(ledger?.count).toBe(1);
+  });
+
+  it('reconciles a credit committed before its response was lost without a false failure', async () => {
+    await bootstrap();const player=await ctxFor('cabinet','player@foilbury.local');
+    const fixture=await fixturePool(player);await makeInstance(player,player.user!.id,fixture,'ACH-LOST-1');
+    const before=await walletBalance(player,player.user!.id);const credits=new WeakSet<object>();let injected=false;
+    const db=new Proxy(runtime.DB,{get(target,key){
+      if(key==='prepare')return (sql:string)=>{const statement=target.prepare(sql);if(!sql.includes('UPDATE fb_wallets SET balance = balance +'))return statement;
+        return new Proxy(statement,{get(inner,member){if(member==='bind')return (...args:unknown[])=>{const bound=inner.bind(...args);credits.add(bound);return bound;};const value=Reflect.get(inner,member,inner);return typeof value==='function'?value.bind(inner):value;}});};
+      if(key==='batch')return async (statements:Parameters<typeof target.batch>[0])=>{const result=await target.batch(statements);if(!injected&&statements.some(item=>credits.has(item))){injected=true;throw new Error('fixture-secret-cookie https://private.invalid/?token=fixture-secret');}return result;};
+      const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
+    }});
+    const log=vi.spyOn(console,'error').mockImplementation(()=>{});
+    try {
+      const result=await evaluateAchievements({...player,db},{userId:player.user!.id});
+      expect(result.unlocked.find(item=>item.key==='first-card')?.reward_state).toBe('granted');
+      expect(JSON.stringify(log.mock.calls)).not.toContain('fixture-secret');
+      const unlock=await runtime.DB.prepare("SELECT reward_state,reward_ledger_id FROM fb_achievement_unlocks WHERE tenant_id=? AND user_id=? AND achievement_id='ach_first_card'").bind(player.tenant.id,player.user!.id).first<{reward_state:string;reward_ledger_id:string|null}>();
+      expect(unlock?.reward_state).toBe('granted');expect(unlock?.reward_ledger_id).toBeTruthy();
+      expect(await walletBalance(player,player.user!.id)).toBe(before+160);
+      await evaluateAchievements(player,{userId:player.user!.id});
+      expect(await walletBalance(player,player.user!.id)).toBe(before+160);
+    } finally { log.mockRestore(); }
+  });
+
+  it.each([false,true])('keeps unreadable credit outcomes pending without overwriting concurrent success (concurrent=%s)', async (concurrent) => {
+    await bootstrap();const player=await ctxFor('cabinet','player@foilbury.local');const fixture=await fixturePool(player);
+    await makeInstance(player,player.user!.id,fixture,'ACH-UNCERTAIN');const before=await walletBalance(player,player.user!.id);
+    const credits=new WeakSet<object>();let injected=false;
+    const db=new Proxy(runtime.DB,{get(target,key){
+      if(key==='prepare')return (sql:string)=>{const statement=target.prepare(sql);
+        return new Proxy(statement,{get(inner,member){if(member==='bind')return (...args:unknown[])=>{const bound=inner.bind(...args);
+          const wrapped=new Proxy(bound,{get(item,method){
+            if(method==='first' && sql.includes('SELECT id FROM fb_ledger_entries WHERE tenant_id=?'))return async()=>{throw new Error('fixture-secret-unknown');};
+            if(method==='run' && concurrent && sql.includes("UPDATE fb_achievement_unlocks SET reward_state='pending'"))return async()=>{
+              const ledger=await target.prepare("SELECT id FROM fb_ledger_entries WHERE tenant_id=? AND user_id=? AND reference_type='achievement'").bind(player.tenant.id,player.user!.id).first<{id:string}>();
+              await target.prepare("UPDATE fb_achievement_unlocks SET reward_state='granted',reward_ledger_id=? WHERE tenant_id=? AND user_id=? AND achievement_id='ach_first_card'").bind(ledger!.id,player.tenant.id,player.user!.id).run();
+              return item.run();
+            };
+            const value=Reflect.get(item,method,item);return typeof value==='function'?value.bind(item):value;
+          }});if(sql.includes('UPDATE fb_wallets SET balance = balance +'))credits.add(wrapped);return wrapped;};const value=Reflect.get(inner,member,inner);return typeof value==='function'?value.bind(inner):value;}});};
+      if(key==='batch')return async (statements:Parameters<typeof target.batch>[0])=>{const result=await target.batch(statements);if(!injected&&statements.some(item=>credits.has(item))){injected=true;throw new Error('fixture-secret-commit');}return result;};
+      const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
+    }});
+    const log=vi.spyOn(console,'error').mockImplementation(()=>{});
+    try {
+      const result=await evaluateAchievements({...player,db},{userId:player.user!.id});
+      expect(result.unlocked.find(item=>item.key==='first-card')?.reward_state).toBe('pending');
+      const saved=await runtime.DB.prepare("SELECT reward_state,reward_ledger_id FROM fb_achievement_unlocks WHERE tenant_id=? AND user_id=? AND achievement_id='ach_first_card'").bind(player.tenant.id,player.user!.id).first<{reward_state:string;reward_ledger_id:string|null}>();
+      expect(saved?.reward_state).toBe(concurrent?'granted':'pending');
+      if(concurrent)expect(saved?.reward_ledger_id).toBeTruthy();
+      expect(JSON.stringify(log.mock.calls)).not.toContain('fixture-secret');
+      await evaluateAchievements(player,{userId:player.user!.id});
+      expect(await walletBalance(player,player.user!.id)).toBe(before+160);
+    } finally { log.mockRestore(); }
+  });
+
+  it('does not duplicate an achievement notification inserted after the lookup', async () => {
+    await bootstrap();const player=await ctxFor('cabinet','player@foilbury.local');const fixture=await fixturePool(player);
+    await makeInstance(player,player.user!.id,fixture,'ACH-OUTBOX-RACE');let injected=false;
+    const db=new Proxy(runtime.DB,{get(target,key){
+      if(key==='prepare')return (sql:string)=>{const statement=target.prepare(sql);if(!sql.includes("topic = 'achievement.earned'"))return statement;
+        return new Proxy(statement,{get(inner,member){if(member==='bind')return (...args:unknown[])=>{const bound=inner.bind(...args);return new Proxy(bound,{get(item,method){if(method==='first')return async()=>{const result=await item.first();if(!injected&&!result){injected=true;await target.prepare("INSERT INTO fb_outbox(id,tenant_id,topic,payload_json,status,attempts,available_at,created_at) VALUES ('obx_concurrent',?,'achievement.earned',?,'pending',0,?,?)").bind(player.tenant.id,JSON.stringify({unlock_id:args[1]}),nowIso(),nowIso()).run();}return result;};const value=Reflect.get(item,method,item);return typeof value==='function'?value.bind(item):value;}});};const value=Reflect.get(inner,member,inner);return typeof value==='function'?value.bind(inner):value;}});};
+      const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
+    }});
+    await evaluateAchievements({...player,db},{userId:player.user!.id});
+    const count=await runtime.DB.prepare("SELECT COUNT(*) n FROM fb_outbox WHERE tenant_id=? AND topic='achievement.earned'").bind(player.tenant.id).first<{n:number}>();
+    expect(injected).toBe(true);expect(count?.n).toBe(1);
+  });
+
+  it('ignores an unrelated malformed historical outbox payload', async () => {
+    await bootstrap();const player=await ctxFor('cabinet','player@foilbury.local');const fixture=await fixturePool(player);
+    await makeInstance(player,player.user!.id,fixture,'ACH-MALFORMED-OUTBOX');
+    await runtime.DB.prepare("INSERT INTO fb_outbox(id,tenant_id,topic,payload_json,status,attempts,available_at,created_at) VALUES ('obx_malformed',?,'achievement.earned','{','pending',0,?,?)").bind(player.tenant.id,nowIso(),nowIso()).run();
+    const result=await evaluateAchievements(player,{userId:player.user!.id});
+    expect(result.unlocked.find(item=>item.key==='first-card')?.reward_state).toBe('granted');
+    expect((await runtime.DB.prepare("SELECT COUNT(*) n FROM fb_outbox WHERE tenant_id=? AND id<>'obx_malformed' AND topic='achievement.earned'").bind(player.tenant.id).first<{n:number}>())?.n).toBe(1);
+    expect((await runtime.DB.prepare("SELECT payload_json FROM fb_outbox WHERE id='obx_malformed'").first<{payload_json:string}>())?.payload_json).toBe('{');
+  });
+
+  it('does not promote a conflicting ledger inserted after the first lookup', async () => {
+    await bootstrap();const player=await ctxFor('cabinet','player@foilbury.local');const fixture=await fixturePool(player);
+    await makeInstance(player,player.user!.id,fixture,'ACH-CONFLICT');const before=await walletBalance(player,player.user!.id);let injected=false;
+    const db=new Proxy(runtime.DB,{get(target,key){
+      if(key==='prepare')return (sql:string)=>{const statement=target.prepare(sql);if(!sql.includes('SELECT id,amount,kind,reference_type,reference_id FROM fb_ledger_entries'))return statement;
+        return new Proxy(statement,{get(inner,member){if(member==='bind')return (...args:unknown[])=>{const bound=inner.bind(...args);return new Proxy(bound,{get(item,method){if(method==='first')return async()=>{const result=await item.first();if(!injected&&!result){injected=true;await target.prepare("INSERT INTO fb_ledger_entries(id,tenant_id,user_id,kind,amount,balance_after,reference_type,reference_id,description,idempotency_key,metadata_json,actor_type,actor_id,created_at) VALUES ('led_conflict',?,?,'issue',1,?,'achievement','other-unlock','fixture',?,'{}','system','fixture',?)").bind(player.tenant.id,player.user!.id,before,args[2],nowIso()).run();}return result;};const value=Reflect.get(item,method,item);return typeof value==='function'?value.bind(item):value;}});};const value=Reflect.get(inner,member,inner);return typeof value==='function'?value.bind(inner):value;}});};
+      const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
+    }});
+    const log=vi.spyOn(console,'error').mockImplementation(()=>{});
+    try {
+      const result=await evaluateAchievements({...player,db},{userId:player.user!.id});
+      expect(injected).toBe(true);expect(result.unlocked.find(item=>item.key==='first-card')?.reward_state).toBe('pending');
+      expect((await runtime.DB.prepare("SELECT reward_state,reward_ledger_id FROM fb_achievement_unlocks WHERE tenant_id=? AND user_id=? AND achievement_id='ach_first_card'").bind(player.tenant.id,player.user!.id).first())).toEqual({reward_state:'pending',reward_ledger_id:null});
+      expect(await walletBalance(player,player.user!.id)).toBe(before);
+    } finally { log.mockRestore(); }
+  });
+
+  it('does not overwrite a notification delivered while fulfilment finishes', async () => {
+    await bootstrap();const player=await ctxFor('cabinet','player@foilbury.local');const fixture=await fixturePool(player);
+    await makeInstance(player,player.user!.id,fixture,'ACH-SENT-RACE');let injected=false;
+    const db=new Proxy(runtime.DB,{get(target,key){
+      if(key==='prepare')return (sql:string)=>{const statement=target.prepare(sql);if(!sql.includes('RETURNING reward_state,notification_state'))return statement;
+        return new Proxy(statement,{get(inner,member){if(member==='bind')return (...args:unknown[])=>{const bound=inner.bind(...args);return new Proxy(bound,{get(item,method){if(method==='first')return async()=>{if(!injected){injected=true;await target.batch([target.prepare("UPDATE fb_outbox SET status='delivered' WHERE tenant_id=? AND topic='achievement.earned'").bind(player.tenant.id),target.prepare("UPDATE fb_achievement_unlocks SET notification_state='sent' WHERE tenant_id=? AND user_id=? AND achievement_id='ach_first_card'").bind(player.tenant.id,player.user!.id)]);}return item.first();};const value=Reflect.get(item,method,item);return typeof value==='function'?value.bind(item):value;}});};const value=Reflect.get(inner,member,inner);return typeof value==='function'?value.bind(inner):value;}});};
+      const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
+    }});
+    const result=await evaluateAchievements({...player,db},{userId:player.user!.id});
+    expect(injected).toBe(true);
+    expect(result.unlocked.find(item=>item.key==='first-card')?.notification_state).toBe('sent');
+    expect((await runtime.DB.prepare("SELECT notification_state FROM fb_achievement_unlocks WHERE tenant_id=? AND user_id=? AND achievement_id='ach_first_card'").bind(player.tenant.id,player.user!.id).first<{notification_state:string}>())?.notification_state).toBe('sent');
+  });
+
+  it('does not reset an outbox item delivered after a failed-status lookup', async () => {
+    await bootstrap();const player=await ctxFor('cabinet','player@foilbury.local');const fixture=await fixturePool(player);
+    await makeInstance(player,player.user!.id,fixture,'ACH-OUTBOX-DELIVERY');await evaluateAchievements(player,{userId:player.user!.id});
+    await runtime.DB.prepare("UPDATE fb_outbox SET status='failed' WHERE tenant_id=? AND topic='achievement.earned'").bind(player.tenant.id).run();
+    let injected=false;
+    const db=new Proxy(runtime.DB,{get(target,key){
+      if(key==='prepare')return (sql:string)=>{const statement=target.prepare(sql);if(!sql.includes("UPDATE fb_outbox SET status = 'pending'"))return statement;
+        return new Proxy(statement,{get(inner,member){if(member==='bind')return (...args:unknown[])=>{const bound=inner.bind(...args);return new Proxy(bound,{get(item,method){if(method==='run')return async()=>{if(!injected){injected=true;await target.prepare("UPDATE fb_outbox SET status='delivered' WHERE id=? AND tenant_id=?").bind(args[1],args[2]).run();}return item.run();};const value=Reflect.get(item,method,item);return typeof value==='function'?value.bind(item):value;}});};const value=Reflect.get(inner,member,inner);return typeof value==='function'?value.bind(inner):value;}});};
+      const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
+    }});
+    await evaluateAchievements({...player,db},{userId:player.user!.id});
+    expect(injected).toBe(true);
+    expect((await runtime.DB.prepare("SELECT status FROM fb_outbox WHERE tenant_id=? AND topic='achievement.earned'").bind(player.tenant.id).first<{status:string}>())?.status).toBe('delivered');
   });
 
   it("recovers an interrupted reward once and reconciles a committed ledger row", async () => {
@@ -288,7 +419,7 @@ describe("achievements", () => {
 
   it("hides collection achievements from members without that collection entitlement", async () => {
     await bootstrap();
-    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const owner = await collectionSession(await ctxFor("cabinet", "owner@foilbury.local"));
     const fixture = await fixturePool(owner);
     const player = await ctxFor("cabinet", "player@foilbury.local");
     const second = await createUser(runtime.DB, {
@@ -349,7 +480,7 @@ describe("achievements", () => {
 
   it("recovers a pending unlock after the qualifying card is traded away", async () => {
     await bootstrap();
-    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const owner = await collectionSession(await ctxFor("cabinet", "owner@foilbury.local"));
     const fixture = await fixturePool(owner);
     const collection = await createCollection(owner, {
       name: "Recovery Album",

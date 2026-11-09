@@ -2,12 +2,12 @@ import type { APIRoute } from "astro";
 import { ApiError, buildContext } from "../../../server/context";
 import { json, apiErrorResponse } from "../../../server/http";
 import { getWallet } from "../../../server/modules/wallet";
-import { newId } from "../../../server/ids";
+import { requestReference } from "../../../server/ids";
 
 export const prerender = false;
 
 export const GET: APIRoute = async ({ request }) => {
-  const requestId = newId("req");
+  const requestId = requestReference(request);
   try {
     const ctx = await buildContext(request);
     if (!ctx.user) throw new ApiError(401, "authentication_required", "Sign in to continue.");

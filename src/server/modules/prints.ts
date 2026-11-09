@@ -12,7 +12,7 @@
  *   draft -> proposed -> approved | rejected
  * A rejected proposal is revised in place (same stable print key) and resubmitted.
  */
-import { ApiError, canManageContent, requireUser, type Ctx, type CurrentUser } from "../context";
+import { ApiError, canManageContent, requireRecentStrongAuth, requireUser, type Ctx, type CurrentUser } from "../context";
 import { all, first, nowIso, parseJson, run, statement } from "../db";
 import { auditStatement } from "../http";
 import { newId } from "../ids";
@@ -163,6 +163,7 @@ interface AssetRow {
   width: number | null;
   height: number | null;
   bytes: number;
+  r2_key: string;
   sha256: string;
   visibility: string;
   access_classification: string;
@@ -543,23 +544,25 @@ export function requirePrintManager(ctx: Ctx): CurrentUser {
 export function requirePrintReviewer(ctx: Ctx): CurrentUser {
   const user = requireUser(ctx);
   if (ctx.actor.type === "agent") {
-    // An agent may review only when its grant explicitly carries print:review.
-    // The decision is recorded as an agent decision, never as human approval.
+    // Keep the scope check explicit, but a scope alone cannot provide the
+    // recent human strong-auth binding required for this sensitive decision.
     if (!ctx.scopes?.includes("print:review")) {
       throw new ApiError(
         403,
         "print_review_scope_required",
-        "This agent grant does not include print:review. A human reviewer or a grant with that explicit scope is required.",
+        "This agent grant does not include print:review. A signed-in human reviewer is required.",
       );
     }
-    if (!canManageContent(ctx)) {
+    if (!canManageContent(ctx) || (!user.agentIsBotOwner && !user.agentPlatformContent)) {
       throw new ApiError(
         403,
         "print_review_forbidden",
         "The represented member cannot review print proposals for this Bot.",
       );
     }
-    return user;
+    // The current bearer grant does not bind this decision to a recent human
+    // strong-auth event. Do not treat the scope as that assurance.
+    throw new ApiError(403, "human_strong_auth_required", "Print decisions require a signed-in reviewer with recent strong authentication.");
   }
   if (!user.platformAdmin && user.role !== "owner") {
     throw new ApiError(
@@ -592,7 +595,7 @@ async function loadAsset(
 ): Promise<AssetRow | null> {
   return first<AssetRow>(
     ctx.db,
-    `SELECT id, kind, name, mime, width, height, bytes, sha256, visibility,
+    `SELECT id, kind, name, mime, width, height, bytes, r2_key, sha256, visibility,
             access_classification, processing_state, review_status, provenance_json,
             credit, source_repo, source_path, source_commit, source_logical_id,
             derivative_of_asset_id, archived_at
@@ -1099,7 +1102,17 @@ export async function reviewPrintProposal(
   options?: { note?: string; expectedRevision?: number },
 ): Promise<PrintProposalView> {
   const reviewer = requirePrintReviewer(ctx);
+  requireRecentStrongAuth(ctx, 30);
+  if (ctx.actor.type !== "user" || ctx.actor.id !== reviewer.id || ctx.actor.representedUserId !== reviewer.id) throw new ApiError(403, "human_strong_auth_required", "A signed-in reviewer is required.");
   const row = await loadProposalRow(ctx, proposalId);
+  const { liveViewerContext } = await import("./live-viewer");
+  const { canViewCard } = await import("./visibility");
+  const live = await liveViewerContext(ctx, reviewer.id);
+  if (!live || !(await canViewCard(live, row.card_id, { liveContentAdmin: true }))) throw new ApiError(404, "print_proposal_not_found", "That print proposal is not available.");
+  const liveRole = await first<{ allowed: number }>(ctx.db, `SELECT 1 AS allowed FROM fb_memberships m JOIN fb_users u ON u.id = m.user_id JOIN fb_bots b ON b.tenant_id = m.tenant_id AND b.status = 'active'
+    WHERE m.tenant_id = ? AND m.user_id = ? AND m.status = 'active' AND m.revoked_at IS NULL AND u.disabled_at IS NULL
+      AND ((m.role = 'owner' AND b.owner_user_id = u.id) OR (u.platform_admin = 1 AND EXISTS (SELECT 1 FROM fb_platform_admins pa WHERE pa.user_id = u.id AND pa.status = 'active' AND pa.revoked_at IS NULL)))`, ctx.tenant.id, reviewer.id);
+  if (!liveRole) throw new ApiError(403, "print_review_forbidden", "Your print review authority has changed.");
   assertRevisionMatches(row, options?.expectedRevision);
   if (row.status !== "proposed") {
     throw new ApiError(
@@ -1116,7 +1129,16 @@ export async function reviewPrintProposal(
       "Record why the print was rejected so the artwork can be revised deliberately.",
     );
   }
+  const candidateSnapshotSql = `SELECT COALESCE(json_group_array(json_array(id,kind,status,role,title,direction,finish,sha)),'[]') AS snapshot FROM (
+    SELECT p.id AS id, 'proposal' AS kind, p.status AS status, p.role AS role, p.title AS title, p.creative_direction AS direction, p.finish_keys_json AS finish, a.sha256 AS sha
+      FROM fb_print_proposals p LEFT JOIN fb_assets a ON a.id = p.artwork_asset_id AND a.tenant_id = p.tenant_id WHERE p.tenant_id = ? AND p.card_id = ? AND p.id <> ?
+    UNION ALL SELECT e.id, 'edition', e.status, NULL, e.name, '', '', a.sha256 FROM fb_artwork_editions e LEFT JOIN fb_assets a ON a.id = e.subject_asset_id AND a.tenant_id = e.tenant_id WHERE e.tenant_id = ? AND e.card_id = ? AND e.archived_at IS NULL ORDER BY kind,id
+  )`;
+  let candidateSnapshot: string | null = null;
+  let reviewedArtwork: AssetRow | null = null;
+  let reviewedSource: AssetRow | null = null;
   if (decision === "approved") {
+    candidateSnapshot = (await first<{ snapshot: string }>(ctx.db, candidateSnapshotSql, ctx.tenant.id, row.card_id, row.id, ctx.tenant.id, row.card_id))?.snapshot ?? null;
     const artwork = row.artwork_asset_id
       ? await loadAsset(ctx, row.artwork_asset_id, ["subject"])
       : null;
@@ -1128,6 +1150,10 @@ export async function reviewPrintProposal(
       );
     }
     assertArtworkUsable(artwork, true);
+    reviewedArtwork = artwork;
+    reviewedSource = await loadAsset(ctx, row.source_asset_id, ["subject"]);
+    if (!reviewedSource) throw new ApiError(422, "print_source_asset_invalid", "The source artwork is no longer available.");
+    assertSourceUsable(reviewedSource);
     // Re-check at the decision boundary: a published or retired edition may
     // have appeared after submission. Draft editions are allowed because they
     // can be the intended edition created for composition preview and linked
@@ -1146,41 +1172,48 @@ export async function reviewPrintProposal(
     });
   }
 
+  // D1 metadata cannot prove an R2 object has not been overwritten at the
+  // same key. Do not grant approval until an immutable byte-version binding
+  // can be checked at the publication boundary. Rejections remain available.
+  if (decision === "approved") throw new ApiError(409, "print_approval_unavailable", "Print approval is temporarily unavailable until artwork bytes can be verified as immutable. You can still reject or revise this proposal.");
   const now = nowIso();
-  const updated = await run(
-    ctx.db,
-    `UPDATE fb_print_proposals
-        SET status = ?, reviewed_by = ?, reviewer_kind = ?, reviewed_at = ?, review_note = ?,
-            approved_at = CASE WHEN ? = 'approved' THEN ? ELSE approved_at END,
-            revision = revision + 1, updated_at = ?
-      WHERE id = ? AND tenant_id = ? AND status = 'proposed' AND revision = ?`,
-    decision,
-    reviewer.id,
-    ctx.actor.type === "agent" ? "agent" : "human",
-    now,
-    note,
-    decision,
-    now,
-    now,
-    row.id,
-    ctx.tenant.id,
-    row.revision,
-  );
-  if (updated.changes === 0) {
-    throw new ApiError(
-      409,
-      "stale_print_proposal_revision",
-      "This print proposal changed. Reload it before reviewing.",
-    );
-  }
-  await insertReview(ctx, row.id, row.revision + 1, decision, reviewer.id, note);
-  await auditStatement(
-    ctx,
-    decision === "approved" ? "print.proposal.approved" : "print.proposal.rejected",
-    "print_proposal",
-    row.id,
-    { revision: row.revision + 1, note },
-  ).run();
+  const access = ctx.sessionAssurance === "access" ? ctx.accessIdentity : null;
+  // Re-evaluate membership, owner/platform authority, strong auth and every
+  // linked collection in the same transaction as the decision. An unfiled
+  // card remains visible to its owning Bot, as in the normal card policy.
+  const update = ctx.db.prepare(`UPDATE fb_print_proposals
+    SET status = ?, reviewed_by = ?, reviewer_kind = 'human', reviewed_at = ?, review_note = ?,
+        approved_at = CASE WHEN ? = 'approved' THEN ? ELSE approved_at END, revision = revision + 1, updated_at = ?
+    WHERE id = ? AND tenant_id = ? AND status = 'proposed' AND revision = ?
+      AND EXISTS (SELECT 1 FROM fb_card_definitions cd WHERE cd.id = fb_print_proposals.card_id AND cd.tenant_id = fb_print_proposals.tenant_id AND cd.archived_at IS NULL)
+      AND (? <> 'approved' OR ((${candidateSnapshotSql}) = ? AND EXISTS (SELECT 1 FROM fb_assets a WHERE a.id = fb_print_proposals.artwork_asset_id AND a.id = ? AND a.tenant_id = fb_print_proposals.tenant_id AND a.archived_at IS NULL AND a.kind = 'subject' AND a.sha256 = ? AND a.mime = ? AND a.r2_key = ? AND a.bytes = ? AND a.processing_state = ? AND a.review_status = ?) AND EXISTS (SELECT 1 FROM fb_assets a WHERE a.id = fb_print_proposals.source_asset_id AND a.id = ? AND a.tenant_id = fb_print_proposals.tenant_id AND a.archived_at IS NULL AND a.kind = 'subject' AND a.sha256 = ? AND a.mime = ? AND a.r2_key = ? AND a.bytes = ? AND a.processing_state = ? AND a.review_status = ?)))
+      AND EXISTS (SELECT 1 FROM fb_memberships m JOIN fb_users u ON u.id = m.user_id
+        JOIN fb_bots b ON b.tenant_id = m.tenant_id AND b.status = 'active'
+        WHERE m.tenant_id = ? AND m.user_id = ? AND m.status = 'active' AND m.revoked_at IS NULL AND u.disabled_at IS NULL
+          AND ((m.role = 'owner' AND b.owner_user_id = u.id) OR (u.platform_admin = 1 AND EXISTS
+            (SELECT 1 FROM fb_platform_admins pa WHERE pa.user_id = u.id AND pa.status = 'active' AND pa.revoked_at IS NULL)))
+          AND ((? = 'access' AND ? > unixepoch('now') AND EXISTS (SELECT 1 FROM fb_access_identities ai WHERE ai.user_id = u.id AND ai.team_domain = ? AND ai.subject = ? AND ai.email = ? AND ai.revoked_at IS NULL) AND u.email = ? COLLATE NOCASE)
+            OR (? IN ('passkey','mfa') AND EXISTS (SELECT 1 FROM fb_sessions s WHERE s.id = ? AND s.user_id = u.id AND s.tenant_id = m.tenant_id AND s.revoked_at IS NULL AND s.expires_at > strftime('%Y-%m-%dT%H:%M:%fZ','now') AND s.assurance = ? AND s.auth_time >= strftime('%Y-%m-%dT%H:%M:%fZ','now','-30 minutes') AND s.auth_time <= strftime('%Y-%m-%dT%H:%M:%fZ','now'))))
+          AND NOT EXISTS (SELECT 1 FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id
+            WHERE cc.card_id = fb_print_proposals.card_id AND NOT (
+              c.status = 'published' AND c.archived_at IS NULL AND (
+                (u.platform_admin = 1 AND EXISTS (SELECT 1 FROM fb_platform_admins pa WHERE pa.user_id = u.id AND pa.status = 'active' AND pa.revoked_at IS NULL))
+                OR (c.view_audience = 'public' AND c.public_approved_at IS NOT NULL)
+                OR (c.view_audience = 'members' AND (c.scope = 'global' OR c.owner_tenant_id = m.tenant_id))
+                OR (c.view_audience = 'private' AND ((c.owner_tenant_id = m.tenant_id AND m.role = 'owner' AND b.owner_user_id = u.id)
+                  OR EXISTS (SELECT 1 FROM fb_collection_viewers cv WHERE cv.collection_id = c.id AND cv.user_id = u.id AND cv.revoked_at IS NULL)))
+              )))
+      ) RETURNING id`).bind(decision, reviewer.id, now, note, decision, now, now, row.id, ctx.tenant.id, row.revision,
+        decision, ctx.tenant.id, row.card_id, row.id, ctx.tenant.id, row.card_id, candidateSnapshot, reviewedArtwork?.id ?? null, reviewedArtwork?.sha256 ?? null, reviewedArtwork?.mime ?? null, reviewedArtwork?.r2_key ?? null, reviewedArtwork?.bytes ?? null, reviewedArtwork?.processing_state ?? null, reviewedArtwork?.review_status ?? null, reviewedSource?.id ?? null, reviewedSource?.sha256 ?? null, reviewedSource?.mime ?? null, reviewedSource?.r2_key ?? null, reviewedSource?.bytes ?? null, reviewedSource?.processing_state ?? null, reviewedSource?.review_status ?? null,
+        ctx.tenant.id, reviewer.id, ctx.sessionAssurance, access?.payload.exp ?? 0, ctx.config.access.teamDomain, access?.subject ?? "", access?.email ?? "", access?.email ?? "",
+        ctx.sessionAssurance, ctx.sessionId, ctx.sessionAssurance);
+  const review = ctx.db.prepare(`INSERT INTO fb_print_proposal_reviews (id,tenant_id,proposal_id,revision,decision,reviewer_id,reviewer_kind,note,created_at)
+    SELECT ?,?,?,?,?,?,'human',?,? WHERE changes() = 1`).bind(newId("prv"), ctx.tenant.id, row.id, row.revision + 1, decision, reviewer.id, note, now);
+  const audit = ctx.db.prepare(`INSERT INTO fb_audit_events (id,tenant_id,actor_type,actor_id,represented_user_id,action,object_type,object_id,metadata_json,request_id,created_at)
+    SELECT ?,?,?,?,?,?,'print_proposal',?,?,?,? WHERE changes() = 1`).bind(newId("aud"), ctx.tenant.id, ctx.actor.type, ctx.actor.id, ctx.actor.representedUserId,
+      "print.proposal.rejected", row.id, JSON.stringify({ revision: row.revision + 1, note }), ctx.requestId, now);
+  const [updated] = await ctx.db.batch([update, review, audit]);
+  if (!updated || updated.results?.length !== 1) throw new ApiError(409, "print_review_changed", "The proposal, access or reviewer session changed. Reload before reviewing.");
   return hydrateProposal(ctx, await loadProposalRow(ctx, row.id));
 }
 

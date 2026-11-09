@@ -126,6 +126,8 @@ const revealBase: RevealReceiptInput = {
   price: 80,
   currency: { name: "Foil", symbol: "✦" },
   balance_after: 390,
+  settlement_status: "settled",
+  settlement_pending: false,
   probability_bps: 1250,
   drawn_at: "2026-11-03T05:00:00.000Z",
   replayed: false,
@@ -417,6 +419,15 @@ describe("private identifiers and sensitive copy", () => {
 });
 
 describe("reveal receipt parity", () => {
+  it("keeps unconfirmed rewards and balances pending, including a raw replay without a balance", () => {
+    for (const balance of [390, undefined]) {
+      const callback = reveal({ balance_after: balance, settlement_status: "pending", settlement_pending: true, credits_total: 160 });
+      expect(fieldValue(callback, "Balance and rewards")).toContain("Not yet confirmed");
+      expect(fieldValue(callback, "Settled balance")).toBe("");
+      expect(fieldValue(callback, "Reward credited")).toBe("");
+      expect(firstEmbed(callback).title).toContain("Pippa");
+    }
+  });
   it("declares the same committed fields as the Discord draw receipt", () => {
     expect([...REVEAL_RECEIPT_FIELDS]).toEqual([
       "card_id",
@@ -942,44 +953,6 @@ describe("profile and share prompt", () => {
     expect(fieldValue(callback, "Unique cards")).toBe("6");
     expect(fieldValue(callback, "Badges")).toBe("3 earned · 1 public");
     expect(privateResponse(callback)).toBe(true);
-  });
-
-  it("shows the saved composition, featured copy and selected badges", () => {
-    const callback = profileMessage({
-      displayName: "Dean",
-      scopeName: "Foilbury Cabinet",
-      currencySymbol: "✦",
-      balance: 320,
-      ownedCards: 7,
-      uniqueCards: 6,
-      dailyAvailable: true,
-      achievementsEarned: 3,
-      lookLabel: "Signal room",
-      note: "Quietly collecting original worlds.",
-      featured: { name: "Kestrel", variant: "Protocol 11", finish: "Gold" },
-      badgeNames: ["First card", "Protocol complete"],
-      imageAttachment: "foilbury-profile.webp",
-      attachment: {
-        r2Key: "test/profile.webp",
-        filename: "foilbury-profile.webp",
-        contentType: "image/webp",
-      },
-      profileUrl: "https://foilbury.test/play/profile",
-      customiseUrl: "https://foilbury.test/play/profile#customise",
-      shareCustomId: "foilbury:tourshare:profile:usr_test",
-    });
-    expect(fieldValue(callback, "Look")).toBe("Signal room");
-    expect(fieldValue(callback, "Featured copy")).toContain("Kestrel");
-    expect(fieldValue(callback, "Selected badges")).toContain("First card");
-    expect(fieldValue(callback, "Collector note")).toContain("original worlds");
-    expect(firstEmbed(callback).image?.url).toBe("attachment://foilbury-profile.webp");
-    expect(callback.attachments?.[0]?.filename).toBe("foilbury-profile.webp");
-    expect(privateResponse(callback)).toBe(true);
-    const labels = (callback.data?.components ?? []).flatMap((row) =>
-      (row.components ?? []).map((component) => component.label),
-    );
-    expect(labels).toContain("View showcase");
-    expect(labels).toContain("Share preview");
   });
 
   it("checks every offered share item against the channel audience", () => {

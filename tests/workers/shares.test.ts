@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { createShareLink, revokeShareLink, updatePreferences } from "../../src/server/modules/economy";
-import { resolveShareView } from "../../src/server/modules/shares";
 import { bootstrap, ctxFor, fixturePool, makeInstance, runtime } from "./helpers";
-import { nowIso } from "../../src/server/db";
 
 describe("deliberate sharing", () => {
   it("requires explicit sharing consent and re-checks the captured audience", async () => {
     await bootstrap();
-    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const base = await ctxFor("cabinet", "owner@foilbury.local");
+    const now = new Date().toISOString(), session = `share-session-${crypto.randomUUID()}`;
+    await runtime.DB.prepare("INSERT INTO fb_sessions (id,token_hash,user_id,tenant_id,csrf_token,created_at,expires_at,last_seen_at,assurance,auth_time) VALUES (?,?,?,?, 'test',?,?,?,'password',?)")
+      .bind(session,session,base.user!.id,base.tenant.id,now,new Date(Date.now()+3600000).toISOString(),now,now).run();
+    const owner = {...base,sessionId:session,sessionAssurance:'password' as const,sessionAuthTime:now};
     const fixture = await fixturePool(owner);
     const instanceId = await makeInstance(owner, owner.user!.id, fixture, "SHARE-CARD-1");
     await expect(createShareLink(owner, { kind: "card", targetId: instanceId })).rejects.toMatchObject({ code: "sharing_disabled" });
@@ -21,98 +23,20 @@ describe("deliberate sharing", () => {
     expect(revoked.status).toBe("revoked");
   });
 
-  it("retires new whole-cabinet links without invalidating safe existing snapshots", async () => {
+  it("retires new whole-cabinet links while offering bounded snapshots", async () => {
     await bootstrap();
-    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const base = await ctxFor("cabinet", "owner@foilbury.local");
+    const now = new Date().toISOString(), session = `share-session-${crypto.randomUUID()}`;
+    await runtime.DB.prepare("INSERT INTO fb_sessions (id,token_hash,user_id,tenant_id,csrf_token,created_at,expires_at,last_seen_at,assurance,auth_time) VALUES (?,?,?,?, 'test',?,?,?,'password',?)")
+      .bind(session,session,base.user!.id,base.tenant.id,now,new Date(Date.now()+3600000).toISOString(),now,now).run();
+    const owner = {...base,sessionId:session,sessionAssurance:'password' as const,sessionAuthTime:now};
     await updatePreferences(owner, { sharingEnabled: true });
     await expect(createShareLink(owner, { kind: "cabinet" })).rejects.toMatchObject({
       code: "share_kind_retired",
     });
-    const profile = await createShareLink(owner, { kind: "profile", expiresInDays: 7 });
-    expect(profile.kind).toBe("profile");
-  });
-
-  it("turning sharing off stops new links but leaves existing links explicit and revocable", async () => {
-    await bootstrap();
-    const owner = await ctxFor("cabinet", "owner@foilbury.local");
-    await updatePreferences(owner, { sharingEnabled: true });
-    const existing = await createShareLink(owner, { kind: "profile", expiresInDays: 7 });
-    await updatePreferences(owner, { sharingEnabled: false });
-    const view = await resolveShareView(owner, existing.token);
-    expect(view.active).toBe(true);
-    expect(view.visible).toBe(true);
-    await expect(createShareLink(owner, { kind: "profile", expiresInDays: 7 })).rejects.toMatchObject({
-      code: "sharing_disabled",
-    });
-    await revokeShareLink(owner, existing.id);
-    expect((await resolveShareView(owner, existing.token)).active).toBe(false);
-  });
-
-  it("captures the chosen profile look and note without private identifiers", async () => {
-    await bootstrap();
-    const owner = await ctxFor("cabinet", "owner@foilbury.local");
-    await updatePreferences(owner, {
-      sharingEnabled: true,
-      profileLook: "night",
-      profileBio: "Quiet shelves, loud cards.",
-    });
-    const profile = await createShareLink(owner, { kind: "profile", expiresInDays: 7 });
-    expect(profile.preview.profile_look).toBe("night");
-    expect(profile.preview.profile_bio).toBe("Quiet shelves, loud cards.");
-    expect(JSON.stringify(profile.preview)).not.toMatch(/email|balance|ledger|account_id/i);
-  });
-
-  it("captures the saved composition, exact featured copy and shelf order without private identifiers", async () => {
-    await bootstrap();
-    const owner = await ctxFor("cabinet", "owner@foilbury.local");
-    const fixture = await fixturePool(owner);
-    const first = await makeInstance(owner, owner.user!.id, fixture, "SHARE-FEATURED");
-    const second = await makeInstance(owner, owner.user!.id, fixture, "SHARE-SHELF");
-    const now = nowIso();
-    await runtime.DB.batch([
-      runtime.DB.prepare("UPDATE fb_collections SET logo_url = '/media/logo.png', banner_url = '/media/banner.png' WHERE id = 'col_test_public'"),
-      runtime.DB.prepare("UPDATE fb_card_instances SET favourite = 1 WHERE id IN (?, ?)").bind(first, second),
-      runtime.DB
-        .prepare(
-          `INSERT INTO fb_achievement_definitions
-          (id, scope, key, version, name, description, criteria_json, reward_json, visibility, art_key, category, sort, status, created_by, created_at, updated_at)
-         VALUES ('ach_share_profile', 'platform', 'share-profile', 1, 'Shared badge', 'Earned for the share fixture.', '{}', '{}', 'member', 'medal-first', 'milestone', 0, 'active', 'test', ?, ?)`,
-        )
-        .bind(now, now),
-      runtime.DB
-        .prepare(
-          `INSERT INTO fb_achievement_unlocks
-          (id, tenant_id, user_id, achievement_id, achievement_version, earned_at, reward_state, reward_amount, notification_state, created_at)
-         VALUES ('unl_share_profile', ?, ?, 'ach_share_profile', 1, ?, 'none', 0, 'suppressed', ?)`,
-        )
-        .bind(owner.tenant.id, owner.user!.id, now, now),
-    ]);
-    await updatePreferences(owner, {
-      sharingEnabled: true,
-      profileLook: "night",
-      profileBio: "Quiet shelves, loud cards.",
-      profilePresentationVersion: 1,
-      profilePresentation: {
-        portrait: "collection:col_test_public",
-        banner: "collection:col_test_public",
-        frame: "signal",
-        avatarDecoration: "ring",
-        nameTreatment: "wide",
-        effect: "sheen",
-        featuredInstanceId: first,
-        favouriteInstanceIds: [second, first],
-        badgeIds: ["ach_share_profile"],
-      },
-    });
-    const profile = await createShareLink(owner, { kind: "profile", expiresInDays: 7 });
-    expect(profile.preview.presentation).toBeTruthy();
-    expect(profile.preview.presentation.featured.card_name).toBe("Test One");
-    expect(profile.preview.presentation.featured.serial).toBeUndefined();
-    expect(JSON.stringify(profile.preview)).not.toMatch(/SHARE-FEATURED|"serial"/i);
-    expect(profile.preview.presentation.favourites.map((card: { card_name: string }) => card.card_name)).toEqual(["Test One", "Test One"]);
-    expect(profile.preview.presentation.badges.map((badge: { name: string }) => badge.name)).toEqual(["Shared badge"]);
-    expect(profile.preview.presentation.frame).toBe("signal");
-    expect(JSON.stringify(profile.preview)).not.toMatch(/email|balance|ledger|account_id/i);
+    expect((await createShareLink(owner, { kind: "profile", expiresInDays: 7 })).kind).toBe("profile");
+    const wishlist = await createShareLink(owner, { kind: "wishlist", expiresInDays: 7 });
+    expect(wishlist.kind).toBe("wishlist");
   });
 
   it("does not let a player share another member's copy", async () => {

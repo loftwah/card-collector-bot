@@ -6,6 +6,21 @@ Source manifests: private `.foilbury/content` (gitignored). This page is the
 public-safe review record; it contains no private rosters, member data or
 sourced image files.
 
+**Current qualification:** the table is a historical inventory, not acceptance
+of the artwork or the completeness of these rosters. A local visual review on
+2026/11/04 found incorrect Nora copy, dark Pippa artwork, a Pressure Orbit crop
+and halo, excessive foil wash and small back text. The Nora metadata is corrected
+locally, but the issued renders are unchanged. The full catalogue has not yet
+received the requested asset-by-asset independent review. Previously recorded
+`reviewed` and `approved` labels below do not resolve these findings.
+
+Primary identity checks on 2026/11/05: [INTERNET Co.'s Kamui Gakupo
+profile](https://www.ssw.co.jp/characters/gakupo_profile/) identifies him as a
+virtual singer associated with the Gackpoid VOCALOID product, based on GACKT's
+voice. [Spike Chunsoft's V3 character page](https://www.danganronpa.com/pages/v3/character/)
+lists 獄原ゴン太 as the entomologist. These establish source context, not
+permission to reuse artwork or acceptance of the local card renders.
+
 ## What this matrix is
 
 Each collection is assessed on separate claims. A published card is not
@@ -36,7 +51,7 @@ third-party rows are members-only and non-commercial.
 | Alien Stage — Stage Lights | 8 | 5 | 0 / 8 | 32 | 32 / 32 | 4 | members | cabinet, alien-stage-capsule | Ongoing 2022–2025 web/music series; no invented outcomes. Eight draft profiles are explicitly excluded from reviewed completion. |
 | Bubbles (Loftwah original) | 3 | 1 | 3 / 0 | 13 | 13 / 13 | 4 | public | cabinet-draw | Approved original-IP showcase; not a third-party property. |
 | Chainsaw Man — Public Safety, Part 1 | 8 | 5 | 8 / 0 | 32 | 32 / 32 | 4 | members | cabinet, chainsaw-man-public-safety-capsule | Manga Part 1; 2022 anime as visual reference. Part 2 is out. |
-| Danganronpa — Three Killing Games | 9 | 6 | 9 / 0 | 36 | 36 / 36 | 4 | members | cabinet, danganronpa-three-games-capsule | Three main games only. Release 6 adds Gonta Gokuhara with a reviewed profile and sourced render. |
+| Danganronpa — Three Killing Games | 8 | 5 | 8 / 0 | 32 | 32 / 32 | 4 | members | cabinet, danganronpa-three-games-capsule | Three main games only. Gonta Gokuhara exists in the local release 2 manifest but is **not yet in production**. |
 | Death Note — The Kira Case | 8 | 5 | 8 / 0 | 32 | 32 / 32 | 4 | members | cabinet, death-note-capsule | Manga and anime; late identity spoilers gated. Films and one-shots out. |
 | Doki Doki Literature Club! — The Clubroom | 8 | 5 | 5 / 3 | 32 | 32 / 32 | 4 | members | cabinet, doki-doki-literature-club-capsule | Original 2017 VN; early-safe framing. The three setting cards remain draft. |
 | Fighter (Loftwah original) | 5 | 1 | 5 / 0 | 44 | 44 / 44 | 4 | public | fighter-draw, second-print-capsule, late-night-draw | Approved original-IP showcase with distinct print editions. |
@@ -53,11 +68,11 @@ third-party rows are members-only and non-commercial.
 | The Simpsons — Springfield, U.S.A. | 8 | 5 | 8 / 0 | 32 | 32 / 32 | 4 | members | the-simpsons-capsule | Floating timeline from 1989; no dated claims. |
 | The Summer Hikaru Died — The Village and the Voice | 8 | 5 | 6 / 2 | 32 | 32 / 32 | 4 | members | summer-hikaru-died-capsule | Manga through 2026; 2025 anime only where it follows the same character ground. Two draft profiles. |
 | Total Drama Island — Camp Wawanakwa, 2007 | 8 | 5 | 8 / 0 | 32 | 32 / 32 | 4 | members | total-drama-island-capsule | First season only: 22 campers plus two hosts exist; the release deliberately names eight (both hosts and six campers). |
-| Vocaloid — Voicebanks | 9 | 6 | 9 / 0 | 36 | 36 / 36 | 4 | members | vocaloid-capsule | Persona, software and voice provider kept distinct. Release 6 adds Kamui Gakupo; Camui Gackpo and Gackpoid resolve to the same identity. |
+| Vocaloid — Voicebanks | 8 | 5 | 8 / 0 | 32 | 32 / 32 | 4 | members | vocaloid-capsule | Persona, software and voice provider kept distinct. Gakupo exists in the local release 2 manifest but is **not yet in production**. |
 
-Totals: **21 published collections, 158 cards, 680 variants, 680 published
-fronts and 680 published backs** in production. Four public collections (16
-cards); 17 third-party/member collections (142 cards, of which 14 profiles are
+Totals: **21 published collections, 156 cards, 640 variants, 640 published
+fronts and 640 published backs** in production. Four public collections (16
+cards); 17 third-party/member collections (140 cards, of which 14 profiles are
 draft).
 
 ## Named omissions and deliberate boundaries
@@ -86,16 +101,16 @@ gap. Expanding a collection requires a new reviewed release version.
 - **Project Sekai** — one representative per unit plus Miku. Omitted: the
   remaining unit members (Saki, Honami, Shiho, Haruka, Airi, Shizuku, Akito,
   Toya, An, Tsukasa's siblings and others) and the other Virtual Singers.
-- **South Park** — main four plus three townsfolk and Chef. Omitted: Krusty,
-  Skinner, Milhouse, Apu, Grampa, Smithers, Barney, Nelson, Ralph, Token,
-  Jimmy, Timmy, Craig, Tweek, Clyde and Garrison.
+- **South Park** — main four plus three townsfolk and Chef. Omitted examples
+  include Tolkien, Jimmy, Timmy, Craig, Tweek, Clyde and Garrison.
 - **Rick and Morty** — main family and portal characters. Omitted: Space Beth,
   Mr. Poopybutthole, Squanchy, Unity, Jaguar, Rick Prime, Diane, Jessica,
   President Curtis and Dr. Wong.
-- **Vocaloid** — nine voicebank personas. Omitted: Fukase, Flower, Una,
+- **Vocaloid** — eight voicebank personas in production, plus Gakupo locally.
+  Omitted: Fukase, Flower, Una,
   Stardust, Luo Tianyi, Yuezheng Ling, SeeU, Big Al, Prima, Tonio and other
-  engine-specific voicebanks. Gakupo/Gackpo alias resolution is now in
-  production.
+  engine-specific voicebanks. Gakupo/Gackpo alias resolution is recorded in the
+  local manifest but not yet in production.
 - **The Summer Hikaru Died** — village core. Omitted: later-volume supporting
   villagers and characters whose facts are not settled in the reviewed source
   set. Yūta Maki and Yuuki Tadokoro remain draft.
@@ -114,48 +129,47 @@ gap. Expanding a collection requires a new reviewed release version.
 
 ## Reviewed-completion status
 
-- Reviewed profile count: **128/142** third-party cards.
+- Reviewed profile count: **126/140** third-party cards.
 - Explicitly draft and excluded from reviewed completion: **14** — Alien Stage
   (8), DDLC (3), Madoka (1), The Summer Hikaru Died (2).
-- All 142 cards are published and draw-eligible through at least one active
+- All 140 cards are published and draw-eligible through at least one active
   pool. A draft review status does not make a card unplayable; it means the
   profile is not claimed as reviewed.
 - The four approved public collections are fully reviewed original-IP content.
 
-## Gonta and Gakupo — production import receipt
+## Gonta and Gakupo — production gap and safe plan
 
-Delivered on 2026/11/08 through the bounded incremental importer
-`scripts/content/incremental-import.mjs`; the broad `content:provision`
-provisioner was not run.
+Production read-back on 2026-11-04 found **no** `gonta-gokuhara`,
+`kamui-gakupo` or `camui-gackpo` card row. Both exist in the local private
+manifests at collection release 2, with reviewed profiles and local renders.
+Production Danganronpa and Vocaloid remain at release 5 with eight cards each.
 
-| Fact | Value |
-| --- | --- |
-| Pre-import D1 backup | `.foilbury/backups/prod-pre-gonta-gakupo-2026-11-08.json` (94 tables, 32,907 rows, SHA-256 `4ecbe62d3573b41afd72e86f29fe16a266457d5e088b4031c94681c28534d99c`) |
-| Import source | `5d767c8f42dcfa2051deb9b61fb391d69341367f`; alias/search Worker `50e9b03c-ef5b-45b3-bb02-59cb8040f394`; schema `0030_card_name_aliases.sql` |
-| Cards | Gonta Gokuhara `crd_mw6oj6jls9g8z2xh36t2rr2t`; Kamui Gakupo `crd_mw6oj96m3zqdrsfxzcfam8m4` |
-| Variants / renders | 8 new variants, 8 published 750×1050 fronts, 8 published backs |
-| Collections | Danganronpa and Vocaloid release 5 → 6; 9 cards and 36 variants each |
-| Pools | Both capsules revision 3 → 4, 36 entries; live preview reports 36 eligible variants and includes every new finish |
-| Aliases | Gonta; Camui Gackpo; Gackpoid; 神威がくぽ — all resolve to the single canonical card |
-| Preserved | 123 owned instances and 188 ledger rows unchanged; existing achievement rosters and awards untouched |
-| Render proof | `.foilbury/evidence/incremental-import-2026-11-07T18-00-36-952Z/contact-sheet.png` and the sixteen full-size fronts/backs beside it |
-| Bounded rollback | `.foilbury/evidence/incremental-import-rollback-2026-11-07T18-00-36-952Z.sql`; the JSON backup remains the full restore path |
+Safe import plan (not yet run):
 
-The member album now reports Danganronpa and Vocaloid as 9 subjects and 36 core
-variants. Dean does not own the two new copies, so the album shows them as
-missing cards; the live capsule preview proves they are draw-eligible. The
-retained Discord demonstration was refreshed from release 5 to release 6:
-stages 2, 3, 7, 8, 10, 11, 12 and 17 now show 9 subjects, 36 variants, the
-demonstration collector at 8/9 current-release subjects, and the earned
-`Three schools` award still frozen at its 8-card release-5 roster.
+1. Take a fresh D1 JSON backup (`node scripts/backup-d1-json.mjs`) and record
+   the checksum. Preserve the existing 13 owned instances and ledger.
+2. Use a **new incremental importer** rather than `content:provision`, which
+   updates every collection and can queue a full re-render. The importer must:
+   - read only `.foilbury/content/danganronpa.json` and `vocaloid.json`;
+   - select only the new logical IDs (`danganronpa:gonta-gokuhara`,
+     `vocaloid:kamui-gakupo`);
+   - preview with the existing import API and assert zero updates to the other
+     154 cards;
+   - publish only the two new cards and their eight variants;
+   - queue renders only for those eight variants;
+   - preserve collection enable/disable settings and frozen achievement rosters.
+3. Verify aliases: `Kamui Gakupo`, `Camui Gackpo` and `Gackpoid` resolve to one
+   logical ID; no second row is created.
+4. After import, read back: 9/9 cards, 36/36 fronts/backs for both collections,
+   release version unchanged except for the intended bump, pool entries present
+   and the existing achievements untouched.
+5. Rollback: restore the backup into an isolated database first; production
+   rollback is an additive delete of the two new cards only after confirming no
+   ownership, ledger or pool rows depend on them.
 
-### Rollback
-
-The bounded rollback script deletes only the two new cards, their eight
-variants and renders, aliases, collection links, pool entries and new assets,
-then restores the collection release and pool revision. It is safe only while
-no ownership, ledger, achievement or later pool edit depends on the new rows;
-otherwise restore the pre-import JSON backup. Review the script before use.
+The exact command is intentionally not invented here. The current tooling has
+no bounded two-card mode, so running the broad provisioner would be an unsafe
+whole-collection replacement.
 
 ## Collection identity and logos
 

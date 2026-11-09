@@ -3,7 +3,7 @@ import {
   expireStaleDiscordInteractions,
   handleDiscordInteraction,
 } from "../../src/server/discord/handler";
-import { drawIdempotencyKey, recoverDrawReceipt } from "../../src/server/discord/receipts";
+import { drawIdempotencyKey, drawRecoveryMessage, recoverDrawReceipt } from "../../src/server/discord/receipts";
 import { signDiscordRequest } from "../../src/server/discord/signature";
 import type { DiscordEnv } from "../../src/server/discord/types";
 import { sha256Hex } from "../../src/server/ids";
@@ -361,6 +361,23 @@ describe("Discord draw commit recovery", () => {
     await install();
   });
 
+  it("labels a recovered historical balance as the opening balance after the wallet changes", async () => {
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    await fixturePool(player);
+    const interactionId = "recovery-historical-balance";
+    const original = new DiscordTransport();
+    await deliverDeferred(interaction(command("open", [{ name: "pool", type: 3, value: "test-pool" }]), { id: interactionId }), runtime.DB, original);
+    const draw = await committedDraw(interactionId);
+    await runtime.DB.prepare("UPDATE fb_wallets SET balance = 999 WHERE tenant_id = ? AND user_id = ?").bind(player.tenant.id, draw.user_id).run();
+    const retry = new DiscordTransport();
+    await redeliver(interactionId, retry);
+    const visible = JSON.stringify(retry.original("redeliver-token")!.payload);
+    expect(visible).toContain("Balance after that opening");
+    expect(visible).not.toContain("Current balance");
+    expect(visible).not.toContain("999");
+    await committedDraw(interactionId);
+  });
+
   it("recovers from the draw row when the receipt write fails after the commit", async () => {
     const player = await ctxFor("cabinet", "player@foilbury.local");
     await fixturePool(player);
@@ -438,7 +455,7 @@ describe("Discord draw commit recovery", () => {
         match: (sql) => sql.includes("FROM fb_wallets w JOIN fb_economy_settings"),
         method: "first",
         afterDrawCommit: true,
-        skip: 2,
+        skip: 1,
         times: 1,
       },
     ]);
@@ -457,8 +474,8 @@ describe("Discord draw commit recovery", () => {
     }
 
     expect(faults.committed()).toBe(true);
-    expect(errors.join("\n")).toContain("achievement reward failed");
-    expect(errors.join("\n")).toContain("Injected settlement read-back failure");
+    // Recovery reconciles the committed ledger without logging raw storage errors.
+    expect(errors.join("\n")).not.toContain("Injected settlement read-back failure");
     const original = JSON.stringify(transport.original("test-interaction-token")!.payload);
     expect(original).toContain("Test One");
     expect(original).toContain("Reward credited");
@@ -629,6 +646,123 @@ describe("Discord draw commit recovery", () => {
     expect(resent).toContain("No second pull");
     await committedDraw(interactionId);
     await assertRewardSettledOnce();
+  });
+
+  it("keeps the original receipt pending when reward credit fails before commit", async () => {
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    await fixturePool(player);
+    const faults = faultDatabase([{ label: "reward pre-credit wallet", match: (sql) => sql.includes("FROM fb_wallets w JOIN fb_economy_settings"), method: "first", afterDrawCommit: true, times: 1 }]);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const transport = new DiscordTransport();
+    const interactionId = "recovery-reward-before-credit";
+    try {
+      await deliverDeferred(interaction(command("open", [{ name: "pool", type: 3, value: "test-pool" }]), { id: interactionId }), faults.db, transport);
+    } finally { errorSpy.mockRestore(); }
+    const draw = await committedDraw(interactionId);
+    const recovered = await recoverDrawReceipt(runtime.DB, { tenantId: player.tenant.id, userId: draw.user_id, interactionId });
+    expect(recovered?.credits_total).toBe(0);
+    expect(recovered?.balance_after).toBe(270);
+    expect(recovered?.settlement_pending).toBe(true);
+    const visible = JSON.stringify(transport.original("test-interaction-token")!.payload);
+    expect(visible).not.toContain("Settled balance");
+    expect(visible).not.toContain("Reward credited");
+    const record = await runtime.DB.prepare("SELECT response_json FROM fb_idempotency_keys WHERE idempotency_key = ?").bind(drawIdempotencyKey(interactionId)).first<{ response_json: string }>();
+    expect(JSON.parse(record!.response_json).settlement_status).not.toBe("settled");
+  });
+
+  it("does not present a pending achievement as a settled wallet credit", async () => {
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    await fixturePool(player);
+    const interactionId = "recovery-pending-achievement";
+    await send(
+      interaction(command("open", [{ name: "pool", type: 3, value: "test-pool" }]), {
+        id: interactionId,
+      }),
+      runtime.DB,
+    );
+    const draw = await committedDraw(interactionId);
+    // Isolated test fixture: reproduce an unlock saved before reward fulfilment.
+    await runtime.DB.prepare(
+      "UPDATE fb_achievement_unlocks SET reward_state = 'pending', reward_ledger_id = NULL WHERE user_id = ?",
+    )
+      .bind(draw.user_id)
+      .run();
+    await runtime.DB.prepare(
+      "DELETE FROM fb_ledger_entries WHERE user_id = ? AND reference_type = 'achievement'",
+    )
+      .bind(draw.user_id)
+      .run();
+    await runtime.DB.prepare("UPDATE fb_wallets SET balance = 270 WHERE user_id = ?")
+      .bind(draw.user_id)
+      .run();
+    // Keep both stale cached receipts: ledger state must win over them.
+    const result = await recoverDrawReceipt(runtime.DB, {
+      tenantId: player.tenant.id,
+      userId: draw.user_id,
+      interactionId,
+    });
+    expect(result?.credits_total).toBe(0);
+    expect(result?.balance_after).toBe(270);
+    expect(result?.settlement_pending).toBe(true);
+    const unlock = await runtime.DB.prepare(
+      "SELECT id FROM fb_achievement_unlocks WHERE user_id = ? LIMIT 1",
+    )
+      .bind(draw.user_id)
+      .first<{ id: string }>();
+    await runtime.DB.prepare(
+      "INSERT INTO fb_ledger_entries (id, tenant_id, user_id, kind, amount, balance_after, reference_type, reference_id, description, created_at) VALUES ('test-pending-credit', ?, ?, 'issue', 160, 430, 'achievement', ?, 'Test reward', ?)",
+    )
+      .bind(player.tenant.id, draw.user_id, unlock!.id, new Date().toISOString())
+      .run();
+    await runtime.DB.prepare(
+      "UPDATE fb_achievement_unlocks SET reward_state = 'granted', reward_ledger_id = 'test-pending-credit' WHERE id = ?",
+    )
+      .bind(unlock!.id)
+      .run();
+    const settled = await recoverDrawReceipt(runtime.DB, {
+      tenantId: player.tenant.id,
+      userId: draw.user_id,
+      interactionId,
+    });
+    expect(settled?.credits_total).toBe(160);
+    expect(settled?.balance_after).toBe(430);
+    expect(settled?.settlement_pending).toBe(false);
+    await runtime.DB.prepare("UPDATE fb_idempotency_keys SET response_json = json_remove(response_json, '$.settlement_status') WHERE idempotency_key = ?").bind(drawIdempotencyKey(interactionId)).run();
+    const missingCompletion = await recoverDrawReceipt(runtime.DB, { tenantId: player.tenant.id, userId: draw.user_id, interactionId });
+    expect(missingCompletion?.settlement_pending).toBe(true);
+  });
+
+  it("requires the unlock's exact granted ledger link during recovery", async () => {
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    await fixturePool(player);
+    const interactionId = "recovery-unlinked-credit";
+    await send(interaction(command("open", [{ name: "pool", type: 3, value: "test-pool" }]), { id: interactionId }), runtime.DB);
+    const draw = await committedDraw(interactionId);
+    await runtime.DB.prepare("UPDATE fb_achievement_unlocks SET reward_ledger_id = NULL WHERE user_id = ?").bind(draw.user_id).run();
+    const receipt = await recoverDrawReceipt(runtime.DB, { tenantId: player.tenant.id, userId: draw.user_id, interactionId });
+    expect(receipt?.credits_total).toBe(0);
+    expect(receipt?.settlement_pending).toBe(true);
+  });
+
+  it("does not invent a historical balance when the debit read fails and the wallet changes", async () => {
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    await fixturePool(player);
+    const interactionId = "recovery-missing-debit-balance";
+    await send(interaction(command("open", [{ name: "pool", type: 3, value: "test-pool" }]), { id: interactionId }), runtime.DB);
+    const draw = await committedDraw(interactionId);
+    await runtime.DB.prepare("UPDATE fb_idempotency_keys SET response_json = json_remove(response_json, '$.balance_after_debit') WHERE idempotency_key = ?")
+      .bind(drawIdempotencyKey(interactionId)).run();
+    await runtime.DB.prepare("UPDATE fb_wallets SET balance = 999 WHERE tenant_id = ? AND user_id = ?")
+      .bind(player.tenant.id, draw.user_id).run();
+    const faults = faultDatabase([{ label: "debit unavailable", method: "first", match: (sql) => sql.includes("FROM fb_ledger_entries") && sql.includes("reference_type = 'draw'") }]);
+    const receipt = await recoverDrawReceipt(faults.db, { tenantId: player.tenant.id, userId: draw.user_id, interactionId });
+    expect(receipt?.balance_after).toBeUndefined();
+    expect(receipt?.settlement_pending).toBe(true);
+    const message = JSON.stringify(drawRecoveryMessage({ receipt: receipt!, origin: "https://foilbury.test", interactionId, reason: "Display interrupted." }));
+    expect(message).toContain("Balance after draw is not yet confirmed");
+    expect(message).not.toContain("999");
+    expect(message).not.toContain("Balance after draw: **0");
+    expect(message).not.toContain('"name":"Balance after draw"');
   });
 
   it("scopes recovery to the tenant and user that own the draw", async () => {

@@ -24,8 +24,15 @@ const groups = [
             },
           ]
         : []),
+      ...(isBotAdmin || isGlobalCollectionAdmin ? [{ href: "/studio/render-review", label: "Render reviews" }] : []),
       ...(canGrant ? [{ href: "/studio/economy", label: "Foil & grants" }] : []),
+      ...(isPlatform || user?.role === "owner" || user?.capabilities?.includes("grants") ? [{ href: "/studio/gifts", label: "Send gifts" }] : []),
       ...(isBotAdmin ? [{ href: "/studio/team", label: "Team & invitations" }] : []),
+      ...(isBotAdmin ? [{ href: "/studio/discord", label: "Discord servers" }] : []),
+      ...(user?.role === "owner"
+        ? [{ href: "/studio/set-reviews", label: "Member set reviews" }]
+        : []),
+      ...(user?.role === "owner" ? [{ href: "/studio/collection-summary", label: "Your visible collection" }] : []),
       ...(isBotAdmin ? [{ href: "/studio/npcs", label: "NPC collectors" }] : []),
       ...(isGlobalCollectionAdmin ? [{ href: "/studio/access", label: "Your access" }] : []),
     ],

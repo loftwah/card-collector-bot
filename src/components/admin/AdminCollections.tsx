@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Globe2, Loader2, Lock, Plus, Trash2 } from "lucide-react";
-import { api, apiUpload, describeError } from "@/lib/client";
+import { api, apiUpload, ApiClientError, describeError, idempotencyKey } from "@/lib/client";
 import { Button } from "../ui/button";
 import { Field, Input, Select, Textarea } from "../ui/input";
 import { Switch } from "../ui/switch";
@@ -15,6 +15,8 @@ interface Collection {
   scope: "global" | "bot";
   logo_url: string | null;
   banner_url: string | null;
+  logo_asset_id?: string | null;
+  banner_asset_id?: string | null;
   accent: string;
   status: string;
   view_audience: "public" | "members" | "private";
@@ -34,6 +36,7 @@ interface CardRow {
   status: string;
   category: { name: string } | null;
 }
+interface BrandReview { collection_id:string;collection_name:string;collection_version:number;asset_id:string;asset_revision:number;object_version:string;sha256:string;slot:'logo'|'cover';mime:string;bytes:number;preview_url:string }
 
 function CollectionMark({ collection }: { collection: Collection }) {
   if (collection.logo_url) return <img src={collection.logo_url} alt="" className="h-12 w-12 object-contain" />;
@@ -43,17 +46,17 @@ function CollectionMark({ collection }: { collection: Collection }) {
 export default function AdminCollections({ platformAdmin, globalCollectionAdmin = false, botAdmin = false }: { platformAdmin: boolean; globalCollectionAdmin?: boolean; botAdmin?: boolean }) {
   const canCreateGlobal = platformAdmin || globalCollectionAdmin;
   const [collections, setCollections] = useState<Collection[]>([]);
-  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
-  const [loadError, setLoadError] = useState("");
-  const loadSequence = useRef(0);
   const [cards, setCards] = useState<CardRow[]>([]);
   const [selectedId, setSelectedId] = useState("");
+  const [pendingCreation, setPendingCreation] = useState(false);
+  const [brandRecovery,setBrandRecovery]=useState<{role:'logo'|'cover';key:string;scope:string}|null>(null);
+  const [brandReview,setBrandReview]=useState<BrandReview|null>(null);
+  const [brandImageLoaded,setBrandImageLoaded]=useState(false);
+  const [brandIssues,setBrandIssues]=useState<Array<{collectionId:string;collectionName:string;tenantName:string;currentTenant:boolean;collectionVersion:number;slot:string;reason:string;canClear:boolean}>|null>(null);
+  const [moreBrandIssues,setMoreBrandIssues]=useState(false);
+  const pendingRequest = useRef<{key:string;body:Record<string,unknown>;signature:string;logo:File|null;cover:File|null}|null>(null);
+  const stagedUploads = useRef<{signature:string;logoFile:File|null;coverFile:File|null;logoUrl?:string;bannerUrl?:string}|null>(null);
   const [collectionCards, setCollectionCards] = useState<Array<{ id: string; name: string; slug: string; status: string; render_url: string | null }>>([]);
-  const [detailId, setDetailId] = useState("");
-  const [detailState, setDetailState] = useState<"idle" | "loading" | "ready" | "error">("idle");
-  const [detailError, setDetailError] = useState("");
-  const [detailRefresh, setDetailRefresh] = useState(0);
-  const detailSequence = useRef(0);
   const [addIds, setAddIds] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -65,7 +68,7 @@ export default function AdminCollections({ platformAdmin, globalCollectionAdmin 
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
 
-  async function uploadBrand(file: File, role: "logo" | "cover", access: string, scope: string) {
+  async function uploadBrand(file: File, role: "logo" | "cover", access: string, scope: string, key?: string) {
     const data = new FormData();
     data.append("file", file);
     data.append("kind", "brand");
@@ -74,65 +77,81 @@ export default function AdminCollections({ platformAdmin, globalCollectionAdmin 
     data.append("access", access === "public" ? "public" : scope === "bot" ? "private" : "member");
     data.append("reviewStatus", "reviewed");
     data.append("provenance", "Uploaded by the collection owner. Review permission before publishing.");
-    const result = await apiUpload<{ asset: { id: string } }>("/api/v1/admin/assets", data);
+    if (key) data.append('collectionScope',scope);
+    const result = await apiUpload<{ asset: { id: string } }>("/api/v1/admin/assets", data, key);
     return `/media/asset/${result.asset.id}`;
   }
   const selected = collections.find((collection) => collection.id === selectedId) ?? null;
+  useEffect(()=>{setBrandReview(null);setBrandImageLoaded(false);},[selectedId]);
+
+  async function inspectBrand(assetId:string) {
+    if (!selected) return;
+    setBusy('brand-review');setError('');setMessage('');setBrandReview(null);setBrandImageLoaded(false);
+    try {
+      const result=await api<{review:BrandReview}>(`/api/v1/admin/collections/${encodeURIComponent(selected.id)}/brand-release?assetId=${encodeURIComponent(assetId)}`);
+      setBrandReview(result.review);
+    } catch (cause) {setError(describeError(cause));} finally {setBusy('');}
+  }
+  async function reconcileBrandReferences(collectionId?:string) {
+    setBusy('brand-index');setError('');setMessage('');
+    try {
+      const result=await api<{processed:number;remaining:number}>('/api/v1/admin/collections/brand-reference-index/reconcile',{method:'POST',body:collectionId ? {collectionId} : {}});
+      setMessage(result.remaining ? `Checked ${result.processed} collection references. ${result.remaining} remain; run the check again.` : `Collection image references are up to date. Checked ${result.processed} collections.`);
+      if (brandIssues) {const issues=await api<{items:typeof brandIssues;more:boolean}>('/api/v1/admin/collections/brand-reference-index/issues');setBrandIssues(issues.items);setMoreBrandIssues(issues.more);}
+    } catch (cause) {setError(describeError(cause));} finally {setBusy('');}
+  }
+  async function inspectBrandIssues() {
+    setBusy('brand-issues');setError('');
+    try {const result=await api<{items:NonNullable<typeof brandIssues>;more:boolean}>('/api/v1/admin/collections/brand-reference-index/issues');setBrandIssues(result.items);setMoreBrandIssues(result.more);}
+    catch (cause) {setError(describeError(cause));} finally {setBusy('');}
+  }
+  async function startBrandRebuild() {
+    if (!window.confirm('Start a full image-reference recheck after repairing the index triggers? Public image access may be unavailable until every pass completes.')) return;
+    setBusy('brand-rebuild');setError('');setMessage('');
+    try {await api('/api/v1/admin/collections/brand-reference-index/rebuild',{method:'POST',body:{}});setMessage('Full recheck started. Run Check image references until no collections remain.');}
+    catch (cause) {setError(describeError(cause));} finally {setBusy('');}
+  }
+  async function clearBrandIssue(issue:NonNullable<typeof brandIssues>[number]) {
+    if (!window.confirm(`Clear the ${issue.slot} URL for ${issue.collectionName}? The original is retained in private history. Public approval, if any, will be withdrawn.`)) return;
+    setBusy('brand-clear');setError('');setMessage('');
+    try {
+      await api('/api/v1/admin/collections/brand-reference-index/clear',{method:'POST',body:{collectionId:issue.collectionId,collectionVersion:issue.collectionVersion,slot:issue.slot}});
+      const result=await api<{items:NonNullable<typeof brandIssues>;more:boolean}>('/api/v1/admin/collections/brand-reference-index/issues');setBrandIssues(result.items);setMoreBrandIssues(result.more);
+      setMessage('The reference was cleared. Its previous value is retained privately; recheck this collection to update the index.');
+    } catch (cause) {setError(describeError(cause));} finally {setBusy('');}
+  }
+  async function approveBrand() {
+    if (!brandReview || !brandImageLoaded || selectedId!==brandReview.collection_id) return;
+    setBusy('brand-approve');setError('');setMessage('');
+    try {
+      await api(`/api/v1/admin/collections/${encodeURIComponent(brandReview.collection_id)}/brand-release`,{method:'POST',body:{assetId:brandReview.asset_id,collectionVersion:brandReview.collection_version,assetRevision:brandReview.asset_revision,objectVersion:brandReview.object_version,sha256:brandReview.sha256}});
+      setBrandReview(null);setBrandImageLoaded(false);setMessage('The reviewed image was approved for this collection’s public showcase.');
+    } catch (cause) {setBrandReview(null);setBrandImageLoaded(false);setError(describeError(cause));} finally {setBusy('');}
+  }
 
   async function load() {
-    const sequence = ++loadSequence.current;
-    ++detailSequence.current;
-    setCollectionCards([]); setAddIds([]); setDetailId(""); setDetailState("idle");
-    setLoadState("loading");
-    setLoadError("");
     try {
       const [c, cardsResult] = await Promise.all([
         api<{ items: Collection[] }>("/api/v1/admin/collections"),
         api<{ items: CardRow[] }>("/api/v1/admin/cards?limit=200"),
       ]);
-      if (sequence !== loadSequence.current) return;
-      if (!Array.isArray(c.items) || !Array.isArray(cardsResult.items)) throw new Error("Invalid collection response");
       setCollections(c.items);
       setCards(cardsResult.items);
-      setSelectedId((current) => c.items.some((item) => item.id === current) ? current : (c.items[0]?.id ?? ""));
-      setDetailRefresh((generation) => generation + 1);
-      setLoadState("ready");
+      if (!selectedId && c.items[0]) setSelectedId(c.items[0].id);
     } catch (cause) {
-      if (sequence !== loadSequence.current) return;
-      setCollections([]);
-      setCards([]);
-      setSelectedId("");
-      setLoadError(describeError(cause));
-      setLoadState("error");
+      setError(describeError(cause));
     }
   }
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { setPendingCreation(Boolean(sessionStorage.getItem('foilbury.pending-collection'))); void load(); }, []);
 
   async function loadCollection(id: string) {
-    const sequence = ++detailSequence.current;
-    const listSequence = loadSequence.current;
-    setCollectionCards([]); setAddIds([]); setDetailId(id); setDetailError("");
-    if (!id) { setDetailState("idle"); return; }
-    setDetailState("loading");
+    if (!id) { setCollectionCards([]); return; }
     try {
       const result = await api<{ cards: Array<{ id: string; name: string; slug: string; status: string; render_url: string | null }> }>(`/api/v1/admin/collections/${id}`);
-      if (sequence !== detailSequence.current || listSequence !== loadSequence.current) return;
-      if (!Array.isArray(result.cards)) throw new Error("Invalid collection cards response");
       setCollectionCards(result.cards);
-      setDetailState("ready");
-    } catch (cause) {
-      if (sequence !== detailSequence.current || listSequence !== loadSequence.current) return;
-      setDetailError(describeError(cause));
-      setDetailState("error");
-    }
+    } catch (cause) { setError(describeError(cause)); }
   }
-  function chooseCollection(id: string) {
-    if (id === selectedId) return;
-    ++detailSequence.current;
-    setCollectionCards([]); setAddIds([]); setDetailId(""); setDetailState("idle");
-    setSelectedId(id);
-  }
-  useEffect(() => { if (loadState === "ready") void loadCollection(selectedId); }, [selectedId, loadState, detailRefresh]);
+  useEffect(() => { void loadCollection(selectedId); }, [selectedId]);
 
   const availableCards = useMemo(() => cards.filter((card) => !collectionCards.some((item) => item.id === card.id) && card.status !== "retired"), [cards, collectionCards]);
   const filteredCollections = useMemo(() => {
@@ -150,19 +169,91 @@ export default function AdminCollections({ platformAdmin, globalCollectionAdmin 
 
   async function create() {
     setBusy("create"); setError(""); setMessage("");
+    let firstAttempt=false;
     try {
-      let logoUrl = form.logoUrl;
-      let bannerUrl: string | undefined;
-      if (logoFile) logoUrl = await uploadBrand(logoFile, "logo", form.viewAudience, form.scope);
-      if (coverFile) bannerUrl = await uploadBrand(coverFile, "cover", form.viewAudience, form.scope);
-      const result = await api<{ collection: Collection }>("/api/v1/admin/collections", { method: "POST", body: { ...form, logoUrl: logoUrl || undefined, bannerUrl, viewAudience: form.viewAudience, sourceWork: form.sourceWork || undefined } });
+      const signature=JSON.stringify(form);
+      if (sessionStorage.getItem('foilbury.pending-collection') && !pendingRequest.current)
+        throw new Error('A previous request may have created a collection. Check its status before creating another.');
+      if (pendingRequest.current && (pendingRequest.current.signature!==signature || pendingRequest.current.logo!==logoFile || pendingRequest.current.cover!==coverFile))
+        throw new Error('The previous request may have completed. Restore its original inputs or check its status first.');
+      if (!pendingRequest.current) {
+        const uploadOne=async (file:File,role:'logo'|'cover')=>{
+          type Entry={fingerprint:string;key:string};
+          let saved:Partial<Record<'logo'|'cover',Entry>>={};
+          const raw=sessionStorage.getItem('foilbury.pending-brand-uploads');
+          if (raw) { try { saved=JSON.parse(raw); } catch { throw new Error('The previous image upload could not be recovered.'); } }
+          if (!saved || typeof saved!=='object' || ('fingerprint' in saved)) throw new Error('The previous image upload could not be recovered.');
+          const digest=async (bytes:BufferSource)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map((b)=>b.toString(16).padStart(2,'0')).join('');
+          const fingerprint=await digest(new TextEncoder().encode(JSON.stringify({name:form.name,scope:form.scope,access:form.viewAudience,role,bytes:await digest(await file.arrayBuffer())})));
+          let entry=saved[role];const fresh=!entry;
+          if (entry && (entry.fingerprint!==fingerprint || !entry.key)) throw new Error('A previous image upload may have completed. Restore the original image and its collection name and scope to retry.');
+          if (!entry) { entry={fingerprint,key:idempotencyKey(`brand-${role}`)};saved[role]=entry;sessionStorage.setItem('foilbury.pending-brand-uploads',JSON.stringify(saved)); }
+          try { return await uploadBrand(file,role,form.viewAudience,form.scope,entry.key); }
+          catch (cause) {
+            if (cause instanceof ApiClientError && ['render_input_changed','brand_upload_changed'].includes(cause.code)) setBrandRecovery({role,key:entry.key,scope:form.scope});
+            if (fresh && cause instanceof ApiClientError && ['brand_upload_unavailable','asset_size_invalid','asset_type_invalid','asset_corrupt','asset_dimensions_invalid','brand_upload_invalid','idempotency_key_invalid'].includes(cause.code)) {
+              delete saved[role];
+              if (Object.keys(saved).length) sessionStorage.setItem('foilbury.pending-brand-uploads',JSON.stringify(saved));
+              else sessionStorage.removeItem('foilbury.pending-brand-uploads');
+            }
+            throw cause;
+          }
+        };
+        if (!stagedUploads.current || stagedUploads.current.signature!==signature || stagedUploads.current.logoFile!==logoFile || stagedUploads.current.coverFile!==coverFile)
+          stagedUploads.current={signature,logoFile,coverFile,logoUrl:form.logoUrl || undefined};
+        const staged=stagedUploads.current;
+        if (logoFile && !staged.logoUrl) staged.logoUrl=await uploadOne(logoFile,'logo');
+        if (coverFile && !staged.bannerUrl) staged.bannerUrl=await uploadOne(coverFile,'cover');
+        const {logoUrl,bannerUrl}=staged;
+        pendingRequest.current={key:idempotencyKey('collection'),body:{...form,logoUrl:logoUrl || undefined,bannerUrl,viewAudience:form.viewAudience,sourceWork:form.sourceWork || undefined},signature,logo:logoFile,cover:coverFile};
+        firstAttempt=true;
+      }
+      const pending=pendingRequest.current;
+      sessionStorage.setItem('foilbury.pending-collection',pending.key);setPendingCreation(true);
+      const result = await api<{ collection: Collection }>("/api/v1/admin/collections", { method: "POST", body:pending.body,idempotencyKey:pending.key });
+      sessionStorage.removeItem('foilbury.pending-collection');sessionStorage.removeItem('foilbury.pending-brand-uploads');pendingRequest.current=null;stagedUploads.current=null;setPendingCreation(false);
       setForm({ name: "", slug: "", description: "", scope: canCreateGlobal ? "global" : "bot", logoUrl: "", accent: "aqua", status: "draft", viewAudience: "members", sourceWork: "" });
       setLogoFile(null);
       setCoverFile(null);
       setMessage(`${result.collection.scope === "global" ? "Global" : "Bot"} collection created.`);
       await load();
       setSelectedId(result.collection.id);
-    } catch (cause) { setError(describeError(cause)); } finally { setBusy(""); }
+    } catch (cause) {
+      if (firstAttempt && cause instanceof ApiClientError && ['collection_authority_changed','collection_name_invalid','collection_slug_invalid','bot_collection_not_public','public_requires_publish','human_public_approval_required','validation_failed','invalid_json','body_too_large','idempotency_key_invalid','global_collection_admin_required','collection_not_in_scope','content_capability_required','bot_required','super_admin_required'].includes(cause.code)) {
+        sessionStorage.removeItem('foilbury.pending-collection');pendingRequest.current=null;setPendingCreation(false);
+      }
+      setError(describeError(cause));
+    } finally { setBusy(""); }
+  }
+
+  async function abandonBrand() {
+    if (!brandRecovery) return;
+    setBusy('abandon-brand');setError('');setMessage('');
+    try {
+      await api('/api/v1/admin/assets/uploads/abandon',{method:'POST',body:{key:brandRecovery.key,scope:brandRecovery.scope}});
+      const raw=sessionStorage.getItem('foilbury.pending-brand-uploads');
+      const saved=raw ? JSON.parse(raw) : {};
+      if (saved[brandRecovery.role]?.key===brandRecovery.key) delete saved[brandRecovery.role];
+      if (Object.keys(saved).length) sessionStorage.setItem('foilbury.pending-brand-uploads',JSON.stringify(saved));
+      else sessionStorage.removeItem('foilbury.pending-brand-uploads');
+      if (stagedUploads.current) {
+        if (brandRecovery.role==='logo') stagedUploads.current.logoUrl=undefined;
+        else stagedUploads.current.bannerUrl=undefined;
+      }
+      setBrandRecovery(null);setMessage('The earlier image upload was abandoned and retained. Choose the image again to start a new upload.');
+    } catch (cause) {setError(describeError(cause));} finally {setBusy('');}
+  }
+
+  async function checkPendingCreation() {
+    setBusy('recover');setError('');setMessage('');
+    try {
+      const key=sessionStorage.getItem('foilbury.pending-collection');
+      if (!key) {setPendingCreation(false);return;}
+      const result=await api<{found:boolean;collection?:Collection}>(`/api/v1/admin/collections/recovery/${encodeURIComponent(key)}`);
+      if (!result.found || !result.collection) {setMessage('No collection is visible yet. The request may still be in progress; check again before creating another.');return;}
+      sessionStorage.removeItem('foilbury.pending-collection');sessionStorage.removeItem('foilbury.pending-brand-uploads');pendingRequest.current=null;setPendingCreation(false);
+      setMessage('The earlier collection was created.');await load();setSelectedId(result.collection.id);
+    } catch (cause) {setError(describeError(cause));} finally {setBusy('');}
   }
 
   async function toggle(collection: Collection) {
@@ -181,7 +272,7 @@ export default function AdminCollections({ platformAdmin, globalCollectionAdmin 
       const result = await api<{ added: number }>(`/api/v1/admin/collections/${selected.id}/cards`, { method: "POST", body: { cardIds: addIds } });
       setAddIds([]);
       setMessage(`${result.added} card${result.added === 1 ? "" : "s"} added to ${selected.name}.`);
-      await load();
+      await load(); await loadCollection(selected.id);
     } catch (cause) { setError(describeError(cause)); } finally { setBusy(""); }
   }
 
@@ -191,7 +282,7 @@ export default function AdminCollections({ platformAdmin, globalCollectionAdmin 
     try {
       await api(`/api/v1/admin/collections/${selected.id}/cards/${cardId}`, { method: "DELETE", body: undefined });
       setMessage("Card removed from the collection.");
-      await load();
+      await load(); await loadCollection(selected.id);
     } catch (cause) { setError(describeError(cause)); } finally { setBusy(""); }
   }
 
@@ -228,26 +319,26 @@ export default function AdminCollections({ platformAdmin, globalCollectionAdmin 
       </div>
       {error ? <div className="error-box mt-4" role="alert">{error}</div> : null}
       {message ? <div className="success-box mt-4" role="status">{message}</div> : null}
+      {platformAdmin ? <section className="surface mt-6 space-y-3 p-5" aria-labelledby="brand-reference-heading">
+        <h3 id="brand-reference-heading" className="font-semibold">Collection image references</h3>
+        <p className="text-sm text-[var(--muted)]">Check changed references before public image review. Large backlogs may need more than one pass.</p>
+        <div className="flex flex-wrap gap-2"><Button size="sm" variant="secondary" className="min-h-11" disabled={Boolean(busy)} onClick={()=>reconcileBrandReferences()}>{busy==='brand-index'?'Checking references…':'Check image references'}</Button><Button size="sm" variant="secondary" className="min-h-11" disabled={Boolean(busy)} onClick={inspectBrandIssues}>Inspect reference issues</Button><Button size="sm" variant="secondary" className="min-h-11" disabled={Boolean(busy)} onClick={startBrandRebuild}>Start full recheck after repair</Button></div>
+        {brandIssues ? <div className="space-y-2" aria-live="polite">{brandIssues.length ? brandIssues.map((issue)=><div className="border border-[var(--line)] p-3 text-sm" key={`${issue.collectionId}-${issue.slot}`}><p className="font-semibold">{issue.collectionName} · {issue.slot}</p><p className="text-[var(--muted)]">{issue.tenantName}</p><p>{issue.reason}</p><div className="mt-2 flex flex-wrap gap-2">{issue.currentTenant ? <Button size="sm" variant="secondary" className="min-h-11" disabled={Boolean(busy)} onClick={()=>setSelectedId(issue.collectionId)}>Open collection</Button> : null}{issue.canClear ? <Button size="sm" variant="secondary" className="min-h-11" disabled={Boolean(busy)} onClick={()=>clearBrandIssue(issue)}>Clear this URL</Button> : null}<Button size="sm" variant="secondary" className="min-h-11" disabled={Boolean(busy)} onClick={()=>reconcileBrandReferences(issue.collectionId)}>Recheck this collection</Button></div></div>) : <p className="text-sm text-[var(--muted)]">No unresolved URL issues found. Pending checks may remain.</p>}{moreBrandIssues ? <p className="text-sm text-[var(--muted)]">More collections need checking; resolve the listed items and refresh.</p> : null}</div> : null}
+      </section> : null}
 
       <div className="mt-6 grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
         <section>
-          <div className="flex flex-wrap items-center justify-between gap-3"><p className="eyebrow">Visible to this Bot</p><span className="font-mono text-[0.6rem] text-[var(--muted)]" role="status">{loadState === "loading" ? "Loading collections…" : loadState === "error" ? "Collections unavailable" : `${collections.filter((collection) => collection.enabled).length} on · ${filteredCollections.length} shown`}</span></div>
+          <div className="flex flex-wrap items-center justify-between gap-3"><p className="eyebrow">Visible to this Bot</p><span className="font-mono text-[0.6rem] text-[var(--muted)]">{collections.filter((collection) => collection.enabled).length} on · {filteredCollections.length} shown</span></div>
           <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
-            <Input disabled={loadState !== "ready"} value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Search world, source or owner" aria-label="Search collections" />
-            <Select disabled={loadState !== "ready"} value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }} aria-label="Filter by status"><option value="all">All statuses</option><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></Select>
+            <Input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Search world, source or owner" aria-label="Search collections" />
+            <Select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }} aria-label="Filter by status"><option value="all">All statuses</option><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></Select>
           </div>
-          <div className="studio-collections-loading mt-3 grid gap-2" aria-busy={loadState === "loading"}>
-            {loadState === "loading" ? Array.from({ length: 8 }, (_, index) => (
-              <div key={index} className="flex min-h-[6.5rem] items-center gap-3 border border-[var(--line)] p-3" aria-hidden="true">
-                <span className="skeleton h-12 w-12 shrink-0" /><span className="grid flex-1 gap-2"><span className="skeleton h-4 w-2/3" /><span className="skeleton h-3 w-4/5" /><span className="skeleton h-3 w-1/2" /></span>
-              </div>
-            )) : null}
-            {loadState === "error" ? <div className="error-box" role="alert"><p>Could not load collections. {loadError}</p><Button className="mt-3" size="sm" variant="secondary" onClick={() => void load()}>Retry loading collections</Button></div> : null}
-            {loadState === "ready" ? pagedCollections.map((collection) => (
-              <div key={collection.id} className={`min-h-[6.5rem] border p-3 transition-colors ${selectedId === collection.id ? "border-[var(--brass)] bg-[var(--paper-2)]" : "border-[var(--line)]"}`}>
+          <div className="mt-3 grid gap-2">
+            {pagedCollections.map((collection) => (
+              <div key={collection.id} className={`border p-3 transition-colors ${selectedId === collection.id ? "border-[var(--brass)] bg-[var(--paper-2)]" : "border-[var(--line)]"}`}>
                 <div className="flex items-start gap-3">
                   <CollectionMark collection={collection} />
-                  <button className="min-w-0 flex-1 text-left" onClick={() => chooseCollection(collection.id)}>
+                  <button className="min-w-0 flex-1 text-left" onClick={() => setSelectedId(collection.id)}>
                     <p className="flex items-center gap-2 font-semibold">{collection.name} {collection.scope === "global" ? <span className="badge badge-rare"><Globe2 size={11} /> Global</span> : <span className="badge">Your Bot</span>}</p>
                     <p className="mt-1 line-clamp-2 text-xs text-[var(--muted)]">{collection.description || "No description yet."}</p>
                     <p className="mt-1 font-mono text-[0.58rem] uppercase tracking-[0.08em] text-[var(--muted)]">{collection.card_count} cards · {collection.status} · {collection.view_audience === "public" ? "public showcase" : collection.view_audience} · {collection.owner_name}</p>
@@ -259,10 +350,10 @@ export default function AdminCollections({ platformAdmin, globalCollectionAdmin 
                   </div>
                 </div>
               </div>
-            )) : null}
-            {loadState === "ready" && filteredCollections.length === 0 ? <p className="empty">No collections match this search and status.</p> : null}
+            ))}
+            {filteredCollections.length === 0 ? <p className="empty">No collections match this search and status.</p> : null}
           </div>
-          {loadState === "ready" && pageCount > 1 ? (
+          {pageCount > 1 ? (
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--line)] pt-3">
               <p className="font-mono text-[0.58rem] uppercase tracking-[0.08em] text-[var(--muted)]">Page {safePage} of {pageCount}</p>
               <div className="flex gap-2">
@@ -273,8 +364,8 @@ export default function AdminCollections({ platformAdmin, globalCollectionAdmin 
           ) : null}
         </section>
 
-        <section className={`surface-flat p-5 ${loadState === "loading" || (loadState === "ready" && selected) ? "min-h-[75rem] xl:min-h-[60rem]" : ""}`}>
-          {loadState === "loading" ? <div className="studio-collections-loading grid min-h-[32rem] content-start gap-4" role="status" aria-label="Loading collection details" aria-busy="true"><span className="skeleton h-12 w-2/3" /><span className="skeleton h-12 w-full" /><span className="skeleton h-24 w-full" /><span className="skeleton h-12 w-full" /><span className="skeleton h-12 w-full" /></div> : loadState === "error" ? <p className="text-sm text-[var(--muted)]">Collection details are unavailable until the list is loaded.</p> : selected ? (
+        <section className="surface-flat p-5">
+          {selected ? (
             <>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex items-center gap-3"><CollectionMark collection={selected} /><div><p className="eyebrow">{selected.scope === "global" ? "Global collection" : "Bot collection"}</p><h3 className="display-sm text-2xl">{selected.name}</h3></div></div>
@@ -301,14 +392,28 @@ export default function AdminCollections({ platformAdmin, globalCollectionAdmin 
                   <Field label="Upload a cover" hint="Used on the collection panel and album header."><Input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setCoverFile(event.target.files?.[0] ?? null)} disabled={!selected.manageable} /></Field>
                 </div>
                 {selected.manageable ? <Button size="sm" onClick={saveCollection} disabled={busy === "save"}>{busy === "save" ? "Saving…" : "Save collection details"}</Button> : <p className="text-xs text-[var(--muted)]">This collection is outside your scope. Ask the Super Admin for a scoped assignment.</p>}
+                {platformAdmin && selected.scope==='global' && selected.status==='published' && selected.view_audience==='public' && selected.public_approved_at ? <section className="space-y-3 border-t border-[var(--line)] pt-4" aria-labelledby="brand-review-heading">
+                  <h4 id="brand-review-heading" className="font-semibold">Review public collection images</h4>
+                  <p className="text-sm text-[var(--muted)]">Review each image separately. Approval applies to this collection and this exact saved image; changing the collection or image requires another review.</p>
+                  <div className="flex flex-wrap gap-2">
+                    {selected.logo_asset_id ? <Button size="sm" variant="secondary" className="min-h-11" disabled={Boolean(busy)} onClick={()=>inspectBrand(selected.logo_asset_id!)}>Review logo</Button> : null}
+                    {selected.banner_asset_id ? <Button size="sm" variant="secondary" className="min-h-11" disabled={Boolean(busy)} onClick={()=>inspectBrand(selected.banner_asset_id!)}>Review cover</Button> : null}
+                  </div>
+                  {brandReview && brandReview.collection_id===selected.id ? <div className="space-y-3 border border-[var(--line)] p-3">
+                    <p className="text-sm font-semibold">{brandReview.collection_name} · {brandReview.slot==='logo'?'Logo':'Cover'}</p>
+                    <img src={brandReview.preview_url} alt={`${brandReview.collection_name} ${brandReview.slot} awaiting review`} className="max-h-72 w-full object-contain" onLoad={()=>setBrandImageLoaded(true)} onError={()=>{setBrandImageLoaded(false);setError('The image could not be loaded. Reload the review before approving.');}} />
+                    <p className="break-all font-mono text-xs text-[var(--muted)]">SHA-256 {brandReview.sha256}</p>
+                    <p className="text-sm">Approving makes this exact image available on the public showcase for this collection. Confirm its identity, rights and credit before approving.</p>
+                    <Button size="sm" className="min-h-11" disabled={!brandImageLoaded || Boolean(busy)} onClick={approveBrand}>{busy==='brand-approve'?'Approving…':'Approve this image for public showcase'}</Button>
+                  </div> : null}
+                </section> : null}
               </div>
             </>
           ) : <p className="text-sm text-[var(--muted)]">Choose a collection to inspect it.</p>}
 
-          {loadState === "ready" && selected ? (
+          {selected ? (
             <div className="mt-6 border-t border-[var(--line)] pt-4">
-              <div className="flex flex-wrap items-end justify-between gap-3"><p className="eyebrow">Cards in {selected.name}</p><span className="font-mono text-[0.6rem] text-[var(--muted)]">{detailId === selected.id && detailState === "ready" ? `${collectionCards.length} cards` : ""}</span></div>
-              {detailId !== selected.id || detailState === "idle" || detailState === "loading" ? <p className="mt-3 text-sm text-[var(--muted)]" role="status">Loading cards…</p> : detailState === "error" ? <div className="error-box mt-3" role="alert"><p>Could not load cards. {detailError}</p><Button className="mt-3" size="sm" variant="secondary" onClick={() => void loadCollection(selected.id)}>Retry loading cards</Button></div> : <>
+              <div className="flex flex-wrap items-end justify-between gap-3"><p className="eyebrow">Cards in {selected.name}</p><span className="font-mono text-[0.6rem] text-[var(--muted)]">{collectionCards.length} cards</span></div>
               <div className="mt-3 grid gap-2">
                 {collectionCards.map((card) => (
                   <div key={card.id} className="flex items-center justify-between gap-3 border border-[var(--line)] px-3 py-2">
@@ -333,7 +438,6 @@ export default function AdminCollections({ platformAdmin, globalCollectionAdmin 
                   <Button className="mt-3" size="sm" onClick={addCards} disabled={!addIds.length || busy === "add"}>{busy === "add" ? <><Loader2 className="animate-spin" size={13} /> Adding…</> : <><Plus size={13} /> Add selected cards</>}</Button>
                 </div>
               ) : null}
-              </>}
             </div>
           ) : null}
         </section>
@@ -356,6 +460,8 @@ export default function AdminCollections({ platformAdmin, globalCollectionAdmin 
           <Field label="Cover upload"><Input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setCoverFile(event.target.files?.[0] ?? null)} /></Field>
         </div>
         <Button className="mt-4" onClick={create} disabled={busy === "create" || form.name.trim().length < 2}>{busy === "create" ? "Creating…" : "Create collection"}</Button>
+        {pendingCreation ? <Button className="mt-4" variant="secondary" onClick={checkPendingCreation} disabled={busy !== ''}>Check previous collection</Button> : null}
+        {brandRecovery ? <Button className="mt-4" variant="secondary" onClick={abandonBrand} disabled={busy !== ''}>Abandon changed {brandRecovery.role} upload</Button> : null}
       </section>
     </div>
   );

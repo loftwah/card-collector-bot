@@ -21,6 +21,19 @@ const fontFiles = [
   path.join(root, "art/fonts/IBMPlexMono-SemiBold.ttf"),
 ];
 
+// Preserve the authored texture while limiting its screen-blend intensity.
+// ensureAlpha(value) alone does not attenuate an image that already has alpha.
+async function finishLayer(file, opacity = 1) {
+  let layer = sharp(file).resize(W, H).ensureAlpha();
+  if (opacity < 1) {
+    const mask = Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="#fff" opacity="${opacity}"/></svg>`,
+    );
+    layer = layer.composite([{ input: mask, blend: "dest-in" }]);
+  }
+  return layer.png().toBuffer();
+}
+
 export async function composeCard(input) {
   const {
     subjectPath,
@@ -36,6 +49,10 @@ export async function composeCard(input) {
     markPath = "",
     outputPath,
   } = input;
+  // A trusted executor may supply a private, verified copy of these resources.
+  // Existing callers retain the authored project defaults.
+  const selectedLayerDir = input.renderResources?.layerDir ?? layerDir;
+  const selectedFontFiles = input.renderResources?.fontFiles ?? fontFiles;
 
   if (!backgroundPath) {
     throw new Error("A card needs a background layer; refusing to compose an undefined field.");
@@ -50,18 +67,24 @@ export async function composeCard(input) {
   const subjectMeta = await sharp(subjectPath).metadata();
   const isCutout = Boolean(subjectMeta.hasAlpha);
   const composition = normaliseComposition(input.composition);
-  const mode =
-    composition.mode ??
-    (subjectMeta.width === subjectMeta.height && !isCutout ? "medallion" : "contain");
-  const zoom = Math.min(1.6, Math.max(0.6, Number(composition.zoom ?? 1)));
+  const squareOpaque = subjectMeta.width === subjectMeta.height && !isCutout;
+  // Portraits and transparent cutouts must retain their whole silhouette,
+  // even if an older saved recipe requested a crop.
+  // A square shape alone does not prove an image is an avatar. Only an
+  // explicit recipe may select a medallion for an opaque square source.
+  const mode = squareOpaque ? (composition.mode ?? "contain") : "contain";
+  const zoom = Math.min(mode === "contain" ? 1 : 1.6, Math.max(0.6, Number(composition.zoom ?? 1)));
   const offsetX = Math.min(20, Math.max(-20, Number(composition.offsetX ?? 0)));
   const offsetY = Math.min(20, Math.max(-20, Number(composition.offsetY ?? 0)));
 
   /* The same safe areas as the web card: art is composed inside the upper
      window, text lives below it. A composition can move within its window but
      can never paint over the title, meta or serial. */
-  const artWindow = { x: 30, y: 34, width: 690, height: 756 };
-  const canvasHeight = 800;
+  // Wrapped names start higher on the card. Reserve space for their first
+  // line too, so the subject cannot run behind it.
+  const nameLines = wrapName(name).length;
+  const canvasHeight = nameLines >= 3 ? 750 : nameLines === 2 ? 780 : 800;
+  const artWindow = { x: 30, y: 150, width: 690, height: canvasHeight - 160 };
 
   let source = await sharp(subjectPath).png().toBuffer();
   if (isCutout) {
@@ -130,27 +153,30 @@ export async function composeCard(input) {
     isCutout && mode === "contain"
       ? artWindow.y + artWindow.height - layerHeight
       : artWindow.y + Math.round((artWindow.height - layerHeight) / 2);
-  const requestedLeft = baseLeft + Math.round((offsetX / 100) * artWindow.width);
-  const requestedTop = baseTop + Math.round((offsetY / 100) * artWindow.height);
-  // Keep the original positioning for layers that fit. If a zoomed layer is
-  // larger than the canvas, retain its intended centre and crop the overflow.
-  const left = layerWidth > W ? requestedLeft : clamp(requestedLeft, 0, W - layerWidth);
-  const top = layerHeight > canvasHeight ? requestedTop : clamp(requestedTop, 0, canvasHeight - layerHeight);
-  const clippedLeft = Math.max(0, left);
-  const clippedTop = Math.max(0, top);
-  const clippedRight = Math.min(W, left + layerWidth);
-  const clippedBottom = Math.min(canvasHeight, top + layerHeight);
-  if (clippedRight <= clippedLeft || clippedBottom <= clippedTop) {
-    throw new Error("Artwork does not intersect the card art canvas.");
+  const left = clamp(
+    baseLeft + Math.round((offsetX / 100) * artWindow.width),
+    Math.min(artWindow.x, artWindow.x + artWindow.width - layerWidth),
+    Math.max(artWindow.x, artWindow.x + artWindow.width - layerWidth),
+  );
+  const top = clamp(
+    baseTop + Math.round((offsetY / 100) * artWindow.height),
+    Math.min(artWindow.y, artWindow.y + artWindow.height - layerHeight),
+    Math.max(artWindow.y, artWindow.y + artWindow.height - layerHeight),
+  );
+  // Sharp composites cannot exceed the destination. Crop zoomed subjects to
+  // the same safe canvas before compositing, while preserving their offset.
+  const cropLeft = Math.max(0, artWindow.x - left);
+  const cropTop = Math.max(0, artWindow.y - top);
+  const drawLeft = Math.max(artWindow.x, left);
+  const drawTop = Math.max(artWindow.y, top);
+  const cropWidth = Math.min(layerWidth - cropLeft, artWindow.x + artWindow.width - drawLeft);
+  const cropHeight = Math.min(layerHeight - cropTop, artWindow.y + artWindow.height - drawTop);
+  if (cropLeft || cropTop || cropWidth !== layerWidth || cropHeight !== layerHeight) {
+    layer = await sharp(layer)
+      .extract({ left: cropLeft, top: cropTop, width: cropWidth, height: cropHeight })
+      .png()
+      .toBuffer();
   }
-  const clippedLayer = layerWidth > W || layerHeight > canvasHeight
-    ? await sharp(layer).extract({
-        left: clippedLeft - left,
-        top: clippedTop - top,
-        width: clippedRight - clippedLeft,
-        height: clippedBottom - clippedTop,
-      }).png().toBuffer()
-    : layer;
 
   const shadow = Buffer.from(
     `<svg width="${W}" height="200" xmlns="http://www.w3.org/2000/svg"><ellipse cx="${W / 2}" cy="100" rx="250" ry="42" fill="#000" opacity=".45" filter="url(#b)"/><defs><filter id="b"><feGaussianBlur stdDeviation="28"/></filter></defs></svg>`,
@@ -166,7 +192,7 @@ export async function composeCard(input) {
   })
     .composite([
       { input: shadow, left: 0, top: Math.max(0, shadowTop) },
-      { input: clippedLayer, left: clippedLeft, top: clippedTop },
+      { input: layer, left: drawLeft, top: drawTop },
     ])
     .png()
     .toBuffer();
@@ -192,10 +218,10 @@ export async function composeCard(input) {
     .png()
     .toBuffer();
 
-  const materialLayer = path.join(layerDir, `material-${material}.png`);
-  const frameLayer = path.join(layerDir, `frame-${material}.png`);
+  const materialLayer = path.join(selectedLayerDir, `material-${material}.png`);
+  const frameLayer = path.join(selectedLayerDir, `frame-${material}.png`);
   const effectLayer =
-    effect && effect !== "none" ? path.join(layerDir, `effect-${effect}.png`) : null;
+    effect && effect !== "none" ? path.join(selectedLayerDir, `effect-${effect}.png`) : null;
   if (!fs.existsSync(materialLayer) || !fs.existsSync(frameLayer)) {
     throw new Error(`Missing material or frame layer for ${material}`);
   }
@@ -213,7 +239,7 @@ export async function composeCard(input) {
   const withMaterial = await sharp(withSubject)
     .composite([
       {
-        input: await sharp(materialLayer).resize(W, H).png().toBuffer(),
+        input: await finishLayer(materialLayer, material === "diamond" ? 0.4 : 1),
         blend: materialBlend,
         left: 0,
         top: 0,
@@ -244,7 +270,7 @@ export async function composeCard(input) {
     ? await sharp(withFrame)
         .composite([
           {
-            input: await sharp(effectLayer).resize(W, H).png().toBuffer(),
+            input: await finishLayer(effectLayer, effect === "holographic" ? 0.4 : 1),
             blend: "screen",
             left: 0,
             top: 0,
@@ -253,6 +279,7 @@ export async function composeCard(input) {
         .png()
         .toBuffer()
     : withFrame;
+
 
   const textSvg = cardTextSvg({
     name,
@@ -263,11 +290,11 @@ export async function composeCard(input) {
     rarity,
     material,
     effect,
-    markData: await markDataUri(markPath, input.markBuffer, input.markMime),
+    markData: await markDataUri(markPath),
   });
   const textPng = new Resvg(textSvg, {
     fitTo: { mode: "width", value: W },
-    font: { fontFiles, loadSystemFonts: false, defaultFontFamily: "Manrope" },
+    font: { fontFiles: selectedFontFiles, loadSystemFonts: false, defaultFontFamily: "Manrope" },
     background: "rgba(0,0,0,0)",
   })
     .render()
@@ -278,10 +305,6 @@ export async function composeCard(input) {
     .png()
     .toBuffer();
 
-  if (input.returnBytes) {
-    const buffer = await sharp(final).webp({ quality: 90, effort: 5 }).toBuffer();
-    return { width: W, height: H, bytes: buffer.length, buffer };
-  }
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   if (outputPath.endsWith(".webp")) {
     await sharp(final).webp({ quality: 90, effort: 5 }).toFile(outputPath);
@@ -314,18 +337,17 @@ function escapeXml(value) {
     .replaceAll("'", "&apos;");
 }
 
-async function markDataUri(markPath, markBuffer, markMime) {
+async function markDataUri(markPath) {
   try {
-    if (!markBuffer && (!markPath || !fs.existsSync(markPath))) return "";
-    const ext = markBuffer ? (markMime === 'image/svg+xml' ? 'svg' : 'png') : path.extname(markPath).replace(".", "").toLowerCase();
-    const source = markBuffer ?? markPath;
+    if (!markPath || !fs.existsSync(markPath)) return "";
+    const ext = path.extname(markPath).replace(".", "").toLowerCase();
     if (ext === "svg") {
-      return `data:image/svg+xml;base64,${(markBuffer ?? fs.readFileSync(markPath)).toString("base64")}`;
+      return `data:image/svg+xml;base64,${fs.readFileSync(markPath).toString("base64")}`;
     }
     // Collection marks are often supplied as black artwork on a white field.
     // Knock out near-white pixels so the supplied square does not become a
     // white sticker on every card. Preserve dark pixels and antialiasing.
-    const image = sharp(source)
+    const image = sharp(markPath)
       .resize(128, 128, { fit: "contain", background: { r: 255, g: 255, b: 255, alpha: 0 } })
       .ensureAlpha();
     const { data, info } = await image.raw().toBuffer({ resolveWithObject: true });
@@ -361,11 +383,25 @@ async function markDataUri(markPath, markBuffer, markMime) {
 
 function truncate(value, max) {
   const text = String(value ?? "").trim();
-  return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
+  const chars = Array.from(text);
+  return chars.length <= max
+    ? text
+    : `${chars
+        .slice(0, max - 1)
+        .join("")
+        .trimEnd()}…`;
 }
 
-function wrapName(name) {
-  const words = String(name).split(/\s+/);
+export function wrapName(name) {
+  const words = String(name)
+    .trim()
+    .split(/\s+/)
+    .flatMap((word) => {
+      const chars = Array.from(word);
+      const chunks = [];
+      while (chars.length) chunks.push(chars.splice(0, 20).join(""));
+      return chunks;
+    });
   const lines = [];
   let line = "";
   for (const word of words) {
@@ -377,8 +413,25 @@ function wrapName(name) {
     }
   }
   if (line) lines.push(line);
-  // Long names get three lines at a smaller size rather than clipping.
-  return lines.slice(0, 3);
+  // Signal any omitted text instead of silently presenting a different name.
+  if (lines.length > 3)
+    return [...lines.slice(0, 2), `${Array.from(lines[2]).slice(0, 19).join("")}…`];
+  return lines;
+}
+
+export function finishLabels(material, effect) {
+  if (effect === "holographic") return ["HOLOGRAPHIC", ""];
+  return [
+    truncate(material.toUpperCase(), 12),
+    effect && effect !== "none" ? truncate(effect.toUpperCase(), 12) : "",
+  ];
+}
+
+export function footerLabels(setName, className, rarity, serial) {
+  return {
+    meta: truncate([setName, className, rarity].filter(Boolean).join(" · ").toUpperCase(), 42),
+    serial: truncate(serial, 40),
+  };
 }
 
 function cardTextSvg({
@@ -394,7 +447,9 @@ function cardTextSvg({
 }) {
   const lines = wrapName(name);
   const longest = Math.max(...lines.map((line) => line.length), 1);
-  const nameSize = lines.length >= 3 ? 40 : longest > 20 ? 40 : lines.length > 1 ? 46 : 54;
+  const preferredSize = lines.length >= 3 ? 40 : lines.length > 1 ? 46 : 54;
+  // Bound even unusually wide unbroken names to the card's text band.
+  const nameSize = Math.min(preferredSize, Math.floor(622 / (longest * 1.2)));
   const lineHeight = nameSize + 8;
   const nameY = 900 - (lines.length - 1) * lineHeight;
   const nameMarkup = lines
@@ -406,11 +461,12 @@ function cardTextSvg({
   const lastBaseline = nameY + (lines.length - 1) * lineHeight;
   const subtitleY = lastBaseline + 34;
   const metaY = subtitleY + 32;
-  const materialLabel = `${material.toUpperCase()}${effect && effect !== "none" ? ` · ${effect.toUpperCase()}` : ""}`;
-  const meta = [setName, className, rarity]
-    .filter(Boolean)
-    .map((value) => escapeXml(truncate(value, 52)))
-    .join(" · ");
+  // Keep opposing header labels in separate lanes, including with a mark.
+  // The catalogue remains the source for the complete metadata.
+  const [materialLabel, effectLabel] = finishLabels(material, effect);
+  const finishY = effectLabel ? (markData ? 74 : 106) : markData ? 84 : 116;
+  const headerLabel = truncate(setName.toUpperCase(), 13);
+  const footer = footerLabels(setName, className, rarity, serial);
   const headerX = markData ? 136 : 64;
   const markMarkup = markData
     ? `<svg x="64" y="50" width="58" height="58" viewBox="0 0 58 58"><rect width="58" height="58" fill="#07110F" opacity=".82"/><image href="${markData}" x="4" y="4" width="50" height="50" preserveAspectRatio="xMidYMid meet"/></svg>`
@@ -424,16 +480,18 @@ function cardTextSvg({
       </linearGradient>
     </defs>
     <rect x="0" y="748" width="${W}" height="302" fill="url(#shade)"/>
+    <rect x="30" y="34" width="690" height="110" fill="#07110F" opacity=".88"/>
     ${markMarkup}
-    <text x="${headerX}" y="${markData ? 84 : 116}" font-family="IBM Plex Mono" font-size="16" letter-spacing="3.2" fill="#D9BF8B">${escapeXml(setName.toUpperCase())}</text>
-    <text x="${W - 64}" y="${markData ? 84 : 116}" text-anchor="end" font-family="IBM Plex Mono" font-size="14" letter-spacing="2.2" fill="#F4F0E6" opacity=".78">${escapeXml(materialLabel)}</text>
+    <text x="${headerX}" y="${markData ? 84 : 116}" font-family="IBM Plex Mono" font-size="20" letter-spacing="2" fill="#D9BF8B">${escapeXml(headerLabel)}</text>
+    <text x="${W - 64}" y="${finishY}" text-anchor="end" font-family="IBM Plex Mono" font-size="18" letter-spacing="1.5" fill="#F4F0E6" opacity=".9">${escapeXml(materialLabel)}</text>
+    ${effectLabel ? `<text x="${W - 64}" y="${finishY + 22}" text-anchor="end" font-family="IBM Plex Mono" font-size="18" letter-spacing="1.5" fill="#F4F0E6" opacity=".9">${escapeXml(effectLabel)}</text>` : ""}
     <path d="M64 ${markData ? 110 : 134} H260" stroke="#B08A52" stroke-width="1.2" opacity=".8"/>
     <text x="64" y="${nameY}" font-family="Fraunces" font-weight="600" font-size="${nameSize}" fill="#F4F0E6">${nameMarkup}</text>
-    ${subtitle ? `<text x="64" y="${subtitleY}" font-family="Manrope" font-size="19" fill="#F4F0E6" opacity=".82">${escapeXml(truncate(subtitle, 44))}</text>` : ""}
-    <text x="64" y="${metaY}" font-family="IBM Plex Mono" font-size="13" letter-spacing="1.8" fill="#D9BF8B">${meta.toUpperCase()}</text>
+    ${subtitle ? `<text x="64" y="${subtitleY}" font-family="Manrope" font-size="25" fill="#F4F0E6" opacity=".95">${escapeXml(truncate(subtitle, 23))}</text>` : ""}
+    <text x="64" y="${metaY}" font-family="IBM Plex Mono" font-size="22" letter-spacing="1" fill="#D9BF8B">${escapeXml(footer.meta)}</text>
     <path d="M64 986 H686" stroke="#F4F0E6" stroke-width=".7" opacity=".22"/>
-    <text x="64" y="1016" font-family="IBM Plex Mono" font-size="11" letter-spacing="4" fill="#F4F0E6" opacity=".55">FOILBURY</text>
-    <text x="${W - 64}" y="1016" text-anchor="end" font-family="IBM Plex Mono" font-size="12" letter-spacing="1.2" fill="#F4F0E6" opacity=".76">${escapeXml(serial)}</text>
+    <text x="64" y="1016" font-family="IBM Plex Mono" font-size="18" letter-spacing="2" fill="#F4F0E6" opacity=".9">FOILBURY</text>
+    <text x="${W - 64}" y="1016" text-anchor="end" font-family="IBM Plex Mono" font-size="18" letter-spacing="1" fill="#F4F0E6" opacity=".95">${escapeXml(footer.serial)}</text>
   </svg>`;
 }
 
@@ -451,17 +509,22 @@ if (process.argv[1] && process.argv[1].endsWith("compose.mjs") && process.argv[2
  */
 export async function composeCardBack(input) {
   const { backPath, material = "plain", effect = "none", outputPath } = input;
-  const materialLayer = path.join(layerDir, `material-${material}.png`);
-  const frameLayer = path.join(layerDir, `frame-${material}.png`);
+  const selectedLayerDir = input.renderResources?.layerDir ?? layerDir;
+  const materialLayer = path.join(selectedLayerDir, `material-${material}.png`);
+  const frameLayer = path.join(selectedLayerDir, `frame-${material}.png`);
   if (!fs.existsSync(materialLayer) || !fs.existsSync(frameLayer)) {
     throw new Error(`Missing back material or frame layer for ${material}`);
   }
   const base = await sharp(backPath).resize(W, H, { fit: "cover" }).png().toBuffer();
   const blend =
     material === "silver" ? "overlay" : material === "diamond" ? "screen" : "soft-light";
-  const opacity = material === "plain" ? 0.18 : 0.38;
   const layers = [
-    { input: await sharp(materialLayer).resize(W, H).png().toBuffer(), blend, left: 0, top: 0 },
+    {
+      input: await finishLayer(materialLayer, material === "diamond" ? 0.4 : 1),
+      blend,
+      left: 0,
+      top: 0,
+    },
     {
       input: await sharp(frameLayer).resize(W, H).png().toBuffer(),
       blend: "over",
@@ -470,17 +533,16 @@ export async function composeCardBack(input) {
     },
   ];
   if (effect && effect !== "none") {
-    const effectLayer = path.join(layerDir, `effect-${effect}.png`);
+    const effectLayer = path.join(selectedLayerDir, `effect-${effect}.png`);
     if (fs.existsSync(effectLayer)) {
       layers.push({
-        input: await sharp(effectLayer).resize(W, H).ensureAlpha(opacity).png().toBuffer(),
+        input: await finishLayer(effectLayer, effect === "holographic" ? 0.4 : 1),
         blend: "screen",
         left: 0,
         top: 0,
       });
     }
   }
-  if (input.returnBytes) return sharp(base).composite(layers).webp({ quality: 88, effort: 5 }).toBuffer();
   await sharp(base).composite(layers).webp({ quality: 88, effort: 5 }).toFile(outputPath);
   return outputPath;
 }

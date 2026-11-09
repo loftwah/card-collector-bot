@@ -6,6 +6,7 @@ import { hasCapability } from "../../server/context";
 
 const ctx = await pageContext(Astro.request);
 const user = ctx.user!;
+const capabilities = user.capabilities ?? [];
 const canRead =
   user.role === "owner" ||
   user.platformAdmin ||
@@ -17,10 +18,9 @@ const canRead =
     <StudioWallet
       client:load
       userId={user.id}
-      tenantId={ctx.tenant.id}
       canSelfGrant={Boolean(user.selfGrantsEnabled) || user.role === "owner" || Boolean(user.platformAdmin)}
       grantLimit={user.role === "owner" || user.platformAdmin ? 50000 : (user.grantLimit ?? 0)}
-      canGrant={user.role === "owner" || Boolean(user.platformAdmin) || hasCapability(user, "grants")}
+      capabilities={capabilities}
     />
   ) : (
     <div class="notice">

@@ -20,16 +20,6 @@ Setup writes `.dev.vars`, `.foilbury/local-credentials.json` and `.foilbury/agen
 
 Two agent grants are created: an owner grant with all scopes and a player grant with player scopes only. Agent tokens are hashed at rest. The bearer token is readable once from `.foilbury/agents.json` for local use; never commit it, log it or paste it into a prompt.
 
-## Checks and release budget
-
-`pnpm check` runs the complete correctness gate: access config, release and API
-contract scripts, the acceptance runner, Astro typecheck, unit tests and Worker
-tests. The independent gates run concurrently; no gate is skipped. GitHub
-Actions selects browser journeys from the changed paths, runs them on a separate
-runner in parallel with the correctness gate, and fails the flow if it exceeds
-five minutes. A production release has a 240-second pre-deploy budget and records
-its total in the release receipt. See `TEST_RELEASE_BUDGET.md`.
-
 ## Browser
 
 Use `/login` for Discord, a one-use email link, a passkey, or the explicit loopback-only development sign-in. The bootstrap password is a legacy fallback, not the normal journey. The development sign-in is enabled only by `FOILBURY_LOCAL_MODE=true` and `FOILBURY_DEV_LOGIN=true`, and rejects non-loopback requests. Set `FOILBURY_DEV_LOGIN=false` to revoke it.
@@ -111,8 +101,6 @@ Discord uses the signed HTTP interaction endpoint at `/api/discord/interactions`
 The normal signed-in Studio calls `/api/v1/studio/*`, which aliases the collection domain routes and enforces the live role on every request. The OpenAPI document includes the scoped role, people and share endpoints. A Global Collection Admin agent grant uses the same `content:read`/`content:write` scopes and is limited to its assigned collection IDs.
 
 Platform role grants are human-only: `POST /api/v1/platform/roles` requires Super Admin and recent strong authentication. Only `global_collection_admin` is assignable; the Super Admin role remains a separate provisioning path. Revocation is idempotent.
-
-Operational pickers use `GET /api/v1/admin/people`, which returns names and Bot roles but no contact fields. Contact records and pending invitations use `GET /api/v1/admin/team`; that route, and the lower-level `GET /api/v1/admin/members`, are human-only and require the live `members` capability. Agent grants cannot read them. `pnpm api:inventory` regenerates the checked method/path/role/scope/schema inventory in `docs/API_ROUTE_INVENTORY.md` after a dispatch change.
 
 ## Authority
 

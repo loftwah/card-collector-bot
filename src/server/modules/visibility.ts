@@ -1,5 +1,6 @@
 import { ApiError, type Ctx } from "../context";
 import { all, first } from "../db";
+import { liveViewerContext } from "./live-viewer";
 
 /**
  * Viewing audience is deliberately separate from collection lifecycle
@@ -30,6 +31,8 @@ export interface ViewerAccess {
   explicitCollectionIds: Set<string>;
   /** Admin roles for the current tenant can inspect their own drafts. */
   managesCurrentTenant: boolean;
+  /** Delegated Bot administration never grants access to global-private sets. */
+  botScopedAgentAdmin?: boolean;
 }
 
 const AUDIENCE_RANK: Record<Audience, number> = { public: 0, members: 1, private: 2 };
@@ -46,9 +49,9 @@ export function audienceRank(value: string): number {
   return AUDIENCE_RANK[(value as Audience) in AUDIENCE_RANK ? (value as Audience) : "private"];
 }
 
-export async function viewerAccess(ctx: Ctx): Promise<ViewerAccess> {
+export async function viewerAccess(ctx: Ctx, options?: { liveContentAdmin?: boolean; delegatedGlobalScope?: boolean; delegatedBotContent?: boolean }): Promise<ViewerAccess> {
   const user = ctx.user;
-  if (!user) {
+  if (!user || (ctx.actor.type === "agent" && !ctx.scopes?.some((scope) => scope === "inventory:read" || scope === "content:read"))) {
     return {
       signedIn: false,
       userId: null,
@@ -65,32 +68,68 @@ export async function viewerAccess(ctx: Ctx): Promise<ViewerAccess> {
   const memberships = await all<{ tenant_id: string; role: string }>(
     ctx.db,
     `SELECT tenant_id, role FROM fb_memberships
-      WHERE user_id = ? AND status = 'active' AND revoked_at IS NULL`,
+      WHERE user_id = ? AND status = 'active' AND revoked_at IS NULL AND (? = 0 OR tenant_id = ?)`,
     user.id,
+    ctx.actor.type === "agent" ? 1 : 0,
+    ctx.tenant.id,
   );
   const grants = await all<{ collection_id: string }>(
     ctx.db,
-    `SELECT collection_id FROM fb_collection_viewers
-      WHERE user_id = ? AND revoked_at IS NULL`,
+    `SELECT cv.collection_id FROM fb_collection_viewers cv JOIN fb_collections c ON c.id = cv.collection_id
+      WHERE cv.user_id = ? AND cv.revoked_at IS NULL AND (? = 0 OR c.scope = 'global' OR c.owner_tenant_id = ?)`,
     user.id,
+    ctx.actor.type === "agent" ? 1 : 0,
+    ctx.tenant.id,
   );
-  const managesCurrentTenant =
-    user.platformAdmin || user.role === "owner" || user.role === "editor" || user.role === "economy_admin";
-  const globalScope = user.globalCollectionScope;
+  const liveContentTenants = options?.liveContentAdmin ? new Set((await all<{ tenant_id: string }>(ctx.db,
+    `SELECT m.tenant_id FROM fb_memberships m JOIN fb_users u ON u.id = m.user_id
+       JOIN fb_bots b ON b.tenant_id = m.tenant_id AND b.status <> 'archived'
+       LEFT JOIN fb_bot_admins ba ON ba.bot_id = b.id AND ba.user_id = m.user_id
+      WHERE m.user_id = ? AND m.status = 'active' AND m.revoked_at IS NULL AND u.disabled_at IS NULL
+        AND ((m.role = 'owner' AND b.owner_user_id = m.user_id)
+          OR (EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(m.capabilities_json) THEN m.capabilities_json ELSE '[]' END) WHERE value = 'content')
+            AND (ba.id IS NULL OR (ba.status = 'active' AND ba.revoked_at IS NULL AND EXISTS
+              (SELECT 1 FROM json_each(CASE WHEN json_valid(ba.capabilities_json) THEN ba.capabilities_json ELSE '[]' END) WHERE value = 'content')))))`, user.id)).map(row => row.tenant_id)) : null;
+  const delegatedBot = ctx.actor.type === 'agent' && options?.delegatedBotContent && Boolean(await first(ctx.db,
+    `SELECT 1 FROM fb_memberships m JOIN fb_bots b ON b.tenant_id=m.tenant_id AND b.status='active'
+      JOIN fb_users u ON u.id=m.user_id AND u.disabled_at IS NULL LEFT JOIN fb_bot_admins ba ON ba.bot_id=b.id AND ba.user_id=m.user_id
+      WHERE m.tenant_id=? AND m.user_id=? AND m.status='active' AND m.revoked_at IS NULL AND
+        ((m.role='owner' AND b.owner_user_id=m.user_id) OR (m.role<>'owner'
+          AND json_type(CASE WHEN json_valid(m.capabilities_json) THEN m.capabilities_json ELSE 'null' END)='array'
+          AND NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(m.capabilities_json) THEN m.capabilities_json ELSE '[]' END) WHERE type<>'text')
+          AND EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(m.capabilities_json) THEN m.capabilities_json ELSE '[]' END) WHERE value='content')
+          AND ba.role='admin' AND ba.status='active' AND ba.revoked_at IS NULL
+          AND json_type(CASE WHEN json_valid(ba.capabilities_json) THEN ba.capabilities_json ELSE 'null' END)='array'
+          AND NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(ba.capabilities_json) THEN ba.capabilities_json ELSE '[]' END) WHERE type<>'text')
+          AND EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(ba.capabilities_json) THEN ba.capabilities_json ELSE '[]' END) WHERE value='content')))`,ctx.tenant.id,user.id));
+  const managesCurrentTenant = Boolean(delegatedBot) || (ctx.actor.type !== "agent" &&
+    (user.platformAdmin || (["owner", "editor", "economy_admin"].includes(user.role) &&
+      (!liveContentTenants || liveContentTenants.has(ctx.tenant.id)))));
+  const globalScope = ctx.actor.type === "agent" && !options?.delegatedGlobalScope ? null : user.globalCollectionScope;
   return {
     signedIn: true,
     userId: user.id,
-    platformAdmin: Boolean(user.platformAdmin),
+    // A delegated bearer must not inherit unrestricted platform visibility
+    // merely because its represented person is a platform administrator.
+    platformAdmin: ctx.actor.type !== "agent" && Boolean(user.platformAdmin),
     globalCollectionAdmin: Boolean(globalScope),
     globalCollectionIds: globalScope && !globalScope.all ? new Set(globalScope.collectionIds) : null,
     memberTenantIds: new Set(memberships.map((row) => row.tenant_id)),
-    adminTenantIds: new Set(
-      memberships.filter((row) => ["owner", "editor", "economy_admin"].includes(row.role)).map((row) => row.tenant_id),
+    adminTenantIds: delegatedBot ? new Set([ctx.tenant.id]) : new Set(
+      memberships.filter((row) => ctx.actor.type !== "agent" && ["owner", "editor", "economy_admin"].includes(row.role) && (!liveContentTenants || liveContentTenants.has(row.tenant_id))).map((row) => row.tenant_id),
     ),
+    botScopedAgentAdmin: Boolean(delegatedBot),
     mainAlbumTenantId: ctx.tenant.id,
     explicitCollectionIds: new Set(grants.map((row) => row.collection_id)),
     managesCurrentTenant,
   };
+}
+
+/** Rebuild identity and scoped authority before a visibility-sensitive read. */
+export async function currentViewerAccess(ctx: Ctx): Promise<ViewerAccess> {
+  if (!ctx.user) return viewerAccess(ctx, { liveContentAdmin: true });
+  const live = await liveViewerContext(ctx, ctx.user.id);
+  return viewerAccess(live ?? { ...ctx, user: null }, { liveContentAdmin: true });
 }
 
 export function canViewAudience(
@@ -120,7 +159,7 @@ export function canViewAudience(
   if (access.platformAdmin) return true;
   if (collection.view_audience === "private") {
     if (access.explicitCollectionIds.has(collection.id)) return true;
-    return Boolean(collection.owner_tenant_id && access.adminTenantIds.has(collection.owner_tenant_id));
+    return Boolean((!access.botScopedAgentAdmin || collection.scope === 'bot') && collection.owner_tenant_id && access.adminTenantIds.has(collection.owner_tenant_id));
   }
   // Members: a global member collection is available to any active Foilbury
   // album member; a Bot collection requires membership of that Bot.
@@ -139,7 +178,7 @@ export interface CollectionVisibilityRow {
   public_approved_at: string | null;
 }
 
-export async function canViewCollection(ctx: Ctx, idOrSlug: string): Promise<CollectionVisibilityRow | null> {
+export async function canViewCollection(ctx: Ctx, idOrSlug: string, options?: { liveContentAdmin?: boolean; delegatedGlobalScope?: boolean; delegatedBotContent?: boolean }): Promise<CollectionVisibilityRow | null> {
   const row = await first<CollectionVisibilityRow>(
     ctx.db,
     `SELECT id, scope, owner_tenant_id, view_audience, status, public_approved_at
@@ -148,7 +187,7 @@ export async function canViewCollection(ctx: Ctx, idOrSlug: string): Promise<Col
     idOrSlug,
   );
   if (!row) return null;
-  const access = await viewerAccess(ctx);
+  const access = await viewerAccess(ctx, options);
   return canViewAudience(access, row) ? row : null;
 }
 
@@ -204,7 +243,7 @@ export function collectionVisibilitySql(
         const adminIds = [...access.adminTenantIds];
         if (adminIds.length) {
           publishedVisible.push(
-            `(${alias}.view_audience = 'private' AND ${alias}.owner_tenant_id IN (${adminIds.map(() => "?").join(",")}))`,
+            `(${alias}.view_audience = 'private' ${access.botScopedAgentAdmin ? `AND ${alias}.scope = 'bot'` : ''} AND ${alias}.owner_tenant_id IN (${adminIds.map(() => "?").join(",")}))`,
           );
           params.push(...adminIds);
         }
@@ -285,8 +324,8 @@ export async function visibleCollectionIds(ctx: Ctx): Promise<Set<string>> {
   return new Set(rows.map((row) => row.id));
 }
 
-export async function canViewCard(ctx: Ctx, cardId: string): Promise<boolean> {
-  const access = await viewerAccess(ctx);
+export async function canViewCard(ctx: Ctx, cardId: string, options?: { liveContentAdmin?: boolean; delegatedGlobalScope?: boolean; delegatedBotContent?: boolean }): Promise<boolean> {
+  const access = await viewerAccess(ctx, options);
   const visibility = cardVisibilitySql(access);
   const row = await first<{ present: number }>(
     ctx.db,

@@ -11,16 +11,26 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { ROOT } from "./lib/local.mjs";
 import { sourceState, workingTreeHash } from "./lib/source-identity.mjs";
+import { requireLiveTourEvidence } from "./lib/live-tour-evidence.mjs";
+import { requireCandidateServer } from "./lib/candidate-server-evidence.mjs";
 
 const args = new Set(process.argv.slice(2));
-// Held: the legacy recorder can manufacture skipped successes and hard-codes
-// claims not established by its commands. Use the isolated technical supervisor;
-// complete product acceptance remains separate and cannot be self-attested.
-console.error("Legacy acceptance recorder is held; use the isolated technical supervisor. Product acceptance is not claimed.");
-process.exit(2);
-const skipChecks = args.has("--skip-checks");
+if (args.has("--skip-checks")) {
+  console.error("Refusing to record acceptance with skipped checks. Run the complete release checks.");
+  process.exit(2);
+}
+// The browser suites can mutate local data. A loopback URL and a reported
+// build SHA do not prove which artifact or D1 database the server uses, and
+// test:artwork discovers its database independently. Until a managed harness
+// binds the candidate bytes, server and disposable storage, recording a pass
+// would risk both the active checkout and a false release claim.
+const verifiedIsolatedHarnessAvailable = false;
+if (!verifiedIsolatedHarnessAvailable) {
+  console.error("Release recording is held: an isolated, artifact-bound browser and database harness has not been verified.");
+  process.exit(2);
+}
 const state = sourceState();
-if (state.dirty && !skipChecks) {
+if (state.dirty) {
   // The manifest itself may already exist and be modified; source changes may
   // not. The caller commits the manifest after this run.
   const dirty = state.dirty
@@ -40,6 +50,19 @@ if (state.dirty && !skipChecks) {
 const treeHash = state.tree_hash;
 const contentHash = workingTreeHash();
 const now = new Date().toISOString();
+const browserOrigin = process.env.FOILBURY_URL ?? "http://localhost:5173";
+try {
+  // Validate the destination before making any request: the browser suites
+  // create and delete test fixtures and must never target production.
+  const target = new URL(browserOrigin);
+  if (target.protocol !== "http:" || !["localhost", "127.0.0.1", "[::1]"].includes(target.hostname) || target.username || target.password)
+    throw new Error("Release browser journeys must use an isolated loopback server.");
+  const response = await fetch(browserOrigin, { redirect: "error", signal: AbortSignal.timeout(10_000) });
+  requireCandidateServer(browserOrigin, state.sha, response.headers.get("x-foilbury-build"));
+} catch (error) {
+  console.error(`Refusing unbound browser evidence: ${error.message}`);
+  process.exit(2);
+}
 
 const checks = [
   { command: "pnpm check", args: ["check"], cwd: ROOT },
@@ -51,24 +74,17 @@ const checks = [
   },
   { command: "pnpm test:ui", args: ["test:ui"], cwd: ROOT },
   { command: "pnpm test:product", args: ["test:product"], cwd: ROOT },
+  { command: "pnpm test:artwork", args: ["test:artwork"], cwd: ROOT },
+  { command: "node scripts/test-album-e2e.mjs", bin: process.execPath, args: ["scripts/test-album-e2e.mjs"], cwd: ROOT },
+  { command: "node scripts/test-privacy.mjs", bin: process.execPath, args: ["scripts/test-privacy.mjs"], cwd: ROOT },
+  { command: "pnpm perf:local", args: ["perf:local"], cwd: ROOT },
 ];
 
 const checkResults = [];
 for (const check of checks) {
-  if (skipChecks) {
-    checkResults.push({
-      command: check.command,
-      exit_code: 0,
-      completed_at: now,
-      tree_hash: treeHash,
-      source_content_hash: contentHash,
-      reused: true,
-    });
-    continue;
-  }
   console.log(`\n$ ${check.command}`);
   const started = new Date().toISOString();
-  const result = spawnSync("pnpm", check.args, { cwd: check.cwd, stdio: "inherit" });
+  const result = spawnSync(check.bin ?? "pnpm", check.args, { cwd: check.cwd, stdio: "inherit" });
   const exitCode = result.status ?? 1;
   checkResults.push({
     command: check.command,
@@ -83,6 +99,27 @@ for (const check of checks) {
     process.exit(exitCode);
   }
 }
+
+const preflightStarted = new Date().toISOString();
+const preflight = spawnSync("pnpm", ["exec", "tsx", "scripts/discord/preflight.mjs", "--json"], {
+  cwd: ROOT, encoding: "utf8", maxBuffer: 4 * 1024 * 1024,
+});
+if (preflight.status !== 0) {
+  console.error("Required production Discord preflight failed; acceptance was not recorded.");
+  process.exit(1);
+}
+let liveTour;
+try {
+  liveTour = requireLiveTourEvidence(JSON.parse(preflight.stdout));
+} catch (error) {
+  console.error(`Required production Discord tour evidence is invalid: ${error.message}`);
+  process.exit(1);
+}
+checkResults.push({
+  command: "pnpm demo:discord:check --json", started_at: preflightStarted,
+  completed_at: new Date().toISOString(), exit_code: 0,
+  tree_hash: treeHash, source_content_hash: contentHash,
+});
 
 const criteria = [
   {
@@ -282,7 +319,7 @@ const criteria = [
     test_command: "npx tsx scripts/discord/preflight.mjs --json",
     tested_tree_hash: treeHash,
     evidence:
-      "Persistent message 1567185366014763079 in #card-collector-test carries the real foilbury:tour:welcome component, Claim daily, Packs and web links. API read-back and the read-only preflight pass. The owner's actual click remains an optional client observation.",
+      `The read-only production preflight verified the persistent tour entry at ${liveTour.generatedAt}. Real client and spectator observations remain separate.`,
   },
   {
     id: "discord.acceptance-runner",

@@ -1,166 +1,112 @@
 ---
 import BaseLayout from "./BaseLayout.astro";
-import ThemeToggle from "../components/ThemeToggle";
-
 const session = Astro.locals.foilbury;
 const user = session?.user;
-const path = Astro.url.pathname;
-
 interface Props {
   title?: string;
   description?: string;
 }
 const { title, description } = Astro.props;
-
+const path = Astro.url.pathname;
 const primary = [
-  { href: "/play", label: "Home" },
-  { href: "/play/collections", label: "Collections" },
-  { href: "/play/draw", label: "Open" },
-  { href: "/play/trades", label: "Trades" },
-  { href: "/play/profile", label: "Profile" },
-];
-
-const more = [
+  { href: "/play", label: "Overview" },
+  { href: "/play/collections", label: "Worlds" },
   { href: "/play/collection", label: "My cards" },
-  { href: "/play/wishlist", label: "Wishlist" },
-  { href: "/play/missions", label: "Missions" },
-  { href: "/play/achievements", label: "Achievements" },
-  { href: "/play/gifts", label: "Gifts" },
+  { href: "/play/draw", label: "Draw room" },
   { href: "/play/rewards", label: "Rewards" },
-  { href: "/play/rivals", label: "NPC collectors" },
+];
+const more = [
+  { href: "/play/achievements", label: "Achievements" },
+  { href: "/play/missions", label: "Daily missions" },
+  { href: "/play/wishlist", label: "Wishlist" },
+  { href: "/play/rivals", label: "NPC rivals" },
+  { href: "/play/profile", label: "Showcase" },
+  { href: "/play/gifts", label: "Gifts" },
+  { href: "/play/trades", label: "Trades" },
   { href: "/play/preferences", label: "Preferences" },
   { href: "/tour", label: "Guided tour" },
   { href: "/account/security", label: "Account security" },
-  { href: "/cabinet", label: "Public catalogue" },
-  { href: "/logout", label: "Sign out" },
 ];
-
 const isActive = (href: string) =>
   href === "/play" ? path === href : path === href || path.startsWith(href + "/");
-
-const collectionsActive =
-  path.startsWith("/play/collections") ||
-  path.startsWith("/play/collection") ||
-  path.startsWith("/play/wishlist");
-const tradesActive = path.startsWith("/play/trades") || path.startsWith("/play/rivals");
-const profileActive =
-  path.startsWith("/play/profile") ||
-  path.startsWith("/play/preferences") ||
-  path.startsWith("/account/security");
-
-const primaryActive = (href: string) =>
-  href === "/play/collections"
-    ? collectionsActive
-    : href === "/play/trades"
-      ? tradesActive
-      : href === "/play/profile"
-        ? profileActive
-        : isActive(href);
-
 const moreActive = more.some((link) => isActive(link.href));
-const initials = (user?.displayName ?? "Collector")
-  .split(/\s+/)
-  .filter(Boolean)
-  .map((part) => part[0])
-  .join("")
-  .slice(0, 2)
-  .toUpperCase();
 ---
 
 <BaseLayout
   title={title ?? `${user?.displayName ?? "Player"} · Foilbury`}
   description={
     description ??
-    "Your Foilbury library: collection, Foil balance, capsules, achievements and gifts."
+    "Your Foilbury album: collection, Foil balance, capsules, achievements and gifts."
   }
   noIndex
-  shell="player"
 >
-  <Fragment slot="shell">
-    <header class="player-shell">
-      <div class="container player-top">
-        <a class="player-brand" href="/play">
-          <span class="player-wordmark">Foilbury</span>
-          <span class="player-bot">{session?.tenantName ?? session?.tenantSlug ?? "Your library"}</span>
-        </a>
-
-        <div class="player-actions">
-          <a class="player-balance" href="/play" title="Your Foil balance">
-            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <circle cx="10" cy="10" r="7.25" stroke="currentColor" stroke-width="1.5"></circle>
-              <path
-                d="M10 5.8v8.4M12.6 7.4c-.55-.8-1.45-1.2-2.55-1.2-1.35 0-2.3.7-2.3 1.8 0 1 .8 1.5 2.3 1.8 1.55.3 2.4.8 2.4 1.95 0 1.15-1 1.85-2.4 1.85-1.15 0-2.1-.45-2.65-1.25"
-                stroke="currentColor"
-                stroke-width="1.25"
-                stroke-linecap="round"
-              ></path>
-            </svg>
-            <span data-foil-balance>{session?.wallet ?? 0} Foil</span>
+  <section class="cabinet-bar">
+    <div class="signal-strip" aria-hidden="true"></div>
+    <div class="container">
+      <div class="cabinet-identity flex flex-wrap items-center justify-between gap-3 py-4">
+        <div class="min-w-0">
+          <p class="studio-stat__label">Collector cabinet</p>
+          <p class="display-sm mt-0.5 truncate text-2xl">{user?.displayName ?? "Collector"}</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <a class="btn btn-secondary btn-sm" href="/cabinet">
+            Public catalogue
           </a>
-          <a class="player-avatar" href="/play/profile">
-            {initials}
-            <span class="sr-only"> Open your profile</span>
+          <a class="btn btn-ghost btn-sm" href="/play/preferences">
+            Preferences
           </a>
-          <ThemeToggle client:load />
         </div>
       </div>
-
-      <div class="container">
-        <nav class="player-nav" aria-label="Player">
-          {
-            primary.map((link) => (
+      <div class="cabinet-nav-wrap">
+        <nav class="cabinet-nav" aria-label="Cabinet sections">
+          {primary.map((link) => (
+            <a
+              href={link.href}
+              aria-current={isActive(link.href) ? "page" : undefined}
+              class:list={["cabinet-link", isActive(link.href) && "is-active"]}
+            >
+              {link.label}
+            </a>
+          ))}
+        </nav>
+        <details class="cabinet-more">
+          <summary
+            class:list={["cabinet-link cabinet-more__summary", moreActive && "is-active"]}
+            aria-label="More cabinet sections"
+          >
+            More
+            <span aria-hidden="true">▾</span>
+          </summary>
+          <div class="cabinet-more__menu">
+            {more.map((link) => (
               <a
                 href={link.href}
-                aria-current={primaryActive(link.href) ? "page" : undefined}
-                class:list={["player-link", primaryActive(link.href) && "is-active"]}
+                aria-current={isActive(link.href) ? "page" : undefined}
+                class:list={["cabinet-more__link", isActive(link.href) && "is-active"]}
               >
                 {link.label}
               </a>
-            ))
-          }
-          <details class="player-more">
-            <summary
-              class:list={["player-more__summary", moreActive && "is-active"]}
-              aria-label="More player destinations"
-            >
-              More <span aria-hidden="true">▾</span>
-            </summary>
-            <div class="player-more__menu">
-              {
-                more.map((link) => (
-                  <a
-                    href={link.href}
-                    aria-current={isActive(link.href) ? "page" : undefined}
-                    class:list={[
-                      "player-more__link",
-                      isActive(link.href) && "is-active",
-                    ]}
-                  >
-                    {link.label}
-                  </a>
-                ))
-              }
-            </div>
-          </details>
-        </nav>
+            ))}
+          </div>
+        </details>
       </div>
-    </header>
-  </Fragment>
-
-  <section class="player-content container">
+    </div>
+  </section>
+  <section class="cabinet-content container py-7 md:py-9">
     <slot />
   </section>
 </BaseLayout>
-
 <script>
+  // Menus are native <details>. Close them on outside click or Escape so the
+  // dropdown cannot remain over content after the next action.
   document.addEventListener("click", (event) => {
-    document.querySelectorAll<HTMLDetailsElement>("details.player-more[open]").forEach((details) => {
+    document.querySelectorAll<HTMLDetailsElement>("details.cabinet-more[open]").forEach((details) => {
       if (event.target instanceof Node && !details.contains(event.target)) details.open = false;
     });
   });
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
-    document.querySelectorAll<HTMLDetailsElement>("details.player-more[open]").forEach((details) => {
+    document.querySelectorAll<HTMLDetailsElement>("details.cabinet-more[open]").forEach((details) => {
       const returnFocus = details.contains(document.activeElement);
       details.open = false;
       if (returnFocus) details.querySelector<HTMLElement>("summary")?.focus();

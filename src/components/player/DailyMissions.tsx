@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check } from "lucide-react";
+import { Check, Clock3, Sparkles } from "lucide-react";
 import { api, describeError } from "@/lib/client";
 import { Button } from "../ui/button";
 
@@ -15,6 +15,7 @@ interface Mission {
   complete: boolean;
   claimed: boolean;
   claimable: boolean;
+  cap_reached: boolean;
   href: string;
   action: string;
   claimed_at: string | null;
@@ -50,114 +51,76 @@ export default function DailyMissions({ initial }: { initial: State }) {
       setState(await api<State>("/api/v1/missions/daily"));
     } catch (cause) {
       setError(describeError(cause));
+      // Another tab may have claimed a mission or filled today's limit.
+      // Refresh if possible while keeping the original error visible.
+      try { setState(await api<State>("/api/v1/missions/daily")); } catch { /* Keep the last visible state. */ }
     } finally {
       setBusy("");
     }
   }
 
-  const claimedCount = state.missions.filter((mission) => mission.claimed).length;
-  const readyCount = state.missions.filter((mission) => mission.claimable).length;
-
   return (
-    <div className="grid gap-4">
-      <dl className="member-stats" aria-label="Mission summary">
-        <div className="member-stat">
-          <dt>Earned today</dt>
-          <dd>
-            {state.currency_symbol} {state.earned_today} <span>/ {state.cap}</span>
-          </dd>
-        </div>
-        <div className="member-stat">
-          <dt>Ready to claim</dt>
-          <dd>{readyCount}</dd>
-        </div>
-      </dl>
+    <div className="grid gap-6">
       {error ? <div className="error-box" role="alert">{error}</div> : null}
       {notice ? <div className="success-box" role="status">{notice}</div> : null}
 
-      {state.missions.length === 0 ? (
-        <div className="member-empty">
+      <section className="border border-[var(--line)] bg-[var(--paper-2)]/60 p-5">
+        <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h2>No missions today.</h2>
-            <p>Missions appear only when they can actually be completed with your current collection and Bot.</p>
+            <p className="eyebrow">Today · {state.day} UTC</p>
+            <h2 className="display-sm mt-1 text-3xl uppercase">Today's missions.</h2>
+            <p className="mt-2 max-w-2xl text-sm text-[var(--muted)]">Optional missions. Complete them through ordinary collecting on the website or Discord, then claim the Foil. Nothing expires punitively; a missed day simply resets.</p>
+          </div>
+          <div className="text-right">
+            <p className="eyebrow">Earned today</p>
+            <p className="display-sm mt-1 text-3xl text-[var(--brass)]">{state.currency_symbol} {state.earned_today} <span className="text-base text-[var(--muted)]">/ {state.cap}</span></p>
+            <p className="mt-1 flex items-center justify-end gap-1 text-xs text-[var(--muted)]"><Clock3 size={12} /> {state.reset_local}</p>
           </div>
         </div>
-      ) : (
-        <section className="member-panel">
-          <div className="member-panel__head">
-            <div>
-              <h2 className="member-panel__title">Today&rsquo;s missions</h2>
-              <p className="member-panel__note">
-                Claims credit the same wallet as every other reward.
-              </p>
-            </div>
-            <p className="member-count">
-              {claimedCount} of {state.missions.length} claimed
-            </p>
-          </div>
+      </section>
 
-          <ul className="member-list">
-            {state.missions.map((mission) => {
-              const percent = Math.round((mission.progress / Math.max(1, mission.target)) * 100);
-              return (
-                <li key={mission.key} className="member-row">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="member-row__title">{mission.title}</h3>
-                      {mission.claimed ? (
-                        <span className="badge badge-signal">
-                          <Check size={11} /> Claimed
-                        </span>
-                      ) : mission.complete ? (
-                        <span className="badge badge-rare">Ready to claim</span>
-                      ) : null}
-                    </div>
-                    <p className="member-row__meta">{mission.description}</p>
-                    <div className="mt-3 flex items-center gap-3">
-                      <div
-                        className="member-progress w-full max-w-xs"
-                        role="progressbar"
-                        aria-valuemin={0}
-                        aria-valuemax={mission.target}
-                        aria-valuenow={mission.progress}
-                        aria-label={`${mission.title} progress`}
-                      >
-                        <span style={{ width: `${percent}%` }}></span>
-                      </div>
-                      <span className="text-xs tabular-nums text-[var(--muted)]">
-                        {mission.progress}/{mission.target}
-                      </span>
-                    </div>
+      <ul className="grid gap-3">
+        {state.missions.map((mission) => {
+          const percent = Math.round((mission.progress / Math.max(1, mission.target)) * 100);
+          return (
+            <li key={mission.key} className="grid gap-4 border border-[var(--line)] bg-[var(--paper)] p-4 sm:grid-cols-[1fr_auto] sm:items-center">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-lg font-semibold">{mission.title}</h3>
+                  {mission.claimed ? <span className="badge badge-signal"><Check size={11} /> Claimed</span> : mission.complete && mission.cap_reached ? <span className="badge">Daily limit</span> : mission.claimable ? <span className="badge badge-rare">Ready to claim</span> : null}
+                </div>
+                <p className="mt-1 text-sm text-[var(--muted)]">{mission.description}</p>
+                <div className="mt-3 flex items-center gap-3">
+                  <div className="h-1.5 w-full max-w-xs bg-[var(--paper-3)]" role="progressbar" aria-valuemin={0} aria-valuemax={mission.target} aria-valuenow={mission.progress} aria-label={`${mission.title} progress`}>
+                    <div className="h-full bg-[var(--signal)]" style={{ width: `${percent}%` }}></div>
                   </div>
+                  <span className="shrink-0 font-mono text-[0.62rem] uppercase tracking-[0.08em] text-[var(--muted)]">{mission.progress}/{mission.target}</span>
+                  <span className="badge shrink-0 whitespace-nowrap">{state.currency_symbol} {mission.reward}</span>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                {!mission.complete && !mission.claimed ? <a className="btn btn-secondary btn-sm" href={mission.href}>{mission.action}</a> : null}
+                {mission.claimable ? (
+                  <Button size="sm" onClick={() => claim(mission)} disabled={busy === mission.key}>
+                    <Sparkles size={14} /> {busy === mission.key ? "Claiming…" : `Claim ${state.currency_symbol} ${mission.reward}`}
+                  </Button>
+                ) : null}
+                {mission.claimed ? <span className="text-xs text-[var(--muted)]">Credited today</span> : null}
+                {mission.complete && mission.cap_reached && !mission.claimed ? <span className="text-xs text-[var(--muted)]">This reward would exceed today's mission limit. Missions reset at the next daily reset.</span> : null}
+              </div>
+            </li>
+          );
+        })}
+        {state.missions.length === 0 ? (
+          <li className="empty"><div><p className="display-sm text-2xl">No missions are available today.</p><p className="mt-2 text-sm">Check your collection and wallet; missions appear only when they can actually be completed.</p></div></li>
+        ) : null}
+      </ul>
 
-                  <div className="member-row__actions">
-                    <span className="achievement-item__reward">✦ {mission.reward}</span>
-                    {!mission.complete && !mission.claimed ? (
-                      <a className="btn btn-secondary" href={mission.href}>
-                        {mission.action}
-                      </a>
-                    ) : null}
-                    {mission.claimable ? (
-                      <Button onClick={() => claim(mission)} disabled={busy === mission.key}>
-                        <Check size={15} />
-                        {busy === mission.key ? "Claiming…" : `Claim ✦ ${mission.reward}`}
-                      </Button>
-                    ) : null}
-                    {mission.claimed ? (
-                      <span className="text-xs text-[var(--muted)]">Credited today</span>
-                    ) : null}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
-
-      <p className="member-head__note">
-        Daily cap {state.currency_symbol} {state.cap}. A missed day simply resets; nothing is taken
-        away.
-      </p>
+      <section className="grid gap-3 sm:grid-cols-3">
+        <div className="studio-stat"><p className="studio-stat__label">Reset</p><p className="text-sm font-semibold">{state.reset_local}</p><p className="mt-1 text-xs text-[var(--muted)]">{state.reset_at}</p></div>
+        <div className="studio-stat"><p className="studio-stat__label">Daily cap</p><p className="display-sm text-3xl">{state.currency_symbol} {state.cap}</p><p className="mt-1 text-xs text-[var(--muted)]">Across all missions</p></div>
+        <div className="studio-stat"><p className="studio-stat__label">Also available</p><p className="text-sm font-semibold"><a className="underline underline-offset-4" href="/play">Daily allowance</a></p><p className="mt-1 text-xs text-[var(--muted)]">Separate from missions</p></div>
+      </section>
     </div>
   );
 }

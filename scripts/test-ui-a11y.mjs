@@ -41,10 +41,10 @@ try {
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto("/");
-    await page.getByRole("heading", { name: /pull something wonderful/i }).waitFor();
+    await page.getByRole("heading", { name: /characters worth keeping/i }).waitFor();
     await audit(page, `${scheme} public home`, `ui-home-${scheme}.png`);
     await page.goto("/cabinet");
-    await page.getByRole("heading", { name: /public showcase/i }).waitFor();
+    await page.getByRole("heading", { name: /explore the collection/i }).waitFor();
     await audit(page, `${scheme} public catalogue`);
     await page.goto("/login");
     await page.getByRole("heading", { name: /the cabinet is open/i }).waitFor();
@@ -60,13 +60,13 @@ try {
     page.on("pageerror", (error) => errors.push(error.message));
     await login(context);
     await page.goto("/play");
-    await page.getByRole("heading", { name: /your library/i }).waitFor();
+    await page.getByRole("heading", { name: /your cabinet/i }).waitFor();
     await audit(page, `${scheme} authenticated player home`, `ui-play-${scheme}.png`);
     await page.goto("/play/collection");
-    await page.getByRole("heading", { name: /my cards/i }).waitFor();
+    await page.getByRole("heading", { name: /your drawers/i }).waitFor();
     await audit(page, `${scheme} collection`);
     await page.goto("/play/collections");
-    await page.getByRole("heading", { name: /^Collections$/i }).waitFor();
+    await page.getByRole("heading", { name: /every world you can enter/i }).waitFor();
     await audit(page, `${scheme} worlds browser`, `ui-worlds-${scheme}.png`);
     const instance = await page.evaluate(async () => {
       const response = await fetch("/api/v1/inventory?limit=1");
@@ -107,14 +107,14 @@ try {
     await page.getByText(/capabilities:/i).first().waitFor();
     await audit(page, `${scheme} Studio team policy`, `ui-studio-team-${scheme}.png`);
     await page.goto("/play/preferences");
-    await page.getByRole("heading", { level: 1, name: /^Preferences$/ }).waitFor();
+    await page.getByRole("heading", { name: /choose what can drop for you/i }).waitFor();
     await page.getByText(/manage shares/i).waitFor();
     await audit(page, `${scheme} collection preferences`, `ui-preferences-${scheme}.png`);
     await page.goto("/play/wishlist");
-    await page.getByRole("heading", { level: 1, name: /^Wishlist$/ }).waitFor();
+    await page.getByRole("heading", { name: /what you are still looking for/i }).waitFor();
     await audit(page, `${scheme} wishlist`, `ui-wishlist-${scheme}.png`);
     await page.goto("/play/missions");
-    await page.getByRole("heading", { level: 1, name: /^Missions$/ }).waitFor();
+    await page.getByRole("heading", { name: /a little extra foil/i }).waitFor();
     await audit(page, `${scheme} daily missions`, `ui-missions-${scheme}.png`);
     await page.goto("/play/rivals");
     await page.getByRole("heading", { name: /the cabinet has regulars/i }).waitFor();
@@ -128,10 +128,10 @@ try {
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/play");
-    await page.getByRole("heading", { name: /your library/i }).waitFor();
+    await page.getByRole("heading", { name: /your cabinet/i }).waitFor();
     await audit(page, `${scheme} mobile player home`, `ui-play-mobile-${scheme}.png`);
     await page.goto("/play/collections");
-    await page.getByRole("heading", { name: /^Collections$/i }).waitFor();
+    await page.getByRole("heading", { name: /every world you can enter/i }).waitFor();
     await audit(page, `${scheme} mobile worlds browser`, `ui-worlds-mobile-${scheme}.png`);
     await page.goto("/admin/collections");
     await page.getByText(/worlds with a front door/i).waitFor();

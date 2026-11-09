@@ -514,8 +514,8 @@ try {
     ],
   });
   await memberPage.getByRole("button", { name: /Draw for/ }).click();
-  await memberPage.getByText(/New subject|Duplicate/).waitFor({ timeout: 20000 });
-  await memberPage.getByRole("button", { name: /Show result now/ }).click().catch(() => undefined);
+  await memberPage.getByRole("button", { name: /Reveal card/ }).click();
+  await memberPage.getByText(/New card|Duplicate/).waitFor({ timeout: 20000 });
   await memberPage.locator(".draw-reveal.is-revealed").waitFor({ timeout: 20000 });
   await memberPage.waitForTimeout(300);
   await capture(memberPage, {
@@ -595,7 +595,7 @@ try {
   await visit(memberPage, {
     name: "Achievements",
     route: "/play/achievements",
-    waitFor: "text=Earned badges",
+    waitFor: "text=Little proofs of time well spent.",
     caption:
       "Earned badges and next milestones. Achievement progress is separate from the catalogue and survives later collection growth.",
     bullets: [
@@ -607,7 +607,7 @@ try {
   await visit(memberPage, {
     name: "Gift receipts",
     route: "/play/gifts",
-    waitFor: "text=Gift receipts",
+    waitFor: "text=A note in the post.",
     caption:
       "The member gift inbox: what arrived, who sent it, the value and when it was delivered.",
     bullets: [
@@ -619,7 +619,7 @@ try {
   await visit(memberPage, {
     name: "Preferences",
     route: "/play/preferences",
-    waitFor: "text=Collections in your capsules",
+    waitFor: "text=Make the cabinet yours.",
     caption:
       "Member preferences for reduced motion, sharing and presentation without changing ownership or odds.",
     bullets: [

@@ -44,7 +44,6 @@ declare namespace App {
     foilbury?: {
       tenantId: string;
       tenantSlug: string;
-      tenantName: string;
       user: {
         id: string;
         email: string;

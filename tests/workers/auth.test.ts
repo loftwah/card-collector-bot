@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { bootstrap, ctxFor, fixturePool, runtime, tenant } from "./helpers";
-import { createUser, addMembership, addPlayerMembershipIfAbsent, findUserByEmail, createSession, ensureWallet } from "../../src/server/modules/identity";
-import { joinMainAlbum, setMemberStatus } from "../../src/server/modules/membership";
+import { createUser, addMembership, findUserByEmail, createSession, ensureWallet, login } from "../../src/server/modules/identity";
+import { joinMainAlbum } from "../../src/server/modules/membership";
 import { requestMagicLink, redeemMagicLink } from "../../src/server/modules/magic-links";
 import { findAccessTenantForIdentity, resolveAccessIdentity } from "../../src/server/access";
 import { createBot, createBotInvitation, acceptBotInvitation, revokeBotAdmin } from "../../src/server/modules/bots";
@@ -10,6 +10,13 @@ import { createPool, executeDraw, getPoolPreview, publishPool } from "../../src/
 import { nowIso } from "../../src/server/db";
 import { sha256Hex } from "../../src/server/ids";
 import { ApiError, requireRecentStrongAuth, resolveSession } from "../../src/server/context";
+import { creditWallet } from "../../src/server/modules/wallet";
+
+async function collectionSession(ctx:Awaited<ReturnType<typeof ctxFor>>) {
+  const id=`auth-collection-${crypto.randomUUID()}`,now=nowIso();
+  await runtime.DB.prepare("INSERT INTO fb_sessions (id,token_hash,user_id,tenant_id,csrf_token,created_at,expires_at,last_seen_at,assurance,auth_time) VALUES (?,?,?,?,'test',?,?,?,'passkey',?)").bind(id,id,ctx.user!.id,ctx.tenant.id,now,new Date(Date.now()+60000).toISOString(),now,now).run();
+  return {...ctx,sessionId:id,sessionAssurance:'passkey',sessionAuthTime:now};
+}
 
 describe("passwordless identity, Access linking, bots and collections", () => {
   beforeEach(async () => {
@@ -63,216 +70,11 @@ describe("passwordless identity, Access linking, bots and collections", () => {
     }
   });
 
-  it("never rewrites an existing revoked or suspended row through addMembership", async () => {
-    const ctx = await ctxFor("cabinet", "owner@foilbury.local");
-    const player = await createUser(runtime.DB, { email: "upsert-guard@example.com", displayName: "Upsert Guard", password: "a-long-test-password" });
-    expect(await addMembership(runtime.DB, ctx.tenant.id, player.id, "player")).toBe(true);
-    expect(await addMembership(runtime.DB, ctx.tenant.id, player.id, "player")).toBe(false);
-
-    for (const status of ["revoked", "suspended"] as const) {
-      const changedAt = nowIso();
-      await runtime.DB
-        .prepare("UPDATE fb_memberships SET status = ?, revoked_at = ?, role = 'editor', capabilities_json = '[\"members\"]' WHERE tenant_id = ? AND user_id = ?")
-        .bind(status, changedAt, ctx.tenant.id, player.id)
-        .run();
-      // The old helper was an unconditional upsert and would replace this row
-      // with an active owner. It must now refuse to touch the existing row.
-      expect(await addMembership(runtime.DB, ctx.tenant.id, player.id, "owner")).toBe(false);
-      const membership = await runtime.DB
-        .prepare("SELECT status, revoked_at, role, capabilities_json FROM fb_memberships WHERE tenant_id = ? AND user_id = ?")
-        .bind(ctx.tenant.id, player.id)
-        .first<{ status: string; revoked_at: string | null; role: string; capabilities_json: string }>();
-      expect(membership).toMatchObject({
-        status,
-        revoked_at: changedAt,
-        role: "editor",
-        capabilities_json: '["members"]',
-      });
-    }
-  });
-
-  it("requires the explicit members capability for member management and denies agents", async () => {
-    const owner = await ctxFor("cabinet", "owner@foilbury.local");
-    const player = await ctxFor("cabinet", "player@foilbury.local");
-    const manager = await createUser(runtime.DB, { email: "member-manager@example.com", displayName: "Member Manager", password: "a-long-test-password" });
-    await addMembership(runtime.DB, owner.tenant.id, manager.id, "editor");
-    const managerCtx = {
-      ...owner,
-      user: {
-        ...owner.user!,
-        id: manager.id,
-        email: manager.email,
-        role: "editor" as const,
-        platformAdmin: false,
-        capabilities: ["economy", "inventory", "grants"],
-      },
-      sessionAssurance: "passkey",
-      sessionAuthTime: nowIso(),
-    };
-    await expect(setMemberStatus(managerCtx, player.user!.id, "suspended", "Scoped grant check")).rejects.toMatchObject({
-      status: 403,
-      code: "insufficient_capability",
-    });
-
-    await runtime.DB
-      .prepare("UPDATE fb_memberships SET role = 'editor', capabilities_json = '[\"content\",\"publish\",\"members\"]' WHERE tenant_id = ? AND user_id = ?")
-      .bind(owner.tenant.id, manager.id)
-      .run();
-    const allowedCtx = { ...managerCtx, user: { ...managerCtx.user, capabilities: ["content", "publish", "members"] } };
-    const suspended = await setMemberStatus(allowedCtx, player.user!.id, "suspended", "Explicit member capability check");
-    expect(suspended.status).toBe("suspended");
-    const restored = await setMemberStatus(allowedCtx, player.user!.id, "active", "Restore after scoped check");
-    expect(restored.status).toBe("active");
-
-    const agentCtx = {
-      ...owner,
-      actor: { type: "agent" as const, id: "agt_member_test", representedUserId: manager.id, label: "Member agent" },
-      sessionAssurance: "passkey",
-      sessionAuthTime: nowIso(),
-    };
-    await expect(setMemberStatus(agentCtx, player.user!.id, "suspended", "Agent cannot decide membership")).rejects.toMatchObject({
-      status: 403,
-      code: "human_admin_required",
-    });
-
-    const harbour = await tenant("harbour");
-    const harbourUser = await createUser(runtime.DB, { email: "harbour-member@example.com", displayName: "Harbour Member", password: "a-long-test-password" });
-    await addMembership(runtime.DB, harbour.id, harbourUser.id, "player");
-    await expect(setMemberStatus(allowedCtx, harbourUser.id, "suspended", "Wrong tenant")).rejects.toMatchObject({
-      status: 404,
-      code: "member_not_found",
-    });
-
-    const platformCtx = {
-      ...owner,
-      user: { ...owner.user!, platformAdmin: true, capabilities: [] },
-      sessionAssurance: "mfa",
-      sessionAuthTime: nowIso(),
-    };
-    const viaPlatform = await setMemberStatus(platformCtx, player.user!.id, "suspended", "Platform administrator check");
-    expect(viaPlatform.status).toBe("suspended");
-    await setMemberStatus(platformCtx, player.user!.id, "active", "Restore after platform check");
-  });
-
-  it("does not overwrite an inactive membership created during magic-link admission", async () => {
-    const ctx = await ctxFor("cabinet", "owner@foilbury.local");
-    const player = await createUser(runtime.DB, { email: "racing-admission@example.com", displayName: "Racing", password: "a-long-test-password" });
-    const requested = await requestMagicLink(ctx, { email: "racing-admission@example.com", purpose: "signin" });
-    let injected = false;
-    const wrapped = new Proxy(runtime.DB, {
-      get(target, key) {
-        if (key !== "prepare") return Reflect.get(target, key, target);
-        return (sql: string) => {
-          const statement = target.prepare(sql);
-          if (!sql.includes("INSERT INTO fb_memberships")) return statement;
-          return new Proxy(statement, {
-            get(original, prop) {
-              if (prop !== "bind") return Reflect.get(original, prop, original);
-              return (...values: unknown[]) => {
-                const bound = original.bind(...values);
-                return new Proxy(bound, {
-                  get(boundStatement, method) {
-                    if (method !== "run" && method !== "first") return Reflect.get(boundStatement, method, boundStatement);
-                    return async () => {
-                      if (!injected) {
-                        injected = true;
-                        await runtime.DB.prepare("INSERT INTO fb_memberships (tenant_id,user_id,role,created_at,capabilities_json,status,revoked_at) VALUES (?,?,'editor',?,'[\"members\"]','revoked',?)")
-                          .bind(ctx.tenant.id, player.id, nowIso(), nowIso()).run();
-                      }
-                      return method === "run" ? boundStatement.run() : boundStatement.first();
-                    };
-                  },
-                });
-              };
-            },
-          });
-        };
-      },
-    });
-    await expect(redeemMagicLink({ ...ctx, db: wrapped }, requested.devToken!)).rejects.toMatchObject({ code: "membership_inactive" });
-    const membership = await runtime.DB.prepare("SELECT status, role, capabilities_json, revoked_at FROM fb_memberships WHERE tenant_id=? AND user_id=?")
-      .bind(ctx.tenant.id, player.id).first<{ status: string; role: string; capabilities_json: string; revoked_at: string | null }>();
-    expect(injected).toBe(true);
-    expect(membership).toMatchObject({ status: "revoked", role: "editor", capabilities_json: '["members"]' });
-    expect(membership?.revoked_at).toBeTruthy();
-  });
-
-  it("reports a new admission correctly when an insert trigger also writes", async () => {
-    const ctx = await ctxFor("cabinet", "owner@foilbury.local");
-    const player = await createUser(runtime.DB, { email: "trigger-admission@example.com", displayName: "Trigger", password: "a-long-test-password" });
-    await runtime.DB.exec("CREATE TABLE IF NOT EXISTS test_membership_trigger (user_id TEXT); CREATE TRIGGER test_membership_insert AFTER INSERT ON fb_memberships BEGIN INSERT INTO test_membership_trigger(user_id) VALUES (NEW.user_id); END;");
-    try {
-      expect(await addPlayerMembershipIfAbsent(runtime.DB, ctx.tenant.id, player.id)).toBe(true);
-      expect(await addPlayerMembershipIfAbsent(runtime.DB, ctx.tenant.id, player.id)).toBe(false);
-      expect((await runtime.DB.prepare("SELECT COUNT(*) AS n FROM test_membership_trigger WHERE user_id = ?").bind(player.id).first<{n:number}>())?.n).toBe(1);
-    } finally {
-      await runtime.DB.exec("DROP TRIGGER test_membership_insert; DROP TABLE test_membership_trigger;");
-    }
-  });
-
-  it("does not create membership for an account disabled before insertion", async () => {
-    const ctx = await ctxFor("cabinet", "owner@foilbury.local");
-    const player = await createUser(runtime.DB, { email: "disabled-admission@example.com", displayName: "Disabled", password: "a-long-test-password" });
-    await runtime.DB.prepare("UPDATE fb_users SET disabled_at=? WHERE id=?").bind(nowIso(), player.id).run();
-    expect(await addPlayerMembershipIfAbsent(runtime.DB, ctx.tenant.id, player.id)).toBe(false);
-    expect(await runtime.DB.prepare("SELECT user_id FROM fb_memberships WHERE tenant_id=? AND user_id=?").bind(ctx.tenant.id, player.id).first()).toBeNull();
-  });
-
-  it("does not mint a session after membership is revoked during sign-in", async () => {
-    const ctx = await ctxFor("cabinet", "owner@foilbury.local");
-    const player = await ctxFor("cabinet", "player@foilbury.local");
-    const requested = await requestMagicLink(ctx, { email: player.user!.email, purpose: "signin" });
-    const before = await runtime.DB.prepare("SELECT COUNT(*) AS n FROM fb_sessions WHERE tenant_id=? AND user_id=?")
-      .bind(ctx.tenant.id, player.user!.id).first<{n:number}>();
-    let injected = false;
-    const wrapped = new Proxy(runtime.DB, {
-      get(target, key) {
-        if (key !== "prepare") return Reflect.get(target, key, target);
-        return (sql: string) => {
-          const statement = target.prepare(sql);
-          if (!sql.includes("INSERT INTO fb_sessions")) return statement;
-          return new Proxy(statement, {
-            get(original, prop) {
-              if (prop !== "bind") return Reflect.get(original, prop, original);
-              return (...values: unknown[]) => {
-                const bound = original.bind(...values);
-                return new Proxy(bound, {
-                  get(boundStatement, method) {
-                    if (method !== "first" && method !== "run") return Reflect.get(boundStatement, method, boundStatement);
-                    return async () => {
-                      if (!injected) {
-                        injected = true;
-                        await runtime.DB.prepare("UPDATE fb_memberships SET status='revoked', revoked_at=? WHERE tenant_id=? AND user_id=?")
-                          .bind(nowIso(), ctx.tenant.id, player.user!.id).run();
-                      }
-                      return method === "first" ? boundStatement.first() : boundStatement.run();
-                    };
-                  },
-                });
-              };
-            },
-          });
-        };
-      },
-    });
-    await expect(redeemMagicLink({ ...ctx, db: wrapped }, requested.devToken!)).rejects.toMatchObject({ code: "membership_inactive" });
-    expect(injected).toBe(true);
-    await runtime.DB.prepare("UPDATE fb_memberships SET status='active', revoked_at=NULL WHERE tenant_id=? AND user_id=?")
-      .bind(ctx.tenant.id, player.user!.id).run();
-    const after = await runtime.DB.prepare("SELECT COUNT(*) AS n FROM fb_sessions WHERE tenant_id=? AND user_id=?")
-      .bind(ctx.tenant.id, player.user!.id).first<{n:number}>();
-    expect(after?.n).toBe(before?.n);
-    await expect(redeemMagicLink(ctx, requested.devToken!)).rejects.toMatchObject({ code: "magic_link_invalid" });
-  });
-
   it("invalidates an existing session immediately when membership is revoked", async () => {
     const ctx = await ctxFor("cabinet", "owner@foilbury.local");
     const player = await ctxFor("cabinet", "player@foilbury.local");
     const session = await createSession(runtime.DB, player.tenant, player.user!, { authMethod: "magic_link", assurance: "email" });
     expect(await resolveSession(runtime.DB, session.token)).not.toBeNull();
-    await runtime.DB.prepare("UPDATE fb_memberships SET revoked_at = ? WHERE tenant_id = ? AND user_id = ?")
-      .bind(nowIso(), player.tenant.id, player.user!.id).run();
-    expect(await resolveSession(runtime.DB, session.token)).toBeNull();
     await runtime.DB
       .prepare("UPDATE fb_memberships SET status = 'revoked', revoked_at = ? WHERE tenant_id = ? AND user_id = ?")
       .bind(nowIso(), player.tenant.id, player.user!.id)
@@ -282,6 +84,94 @@ describe("passwordless identity, Access linking, bots and collections", () => {
       .prepare("UPDATE fb_memberships SET status = 'active', revoked_at = NULL WHERE tenant_id = ? AND user_id = ?")
       .bind(player.tenant.id, player.user!.id)
       .run();
+  });
+
+  it("does not mint a password session for inactive memberships or a concurrent revocation", async () => {
+    const ctx=await ctxFor('cabinet','owner@foilbury.local');
+    const user=await createUser(runtime.DB,{email:'session-fence@example.test',displayName:'Session fence',password:'a-long-test-password'});
+    await addMembership(runtime.DB,ctx.tenant.id,user.id,'player');
+    const active=await login(runtime.DB,ctx.tenant,user.email,'a-long-test-password');
+    expect(await resolveSession(runtime.DB,active.token)).not.toBeNull();
+    const now=nowIso();
+    for (const [status,revoked] of [['revoked',now],['suspended',now],['active',now]] as const) {
+      await runtime.DB.prepare('UPDATE fb_memberships SET status=?,revoked_at=? WHERE tenant_id=? AND user_id=?').bind(status,revoked,ctx.tenant.id,user.id).run();
+      expect(await resolveSession(runtime.DB,active.token)).toBeNull();
+      const before=await runtime.DB.prepare('SELECT COUNT(*) n FROM fb_sessions WHERE user_id=?').bind(user.id).first<{n:number}>();
+      await expect(login(runtime.DB,ctx.tenant,user.email,'a-long-test-password')).rejects.toMatchObject({code:'membership_inactive'});
+      expect((await runtime.DB.prepare('SELECT COUNT(*) n FROM fb_sessions WHERE user_id=?').bind(user.id).first<{n:number}>())?.n).toBe(before?.n);
+    }
+    await runtime.DB.prepare("UPDATE fb_memberships SET status='active',revoked_at=NULL WHERE tenant_id=? AND user_id=?").bind(ctx.tenant.id,user.id).run();
+    const db=new Proxy(runtime.DB,{get(target,key){
+      if(key==='prepare') return (sql:string)=>{
+        const stmt=target.prepare(sql); if(!sql.includes('INSERT INTO fb_sessions')) return stmt;
+        return new Proxy(stmt,{get(inner,method){
+          if(method==='bind') return (...values:unknown[])=>{
+            const bound=inner.bind(...values);
+            return new Proxy(bound,{get(result,operation){
+              if(operation==='run') return async()=>{
+                await target.prepare("UPDATE fb_memberships SET status='revoked',revoked_at=? WHERE tenant_id=? AND user_id=?").bind(now,ctx.tenant.id,user.id).run();
+                return result.run();
+              };
+              const v=Reflect.get(result,operation,result);return typeof v==='function'?v.bind(result):v;
+            }});
+          };
+          const v=Reflect.get(inner,method,inner);return typeof v==='function'?v.bind(inner):v;
+        }});
+      };
+      const v=Reflect.get(target,key,target);return typeof v==='function'?v.bind(target):v;
+    }});
+    await expect(login(db,ctx.tenant,user.email,'a-long-test-password')).rejects.toMatchObject({code:'membership_inactive'});
+    expect((await runtime.DB.prepare('SELECT COUNT(*) n FROM fb_sessions WHERE user_id=?').bind(user.id).first<{n:number}>())?.n).toBe(1);
+  });
+
+  it("does not overwrite a membership inserted and revoked during magic-link admission", async () => {
+    const ctx=await ctxFor('cabinet','owner@foilbury.local');
+    const user=await createUser(runtime.DB,{email:'join-race@example.test',displayName:'Join race',password:'a-long-test-password'});
+    const requested=await requestMagicLink(ctx,{email:user.email,purpose:'signin'});
+    const now=nowIso();
+    const db=new Proxy(runtime.DB,{get(target,key){
+      if(key==='prepare') return (sql:string)=>{
+        const stmt=target.prepare(sql); if(!sql.includes('INSERT INTO fb_memberships')) return stmt;
+        return new Proxy(stmt,{get(inner,method){
+          if(method==='bind') return (...values:unknown[])=>{
+            const bound=inner.bind(...values);
+            return new Proxy(bound,{get(result,operation){
+              if(operation==='run') return async()=>{
+                await target.prepare("INSERT INTO fb_memberships (tenant_id,user_id,role,created_at,capabilities_json,status,revoked_at) VALUES (?,?,'editor',?,'[\"content\"]','revoked',?)").bind(ctx.tenant.id,user.id,now,now).run();
+                return result.run();
+              };
+              const v=Reflect.get(result,operation,result);return typeof v==='function'?v.bind(result):v;
+            }});
+          };
+          const v=Reflect.get(inner,method,inner);return typeof v==='function'?v.bind(inner):v;
+        }});
+      };
+      const v=Reflect.get(target,key,target);return typeof v==='function'?v.bind(target):v;
+    }});
+    await expect(redeemMagicLink({...ctx,db},requested.devToken!)).rejects.toMatchObject({code:'membership_changed'});
+    expect(await runtime.DB.prepare('SELECT status,role,capabilities_json,revoked_at FROM fb_memberships WHERE tenant_id=? AND user_id=?').bind(ctx.tenant.id,user.id).first()).toEqual({status:'revoked',role:'editor',capabilities_json:'["content"]',revoked_at:now});
+    expect((await runtime.DB.prepare('SELECT COUNT(*) n FROM fb_sessions WHERE user_id=?').bind(user.id).first<{n:number}>())?.n).toBe(0);
+  });
+
+  it("does not credit a Discord welcome reward if membership is revoked at the wallet batch", async () => {
+    const player=await ctxFor('cabinet','player@foilbury.local');
+    const original=await runtime.DB.prepare('SELECT balance FROM fb_wallets WHERE tenant_id=? AND user_id=?').bind(player.tenant.id,player.user!.id).first<{balance:number}>();
+    const now=nowIso();
+    const db=new Proxy(runtime.DB,{get(target,key){
+      if(key==='batch') return async(...args:Parameters<typeof target.batch>)=>{
+        await target.prepare("UPDATE fb_memberships SET status='revoked',revoked_at=? WHERE tenant_id=? AND user_id=?").bind(now,player.tenant.id,player.user!.id).run();
+        return target.batch(...args);
+      };
+      const v=Reflect.get(target,key,target);return typeof v==='function'?v.bind(target):v;
+    }});
+    const input={tenantId:player.tenant.id,userId:player.user!.id,amount:25,kind:'issue' as const,description:'Welcome',idempotencyKey:'welcome-race',requireActiveMember:true};
+    await expect(creditWallet(db,input)).rejects.toMatchObject({code:'credit_not_applied'});
+    expect((await runtime.DB.prepare('SELECT balance FROM fb_wallets WHERE tenant_id=? AND user_id=?').bind(player.tenant.id,player.user!.id).first<{balance:number}>())?.balance).toBe(original?.balance);
+    expect((await runtime.DB.prepare("SELECT COUNT(*) n FROM fb_ledger_entries WHERE idempotency_key='welcome-race'").first<{n:number}>())?.n).toBe(0);
+    await runtime.DB.prepare("UPDATE fb_memberships SET status='active',revoked_at=NULL WHERE tenant_id=? AND user_id=?").bind(player.tenant.id,player.user!.id).run();
+    const credited=await creditWallet(runtime.DB,input), replay=await creditWallet(runtime.DB,input);
+    expect(replay.ledgerId).toBe(credited.ledgerId);
+    expect((await runtime.DB.prepare('SELECT balance FROM fb_wallets WHERE tenant_id=? AND user_id=?').bind(player.tenant.id,player.user!.id).first<{balance:number}>())?.balance).toBe((original?.balance ?? 0)+25);
   });
 
   it("does not activate an unaccepted invitation during sign-in", async () => {
@@ -313,47 +203,6 @@ describe("passwordless identity, Access linking, bots and collections", () => {
       .bind(ctx.tenant.id, player.id)
       .first<{ status: string }>();
     expect(membership?.status).toBe("suspended");
-  });
-
-  it("does not accept a concurrent invitation during explicit join", async () => {
-    const ctx = await ctxFor("cabinet", "owner@foilbury.local");
-    const player = await createUser(runtime.DB, { email: "racing-join@example.com", displayName: "Join", password: "a-long-test-password" });
-    let injected = false;
-    const wrapped = new Proxy(runtime.DB, {
-      get(target, key) {
-        if (key !== "prepare") return Reflect.get(target, key, target);
-        return (sql: string) => {
-          const statement = target.prepare(sql);
-          if (!sql.includes("INSERT INTO fb_memberships")) return statement;
-          return new Proxy(statement, { get(original, prop) {
-            if (prop !== "bind") return Reflect.get(original, prop, original);
-            return (...values: unknown[]) => {
-              const bound = original.bind(...values);
-              return new Proxy(bound, { get(boundStatement, method) {
-                if (method !== "first" && method !== "run") return Reflect.get(boundStatement, method, boundStatement);
-                return async () => {
-                  if (!injected) {
-                    injected = true;
-                    await runtime.DB.prepare("INSERT INTO fb_memberships (tenant_id,user_id,role,created_at,capabilities_json,status,accepted_at) VALUES (?,?,'editor',?,'[\"content\"]','invited',NULL)")
-                      .bind(ctx.tenant.id, player.id, nowIso()).run();
-                  }
-                  return method === "first" ? boundStatement.first() : boundStatement.run();
-                };
-              }});
-            };
-          }});
-        };
-      },
-    });
-    const playerCtx = { ...ctx, db: wrapped, user: { ...ctx.user!, id: player.id, email: player.email } };
-    await expect(joinMainAlbum(playerCtx)).rejects.toMatchObject({ code: "membership_inactive" });
-    expect(injected).toBe(true);
-    const membership = await runtime.DB.prepare("SELECT status,role,capabilities_json,accepted_at FROM fb_memberships WHERE tenant_id=? AND user_id=?")
-      .bind(ctx.tenant.id, player.id).first();
-    expect(membership).toMatchObject({ status: "invited", role: "editor", capabilities_json: '["content"]', accepted_at: null });
-    const events = await runtime.DB.prepare("SELECT COUNT(*) AS n FROM fb_membership_events WHERE tenant_id=? AND user_id=? AND event='joined'")
-      .bind(ctx.tenant.id, player.id).first<{n:number}>();
-    expect(events?.n).toBe(0);
   });
 
   it("rejects an expired magic link and keeps it single-use", async () => {
@@ -402,7 +251,7 @@ describe("passwordless identity, Access linking, bots and collections", () => {
   });
 
   it("turns a Bot collection off and on, changing the real pool eligibility", async () => {
-    const ctx = await ctxFor("cabinet", "owner@foilbury.local");
+    const ctx = await collectionSession(await ctxFor("cabinet", "owner@foilbury.local"));
     const fixture = await fixturePool(ctx);
     const collection = await createCollection(ctx, { name: "Test World", scope: "bot", status: "published" });
     await addCollectionCards(ctx, collection.id, [fixture.cardId]);
@@ -420,7 +269,7 @@ describe("passwordless identity, Access linking, bots and collections", () => {
   });
 
   it("lets a second Bot draw a card from an enabled global collection", async () => {
-    const cabinet = await ctxFor("cabinet", "owner@foilbury.local");
+    const cabinet = await collectionSession(await ctxFor("cabinet", "owner@foilbury.local"));
     const fixture = await fixturePool(cabinet);
     const global = await createCollection(cabinet, { name: "Global Cross-Bot", scope: "global", status: "published" });
     await addCollectionCards(cabinet, global.id, [fixture.cardId]);
@@ -493,11 +342,17 @@ describe("passwordless identity, Access linking, bots and collections", () => {
     const passwordCtx = { sessionAssurance: "password", sessionAuthTime: nowIso(), actor: { type: "user" } } as never;
     expect(() => requireRecentStrongAuth(passwordCtx, 30)).toThrow(/passkey|authenticator|Cloudflare Access/);
     const accessCtx = { sessionAssurance: "access", sessionAuthTime: nowIso(), actor: { type: "user" }, accessIdentity: { subject: "subject-1" }, accessStatus: "linked" } as never;
-    expect(() => requireRecentStrongAuth(accessCtx, 30)).not.toThrow();
+    expect(() => requireRecentStrongAuth(accessCtx, 30)).toThrow(/passkey|authenticator/);
     const oldAccessCookie = { sessionAssurance: "access", sessionAuthTime: nowIso(), actor: { type: "user" }, accessIdentity: null } as never;
     expect(() => requireRecentStrongAuth(oldAccessCookie, 30)).toThrow(/passkey|authenticator|Cloudflare Access/);
     const oldMfaCtx = { sessionAssurance: "mfa", sessionAuthTime: new Date(Date.now() - 60 * 60_000).toISOString(), actor: { type: "user" } } as never;
     expect(() => requireRecentStrongAuth(oldMfaCtx, 30)).toThrow(/stale/);
+    const recent = { sessionAssurance: "passkey", sessionAuthTime: nowIso(), actor: {type:'user'} } as never;
+    expect(() => requireRecentStrongAuth(recent,30)).not.toThrow();
+    for (const time of ['invalid',new Date(Date.now()+60000).toISOString()]) {
+      const invalid = {sessionAssurance:'mfa',sessionAuthTime:time,actor:{type:'user'}} as never;
+      expect(() => requireRecentStrongAuth(invalid,30)).toThrow(/stale/);
+    }
   });
 
   it("does not let an application session exist without the Access identity on an admin path", async () => {

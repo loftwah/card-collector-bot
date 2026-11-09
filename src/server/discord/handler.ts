@@ -13,6 +13,8 @@ import {
 } from "./receipts";
 import {
   deliverDeferred,
+  beginPublicCardShare,
+  transitionCardShareAttempt,
   isPrivateCallback,
   safeRecoveryReason,
   type DeliveryOutcome,
@@ -25,7 +27,6 @@ import {
   recordInteractionFinish,
   recordInteractionStart,
 } from "./interactions";
-import { redactDiscordText } from "./redaction";
 import { verifyDiscordSignature } from "./signature";
 import type {
   DiscordCallback,
@@ -36,6 +37,16 @@ import type {
 export { expireStaleDiscordInteractions } from "./interactions";
 
 const EPHEMERAL_FLAG = 64;
+
+function logUnexpectedFailure(interactionId: string, phase: "immediate" | "deferred"): void {
+  console.error(JSON.stringify({
+    level: "error",
+    event_code: "discord.interaction.unexpected_failure",
+    request_id: /^\d{15,22}$/.test(interactionId) ? `discord:${interactionId}` : "discord:invalid-id",
+    phase,
+    error: "operation_failed",
+  }));
+}
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
@@ -134,16 +145,7 @@ async function processDeferred(
   } catch (error) {
     const api = error instanceof ApiError ? error : null;
     if (!api) {
-      console.error(
-        JSON.stringify({
-          level: "error",
-          request_id: `discord:${interaction.id}`,
-          message: redactDiscordText(
-            error instanceof Error ? error.message : "Unexpected Discord interaction error",
-            [interaction.token],
-          ),
-        }),
-      );
+      logUnexpectedFailure(interaction.id, "deferred");
     }
 
     // A draw may have committed before the failure. Recover the persisted
@@ -152,12 +154,15 @@ async function processDeferred(
     const recovery = receipt
       ? {
           type: 4 as const,
-          data: drawRecoveryMessage({
-            receipt,
-            origin: env.FOILBURY_PUBLIC_ORIGIN ?? "https://foilbury.loftwah.com",
-            interactionId: interaction.id,
-            reason: safeRecoveryReason(error),
-          }),
+          data: {
+            ...drawRecoveryMessage({
+              receipt,
+              origin: env.FOILBURY_PUBLIC_ORIGIN ?? "https://foilbury.loftwah.com",
+              interactionId: interaction.id,
+              reason: safeRecoveryReason(error),
+            }),
+            flags: EPHEMERAL_FLAG,
+          },
         }
       : errorCallback(api);
     const outcome = await deliverDeferred(env, interaction, recovery);
@@ -280,6 +285,14 @@ export async function handleDiscordInteraction(
     } else {
       callback = await runComponent(ctx, interaction, resolved.installation);
     }
+    if (callback.publicCardShare) {
+      if (!(await beginPublicCardShare(env,interaction,callback.publicCardShare))) {
+        await transitionCardShareAttempt(env,callback.publicCardShare.attemptId,'reserved','not_sent');
+        throw new ApiError(409,'share_access_changed','The card or its audience changed. Nothing was shared.');
+      }
+      const {publicCardShare: _proof, ...safeCallback}=callback;
+      callback=safeCallback;
+    }
     await recordInteractionFinish(env, interaction.id, "completed");
     await markDeliveryVisibility(
       env.DB,
@@ -292,16 +305,7 @@ export async function handleDiscordInteraction(
     if (api) {
       await recordInteractionFinish(env, interaction.id, "failed", api.code);
     } else {
-      console.error(
-        JSON.stringify({
-          level: "error",
-          request_id: `discord:${interaction.id}`,
-          message: redactDiscordText(
-            error instanceof Error ? error.message : "Unexpected Discord interaction error",
-            [interaction.token],
-          ),
-        }),
-      );
+      logUnexpectedFailure(interaction.id, "immediate");
       await recordInteractionFinish(env, interaction.id, "failed", "internal_error");
     }
     return jsonResponse(

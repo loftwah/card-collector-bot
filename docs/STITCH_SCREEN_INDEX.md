@@ -1,9 +1,9 @@
 # Stitch screen index and resume point
 
-Status: 7 November 2026. The Stitch daily quota reset and the remaining design
-batches were generated: **G04**, **G05**, the five Discord boards **D01–D05**,
-and the Prompt 16 copy corrections. The remaining state variants are listed at
-the end. Everything generated is listed here with its screen ID.
+Status: 6 November 2026. The Stitch **daily screen-generation quota is exhausted**
+at G04. Everything generated before that point is listed here with its screen
+ID. The remaining work is listed at the end and can resume in any session after
+the quota resets.
 
 - Project: `projects/16492410293987266649` — **Foilbury**
 - Design system: `assets/198bcf8d443c4cce927d439f7d02c480` (supplied `DESIGN.md`)
@@ -141,49 +141,25 @@ The earlier narrow-column variants are retained as compact references:
 | G02 Accounts, people and authority | `5960f0681b8c47af9640e5b63e372ed5` |
 | G03 Bots and server installations | `8c5458e2f54449bfac2ba3af2437d2f2` |
 
-## Prompt 14 continuation — G04–G05 (desktop Platform)
-
-| Screen | Desktop |
-| --- | --- |
-| G04 Global collections and public publication | `14fc3aaafa4045dba2682bb74f0740c6` |
-| G05 Platform audit and oversight | `eb67da6a2ab5458db37115abe7b8e0ea` |
-
-G05 later received the Prompt 16 copy correction that removed “vault asset
-preservation rules”. G04 keeps the existing public/private boundary wording.
-
-## Prompt 15 — Discord native presentation boards
-
-| Screen | Desktop board |
-| --- | --- |
-| D01 Discord welcome, help and persistent tour | `31746686cff44d2eb039109e8dc60b6a` |
-| D02 Discord opening, card and full collection | `b8fd479d4c714d2abd003c76189c5558` |
-| D03 Discord Foil, missions, gifts and achievements | `0d7d3e47515742b782280b3940835620` |
-| D04 Discord collector identity and NPC trades | `bb72d6bca174449680f7eacda288f916` |
-| D05 Discord preferences and Admin setup | `019aa2221537424090dd6899154fc0fc` |
-
-These are native Discord message composition boards, not a custom client and
-not evidence that the bot sent the messages.
-
-## Prompt 16 — convergence
-
-Applied copy corrections to the existing screens:
-
-- P08/P09: “vault” removed from tour/help and agent/API copy.
-- S04: “Physical Run/Bleed” → edition run/edge margin.
-- S05: “mints” → creates.
-- S10: printed `G02` reference replaced with “Accounts and people” language.
-- G05: “vault asset preservation rules” → preserved collection records.
-
 ## Remaining
 
-1. **State variants** for C01–C04, C05–C07, O01–O03, E01–E04, T01–T04,
-   U01–U05, P01–P05 and the Admin screens. These are still not drawn as
-   separate stable boards.
-2. **Phone/compact variants for S06–S17 and G01–G05.** Generate compact
-   versions only if they add useful information; do not shrink the full
-   workspace into a phone.
-3. **Storybook** — first component batch is configured and verified. Extend it
-   as reviewed components appear. See `docs/STITCH_DESIGN_HANDOFF.md`.
+1. **G04 — Global collections and public publication** and **G05 — Platform
+   audit and oversight**. The five-screen batch failed; G01–G03 were generated
+   individually and in pairs. Generate G04/G05 individually after the quota
+   resets.
+2. **Prompt 15 — Discord boards D01–D05.** Use the exact prompt file; these are
+   Discord-native presentation boards, not web pages.
+3. **Prompt 16 — consistency, responsive states and connected prototype.**
+   Remove the remaining P08/P09 “vault” wording, S04 “physical run/bleed”,
+   S05 “mints”, S10 “G02” and any other implementation leakage. Generate the
+   missing state variants for C01–C04, C05–C07, O01–O03, E01–E04, T01–T04,
+   U01–U05, P01–P05 and the Admin screens.
+4. **Phone/compact variants for S06–S17 and G01–G05.** The Studio and Platform
+   batches are desktop workspaces; the prompt asks for both, so generate
+   compact versions only if they add useful information. Do not shrink the
+   full workspace into a phone.
+5. **Storybook** after the component inventory is settled. See
+   `docs/STITCH_DESIGN_HANDOFF.md`.
 
 ## Resume instructions
 

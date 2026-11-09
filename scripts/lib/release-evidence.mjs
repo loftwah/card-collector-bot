@@ -11,6 +11,22 @@ const REQUIRED_CHECKS = [
   "pnpm test:access-config",
   "pnpm test:ui",
   "pnpm test:product",
+  "pnpm test:artwork",
+  "node scripts/test-album-e2e.mjs",
+  "node scripts/test-privacy.mjs",
+  "pnpm perf:local",
+  "pnpm demo:discord:check --json",
+];
+// This baseline is owned by the validator, not by the manifest being checked.
+// A manifest must not be able to make a required criterion disappear or mark
+// it optional. Additional scoped requirements are checked by release-scope.
+const REQUIRED_CRITERIA = [
+  "discord.deferred-private", "discord.token-redaction", "discord.committed-receipt-recovery",
+  "discord.production-entry-lifecycle", "discord.presentation-adoption", "eligibility.authoritative-list",
+  "economy.settled-balance", "admin.scoped-grants", "state.render-fencing", "effect.discord-transport",
+  "share.privacy-lifecycle", "ui.rendered-a11y", "product.browser-journeys", "release.gate",
+  "discord.tour-entry-live", "discord.acceptance-runner", "observability.scheduled-isolation",
+  "release.source-and-artifact",
 ];
 
 function fail(message) {
@@ -28,6 +44,7 @@ export function validateReleaseEvidence({
   treeHash,
   contentHash,
   requiredChecks = REQUIRED_CHECKS,
+  requiredCriteria = REQUIRED_CRITERIA,
   now = new Date(),
   file = path.join(ROOT, ACCEPTANCE_FILE),
 }) {
@@ -55,25 +72,45 @@ export function validateReleaseEvidence({
   }
   if (!Array.isArray(evidence.checks)) throw fail("Acceptance checks must be an array.");
   for (const command of requiredChecks) {
-    const check = evidence.checks.find((entry) => entry.command === command);
-    if (!check) throw fail(`Required check missing: ${command}`);
+    const matching = evidence.checks.filter((entry) => entry?.command === command);
+    if (matching.length === 0) throw fail(`Required check missing: ${command}`);
+    if (matching.length !== 1) throw fail(`Required check is ambiguous: ${command}`);
+    const [check] = matching;
+    if (check.reused === true || check.skipped === true) {
+      throw fail(`Required check ${command} was skipped or reused; run it for this source.`);
+    }
     if (check.exit_code !== 0) throw fail(`Required check failed: ${command}`);
     if (check.tree_hash !== treeHash) {
       throw fail(`Required check ${command} was run against another source tree.`);
     }
     const completed = Date.parse(check.completed_at);
-    if (!Number.isFinite(completed) || (now.getTime() - completed) / 86_400_000 > MAX_AGE_DAYS) {
+    const completionAgeDays = (now.getTime() - completed) / 86_400_000;
+    if (!Number.isFinite(completed) || completionAgeDays < -0.25 || completionAgeDays > MAX_AGE_DAYS) {
       throw fail(`Required check ${command} has no recent completion time.`);
+    }
+    if (contentHash && check.source_content_hash !== contentHash) {
+      throw fail(`Required check ${command} was run against different working-tree content.`);
     }
   }
   if (!Array.isArray(evidence.criteria) || evidence.criteria.length === 0) {
     throw fail("Acceptance criteria must be a non-empty array.");
   }
+  const criterionIds = evidence.criteria.map((criterion) => criterion?.id);
+  if (criterionIds.some((id) => typeof id !== "string" || !id.trim()) || new Set(criterionIds).size !== criterionIds.length) {
+    throw fail("Acceptance criteria must have unique, non-empty IDs.");
+  }
+  for (const id of requiredCriteria) {
+    const criterion = evidence.criteria.find((item) => item.id === id);
+    if (!criterion || criterion.required !== true) throw fail(`Required acceptance criterion missing or optional: ${id}`);
+  }
   const required = evidence.criteria.filter((criterion) => criterion.required === true);
   if (required.length === 0) throw fail("At least one required acceptance criterion is needed.");
-  for (const criterion of required) {
+  // A passing optional criterion may still be used by release-scope. It must
+  // carry the same source binding and evidence as a required passing entry.
+  const checkedCriteria = evidence.criteria.filter((criterion) => criterion.required === true || criterion.result === "pass");
+  for (const criterion of checkedCriteria) {
     if (!criterion.id || !criterion.issue || !criterion.test_command || !criterion.evidence) {
-      throw fail(`Required criterion ${criterion.id ?? "(unnamed)"} is incomplete.`);
+      throw fail(`Passing or required criterion ${criterion.id ?? "(unnamed)"} is incomplete.`);
     }
     if (criterion.result !== "pass") {
       throw fail(

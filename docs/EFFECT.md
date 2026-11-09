@@ -29,14 +29,18 @@
 - `DiscordLogger` — injected structured error sink;
 - `DiscordTransportError` — tagged typed failure with status/timeout/retryable
   and a parsed `Retry-After`;
-- `runDiscordRequest` — one runtime entry, finite timeout (`8s`), at most three
-  attempts for idempotent requests, exactly one attempt for POST, and a delay of
-  the provider's `Retry-After` (capped at `5s`) between idempotent retries.
+- `runDiscordRequest` — one runtime entry, a single finite deadline (`8s`) for
+  all attempts and waits, at most three attempts for idempotent requests, and
+  exactly one attempt for POST. A valid provider `Retry-After` is honoured in
+  full only if it fits the remaining monotonic deadline; otherwise the typed
+  429 is returned without an early retry. A missing or malformed 429 delay is
+  not retried.
 
 The handler provides the real `fetch` and a no-op logger at the process
 boundary, then emits one redacted operational event. Tests inject deterministic
-HTTP implementations and assert success-after-retry, no POST retry, timeout,
-provider `Retry-After` parsing and thrown-provider failure.
+HTTP implementations and assert success-after-retry, no POST retry, timeout
+and cancellation, provider delay and deadline handling, and thrown-provider
+failure. These are isolated tests, not live Discord delivery evidence.
 
 ## Draw workflow
 

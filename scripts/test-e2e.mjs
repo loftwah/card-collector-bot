@@ -132,15 +132,14 @@ try {
     const button = [...document.querySelectorAll("button")].find((item) => item.textContent?.includes("Draw for"));
     button?.click();
   });
-  await page.getByText("Draw receipt").waitFor({ timeout: 20000 });
   await page.getByRole("button", { name: /Reveal card/ }).click();
-  const resultImage = page.locator("img.draw-result-image");
+  const resultImage = page.locator(".draw-reveal.is-revealed .draw-reveal__card > img");
   await resultImage.waitFor();
   await page.waitForFunction(() => {
-    const image = document.querySelector("img.draw-result-image");
+    const image = document.querySelector(".draw-reveal.is-revealed .draw-reveal__card > img");
     return image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0;
   });
-  await page.getByRole("link", { name: /Inspect this instance/ }).waitFor();
+  await page.getByRole("link", { name: /Inspect this copy/ }).waitFor();
   await shot(page, "draw-result.png");
   pass("Draw journey", `skippable reveal; balance before draw ${beforeDraw?.trim()}`);
 

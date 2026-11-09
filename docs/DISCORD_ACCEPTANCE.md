@@ -224,75 +224,22 @@ The smallest owner action is item 1: open Discord desktop, run the existing
 `/foilbury tour`, and record the screen. That one action unblocks the live
 command and opening; the spectator item still needs a second controlled account.
 
----
+## Installation availability candidate (local, not deployed)
 
-# Configured-server scope closure — 2026/11/08 (#37)
+Studio exposes only the Discord gameplay control. A current Bot settings grant
+and recent persisted passkey or authenticator session are required; the update
+uses the installation revision and commits with its audit row. Discord commands
+and existing confirmation buttons direct the owner to Studio instead of changing
+availability without a bound strong session. The draw transaction rechecks that
+the installation is active and gameplay enabled before debit and award. A draw
+that committed before a pause retains its receipt and idempotent recovery.
 
-## Source and deployment
-
-- Source `811f5e7c05cb5b8a87ed4a28e3107eafade1120d`; production Worker
-  `71148849-387b-4184-bcf1-118df67c1a6a`.
-- `pnpm check`: 46 files, 342 tests, 0 failures.
-- The retained 21-stage sequence was not reposted. The NPC chapters received
-  explicit scope narration in place; no message ID, start/end link, card,
-  serial, ledger row or draw was changed.
-
-## Verified configuration
-
-- Installation `dci_loftwah_test`, guild `997734945206313041`, channel
-  `1566700752385081355`, bot `bot_E9696B66F4660241`.
-- Channel allowlist: [`1566700752385081355`].
-- Verified channel audience: `members`; `@everyone` View Channel is denied.
-- Effective Bot-enabled published members collections: **17**
-  (Alien Stage, Chainsaw Man, Danganronpa, Death Note, DDLC, NANA, NBA,
-  Evangelion, Project Sekai, Madoka, Rick and Morty, Scott Pilgrim, South Park,
-  The Simpsons, The Summer Hikaru Died, Total Drama Island, Vocaloid).
-- The installation has no explicit collection allowlist; the server inherits
-  the Bot-enabled published set. The current scope digest
-  `dd827bfce35fde0eca7fd94b0f54bdd0bc599bfa19c5be76501e0d37dfc82fbf`
-  matches the digest captured when the demonstration was published, and the
-  live capsule preview still reports 36 eligible variants.
-- Disabled public collections (Bubbles, Fighter, Protocol 11, Shared Characters)
-  do not appear in any retained message.
-
-## Read-back
-
-- `pnpm demo:discord:verify`: **21/21 PASS**, 0 failures. Every stage has the
-  expected ID, stage footer, non-ephemeral flag and required image; the start
-  links to the conclusion and the conclusion links to every chapter.
-- Read-only scope audit (`.foilbury/evidence/demo-scope-audit-2026-11-08.json`):
-  **PASS**, 28 card-name occurrences, all filed only in the configured set;
-  zero disabled-collection hits; 0 failures.
-- Start: https://discord.com/channels/997734945206313041/1566700752385081355/1567443524209872926
-- End: https://discord.com/channels/997734945206313041/1566700752385081355/1568794099039998004
-- Real signed-in desktop Discord client: stages 19 and 20 display the new
-  `Scope` fields, and stage 20 still renders the saved NPC trade image.
-  Private capture: `.foilbury/demo-readback/real-client-stage-20-scope-2026-11-08.png`.
-- `pnpm demo:discord:check`: **18 PASS · 0 FAIL · 4 BLOCKED**. The blocks are
-  command-execution freshness, pin capability, independent spectator and an
-  authenticated actor session; they are not scope failures.
-
-## Scope narration
-
-- Stages 1–17 remain the Danganronpa album journey.
-- Stage 17 announces the NPC chapter as a deliberate scope change.
-- Stage 18 states that NPC holdings span the 17 configured members collections.
-- Stage 19 labels `Anakt Garden` as Alien Stage and `Victor Wembanyama` as NBA.
-- Stage 20 labels `Anakt Garden` as Alien Stage and `Gonta Gokuhara` as
-  Danganronpa.
-- Stage 21 repeats the scope and states that every retained card is inside the
-  17-collection members set.
-
-## Code boundary
-
-Discord NPC inspection and trading now resolve the verified installation scope.
-The tradeable list is filtered with `discordScopeCardIds`, and both sides of an
-exchange are checked with `assertCardInDiscordScope` before reservation. The
-new regression creates a card filed in a collection outside the installation
-allowlist and proves it disappears from the NPC tradeable list even while the
-Bot still enables that collection.
-
-## Not claimed
-
-Independent second-account spectator observation and a physical mobile Discord
-client remain BLOCKED and are not claimed by this closure.
+The stored website, API, public-catalogue and admin-GUI flags are **not qualified
+as controls**: website and Studio requests currently lack a trustworthy
+installation binding, and API installation scope is optional. Applying one
+server's flag tenant-wide could disable unrelated servers or block recovery.
+These four controls remain unfinished until their request scope, live enforcement,
+in-flight behavior and owner recovery path are defined and tested. Existing
+values are preserved; the Platform Website control is disabled and labelled as
+not enforced. Local isolated tests and mocked browser checks are not production
+or real Discord-client acceptance.

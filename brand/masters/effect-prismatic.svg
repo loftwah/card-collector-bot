@@ -1,1 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="750" height="1050" viewBox="0 0 750 1050"><defs><linearGradient id="prism" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#8cf5ff" stop-opacity=".7"/><stop offset=".33" stop-color="#f7ff8c" stop-opacity=".55"/><stop offset=".66" stop-color="#ff8fc9" stop-opacity=".55"/><stop offset="1" stop-color="#b698ff" stop-opacity=".65"/></linearGradient><filter id="blur2"><feGaussianBlur stdDeviation="16"/></filter></defs><rect width="750" height="1050" fill="url(#prism)" opacity=".14"/><g filter="url(#blur2)" opacity=".8"><path fill="url(#prism)" d="M-50 760 L800 100 L850 210 L0 880 Z"/><path fill="url(#prism)" d="M-50 220 L800 880 L760 980 L-90 330 Z" opacity=".7"/></g><rect width="730" height="1030" x="10" y="10" fill="none" stroke="url(#prism)" stroke-width="7" opacity=".6" rx="24"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="750" height="1050" viewBox="0 0 750 1050"><defs>
+      <linearGradient id="prism" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#8cf5ff" stop-opacity=".7"/>
+        <stop offset=".33" stop-color="#f7ff8c" stop-opacity=".55"/>
+        <stop offset=".66" stop-color="#ff8fc9" stop-opacity=".55"/>
+        <stop offset="1" stop-color="#b698ff" stop-opacity=".65"/>
+      </linearGradient>
+      <filter id="blur2"><feGaussianBlur stdDeviation="16"/></filter>
+    </defs>
+    <rect width="750" height="1050" fill="url(#prism)" opacity=".14"/>
+    <g filter="url(#blur2)" opacity=".8">
+      <path d="M-50 760 L800 100 L850 210 L0 880 Z" fill="url(#prism)"/>
+      <path d="M-50 220 L800 880 L760 980 L-90 330 Z" fill="url(#prism)" opacity=".7"/>
+    </g>
+    <rect x="10" y="10" width="730" height="1030" rx="24" fill="none" stroke="url(#prism)" stroke-width="7" opacity=".6"/></svg>

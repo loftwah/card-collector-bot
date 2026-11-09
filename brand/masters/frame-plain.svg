@@ -1,1 +1,33 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="750" height="1050" viewBox="0 0 750 1050"><filter id="fg-plain" width="100%" height="100%" x="0" y="0"><feTurbulence baseFrequency=".9" numOctaves="4" result="noise" seed="7" type="fractalNoise"/><feColorMatrix in="noise" result="mono" type="saturate" values="0"/><feComponentTransfer in="mono"><feFuncA tableValues="0 0.13" type="table"/></feComponentTransfer></filter><rect width="750" height="1050" x="0" y="0" fill="none" stroke="#141512" stroke-width="30" rx="30"/><rect width="710" height="1010" x="20" y="20" fill="none" stroke="#6E6657" stroke-width="3" rx="18"/><rect width="690" height="990" x="30" y="30" fill="none" stroke="#141512" stroke-width="1.2" opacity=".7" rx="12"/><rect width="750" height="1050" x="0" y="0" filter="url(#fg-plain)" opacity=".5"/><g fill="none" stroke="#B08A52" stroke-width="3" transform="translate(48 48) scale(1 1)"><path d="M0 54 V0 H54"/><path d="M12 46 V12 H46" opacity=".55"/><circle cx="18" cy="18" r="2.5" fill="#B08A52" stroke="none"/></g><g fill="none" stroke="#B08A52" stroke-width="3" transform="translate(702 48) scale(-1 1)"><path d="M0 54 V0 H54"/><path d="M12 46 V12 H46" opacity=".55"/><circle cx="18" cy="18" r="2.5" fill="#B08A52" stroke="none"/></g><g fill="none" stroke="#B08A52" stroke-width="3" transform="translate(48 1002) scale(1 -1)"><path d="M0 54 V0 H54"/><path d="M12 46 V12 H46" opacity=".55"/><circle cx="18" cy="18" r="2.5" fill="#B08A52" stroke="none"/></g><g fill="none" stroke="#B08A52" stroke-width="3" transform="translate(702 1002) scale(-1 -1)"><path d="M0 54 V0 H54"/><path d="M12 46 V12 H46" opacity=".55"/><circle cx="18" cy="18" r="2.5" fill="#B08A52" stroke="none"/></g><path stroke="#B08A52" stroke-width="1" d="M96 976 H654" opacity=".45"/><path stroke="#6E6657" stroke-width="1" d="M347 988 h56" opacity=".5"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="750" height="1050" viewBox="0 0 750 1050">
+  <filter id="fg-plain" x="0" y="0" width="100%" height="100%">
+    <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" seed="7" result="noise"/>
+    <feColorMatrix type="saturate" values="0" in="noise" result="mono"/>
+    <feComponentTransfer in="mono"><feFuncA type="table" tableValues="0 0.13"/></feComponentTransfer>
+  </filter>
+    <rect x="0" y="0" width="750" height="1050" rx="30" fill="none" stroke="#141512" stroke-width="30"/>
+    <rect x="20" y="20" width="710" height="1010" rx="18" fill="none" stroke="#6E6657" stroke-width="3"/>
+    <rect x="30" y="30" width="690" height="990" rx="12" fill="none" stroke="#141512" stroke-width="1.2" opacity=".7"/>
+    <rect x="0" y="0" width="750" height="1050" filter="url(#fg-plain)" opacity=".5"/>
+    
+    <g transform="translate(48 48) scale(1 1)" fill="none" stroke="#B08A52" stroke-width="3">
+      <path d="M0 54 V0 H54"/>
+      <path d="M12 46 V12 H46" opacity=".55"/>
+      <circle cx="18" cy="18" r="2.5" fill="#B08A52" stroke="none"/>
+    </g>
+    <g transform="translate(702 48) scale(-1 1)" fill="none" stroke="#B08A52" stroke-width="3">
+      <path d="M0 54 V0 H54"/>
+      <path d="M12 46 V12 H46" opacity=".55"/>
+      <circle cx="18" cy="18" r="2.5" fill="#B08A52" stroke="none"/>
+    </g>
+    <g transform="translate(48 1002) scale(1 -1)" fill="none" stroke="#B08A52" stroke-width="3">
+      <path d="M0 54 V0 H54"/>
+      <path d="M12 46 V12 H46" opacity=".55"/>
+      <circle cx="18" cy="18" r="2.5" fill="#B08A52" stroke="none"/>
+    </g>
+    <g transform="translate(702 1002) scale(-1 -1)" fill="none" stroke="#B08A52" stroke-width="3">
+      <path d="M0 54 V0 H54"/>
+      <path d="M12 46 V12 H46" opacity=".55"/>
+      <circle cx="18" cy="18" r="2.5" fill="#B08A52" stroke="none"/>
+    </g>
+    <path d="M96 976 H654" stroke="#B08A52" stroke-width="1" opacity=".45"/>
+    <path d="M347 988 h56" stroke="#6E6657" stroke-width="1" opacity=".5"/></svg>

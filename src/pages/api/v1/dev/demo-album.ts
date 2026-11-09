@@ -4,7 +4,7 @@ import { buildContext, ApiError, type Ctx } from "../../../../server/context";
 import { isTrustedLocalRequest } from "../../../../server/config";
 import { first } from "../../../../server/db";
 import { apiErrorResponse, readJson, json } from "../../../../server/http";
-import { newId, sha256Hex } from "../../../../server/ids";
+import { newId, sha256Hex, requestReference } from "../../../../server/ids";
 import { findUserByEmail } from "../../../../server/modules/identity";
 import { evaluateAchievements, listAchievements } from "../../../../server/modules/achievements";
 import { sendAdminGift } from "../../../../server/modules/admin-gifts";
@@ -230,6 +230,6 @@ export const POST: APIRoute = async ({ request }) => {
     const body = await readJson(request, schema);
     return json(await prepareAlbum(ctx, body));
   } catch (error) {
-    return apiErrorResponse(error, crypto.randomUUID());
+    return apiErrorResponse(error, requestReference(request));
   }
 };

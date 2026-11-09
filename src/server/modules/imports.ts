@@ -622,7 +622,16 @@ async function appendSetMembership(ctx: Ctx, setSlug: string, cardIds: string[])
   );
 }
 
+function requireVersionBoundRenderPublication(): void {
+  // The current worker consumes mutable R2 objects, external back files and
+  // separately fetched metadata. Its payload cannot prove those exact bytes
+  // or inputs, and front/back publication is not atomic with job completion.
+  // Keep existing records intact until a version-bound protocol is available.
+  throw new ApiError(503, "render_publication_unavailable", "Render jobs are temporarily unavailable until their inputs can be version-bound. Existing renders and jobs are preserved; retry after the renderer is repaired.");
+}
+
 export async function createRenderJobs(ctx: Ctx, options?: { force?: boolean }) {
+  requireVersionBoundRenderPublication();
   const variants = await all<{
     variant_id: string;
     card_id: string;
@@ -707,6 +716,7 @@ export async function claimRenderJob(ctx: Ctx, jobId?: string) {
   if (job.attempts >= job.max_attempts) {
     throw new ApiError(409, "job_attempts_exhausted", "This render job has exhausted its retry limit.");
   }
+  requireVersionBoundRenderPublication();
   assertTransition("render_job", job.status, "running");
   const claimed = await first<{ id: string }>(
     ctx.db,
@@ -795,6 +805,7 @@ export async function completeRenderJob(
   if (job.attempts !== expectedAttempt) {
     throw new ApiError(409, "job_attempt_superseded", "A newer render attempt owns this job.");
   }
+  requireVersionBoundRenderPublication();
   const payload = JSON.parse(job.payload_json) as {
     variant_id: string;
     recipe_id: string;

@@ -75,10 +75,11 @@ export async function api<T>(
   return payload as T;
 }
 
-export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
+export async function apiUpload<T>(path: string, form: FormData, idempotencyKey?: string): Promise<T> {
   const target = apiPath(path);
   if (!target.startsWith("/api/v1/studio/")) await ensureAccessApiSession(target);
   const headers = new Headers({ accept: "application/json" });
+  if (idempotencyKey) headers.set("idempotency-key", idempotencyKey);
   const token = csrfToken();
   if (token) headers.set("x-foilbury-csrf", token);
   const response = await fetch(target, {

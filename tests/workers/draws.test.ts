@@ -6,10 +6,18 @@ import { claimDailyReward } from "../../src/server/modules/economy";
 import { executeDraw, getPoolPreview } from "../../src/server/modules/pools";
 import { bootstrap, ctxFor, fixturePool, makeInstance, runtime, setBalance, walletBalance } from "./helpers";
 
+async function playerWithSession() {
+  const ctx = await ctxFor('cabinet', 'player@foilbury.local');
+  const now = new Date().toISOString(), id = `draw-session-${crypto.randomUUID()}`;
+  await runtime.DB.prepare("INSERT INTO fb_sessions (id,token_hash,user_id,tenant_id,csrf_token,created_at,expires_at,last_seen_at,assurance,auth_time) VALUES (?,?,?,?,'test',?,?,?,'password',?)")
+    .bind(id,id,ctx.user!.id,ctx.tenant.id,now,new Date(Date.now()+3600000).toISOString(),now,now).run();
+  return {...ctx,sessionId:id,sessionAssurance:'password' as const,sessionAuthTime:now};
+}
+
 describe("earned rewards", () => {
   it("records one idempotent daily credit and rejects changed request reuse", async () => {
     await bootstrap();
-    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const player = await playerWithSession();
     const input = { key: "claim-test-001", digest: "digest-a" };
     const first = await claimDailyReward(player, input);
     expect(first.amount).toBe(120);
@@ -32,9 +40,184 @@ describe("earned rewards", () => {
 });
 
 describe("draw transaction", () => {
+  it.each([0, 80])("uses the atomic debit ledger for a %i-Foil draw when the wallet changes after commit", async (price) => {
+    await bootstrap();
+    const player = await playerWithSession();
+    const fixture = await fixturePool(player);
+    await runtime.DB.prepare("UPDATE fb_pools SET price = ? WHERE id = ?").bind(price, fixture.poolId).run();
+    const preview = await getPoolPreview(player, "test-pool");
+    let injected = false;
+    const db = new Proxy(player.db, { get(target, key) {
+      if (key === "batch") return async (statements: D1PreparedStatement[]) => {
+        const result = await target.batch(statements);
+        if (!injected) {
+          injected = true;
+          await target.prepare("UPDATE fb_wallets SET balance = balance + 10 WHERE tenant_id = ? AND user_id = ?").bind(player.tenant.id, player.user!.id).run();
+        }
+        return result;
+      };
+      const value = Reflect.get(target, key, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    } });
+    const result = await executeDraw({ ...player, db }, { pool: "test-pool", expectedRevision: preview.revision, expectedDistribution: preview.distribution_fingerprint, idempotency: { key: `draw-ledger-race-${price}`, digest: `ledger-race-${price}` } });
+    expect(injected).toBe(true);
+    expect(result.balance_after_debit).toBe(350 - price);
+    expect(result.credits_total).toBe(160);
+    expect(result.current_balance).toBe(350 - price + 170);
+    expect(result.settlement_pending).toBe(true);
+  });
+
+  it("does not invent a historical balance when the debit ledger cannot be read", async () => {
+    await bootstrap();
+    const player = await playerWithSession();
+    await fixturePool(player);
+    const preview = await getPoolPreview(player, "test-pool");
+    const db = new Proxy(player.db, { get(target, key) {
+      if (key === "prepare") return (sql: string) => {
+        if (sql.includes("SELECT balance_after FROM fb_ledger_entries")) throw new Error("injected debit ledger failure");
+        return target.prepare(sql);
+      };
+      const value = Reflect.get(target, key, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    } });
+    const result = await executeDraw({ ...player, db }, { pool: "test-pool", expectedRevision: preview.revision, expectedDistribution: preview.distribution_fingerprint, idempotency: { key: "draw-debit-read-failure-001", digest: "debit-read-failure" } });
+    expect(result.settlement_pending).toBe(true);
+    expect(result.balance_after_debit).toBeUndefined();
+    expect(result.balance_after).toBeUndefined();
+    expect(result.current_balance).toBe(430);
+    expect(await getInventory(player)).toHaveLength(1);
+  });
+
+  it("does not count an existing achievement again on a later zero-price draw", async () => {
+    await bootstrap();
+    const player = await playerWithSession();
+    const fixture = await fixturePool(player);
+    await runtime.DB.prepare("UPDATE fb_pools SET price = 0 WHERE id = ?").bind(fixture.poolId).run();
+    const preview = await getPoolPreview(player, "test-pool");
+    const first = await executeDraw(player, { pool: "test-pool", expectedRevision: preview.revision, expectedDistribution: preview.distribution_fingerprint, idempotency: { key: "draw-first-zero-001", digest: "first-zero" } });
+    const before = await walletBalance(player, player.user!.id);
+    expect(first.credits_total).toBe(160);
+    const nextPreview = await getPoolPreview(player, "test-pool");
+    const second = await executeDraw(player, { pool: "test-pool", expectedRevision: nextPreview.revision, expectedDistribution: nextPreview.distribution_fingerprint, idempotency: { key: "draw-next-zero-001", digest: "next-zero" } });
+    expect(second.credits_total).toBe(0);
+    expect(second.achievements).toEqual([]);
+    expect(second.settlement_status).toBe("settled");
+    expect(second.balance_after_debit).toBe(before);
+    expect(second.balance_after).toBe(before);
+    expect(await walletBalance(player, player.user!.id)).toBe(before);
+    const ledger = await runtime.DB.prepare("SELECT COUNT(*) AS n FROM fb_ledger_entries WHERE tenant_id = ? AND user_id = ? AND reference_type = 'achievement'").bind(player.tenant.id, player.user!.id).first<{ n: number }>();
+    expect(ledger?.n).toBe(1);
+  });
+
+  it("does not call a draw settled when its achievement ledger read fails", async () => {
+    await bootstrap();
+    const player = await playerWithSession();
+    await fixturePool(player);
+    const preview = await getPoolPreview(player, "test-pool");
+    const db = new Proxy(player.db, { get(target, key) {
+      if (key === "prepare") return (sql: string) => {
+        if (sql.includes("SELECT u.achievement_id AS id, d.name")) throw new Error("injected ledger read failure");
+        return target.prepare(sql);
+      };
+      const value = Reflect.get(target, key, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    } });
+    const result = await executeDraw({ ...player, db }, { pool: "test-pool", expectedRevision: preview.revision, expectedDistribution: preview.distribution_fingerprint, idempotency: { key: "draw-ledger-failure-001", digest: "ledger-failure" } });
+    expect(result.settlement_pending).toBe(true);
+    expect(result.credits_total).toBe(0);
+    expect(await getInventory(player)).toHaveLength(1);
+  });
+
+  it("does not count an event-linked unlock without its matching ledger row", async () => {
+    await bootstrap();
+    const player = await playerWithSession();
+    await fixturePool(player);
+    const preview = await getPoolPreview(player, "test-pool");
+    let injected = false;
+    const db = new Proxy(player.db, { get(target, key) {
+      if (key === "prepare") return (sql: string) => {
+        const statement = target.prepare(sql);
+        if (!sql.includes("SELECT u.achievement_id AS id, d.name")) return statement;
+        return new Proxy(statement, { get(s, property) {
+          if (property === "bind") return (...args: unknown[]) => {
+            const bound = s.bind(...args);
+            return new Proxy(bound, { get(b, method) {
+              if (method === "all") return async () => {
+                injected = true;
+                await target.prepare("UPDATE fb_achievement_unlocks SET reward_ledger_id = NULL WHERE tenant_id = ? AND user_id = ?").bind(player.tenant.id, player.user!.id).run();
+                return b.all();
+              };
+              const value = Reflect.get(b, method, b);
+              return typeof value === "function" ? value.bind(b) : value;
+            } });
+          };
+          const value = Reflect.get(s, property, s);
+          return typeof value === "function" ? value.bind(s) : value;
+        } });
+      };
+      const value = Reflect.get(target, key, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    } });
+    const result = await executeDraw({ ...player, db }, { pool: "test-pool", expectedRevision: preview.revision, expectedDistribution: preview.distribution_fingerprint, idempotency: { key: "draw-unlinked-credit-001", digest: "unlinked-credit" } });
+    expect(injected).toBe(true);
+    expect(result.credits_total).toBe(0);
+    expect(result.settlement_pending).toBe(true);
+  });
+
+  it("retries a previous pending entitlement without attributing it to the new draw", async () => {
+    await bootstrap();
+    const player = await playerWithSession();
+    const fixture = await fixturePool(player);
+    await runtime.DB.prepare("UPDATE fb_pools SET price = 0 WHERE id = ?").bind(fixture.poolId).run();
+    const preview = await getPoolPreview(player, "test-pool");
+    await executeDraw(player, { pool: "test-pool", expectedRevision: preview.revision, expectedDistribution: preview.distribution_fingerprint, idempotency: { key: "draw-old-entitlement-001", digest: "old-entitlement" } });
+    await runtime.DB.prepare("DELETE FROM fb_ledger_entries WHERE tenant_id = ? AND user_id = ? AND reference_type = 'achievement'").bind(player.tenant.id, player.user!.id).run();
+    await runtime.DB.prepare("UPDATE fb_achievement_unlocks SET reward_state = 'pending', reward_ledger_id = NULL WHERE tenant_id = ? AND user_id = ?").bind(player.tenant.id, player.user!.id).run();
+    await setBalance(player, player.user!.id, 350);
+    const next = await getPoolPreview(player, "test-pool");
+    const result = await executeDraw(player, { pool: "test-pool", expectedRevision: next.revision, expectedDistribution: next.distribution_fingerprint, idempotency: { key: "draw-retry-entitlement-001", digest: "retry-entitlement" } });
+    expect(await walletBalance(player, player.user!.id)).toBe(510);
+    expect(result.credits_total).toBe(0);
+    expect(result.achievements).toEqual([]);
+    expect(result.settlement_pending).toBe(true);
+    const unlock = await runtime.DB.prepare("SELECT reward_state, reward_ledger_id FROM fb_achievement_unlocks WHERE tenant_id = ? AND user_id = ?").bind(player.tenant.id, player.user!.id).first<{reward_state:string;reward_ledger_id:string|null}>();
+    expect(unlock?.reward_state).toBe("granted");
+    expect(unlock?.reward_ledger_id).toBeTruthy();
+  });
+
+  it("keeps an unconfirmed recovered receipt pending and never invents a zero balance", async () => {
+    await bootstrap();
+    const player = await playerWithSession();
+    await fixturePool(player);
+    const preview = await getPoolPreview(player, "test-pool");
+    const idempotency = { key: "draw-replay-pending-001", digest: "pending-replay" };
+    const input = { pool: "test-pool", expectedRevision: preview.revision, expectedDistribution: preview.distribution_fingerprint, idempotency };
+    const original = await executeDraw(player, input);
+    await runtime.DB.prepare("UPDATE fb_idempotency_keys SET response_json = json_remove(response_json, '$.settlement_status', '$.settlement_pending', '$.balance_after') WHERE idempotency_key = ?")
+      .bind(idempotency.key).run();
+    const recovered = await executeDraw(player, input);
+    expect(recovered.instance_id).toBe(original.instance_id);
+    expect(recovered.settlement_status).toBe("pending");
+    expect(recovered.settlement_pending).toBe(true);
+    const brokenWalletDb = new Proxy(player.db, {
+      get(target, property) {
+        if (property === "prepare") return (sql: string) => {
+          if (sql.includes("SELECT w.balance, e.currency_name")) throw new Error("Injected wallet read failure");
+          return target.prepare(sql);
+        };
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const withoutWallet = await executeDraw({ ...player, db: brokenWalletDb }, input);
+    expect(withoutWallet.instance_id).toBe(original.instance_id);
+    expect(withoutWallet.settlement_pending).toBe(true);
+    expect(withoutWallet.current_balance).toBeUndefined();
+    expect(await getInventory(player)).toHaveLength(1);
+  });
   it("debits and issues once, replays the same receipt, and rejects a stale revision", async () => {
     await bootstrap();
-    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const player = await playerWithSession();
     const fixture = await fixturePool(player);
     const preview = await getPoolPreview(player, "test-pool");
     expect(preview.eligible_count).toBe(1);
@@ -81,36 +264,9 @@ describe("draw transaction", () => {
     expect(await walletBalance(player, player.user!.id)).toBe(430);
   });
 
-  it("does not present earlier unlocks as new rewards on a later draw", async () => {
-    await bootstrap();
-    const player = await ctxFor("cabinet", "player@foilbury.local");
-    await fixturePool(player);
-    const preview = await getPoolPreview(player, "test-pool");
-    const first = await executeDraw(player, {
-      pool: "test-pool",
-      expectedRevision: preview.revision,
-      expectedDistribution: preview.distribution_fingerprint,
-      idempotency: { key: "draw-repeat-001", digest: "draw-repeat-a" },
-    });
-    expect(first.credits_total).toBe(160);
-    expect(first.achievements.map((item) => item.id)).toEqual(["ach_first_card"]);
-
-    const second = await executeDraw(player, {
-      pool: "test-pool",
-      expectedRevision: preview.revision,
-      expectedDistribution: preview.distribution_fingerprint,
-      idempotency: { key: "draw-repeat-002", digest: "draw-repeat-b" },
-    });
-    expect(second.credits_total).toBe(0);
-    expect(second.achievements).toEqual([]);
-    expect(second.balance_after_debit).toBe(350);
-    expect(second.balance_after).toBe(350);
-    expect(await walletBalance(player, player.user!.id)).toBe(350);
-  });
-
   it("rejects a changed payload under the same operation key without charging", async () => {
     await bootstrap();
-    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const player = await playerWithSession();
     await fixturePool(player);
     const preview = await getPoolPreview(player, "test-pool");
     const input = { key: "draw-changed-payload-001", digest: "draw-changed-a" };
@@ -134,7 +290,7 @@ describe("draw transaction", () => {
 
   it("does not charge when reconciliation finds no receipt and the pool changed", async () => {
     await bootstrap();
-    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const player = await playerWithSession();
     const fixture = await fixturePool(player);
     const preview = await getPoolPreview(player, "test-pool");
     const input = { key: "draw-lost-before-commit-001", digest: "draw-lost-a" };
@@ -161,7 +317,7 @@ describe("draw transaction", () => {
 
   it("keeps the historical receipt while reporting the current balance on replay", async () => {
     await bootstrap();
-    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const player = await playerWithSession();
     await fixturePool(player);
     const preview = await getPoolPreview(player, "test-pool");
     const input = { key: "draw-current-balance-001", digest: "draw-current-a" };
@@ -181,7 +337,7 @@ describe("draw transaction", () => {
 
   it("shows 500 − 80 + a settled 100 reward as 520 with separate debit and credit", async () => {
     await bootstrap();
-    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const player = await playerWithSession();
     await fixturePool(player);
     await setBalance(player, player.user!.id, 500);
     await runtime.DB.prepare(
@@ -218,7 +374,7 @@ describe("draw transaction", () => {
 
   it("does not charge an empty pool and does not charge when eligibility disappears", async () => {
     await bootstrap();
-    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const player = await playerWithSession();
     const fixture = await fixturePool(player);
     const now = new Date().toISOString();
     await runtime.DB.prepare(
@@ -241,7 +397,7 @@ describe("draw transaction", () => {
 
   it("cannot overspend under concurrent draws", async () => {
     await bootstrap();
-    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const player = await playerWithSession();
     await fixturePool(player);
     await setBalance(player, player.user!.id, 100);
     const preview = await getPoolPreview(player, "test-pool");

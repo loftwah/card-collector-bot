@@ -4,6 +4,23 @@ export function newId(prefix: string): string {
   return `${prefix}_${time}${random}`;
 }
 
+const requestReferences = new WeakMap<Request, string>();
+const validReference = /^(?:[0-9a-f]{16,32}-[A-Z]{3}|req_[0-9a-z]{24}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+
+export function safeRequestReference(value: string): string {
+  return validReference.test(value) ? value : newId("req");
+}
+
+/** One bounded reference for the lifetime of this Request object. */
+export function requestReference(request: Request): string {
+  const current = requestReferences.get(request);
+  if (current) return current;
+  const ray = request.headers.get("cf-ray") ?? "";
+  const reference = /^[0-9a-f]{16,32}-[A-Z]{3}$/i.test(ray) ? ray : newId("req");
+  requestReferences.set(request, reference);
+  return reference;
+}
+
 export function serial(first: string): string {
   const year = new Date().getUTCFullYear();
   const letters = first.replace(/[^A-Za-z0-9]/g, "").slice(0, 3).toUpperCase().padEnd(3, "X");

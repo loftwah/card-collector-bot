@@ -1,52 +1,31 @@
 ---
 import PlayerLayout from "../../layouts/PlayerLayout.astro";
 import TradeDesk from "../../components/player/TradeDesk";
-import NpcTradeDesk from "../../components/player/NpcTradeDesk";
 import { pageContext } from "../../server/page";
 import { listTrades, listGifts } from "../../server/modules/trades";
 import { getInventory, listTenantMembers } from "../../server/modules/collection";
-import { listNpcProfiles } from "../../server/modules/npcs";
 
 const ctx = await pageContext(Astro.request);
 const user = ctx.user!;
-const [trades, inventory, members, gifts, npcs] = await Promise.all([
+const [trades, inventory, members, gifts] = await Promise.all([
   listTrades(ctx),
   getInventory(ctx, { limit: 200 }),
   listTenantMembers(ctx),
   listGifts(ctx),
-  listNpcProfiles(ctx),
 ]);
-const inventoryItems = inventory.map((item) => ({
-  id: item.id,
-  card_name: item.card_name,
-  variant_name: item.variant_name,
-  material_key: item.material_key,
-  effect_key: item.effect_key,
-  serial: item.serial,
-  render_url: item.render_url,
-  favourite: item.favourite,
-  locked: item.locked,
-  status: item.status,
-  collection_name: item.collection_name,
-}));
 ---
-
-<PlayerLayout title="Trades · Foilbury">
-  <header class="trades-page-head">
-    <h1 class="page-title mt-2">Trades</h1>
-    <p class="mt-3 max-w-2xl text-[var(--muted)]">
-      Exchange exact card copies with human members and the Bot&apos;s clearly labelled NPC
-      collectors. Every offer reserves both sides and moves atomically; NPC decisions are
-      deterministic and based on their real holdings and goals.
-    </p>
-  </header>
-  <div class="mt-6 grid gap-5">
-    <NpcTradeDesk client:load npcs={npcs} inventory={inventoryItems} />
+<PlayerLayout title="Trades & gifts · Foilbury">
+  <div class="border-b border-[var(--line)] pb-5">
+    <p class="eyebrow">Trades & gifts</p>
+    <h2 class="display-sm mt-1 text-4xl">Move a card without losing the plot.</h2>
+    <p class="mt-2 max-w-2xl text-sm text-[var(--muted)]">Offers reserve both sides, require explicit acceptance at the same revision and transfer atomically. Gifts are a separate, one-way receipt.</p>
+  </div>
+  <div class="mt-7">
     <TradeDesk
       client:load
       currentUserId={user.id}
       initialTrades={trades}
-      inventory={inventoryItems}
+      inventory={inventory.map((item) => ({ id: item.id, card_name: item.card_name, variant_name: item.variant_name, serial: item.serial, render_url: item.render_url, favourite: item.favourite, locked: item.locked, status: item.status }))}
       members={members}
       initialGifts={gifts}
     />

@@ -361,7 +361,7 @@ export const curated = [
     logicalId: "character:nora",
     slug: "nora",
     name: "Nora",
-    subtitle: "Dog table boss",
+    subtitle: "Retired chaos manager",
     description:
       "Nora runs the table with quiet authority and a very clear view about who is allowed to sit nearest the door.",
     className: "companion",

@@ -26,10 +26,21 @@ export default function WishlistRemoveButton({ cardId, name }: { cardId: string;
 
   return (
     <div className="sm:text-right">
-      <Button size="sm" variant="ghost" onClick={remove} disabled={busy || removed} aria-label={`Remove ${name} from wishlist`}>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="min-h-11"
+        onClick={remove}
+        disabled={busy || removed}
+        aria-label={`Remove ${name} from wishlist`}
+      >
         <Trash2 size={13} /> {removed ? "Removed" : "Remove"}
       </Button>
-      {error ? <p className="mt-1 text-xs text-[var(--oxblood)]" role="alert">{error}</p> : null}
+      {error ? (
+        <p className="mt-1 text-xs text-[var(--oxblood)]" role="alert">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }

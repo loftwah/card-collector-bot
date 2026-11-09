@@ -3,12 +3,13 @@ import { buildContext, runtimeEnv, ApiError } from "./server/context";
 import { readConfig } from "./server/config";
 import { createSession } from "./server/modules/identity";
 import { sessionCookies } from "./server/api/helpers";
+import { requestReference } from "./server/ids";
 
 const LOCAL_ONLY = new Set(["/api/v1/bootstrap", "/api/v1/status"]);
 
 export const onRequest = defineMiddleware(async (context, next) => {
   if (context.url.pathname.startsWith("/_emdash")) return next();
-  context.locals.requestId = context.request.headers.get("cf-ray") ?? crypto.randomUUID();
+  context.locals.requestId = requestReference(context.request);
   const theme = context.cookies.get("fb_theme")?.value;
   context.locals.theme = theme === "light" || theme === "dark" ? theme : "system";
 
@@ -28,7 +29,6 @@ export const onRequest = defineMiddleware(async (context, next) => {
     context.locals.foilbury = {
       tenantId: ctx.tenant.id,
       tenantSlug: ctx.tenant.slug,
-      tenantName: ctx.tenant.name,
       user: ctx.user,
       sessionId: ctx.sessionId,
       csrfToken: ctx.csrfToken,

@@ -6,7 +6,7 @@
  * deliberately single-attempt because an ambiguous create cannot be safely
  * repeated.
  */
-import { Cause, Context, Data, Duration, Effect, Exit, Option, Schedule } from "effect";
+import { Cause, Clock, Context, Data, Duration, Effect, Exit, Option, Schedule } from "effect";
 
 export class DiscordTransportError extends Data.TaggedError("DiscordTransportError")<{
   readonly message: string;
@@ -48,9 +48,9 @@ const attempt = (input: DiscordRequestInput) =>
     const http = yield* DiscordHttp;
     const response = yield* Effect.tryPromise({
       try: (signal) => http.request(input.url, input.init, signal),
-      catch: (cause) =>
+      catch: () =>
         new DiscordTransportError({
-          message: cause instanceof Error ? cause.message : String(cause),
+          message: "Discord transport request failed",
           status: null,
           retryable: true,
           timedOut: false,
@@ -58,13 +58,14 @@ const attempt = (input: DiscordRequestInput) =>
         }),
     });
     if (input.idempotent && (response.status === 429 || response.status >= 500)) {
+      const retryAfterMs = parseRetryAfter(response);
       return yield* Effect.fail(
         new DiscordTransportError({
           message: `Discord returned ${response.status}`,
           status: response.status,
-          retryable: true,
+          retryable: response.status !== 429 || retryAfterMs !== null,
           timedOut: false,
-          retryAfterMs: parseRetryAfter(response),
+          retryAfterMs,
         }),
       );
     }
@@ -75,9 +76,9 @@ const attempt = (input: DiscordRequestInput) =>
       cause instanceof DiscordTransportError
         ? cause
         : new DiscordTransportError({
-            message: cause instanceof Error ? cause.message : String(cause),
+            message: "Discord request timed out",
             status: null,
-            retryable: false,
+            retryable: true,
             timedOut: true,
             retryAfterMs: null,
           }),
@@ -85,18 +86,17 @@ const attempt = (input: DiscordRequestInput) =>
   );
 
 /**
- * Discord sends `Retry-After` for rate limits. It may be seconds or an HTTP
- * date; the numeric form is the one used by the API. A missing or malformed
- * header leaves the existing bounded retry with no extra delay.
+ * Discord's numeric `Retry-After` is seconds. An absent or malformed value
+ * cannot establish when a rate-limited request may safely be repeated.
  */
 function parseRetryAfter(response: Response): number | null {
   const value = response.headers.get("retry-after");
   if (!value) return null;
-  const seconds = Number(value.trim());
+  const trimmed = value.trim();
+  if (!/^\d+(?:\.\d+)?$/.test(trimmed)) return null;
+  const seconds = Number(trimmed);
   if (!Number.isFinite(seconds) || seconds < 0) return null;
-  // Keep the deferred interaction lifetime bounded. A provider that asks for a
-  // longer pause is capped here rather than sleeping for the full duration.
-  return Math.min(5_000, Math.round(seconds * 1_000));
+  return Math.min(Number.MAX_SAFE_INTEGER, Math.ceil(seconds * 1_000));
 }
 
 export async function runDiscordRequest(
@@ -111,7 +111,21 @@ export async function runDiscordRequest(
       Effect.succeed(Duration.millis(failure.retryAfterMs ?? 0)),
     ),
   );
-  const program = attempt(input).pipe(Effect.retry(retrySchedule));
+  // One deadline covers attempts and waits. If the provider's delay cannot fit,
+  // return the typed rate-limit failure instead of retrying early.
+  const program = Effect.gen(function* () {
+    const deadline = (yield* Clock.monotonicTimeNanos) + BigInt(Math.max(0, Math.floor(input.timeoutMs * 1_000_000)));
+    return yield* attempt(input).pipe(Effect.retry({
+      schedule: retrySchedule,
+      while: (failure) => Clock.monotonicTimeNanos.pipe(Effect.map((now) =>
+        failure.retryable && BigInt(failure.retryAfterMs ?? 0) * 1_000_000n < deadline - now)),
+    }));
+  }).pipe(
+    Effect.timeout(Duration.millis(input.timeoutMs)),
+    Effect.mapError((cause) => cause instanceof DiscordTransportError ? cause : new DiscordTransportError({
+      message: "Discord request timed out", status: null, retryable: true, timedOut: true, retryAfterMs: null,
+    })),
+  );
   const exit = await Effect.runPromiseExit(
     program.pipe(
       Effect.provideService(DiscordHttp, {

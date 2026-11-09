@@ -2,32 +2,35 @@
 
 import { useState } from "react";
 import { api, describeError, idempotencyKey } from "@/lib/client";
-import { Button } from "../ui/button";
+import { Button, buttonVariants } from "../ui/button";
+import { cn } from "@/lib/utils";
 
 interface SetReward {
   id: string;
+  release_id?: string;
   name: string;
   version: number;
   reward_amount: number;
   total: number;
   owned: number;
-  complete: boolean;
-  claimed: boolean;
+  complete: boolean | null;
+  claimed: boolean | null;
 }
 
-export default function RewardCenter({ sets, dailyReward, canClaimDaily, nextEligible }: { sets: SetReward[]; dailyReward: number; canClaimDaily: boolean; nextEligible: string | null }) {
+export default function RewardCenter({ sets }: { sets: SetReward[] }) {
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
   async function claimSet(set: SetReward) {
+    if (set.complete !== true || set.claimed !== false) return;
     setBusy(set.id);
     setError("");
     setMessage("");
     try {
       const result = await api<{ amount: number }>(`/api/v1/sets/${set.id}/claim`, {
         method: "POST",
-        body: {},
+        body: set.release_id ? { memberReleaseId: set.release_id } : {},
         idempotencyKey: idempotencyKey("set-claim"),
       });
       setMessage(`${set.name} completion claimed: ✦ ${result.amount}.`);
@@ -40,8 +43,16 @@ export default function RewardCenter({ sets, dailyReward, canClaimDaily, nextEli
 
   return (
     <div className="grid gap-5">
-      {error ? <div className="error-box" role="alert">{error}</div> : null}
-      {message ? <div className="success-box" role="status">{message}</div> : null}
+      {error ? (
+        <div className="error-box" role="alert">
+          {error}
+        </div>
+      ) : null}
+      {message ? (
+        <div className="success-box" role="status">
+          {message}
+        </div>
+      ) : null}
       <div className="grid gap-3 md:grid-cols-2">
         {sets.map((set) => (
           <article key={set.id} className="surface-flat p-5">
@@ -53,32 +64,66 @@ export default function RewardCenter({ sets, dailyReward, canClaimDaily, nextEli
               <span className="font-mono text-sm text-[var(--brass)]">✦ {set.reward_amount}</span>
             </div>
             <div className="mt-4">
-              <div className="flex items-center justify-between text-xs text-[var(--muted)]"><span>{set.owned}/{set.total} cards</span><span>{set.claimed ? "Claimed" : set.complete ? "Ready" : "In progress"}</span></div>
-              <div className="mt-1.5 h-1.5 bg-[var(--paper-3)]"><div className="h-full bg-[var(--brass)]" style={{ width: `${set.total ? Math.round((set.owned / set.total) * 100) : 0}%` }}></div></div>
+              <div className="flex items-center justify-between text-xs text-[var(--muted)]">
+                <span>
+                  {set.owned}/{set.total} visible cards
+                </span>
+                <span>
+                  {set.complete === null || set.claimed === null
+                    ? "Completion unavailable"
+                    : set.claimed
+                      ? "Claimed"
+                      : set.complete
+                        ? "Ready"
+                        : "In progress"}
+                </span>
+              </div>
+              <div className="mt-1.5 h-1.5 bg-[var(--paper-3)]">
+                <div
+                  className="h-full bg-[var(--brass)]"
+                  style={{ width: `${set.total ? Math.round((set.owned / set.total) * 100) : 0}%` }}
+                ></div>
+              </div>
             </div>
             <div className="mt-4">
-              <Button size="sm" onClick={() => claimSet(set)} disabled={!set.complete || set.claimed || Boolean(busy)}>
-                {busy === set.id ? "Claiming…" : set.claimed ? "Reward claimed" : set.complete ? "Claim completion reward" : "Keep collecting"}
-              </Button>
+              {set.complete === false && set.claimed === false ? (
+                <>
+                  <a
+                    className={cn(
+                      buttonVariants({ size: "sm", variant: "secondary" }),
+                      "h-auto min-h-9 max-w-full py-2 text-left whitespace-normal",
+                    )}
+                    href="/play/draw"
+                  >
+                    Browse eligible capsules
+                  </a>
+                  <p className="mt-2 text-xs text-[var(--muted)]">
+                    Capsules may not contain cards from this set.
+                  </p>
+                </>
+              ) : (
+                <Button
+                  size="sm"
+                  onClick={() => claimSet(set)}
+                  disabled={set.complete !== true || set.claimed !== false || Boolean(busy)}
+                >
+                  {busy === set.id
+                    ? "Claiming…"
+                    : set.complete === null || set.claimed === null
+                      ? "Completion unavailable"
+                      : set.claimed
+                        ? "Reward claimed"
+                        : set.complete
+                          ? "Claim completion reward"
+                          : "Completion unavailable"}
+                </Button>
+              )}
             </div>
           </article>
         ))}
-        {sets.length === 0 ? <p className="text-sm text-[var(--muted)]">No published sets yet.</p> : null}
-      </div>
-      <div className="border border-[var(--line)] p-5">
-        <p className="eyebrow">Daily allowance</p>
-        <p className="mt-1 text-sm text-[var(--muted)]">The daily allowance is the repeatable standalone activity. It uses a 20 hour cooldown and a versioned rule record.</p>
-        <p className="mt-2 font-mono text-sm text-[var(--brass)]">✦ {dailyReward} · {canClaimDaily ? "ready" : `next ${nextEligible ?? "later"}`}</p>
-        <div className="mt-3">
-          {canClaimDaily ? <Button size="sm" onClick={async () => {
-            setBusy("daily"); setError("");
-            try {
-              await api("/api/v1/rewards/claim", { method: "POST", body: {}, idempotencyKey: idempotencyKey("daily") });
-              setMessage(`Daily allowance claimed: ✦ ${dailyReward}.`);
-              setTimeout(() => window.location.reload(), 800);
-            } catch (cause) { setError(describeError(cause)); setBusy(""); }
-          }} disabled={Boolean(busy)}>{busy === "daily" ? "Claiming…" : `Claim ✦ ${dailyReward}`}</Button> : <Button size="sm" variant="secondary" disabled>Allowance resting</Button>}
-        </div>
+        {sets.length === 0 ? (
+          <p className="text-sm text-[var(--muted)]">No published sets yet.</p>
+        ) : null}
       </div>
     </div>
   );

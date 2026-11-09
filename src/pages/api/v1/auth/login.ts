@@ -1,10 +1,10 @@
 import type { APIRoute } from "astro";
 import { z } from "zod";
-import { ApiError, buildContext, checkRateLimit } from "../../../../server/context";
+import { ApiError, buildContext, checkRateLimit, rateLimitEmailKey } from "../../../../server/context";
 import { json, readJson, apiErrorResponse } from "../../../../server/http";
 import { login } from "../../../../server/modules/identity";
 import { cookieHeaders, sessionCookies } from "../../../../server/api/helpers";
-import { newId } from "../../../../server/ids";
+import { requestReference } from "../../../../server/ids";
 
 export const prerender = false;
 
@@ -14,11 +14,11 @@ const schema = z.object({
 });
 
 export const POST: APIRoute = async ({ request }) => {
-  const requestId = newId("req");
+  const requestId = requestReference(request);
   try {
     const input = await readJson(request, schema);
     const ctx = await buildContext(request);
-    await checkRateLimit(ctx.db, `login:${input.email.toLowerCase()}`, 8, 300);
+    await checkRateLimit(ctx.db, await rateLimitEmailKey(ctx.config, "login:email", input.email), 8, 300, `login:${input.email.toLowerCase()}`);
     const result = await login(ctx.db, ctx.tenant, input.email, input.password);
     return json(
       { user: result.user, tenant: ctx.tenant, csrf_token: result.csrf, expires_at: result.expiresAt },

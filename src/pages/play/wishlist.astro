@@ -1,33 +1,42 @@
 ---
 import PlayerLayout from "../../layouts/PlayerLayout.astro";
 import WishlistRemoveButton from "../../components/player/WishlistRemoveButton";
-import MemberHeader from "../../components/player/MemberHeader.astro";
 import { pageContext } from "../../server/page";
 import { getWishlist } from "../../server/modules/collection";
 import { getCard } from "../../server/modules/catalogue";
-import { all, first } from "../../server/db";
+import { first } from "../../server/db";
+import { wishlistAcquisitionPaths } from "../../server/modules/wishlist-paths";
 import { displayFinish } from "../../lib/utils";
 
 const ctx = await pageContext(Astro.request);
 const user = ctx.user!;
 const wishes = await getWishlist(ctx);
-const rows = await Promise.all(
-  wishes.map(async (wish) => {
-    let card = null;
-    try {
-      card = await getCard(ctx, wish.card_id);
-    } catch {
-      card = null;
-    }
-    const targetVariant = wish.target_variant_id
-      ? card?.editions.flatMap((edition) => edition.variants).find((variant) => variant.id === wish.target_variant_id) ?? null
-      : null;
-    const renderVariant = targetVariant?.render_url
-      ? targetVariant
-      : card?.editions.flatMap((edition) => edition.variants).find((variant) => variant.render_url) ?? null;
-    const renderUrl = renderVariant?.render_url ?? null;
-    const [owned, paths] = await Promise.all([
-      first<{ subjects: number; target: number }>(
+let pathsByCard: Awaited<ReturnType<typeof wishlistAcquisitionPaths>> | null = null;
+try {
+  pathsByCard = await wishlistAcquisitionPaths(ctx, wishes);
+} catch {
+  pathsByCard = null;
+}
+const rows = (
+  await Promise.all(
+    wishes.map(async (wish) => {
+      let card = null;
+      try {
+        card = await getCard(ctx, wish.card_id);
+      } catch {
+        card = null;
+      }
+      const targetVariant = wish.target_variant_id
+        ? (card?.editions
+            .flatMap((edition) => edition.variants)
+            .find((variant) => variant.id === wish.target_variant_id) ?? null)
+        : null;
+      const renderUrl =
+        targetVariant?.render_url ??
+        card?.editions.flatMap((edition) => edition.variants).find((variant) => variant.render_url)
+          ?.render_url ??
+        null;
+      const owned = await first<{ subjects: number; target: number }>(
         ctx.db,
         `SELECT COUNT(*) AS subjects,
                 SUM(CASE WHEN ci.variant_id = ? THEN 1 ELSE 0 END) AS target
@@ -37,148 +46,129 @@ const rows = await Promise.all(
         ctx.tenant.id,
         user.id,
         wish.card_id,
-      ),
-      card
-        ? all<{ slug: string; name: string; price: number; variants: number }>(
-            ctx.db,
-            `SELECT p.slug, p.name, p.price, COUNT(DISTINCT pe.variant_id) AS variants
-               FROM fb_pool_entries pe
-               JOIN fb_pools p ON p.id = pe.pool_id AND p.revision = pe.pool_revision
-               JOIN fb_variants v ON v.id = pe.variant_id
-              WHERE pe.tenant_id = ? AND p.status = 'active' AND pe.enabled = 1 AND v.status = 'published' AND v.card_id = ?
-                AND (? IS NULL OR v.id = ?)
-              GROUP BY p.id ORDER BY p.price, p.name`,
-            ctx.tenant.id,
-            wish.card_id,
-            wish.target_variant_id,
-            wish.target_variant_id,
-          )
-        : Promise.resolve([]),
-    ]);
-    return { wish, card, targetVariant, renderVariant, renderUrl, owned, paths };
-  }),
-);
+      );
+      const paths = card ? (pathsByCard?.get(wish.card_id) ?? []) : [];
+      return { wish, card, targetVariant, renderUrl, owned, paths };
+    }),
+  )
+).filter((row) => row.card !== null);
 const targetLabel = (row: (typeof rows)[number]) =>
   row.targetVariant
     ? `${row.targetVariant.name}`
     : row.wish.target_material_key
-      ? displayFinish(row.wish.target_material_key, row.wish.target_material_key, row.wish.target_effect_key)
+      ? displayFinish(
+          row.wish.target_material_key,
+          row.wish.target_material_key,
+          row.wish.target_effect_key,
+        )
       : "Any finish";
-const exactOwned = rows.filter((row) => row.wish.target_variant_id && row.owned?.target).length;
-const subjectOwned = rows.filter((row) => row.owned?.subjects).length;
 ---
 
 <PlayerLayout title="Wishlist · Foilbury">
-  <MemberHeader
-    title="Wishlist"
-    lede="A personal list of subjects and exact finishes you want. It does not reserve a card, hold inventory or change another member's odds."
-  >
-    <p class="member-head__note">
-      {rows.length
-        ? `${subjectOwned} of ${rows.length} wanted subject${rows.length === 1 ? "" : "s"} already in your library.`
-        : "Add a subject from a card or collection."}
-    </p>
-    <dl slot="aside" class="member-stats">
-      <div class="member-stat">
-        <dt>Wanted</dt>
-        <dd>{rows.length}</dd>
+  <div class="border-b border-[var(--line)] pb-5">
+    <p class="eyebrow">Wishlist</p>
+    <div class="mt-2 flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <h2 class="display-sm text-4xl">What you are still looking for.</h2>
+        <p class="mt-2 max-w-3xl text-sm text-[var(--muted)]">
+          A wish keeps a card and finish in mind. It does not reserve a card or change your odds.
+          Review eligible capsules and live odds in the draw room.
+        </p>
       </div>
-      <div class="member-stat">
-        <dt>Exact finish owned</dt>
-        <dd>{exactOwned}</dd>
-      </div>
-    </dl>
-  </MemberHeader>
+      <span class="badge">{rows.length} wanted</span>
+    </div>
+  </div>
 
   {rows.length === 0 ? (
-    <section class="member-section">
-      <div class="member-empty">
-        <div>
-          <h2>Nothing on the wishlist yet.</h2>
-          <p>
-            Open a card you own and choose a finish, or browse your collection to add a subject.
-            A wish is a personal goal; it never changes the draw distribution.
-          </p>
-          <div class="member-empty__actions">
-            <a class="btn btn-primary" href="/play/collection">Browse my cards</a>
-            <a class="btn btn-secondary" href="/play/draw">Open a capsule</a>
-          </div>
+    <div class="empty mt-6">
+      <div>
+        <p class="display-sm text-2xl">Nothing on the wishlist yet.</p>
+        <p class="mt-2 text-sm">
+          Open a card you own and choose a finish, or browse your collection to add a subject.
+        </p>
+        <div class="mt-4 flex flex-wrap justify-center gap-2">
+          <a class="btn btn-primary btn-sm" href="/play/collection">
+            Browse my cards
+          </a>
+          <a class="btn btn-secondary btn-sm" href="/play/draw">
+            Open a capsule
+          </a>
         </div>
       </div>
-    </section>
+    </div>
   ) : (
-    <section class="member-section">
-      <ul class:list={["wishlist-list", rows.length === 1 && "wishlist-list--single"]}>
-        {rows.map((row) => (
-          <li class="wishlist-item">
-            <figure class="wishlist-item__object m-0">
-              {row.renderUrl ? (
-                <img
-                  src={row.renderUrl}
-                  alt={`${row.wish.name} — ${row.renderVariant?.name ?? targetLabel(row)}`}
-                  width="750"
-                  height="1050"
-                  loading="eager"
-                  decoding="async"
-                />
-              ) : (
-                <span class="wishlist-item__fallback">No published render</span>
-              )}
-            </figure>
-
-            <div class="min-w-0">
-              <h2 class="wishlist-item__name">{row.wish.name}</h2>
-              <p class="wishlist-item__want">
-                Wanted: <strong>{targetLabel(row)}</strong>
-                {row.card?.collections.length
-                  ? ` · ${row.card.collections.map((collection) => collection.name).join(" · ")}`
-                  : ""}
-              </p>
-
-              <div class="wishlist-item__badges">
-                {row.owned?.subjects ? (
-                  <span class="badge badge-signal">Subject owned</span>
-                ) : (
-                  <span class="badge">Not owned</span>
-                )}
-                {row.wish.target_variant_id && row.owned?.target ? (
-                  <span class="badge badge-rare">Exact finish owned</span>
-                ) : null}
+    <ul class="mt-6 grid gap-3">
+      {rows.map((row) => (
+        <li class="grid grid-cols-[72px_minmax(0,1fr)] items-start gap-4 border border-[var(--line)] bg-[var(--paper)] p-4 sm:grid-cols-[110px_minmax(0,1fr)_auto]">
+          <figure class="m-0">
+            {row.renderUrl ? (
+              <img
+                class="aspect-[5/7] w-full border border-[var(--line)] object-contain"
+                src={row.renderUrl}
+                alt={row.wish.name}
+                width="750"
+                height="1050"
+                loading="lazy"
+              />
+            ) : (
+              <div class="grid aspect-[5/7] place-items-center bg-[var(--ink)] px-1 text-center text-xs text-[var(--brass)]">
+                No published render
               </div>
-
-              {row.paths.length ? (
-                <div class="mt-3">
-                  <p class="text-xs font-semibold text-[var(--muted)]">Capsules that currently list it</p>
-                  <div class="wishlist-item__paths">
-                    {row.paths.map((path) => (
-                      <a
-                        class="wishlist-item__path"
-                        href={`/play/draw?pool=${encodeURIComponent(path.slug)}`}
-                      >
-                        {path.name} · ✦ {path.price}
-                      </a>
-                    ))}
-                  </div>
-                  <p class="wishlist-item__note mt-2">
-                    Listed does not always mean eligible. Your collection preferences, channel policy
-                    and Bot availability are applied in the draw room.
-                  </p>
-                </div>
+            )}
+          </figure>
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
+              <h3 class="display-sm text-xl uppercase [overflow-wrap:anywhere] sm:text-2xl">
+                {row.wish.name}
+              </h3>
+              {row.owned?.subjects ? (
+                <span class="badge badge-signal">Subject owned</span>
               ) : (
-                <p class="wishlist-item__note mt-3">
-                  No active capsule currently lists this target. Owning or trading for it remains a
-                  legitimate path.
-                </p>
+                <span class="badge">Not owned</span>
               )}
-
-              <div class="wishlist-item__foot">
-                <p class="wishlist-item__note">The exact finish is saved with this wish.</p>
-                <WishlistRemoveButton client:load cardId={row.wish.card_id} name={row.wish.name} />
-              </div>
+              {row.wish.target_variant_id && row.owned?.target ? (
+                <span class="badge badge-rare">Exact finish owned</span>
+              ) : null}
             </div>
-          </li>
-        ))}
-      </ul>
-    </section>
+            <p class="mt-1 text-sm text-[var(--muted)]">
+              Wanted: <strong>{targetLabel(row)}</strong>
+              {row.card?.collections.length
+                ? ` · ${row.card.collections.map((collection) => collection.name).join(" · ")}`
+                : ""}
+            </p>
+            {pathsByCard === null ? (
+              <p class="mt-3 text-sm text-[var(--muted)]">
+                Capsule availability could not be checked. Try the draw room again.
+              </p>
+            ) : row.paths.length ? (
+              <div class="mt-3">
+                <p class="eyebrow">Available in</p>
+                <div class="mt-1 flex flex-wrap gap-2">
+                  {row.paths.map((path) => (
+                    <a
+                      class="badge min-h-11 max-w-full whitespace-normal [overflow-wrap:anywhere] hover:border-[var(--ink)]"
+                      href={`/play/draw?pool=${encodeURIComponent(path.slug)}`}
+                    >
+                      {path.name} · ✦ {path.price}
+                    </a>
+                  ))}
+                </div>
+                <p class="mt-1 text-xs text-[var(--muted)]">
+                  Availability can change; review the current odds in the draw room.
+                </p>
+              </div>
+            ) : (
+              <p class="mt-3 text-sm text-[var(--muted)]">
+                No eligible capsule is shown for this target right now. Check the draw room for
+                current availability.
+              </p>
+            )}
+          </div>
+          <div class="col-start-2 sm:col-start-auto">
+            <WishlistRemoveButton client:load cardId={row.wish.card_id} name={row.wish.name} />
+          </div>
+        </li>
+      ))}
+    </ul>
   )}
 </PlayerLayout>

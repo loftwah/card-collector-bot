@@ -2,18 +2,20 @@
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import PortableText from "../../components/PortableText.astro";
 import { formatDual } from "../../lib/utils";
+import { readJournalEntry } from "../../server/modules/journal-read";
 const slug = Astro.params.slug ?? "";
 let entry: any = null;
 let error = false;
 try {
   const { getEmDashEntry } = await import("emdash");
-  const result = await getEmDashEntry("posts", slug);
+  const result = await readJournalEntry(() => getEmDashEntry("posts", slug));
   entry = result.entry;
-  if (result.error) error = true;
+  error = !result.ok;
 } catch {
   error = true;
 }
-if (!error && !entry) Astro.response.status = 404;
+if (error) Astro.response.status = 503;
+else if (!entry) Astro.response.status = 404;
 const title = error ? "Journal temporarily unavailable" : entry?.data?.title ?? "Journal entry not found";
 const description = error ? "The EmDash journal could not be read. The cabinet remains available." : entry?.data?.excerpt ?? "A note from the Foilbury editorial desk.";
 ---

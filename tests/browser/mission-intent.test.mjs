@@ -1,0 +1,30 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { createServer } from 'vite';
+import tailwindcss from '@tailwindcss/vite';
+import { chromium } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
+
+test('mission interactions require an explicit visit or card flip', async (t) => {
+  const root=process.cwd(),dir=fs.mkdtempSync(path.join(os.tmpdir(),'foilbury-mission-intent-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+  fs.symlinkSync(path.join(root,'node_modules'),path.join(dir,'node_modules'));
+  fs.writeFileSync(path.join(dir,'index.html'),'<!doctype html><html lang="en"><head><title>Mission interaction fixture</title></head><body><main id="root"></main><script type="module" src="/entry.jsx"></script></body></html>');
+  fs.writeFileSync(path.join(dir,'fixture.css'),`@import '/@fs${path.join(root,'src/styles/global.css')}';\n@source '${path.join(root,'src')}';`);
+  fs.writeFileSync(path.join(dir,'entry.jsx'),`import './fixture.css';import React from 'react';import{createRoot}from'react-dom/client';import Inspector from '/@fs${path.join(root,'src/components/player/CardInspector.tsx')}';import Visit from '/@fs${path.join(root,'src/components/player/RecordWorldVisit.tsx')}';createRoot(document.getElementById('root')).render(<><h1>Test world</h1><Visit collectionId="world-fixture"/><Inspector instanceId="copy-fixture" name="Example card" finish="Plain" frontUrl={null} backUrl={null}/></>);`);
+  const server=await createServer({configFile:false,root:dir,plugins:[tailwindcss()],cacheDir:path.join(dir,'.vite'),esbuild:{jsx:'automatic'},resolve:{alias:{'@':path.join(root,'src')}},server:{host:'127.0.0.1',port:0,strictPort:true,fs:{allow:[root,dir]}}});t.after(()=>server.close());await server.listen();
+  const browser=await chromium.launch({headless:true});t.after(()=>browser.close());const context=await browser.newContext({viewport:{width:375,height:800},reducedMotion:'reduce'});const page=await context.newPage();let visit=0,inspect=0;
+  await page.clock.install({time:new Date('2026-01-01T23:59:00Z')});
+  await page.route('**/api/v1/**',async route=>{const p=new URL(route.request().url()).pathname;if(p.endsWith('/explore')){visit++;return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({recorded:true,already_recorded:false})});}if(p.endsWith('/inspect')){inspect++;return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({recorded:true,already_recorded:false})});}return route.fulfill({status:404,body:'{}'});});
+  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/`);await page.getByRole('button',{name:'View back'}).waitFor();assert.equal(visit,0);assert.equal(inspect,0);
+  assert.ok((await page.getByRole('button',{name:"Record today's visit"}).boundingBox()).height>=44);
+  await page.getByRole('button',{name:"Record today's visit"}).focus();await page.keyboard.press('Enter');await page.getByRole('status').getByText(/Visit recorded/).waitFor();assert.equal(visit,1);
+  await page.getByRole('button',{name:'View back'}).focus();await Promise.all([page.waitForResponse(r=>r.url().includes('/inspect')),page.keyboard.press('Enter')]);await page.getByRole('button',{name:'View front'}).waitFor();assert.equal(inspect,1);
+  await page.getByRole('button',{name:'View front'}).click();await Promise.all([page.waitForResponse(r=>r.url().includes('/inspect')),page.getByRole('button',{name:'View back'}).click()]);assert.equal(inspect,2);
+  await page.clock.setFixedTime(new Date('2020-01-01T00:01:00Z'));
+  await page.getByRole('button',{name:'View front'}).click();await Promise.all([page.waitForResponse(r=>r.url().includes('/inspect')),page.getByRole('button',{name:'View back'}).click()]);assert.equal(inspect,3);
+  const axe=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze();assert.deepEqual(axe.violations.filter(v=>['serious','critical'].includes(v.impact)).map(v=>v.id),[]);
+  const parent=path.join(root,'.foilbury/evidence');fs.mkdirSync(parent,{recursive:true});const evidence=fs.mkdtempSync(path.join(parent,'mission-intent-'));await page.screenshot({path:path.join(evidence,'mobile.png'),fullPage:true});
+});

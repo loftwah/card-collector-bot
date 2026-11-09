@@ -2,8 +2,9 @@ import { ApiError, hasCapability, requireRecentStrongAuth, type Ctx } from "../c
 import { all, first, nowIso } from "../db";
 import { newId } from "../ids";
 import { auditStatement } from "../http";
-import { addPlayerMembershipIfAbsent, ensureWallet } from "./identity";
+import { addMembership, ensureWallet } from "./identity";
 import { assertTransition } from "../state";
+import { liveStrongHumanSession, strongHumanArgs } from "./strong-session";
 
 export interface MembershipView {
   tenant_id: string;
@@ -33,8 +34,10 @@ export async function getMyMemberships(ctx: Ctx): Promise<MembershipView[]> {
     `SELECT m.tenant_id, t.slug AS tenant_slug, t.name AS tenant_name, m.role, m.status,
             m.capabilities_json, m.created_at, m.revoked_at
        FROM fb_memberships m JOIN fb_tenants t ON t.id = m.tenant_id
-      WHERE m.user_id = ? ORDER BY m.status = 'active' DESC, t.name`,
+      WHERE m.user_id = ? AND (? = 0 OR m.tenant_id = ?) ORDER BY m.status = 'active' DESC, t.name`,
     user.id,
+    ctx.actor.type === "agent" ? 1 : 0,
+    ctx.tenant.id,
   );
   return rows.map((row) => ({
     tenant_id: row.tenant_id,
@@ -46,27 +49,6 @@ export async function getMyMemberships(ctx: Ctx): Promise<MembershipView[]> {
     joined_at: row.created_at,
     revoked_at: row.revoked_at,
   }));
-}
-
-/**
- * Re-read the live membership for a domain command. A session is a credential,
- * not a permanent entitlement: a profile, trade or share mutation must fail if
- * the membership was suspended or revoked after sign-in.
- */
-export async function requireActiveMembership(ctx: Ctx): Promise<void> {
-  const user = ctx.user;
-  if (!user) throw new ApiError(401, "authentication_required", "Sign in to continue.");
-  const row = await first<{ status: string; revoked_at: string | null; disabled_at: string | null }>(
-    ctx.db,
-    `SELECT m.status, m.revoked_at, u.disabled_at
-       FROM fb_memberships m JOIN fb_users u ON u.id = m.user_id
-      WHERE m.tenant_id = ? AND m.user_id = ?`,
-    ctx.tenant.id,
-    user.id,
-  );
-  if (!row || row.status !== "active" || row.revoked_at || row.disabled_at) {
-    throw new ApiError(403, "membership_inactive", "This album membership is not active. Ask an administrator for access.");
-  }
 }
 
 export async function joinMainAlbum(ctx: Ctx): Promise<{ joined: boolean; membership: MembershipView }> {
@@ -90,16 +72,12 @@ export async function joinMainAlbum(ctx: Ctx): Promise<{ joined: boolean; member
       "This album membership is suspended, revoked or still awaiting approval. An administrator must restore it deliberately; signing in cannot do so.",
     );
   }
-  const joined = await addPlayerMembershipIfAbsent(ctx.db, ctx.tenant.id, user.id);
-  const current = await first<{ status: string; revoked_at: string | null }>(ctx.db,
-    "SELECT status, revoked_at FROM fb_memberships WHERE tenant_id = ? AND user_id = ?", ctx.tenant.id, user.id);
-  if (!current || current.status !== "active" || current.revoked_at) {
-    throw new ApiError(403, "membership_inactive", "This album membership is not active. Ask an administrator for access.");
-  }
+  if (!await addMembership(ctx.db, ctx.tenant.id, user.id, "player", { status: "active", acceptedAt: nowIso(), insertOnly: true }))
+    throw new ApiError(409, "membership_changed", "Membership changed while joining. Reload and try again.");
   await ensureWallet(ctx.db, ctx.tenant.id, user.id);
-  if (joined) await recordMembershipEvent(ctx, ctx.tenant.id, user.id, "joined", "member", "Self-service membership from a verified account.");
+  await recordMembershipEvent(ctx, ctx.tenant.id, user.id, "joined", "member", "Self-service membership from a verified account.");
   const memberships = await getMyMemberships(ctx);
-  return { joined, membership: memberships.find((item) => item.tenant_id === ctx.tenant.id)! };
+  return { joined: true, membership: memberships.find((item) => item.tenant_id === ctx.tenant.id)! };
 }
 
 export async function listAlbumMembers(ctx: Ctx) {
@@ -163,22 +141,33 @@ export async function setMemberStatus(
   }
   assertTransition("membership", row.status, status);
   const now = nowIso();
-  await ctx.db.batch([
-    ctx.db
-      .prepare(
-        "UPDATE fb_memberships SET status = ?, revoked_at = ?, accepted_at = COALESCE(accepted_at, ?) WHERE tenant_id = ? AND user_id = ?",
-      )
-      .bind(status, status === "active" ? null : now, now, ctx.tenant.id, userId),
-    ...(status === "active"
-      ? []
-      : [
-          ctx.db
-            .prepare("UPDATE fb_sessions SET revoked_at = ?, revoked_reason = ? WHERE tenant_id = ? AND user_id = ? AND revoked_at IS NULL")
-            .bind(now, `membership_${status}`, ctx.tenant.id, userId),
-        ]),
-    auditStatement(ctx, `membership.${status}`, "membership", userId, { reason: reason.trim() }),
-  ]);
-  await recordMembershipEvent(ctx, ctx.tenant.id, userId, status === "active" ? "restored" : status, "admin", reason.trim());
+  const sessionArgs = strongHumanArgs(ctx);
+  const authority = `EXISTS (SELECT 1 FROM fb_memberships m JOIN fb_users u ON u.id=m.user_id
+    JOIN fb_bots b ON b.tenant_id=m.tenant_id AND b.status='active'
+    LEFT JOIN fb_bot_admins ba ON ba.bot_id=b.id AND ba.user_id=m.user_id
+    WHERE m.tenant_id=? AND m.user_id=? AND m.status='active' AND m.revoked_at IS NULL AND u.disabled_at IS NULL AND (
+      (m.role='owner' AND b.owner_user_id=m.user_id)
+      OR (u.platform_admin=1 AND EXISTS (SELECT 1 FROM fb_platform_admins pa WHERE pa.user_id=u.id AND pa.status='active' AND pa.revoked_at IS NULL))
+      OR (m.role<>'owner' AND json_type(CASE WHEN json_valid(m.capabilities_json) THEN m.capabilities_json ELSE 'null' END)='array' AND NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(m.capabilities_json) THEN m.capabilities_json ELSE '[]' END) WHERE type<>'text') AND EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(m.capabilities_json) THEN m.capabilities_json ELSE '[]' END) WHERE value='members')
+        AND (ba.id IS NULL OR (ba.role='admin' AND ba.status='active' AND ba.revoked_at IS NULL AND json_type(CASE WHEN json_valid(ba.capabilities_json) THEN ba.capabilities_json ELSE 'null' END)='array' AND NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(ba.capabilities_json) THEN ba.capabilities_json ELSE '[]' END) WHERE type<>'text') AND EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(ba.capabilities_json) THEN ba.capabilities_json ELSE '[]' END) WHERE value='members'))))))`;
+  try {
+    await ctx.db.batch([
+      ctx.db.prepare(`SELECT CASE WHEN ${liveStrongHumanSession} AND ${authority}
+        AND EXISTS (SELECT 1 FROM fb_memberships WHERE tenant_id=? AND user_id=? AND status=? AND role=? AND (role<>'owner' OR ?='active'))
+        AND (?='active' OR NOT EXISTS (SELECT 1 FROM fb_bots WHERE tenant_id=? AND owner_user_id=? AND status='active'))
+        THEN 1 ELSE json('membership_guard') END`).bind(...sessionArgs,ctx.tenant.id,ctx.user!.id,ctx.tenant.id,userId,row.status,row.role,status,status,ctx.tenant.id,userId),
+      ctx.db.prepare("UPDATE fb_memberships SET status = ?, revoked_at = ?, accepted_at = COALESCE(accepted_at, ?) WHERE tenant_id = ? AND user_id = ?")
+        .bind(status,status === 'active' ? null : now,now,ctx.tenant.id,userId),
+      ...(status === 'active' ? [] : [ctx.db.prepare("UPDATE fb_sessions SET revoked_at = ?, revoked_reason = ? WHERE tenant_id = ? AND user_id = ? AND revoked_at IS NULL")
+        .bind(now,`membership_${status}`,ctx.tenant.id,userId)]),
+      auditStatement(ctx,`membership.${status}`,'membership',userId,{reason:reason.trim()}),
+      ctx.db.prepare(`INSERT INTO fb_membership_events (id,tenant_id,user_id,event,actor_type,actor_id,reason,created_at) VALUES (?,?,?,?,'admin',?,?,?)`)
+        .bind(newId('mev'),ctx.tenant.id,userId,status === 'active' ? 'restored' : status,ctx.user!.id,reason.trim(),now),
+    ]);
+  } catch (error) {
+    if (String(error).includes('malformed JSON')) throw new ApiError(409,'membership_changed','Membership or your authorization changed. Reload and try again.');
+    throw error;
+  }
   return { user_id: userId, status };
 }
 

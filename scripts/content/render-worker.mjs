@@ -6,14 +6,15 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { composeCardBack } from "../../art/compose.mjs";
-import { renderQueuedFront, requireQueuedBackground } from "./render-queued-front.mjs";
-import { readRenderSource, readLocalRenderSource } from "./render-bytes.mjs";
+import { composeCard, composeCardBack } from "../../art/compose.mjs";
 import { apiForm, apiJson, BASE_URL, agentToken, accessHeaders } from "../lib/api.mjs";
+import { withOwnedRenderTemp } from "./owned-render-temp.mjs";
 
 const root = process.cwd();
 const contentDir = path.join(root, ".foilbury/content");
 const generatedDir = path.join(root, ".foilbury/generated");
+const tmpDir = path.join(root, ".foilbury/tmp");
+fs.mkdirSync(tmpDir, { recursive: true });
 const worker = process.argv.find((arg) => arg.startsWith("--worker="))?.split("=")[1] ?? "1";
 const jsonOut = process.argv.includes("--json");
 
@@ -43,7 +44,7 @@ async function fetchBytes(url) {
     headers: { authorization: `Bearer ${agentToken()}`, ...accessHeaders() },
   });
   if (!response.ok) throw new Error(`${url} returned ${response.status}`);
-  return readRenderSource(response);
+  return Buffer.from(await response.arrayBuffer());
 }
 
 let rendered = 0;
@@ -58,34 +59,54 @@ while (true) {
   const payload = claimed.job.payload;
   const attempt = claimed.job.attempts;
   try {
-    requireQueuedBackground(payload);
-    const subjectPath = await fetchBytes(`/api/v1/admin/assets/${payload.subject_asset_id}/bytes`);
-    const backgroundPath = await fetchBytes(`/api/v1/admin/assets/${payload.background_asset_id}/bytes`);
-    const meta = cardMeta.get(payload.card_id);
-    let markBuffer;
-    let markMime;
-    const logoUrl = meta?.collections?.[0]?.logo_url;
-    if (logoUrl) {
-      try {
-        const ext = logoUrl.endsWith(".svg") ? "svg" : "png";
-        markBuffer = await fetchBytes(logoUrl);
-        markMime = ext === "svg" ? "image/svg+xml" : "image/png";
-      } catch {
-        markBuffer = undefined;
+    await withOwnedRenderTemp(tmpDir, async (jobDir) => {
+      const subjectPath = path.join(jobDir, "subject.png");
+      const backgroundPath = path.join(jobDir, "background.png");
+      fs.writeFileSync(subjectPath, await fetchBytes(`/api/v1/admin/assets/${payload.subject_asset_id}/bytes`), { flag: "wx" });
+      if (payload.background_asset_id) {
+        fs.writeFileSync(backgroundPath, await fetchBytes(`/api/v1/admin/assets/${payload.background_asset_id}/bytes`), { flag: "wx" });
       }
-    }
-    const { buffer: outputBytes } = await renderQueuedFront({ payload, meta, subjectPath, backgroundPath, markBuffer, markMime, returnBytes: true });
-    const backSource = backBySlug.get(payload.card_slug) ?? backByName.get(payload.card_name);
-    let backBytes;
-    if (backSource) {
-      backBytes = await composeCardBack({ backPath: readLocalRenderSource(backSource), material: payload.material_key, effect: payload.effect_key ?? "none", returnBytes: true });
-    }
-    const form = new FormData();
-    form.append("file", new Blob([outputBytes], { type: "image/webp" }), `${payload.variant_id}.webp`);
-    if (backBytes) form.append("back", new Blob([backBytes], { type: "image/webp" }), `${payload.variant_id}-back.webp`);
-    form.append("attempt", String(attempt));
-    await apiForm(`/api/v1/admin/jobs/${job.id}/complete`, form);
-    rendered += 1;
+      const outputPath = path.join(jobDir, "front.webp");
+      const meta = cardMeta.get(payload.card_id);
+      let markPath = "";
+      const logoUrl = meta?.collections?.[0]?.logo_url;
+      if (logoUrl) {
+        try {
+          const ext = logoUrl.endsWith(".svg") ? "svg" : "png";
+          markPath = path.join(jobDir, `mark.${ext}`);
+          fs.writeFileSync(markPath, await fetchBytes(logoUrl), { flag: "wx" });
+        } catch {
+          markPath = "";
+        }
+      }
+      await composeCard({
+        subjectPath,
+        backgroundPath: payload.background_asset_id ? backgroundPath : null,
+        material: payload.material_key,
+        effect: payload.effect_key ?? "none",
+        name: payload.card_name,
+        subtitle: meta?.subtitle ?? "",
+        setName: meta?.collections?.[0]?.name ?? "Cabinet",
+        serial: meta?.collections?.[0]?.view_audience === "public" ? "PUBLIC SHOWCASE" : "MEMBER EDITION",
+        className: meta?.class?.name ?? "",
+        rarity: meta?.rarity?.name ?? "",
+        markPath,
+        outputPath,
+      });
+      const backSource = backBySlug.get(payload.card_slug) ?? backByName.get(payload.card_name);
+      let backBytes;
+      if (backSource) {
+        const backPath = path.join(jobDir, "back.webp");
+        await composeCardBack({ backPath: backSource, material: payload.material_key, effect: payload.effect_key ?? "none", outputPath: backPath });
+        backBytes = fs.readFileSync(backPath);
+      }
+      const form = new FormData();
+      form.append("file", new Blob([fs.readFileSync(outputPath)], { type: "image/webp" }), `${payload.variant_id}.webp`);
+      if (backBytes) form.append("back", new Blob([backBytes], { type: "image/webp" }), `${payload.variant_id}-back.webp`);
+      form.append("attempt", String(attempt));
+      await apiForm(`/api/v1/admin/jobs/${job.id}/complete`, form);
+      rendered += 1;
+    });
     if (rendered % 10 === 0) log(`rendered ${rendered} (${((Date.now() - started) / 1000).toFixed(0)}s)`);
   } catch (error) {
     failed += 1;

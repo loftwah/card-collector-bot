@@ -194,7 +194,7 @@ export default function PlatformAdminApp({ section }: { section: Section }) {
         <section className="surface p-5">
           <p className="eyebrow">Discord installations</p>
           <h2 className="display-sm mt-1 text-2xl">The edge of the Bot.</h2>
-          <p className="mt-1 text-sm text-[var(--muted)]">The guild binding is resolved server-side. Channel allowlists and interface switches are read by the Discord handler and the website; no privileged intent is required.</p>
+          <p className="mt-1 text-sm text-[var(--muted)]">The guild binding and channel allowlist apply to Discord interactions. Website availability is not controlled by this installation setting.</p>
           <div className="mt-4 grid gap-4">
             {overview.installations.map((installation) => <InstallationCard key={String(installation.id)} installation={installation} onSaved={load} />)}
             {overview.installations.length === 0 ? <p className="empty">No Discord installation is bound yet.</p> : null}
@@ -241,7 +241,6 @@ function InstallationCard({ installation, onSaved }: { installation: Record<stri
     } catch { return ""; }
   });
   const [game, setGame] = useState(Boolean(installation.game_enabled));
-  const [website, setWebsite] = useState(Boolean(installation.website_enabled));
   const [active, setActive] = useState(Boolean(installation.active));
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -250,7 +249,7 @@ function InstallationCard({ installation, onSaved }: { installation: Record<stri
     setBusy(true); setMessage("");
     try {
       const channelAllowlist = allowlist.split(",").map((item) => item.trim()).filter(Boolean);
-      await api(`/api/v1/platform/installations/${installation.id}`, { method: "PATCH", body: { channelAllowlist, gameEnabled: game, websiteEnabled: website, active } });
+      await api(`/api/v1/platform/installations/${installation.id}`, { method: "PATCH", body: { revision: Number(installation.configuration_revision), channelAllowlist, gameEnabled: game, active } });
       setMessage("Saved.");
       await onSaved();
     } catch (cause) {
@@ -268,7 +267,8 @@ function InstallationCard({ installation, onSaved }: { installation: Record<stri
         <Field label="Channel allowlist" hint="Comma-separated channel IDs. Empty means no channel restriction; the guild binding still applies."><Input value={allowlist} onChange={(event) => setAllowlist(event.target.value)} /></Field>
         <div className="grid gap-2 pt-1">
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={game} onChange={(event) => setGame(event.target.checked)} /> Discord gameplay</label>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={website} onChange={(event) => setWebsite(event.target.checked)} /> Website surfaces</label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(installation.website_enabled)} disabled aria-describedby={`website-unavailable-${String(installation.id)}`} /> Website surfaces</label>
+          <p id={`website-unavailable-${String(installation.id)}`} className="text-sm text-[var(--muted)]">Unavailable: this stored setting does not currently control website access. Its value is preserved.</p>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Installation active</label>
         </div>
       </div>

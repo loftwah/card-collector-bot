@@ -1,0 +1,10 @@
+---
+import StudioLayout from "../../layouts/StudioLayout.astro";
+import BoundRenderReview from "../../components/studio/BoundRenderReview";
+import { pageContext } from "../../server/page";
+const ctx = await pageContext(Astro.request);
+---
+
+<StudioLayout>
+  <BoundRenderReview client:load environment={ctx.config.environment} accountId={ctx.user!.id} botId={ctx.tenant.id} />
+</StudioLayout>

@@ -1,11 +1,15 @@
+import type { D1PreparedStatement } from "@cloudflare/workers-types";
 import { describe, expect, it } from "vitest";
-import type { Ctx } from "../../src/server/context";
+import { resolveAgent, type Ctx } from "../../src/server/context";
+import { createAgentGrant } from "../../src/server/modules/identity";
+import { routeApi } from "../../src/server/api/router";
 import { nowIso } from "../../src/server/db";
 import {
   assertDistinctPrintCandidate,
   createOriginalIpVerticalSlice,
   createPrintProposal,
   findPrintConflict,
+  getPrintProposal,
   linkApprovedEdition,
   listPrintProposalReviews,
   originalIpVerticalSlicePlan,
@@ -17,6 +21,25 @@ import {
   type PrintProposalInput,
 } from "../../src/server/modules/prints";
 import { bootstrap, ctxFor, fixturePool, makeInstance, runtime } from "./helpers";
+
+async function strongOwner(): Promise<Ctx> {
+  const ctx = await ctxFor("cabinet", "owner@foilbury.local");
+  const now = nowIso(), expires = new Date(Date.now() + 3600000).toISOString();
+  const session = `print_session_${crypto.randomUUID()}`;
+  await runtime.DB.prepare("INSERT INTO fb_sessions (id,token_hash,user_id,tenant_id,csrf_token,created_at,expires_at,last_seen_at,assurance,auth_time) VALUES (?,?,?,?,?,?,?,?, 'mfa', ?)").bind(session, session, ctx.user!.id, ctx.tenant.id, "test", now, expires, now, now).run();
+  return { ...ctx, sessionId: session, sessionAssurance: "mfa", sessionAuthTime: now };
+}
+
+/** Historical approved-state fixture for downstream tests; this is not an approval operation. */
+async function fixtureApproved(ctx: Ctx, proposalId: string, note: string) {
+  const now = nowIso();
+  const row = await runtime.DB.prepare("SELECT revision FROM fb_print_proposals WHERE id = ? AND tenant_id = ?").bind(proposalId, ctx.tenant.id).first<{ revision: number }>();
+  await runtime.DB.batch([
+    runtime.DB.prepare("UPDATE fb_print_proposals SET status = 'approved', reviewed_by = ?, reviewer_kind = 'human', reviewed_at = ?, review_note = ?, approved_at = ?, revision = revision + 1, updated_at = ? WHERE id = ?").bind(ctx.user!.id, now, note, now, now, proposalId),
+    runtime.DB.prepare("INSERT INTO fb_print_proposal_reviews (id,tenant_id,proposal_id,revision,decision,reviewer_id,reviewer_kind,note,created_at) VALUES (?,?,?,?, 'approved',?,'human',?,?)").bind(`fixture_${crypto.randomUUID()}`, ctx.tenant.id, proposalId, row!.revision + 1, ctx.user!.id, note, now),
+  ]);
+  return getPrintProposal(ctx, proposalId);
+}
 
 async function addAsset(
   ctx: Ctx,
@@ -100,7 +123,7 @@ function baseProposal(
 describe("multi-print proposals", () => {
   it("creates a proposal with provenance and validates the required print fields", async () => {
     await bootstrap();
-    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const owner = await strongOwner();
     const fixture = await fixturePool(owner);
     const art = await addAsset(owner, "ast_print_a", "sha-print-a");
 
@@ -167,7 +190,7 @@ describe("multi-print proposals", () => {
 
   it("rejects duplicate and near-duplicate proposals against proposals and editions", async () => {
     await bootstrap();
-    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const owner = await strongOwner();
     const fixture = await fixturePool(owner);
     const artA = await addAsset(owner, "ast_print_a", "sha-print-a");
     const artB = await addAsset(owner, "ast_print_b", "sha-print-b");
@@ -265,39 +288,97 @@ describe("multi-print proposals", () => {
     ).toThrowError(/too close/);
   });
 
-  it("records an explicitly scoped agent review as an agent decision", async () => {
+  it("fails closed for agent review without a bound strong-auth event", async () => {
     await bootstrap();
-    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const owner = await strongOwner();
     const fixture = await fixturePool(owner);
     const art = await addAsset(owner, "ast_print_agent", "sha-print-agent");
     const proposal = await createPrintProposal(owner, baseProposal(fixture, art));
-    const agent = {
-      ...owner,
-      actor: {
-        type: "agent" as const,
-        id: "grant_print_review",
-        representedUserId: owner.user!.id,
-        label: "Delegated print reviewer",
-      },
-      scopes: ["content:write"],
-    };
+    const grant = await createAgentGrant(owner, { agentName: "Delegated print reviewer", representedUserId: owner.user!.id, scopes: ["content:write", "print:review"], expiresInDays: 1 });
+    const agent = { ...owner, ...(await resolveAgent(owner.db, owner.config, grant.token, owner.tenant)) };
     await expect(
-      reviewPrintProposal(agent, proposal.id, "approved", { note: "No review scope." }),
+      reviewPrintProposal({ ...agent, scopes: ["content:write"] }, proposal.id, "approved", { note: "No review scope." }),
     ).rejects.toMatchObject({ code: "print_review_scope_required" });
-    const scoped = { ...agent, scopes: ["content:write", "print:review"] };
-    const approved = await reviewPrintProposal(scoped, proposal.id, "approved", {
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    await owner.db.prepare("UPDATE fb_bots SET owner_user_id = ? WHERE tenant_id = ?").bind(player.user!.id, owner.tenant.id).run();
+    const noLongerOwner = { ...owner, ...(await resolveAgent(owner.db, owner.config, grant.token, owner.tenant)) };
+    await expect(reviewPrintProposal(noLongerOwner, proposal.id, "approved", { note: "Revoked authority." })).rejects.toMatchObject({ code: "print_review_forbidden" });
+    await owner.db.prepare("UPDATE fb_bots SET owner_user_id = ? WHERE tenant_id = ?").bind(owner.user!.id, owner.tenant.id).run();
+    const scoped = { ...owner, ...(await resolveAgent(owner.db, owner.config, grant.token, owner.tenant)) };
+    await expect(reviewPrintProposal(scoped, proposal.id, "approved", {
       note: "Agent review under delegated authority: identity and provenance checked.",
       expectedRevision: proposal.revision,
-    });
-    expect(approved.status).toBe("approved");
-    expect(approved.reviewer_kind).toBe("agent");
+    })).rejects.toMatchObject({ code: "human_strong_auth_required" });
+    await expect(routeApi(new Request(`http://localhost/api/v1/admin/prints/${proposal.id}/review`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ decision: "approved", expectedRevision: proposal.revision }),
+    }), scoped, `admin/prints/${proposal.id}/review`)).rejects.toMatchObject({ code: "human_strong_auth_required" });
     const history = await listPrintProposalReviews(owner, proposal.id);
-    expect(history.at(-1)?.reviewer_kind).toBe("agent");
+    expect(history.some((review) => review.decision === "approved")).toBe(false);
+  });
+
+  it("atomically rejects revoked collection access, reassigned ownership and failed audit writes", async () => {
+    await bootstrap();
+    const owner = await strongOwner();
+    await runtime.DB.prepare("UPDATE fb_users SET platform_admin = 0 WHERE id = ?").bind(owner.user!.id).run();
+    const fixture = await fixturePool(owner);
+    const art = await addAsset(owner, "ast_print_race", "sha-print-race");
+    const proposal = await createPrintProposal(owner, baseProposal(fixture, art));
+    const harbour = await ctxFor("harbour", "harbour.owner@foilbury.test");
+    const now = nowIso();
+    await runtime.DB.prepare("INSERT INTO fb_collections (id,slug,name,description,scope,owner_tenant_id,accent,status,view_audience,created_by,created_at,updated_at) VALUES ('print_private','print-private','Private','fixture','global',?,'brass','published','private','fixture',?,?)").bind(harbour.tenant.id, now, now).run();
+    await runtime.DB.prepare("INSERT INTO fb_collection_cards (collection_id,card_id,tenant_id,added_by,added_at) VALUES ('print_private',?,?,?,?)").bind(fixture.cardId, owner.tenant.id, owner.user!.id, now).run();
+    await runtime.DB.prepare("INSERT INTO fb_collection_viewers (collection_id,user_id,granted_by,created_at) VALUES ('print_private',?,?,?)").bind(owner.user!.id, harbour.user!.id, now).run();
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    await runtime.DB.prepare("DELETE FROM fb_collection_viewers WHERE collection_id = 'print_private' AND user_id = ?").bind(owner.user!.id).run();
+    await expect(reviewPrintProposal(owner, proposal.id, "rejected", { note: "Fixture review" })).rejects.toMatchObject({ code: "print_proposal_not_found" });
+    await runtime.DB.prepare("INSERT INTO fb_collection_viewers (collection_id,user_id,granted_by,created_at) VALUES ('print_private',?,?,?)").bind(owner.user!.id, harbour.user!.id, now).run();
+    const actions = [
+      () => runtime.DB.prepare("DELETE FROM fb_collection_viewers WHERE collection_id = 'print_private' AND user_id = ?").bind(owner.user!.id).run(),
+      () => runtime.DB.prepare("UPDATE fb_bots SET owner_user_id = ? WHERE tenant_id = ?").bind(player.user!.id, owner.tenant.id).run(),
+      () => runtime.DB.prepare("UPDATE fb_sessions SET revoked_at = ? WHERE id = ?").bind(now, owner.sessionId).run(),
+    ];
+    for (let i = 0; i < actions.length; i++) {
+      let injected = false;
+      const db = new Proxy(runtime.DB, { get(target, key) {
+        if (key === "batch") return async (statements: D1PreparedStatement[]) => { if (!injected) { injected = true; await actions[i]!(); } return target.batch(statements); };
+        const value = Reflect.get(target, key, target); return typeof value === "function" ? value.bind(target) : value;
+      } });
+      await expect(reviewPrintProposal({ ...owner, db }, proposal.id, "rejected", { note: "Fixture review" })).rejects.toMatchObject({ code: "print_review_changed" });
+      expect((await runtime.DB.prepare("SELECT status FROM fb_print_proposals WHERE id = ?").bind(proposal.id).first<{status: string}>())?.status).toBe("proposed");
+      expect((await listPrintProposalReviews(owner, proposal.id)).some((review) => review.decision === "rejected")).toBe(false);
+      await runtime.DB.prepare("INSERT OR IGNORE INTO fb_collection_viewers (collection_id,user_id,granted_by,created_at) VALUES ('print_private',?,?,?)").bind(owner.user!.id, harbour.user!.id, now).run();
+      await runtime.DB.prepare("UPDATE fb_bots SET owner_user_id = ? WHERE tenant_id = ?").bind(owner.user!.id, owner.tenant.id).run();
+      await runtime.DB.prepare("UPDATE fb_sessions SET revoked_at = NULL WHERE id = ?").bind(owner.sessionId).run();
+    }
+    const failingDb = new Proxy(runtime.DB, { get(target, key) {
+      if (key === "batch") return async (statements: D1PreparedStatement[]) => target.batch([...statements, target.prepare("INSERT INTO fb_print_proposal_reviews (id,tenant_id,proposal_id,revision,decision,reviewer_id,reviewer_kind,created_at) VALUES ('duplicate_review',?,?,?,'rejected',?,'human',?)").bind(owner.tenant.id, proposal.id, proposal.revision + 1, owner.user!.id, now)]);
+      const value = Reflect.get(target, key, target); return typeof value === "function" ? value.bind(target) : value;
+    } });
+    await expect(reviewPrintProposal({ ...owner, db: failingDb }, proposal.id, "rejected", { note: "Fixture review" })).rejects.toThrow();
+    expect((await runtime.DB.prepare("SELECT status FROM fb_print_proposals WHERE id = ?").bind(proposal.id).first<{status: string}>())?.status).toBe("proposed");
+    expect((await listPrintProposalReviews(owner, proposal.id)).some((review) => review.decision === "rejected")).toBe(false);
+    expect((await reviewPrintProposal(owner, proposal.id, "rejected", { note: "Fixture review" })).status).toBe("rejected");
+  });
+
+  it("requires a recent passkey or MFA proof in addition to linked Access", async () => {
+    await bootstrap();
+    const owner = await strongOwner();
+    const fixture = await fixturePool(owner);
+    const art = await addAsset(owner, "ast_print_access", "sha-print-access");
+    const first = await createPrintProposal(owner, baseProposal(fixture, art));
+    const now = nowIso();
+    await runtime.DB.prepare("INSERT INTO fb_access_identities (id,user_id,team_domain,subject,email,audience,linked_at,last_seen_at) VALUES ('print_access',?,'fixture.cloudflareaccess.com','print-subject',?,'fixture',?,?)").bind(owner.user!.id, owner.user!.email, now, now).run();
+    const accessCtx: Ctx = { ...owner, config: { ...owner.config, access: { ...owner.config.access, teamDomain: "fixture.cloudflareaccess.com" } }, sessionId: null, sessionAssurance: "access", sessionAuthTime: now, accessStatus: "linked", accessIdentity: { subject: "print-subject", email: owner.user!.email, audience: "fixture", payload: { exp: Math.floor(Date.now() / 1000) + 60 } } };
+    // The Access JWT establishes identity, but does not prove login recency.
+    await expect(reviewPrintProposal(accessCtx, first.id, "rejected", { note: "Fixture review" })).rejects.toMatchObject({ code: "strong_auth_required" });
+    expect((await runtime.DB.prepare("SELECT status FROM fb_print_proposals WHERE id = ?").bind(first.id).first<{status: string}>())?.status).toBe("proposed");
+    expect((await reviewPrintProposal(owner, first.id, "rejected", { note: "Fixture review" })).status).toBe("rejected");
   });
 
   it("requires an authorised reviewer and records approval, rejection and revision history", async () => {
     await bootstrap();
-    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const owner = await strongOwner();
     const player = await ctxFor("cabinet", "player@foilbury.local");
     const fixture = await fixturePool(owner);
     const artA = await addAsset(owner, "ast_print_a", "sha-print-a");
@@ -310,10 +391,9 @@ describe("multi-print proposals", () => {
       reviewPrintProposal(player, first.id, "approved", { note: "Player cannot review." }),
     ).rejects.toMatchObject({ code: "print_review_forbidden" });
 
-    const approved = await reviewPrintProposal(owner, first.id, "approved", {
-      note: "Distinct portrait, provenance checked.",
-      expectedRevision: 1,
-    });
+    await expect(reviewPrintProposal(owner, first.id, "approved", { note: "Distinct portrait, provenance checked.", expectedRevision: 1 })).rejects.toMatchObject({ code: "print_approval_unavailable" });
+    expect((await getPrintProposal(owner, first.id)).status).toBe("proposed");
+    const approved = await fixtureApproved(owner, first.id, "Distinct portrait, provenance checked.");
     expect(approved.status).toBe("approved");
     expect(approved.reviewed_by).toBe(owner.user!.id);
     expect(approved.revision).toBe(2);
@@ -380,10 +460,8 @@ describe("multi-print proposals", () => {
     });
     expect(resubmitted.status).toBe("proposed");
     expect(resubmitted.revision).toBe(4);
-    const reapproved = await reviewPrintProposal(owner, second.id, "approved", {
-      note: "Revised scene is genuinely different.",
-      expectedRevision: 4,
-    });
+    await expect(reviewPrintProposal(owner, second.id, "approved", { note: "Revised scene is genuinely different.", expectedRevision: 4 })).rejects.toMatchObject({ code: "print_approval_unavailable" });
+    const reapproved = await fixtureApproved(owner, second.id, "Revised scene is genuinely different.");
     expect(reapproved.status).toBe("approved");
     expect(reapproved.revision).toBe(5);
     const secondHistory = await listPrintProposalReviews(owner, second.id);
@@ -398,16 +476,14 @@ describe("multi-print proposals", () => {
 
   it("links an approved proposal additively without touching editions, variants or copies", async () => {
     await bootstrap();
-    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const owner = await strongOwner();
     const fixture = await fixturePool(owner);
     const artA = await addAsset(owner, "ast_print_a", "sha-print-a");
     const artB = await addAsset(owner, "ast_print_b", "sha-print-b");
     const artC = await addAsset(owner, "ast_print_c", "sha-print-c");
 
     const proposal = await createPrintProposal(owner, baseProposal(fixture, artA));
-    await reviewPrintProposal(owner, proposal.id, "approved", {
-      note: "Approved for additive edition linkage.",
-    });
+    await fixtureApproved(owner, proposal.id, "Historical fixture for additive edition linkage.");
     await makeInstance(owner, owner.user!.id, fixture, "TEST-PRINT-ADDITIVE");
     const originalEditionBefore = await runtime.DB.prepare(
       "SELECT * FROM fb_artwork_editions WHERE id = ?",
@@ -462,7 +538,7 @@ describe("multi-print proposals", () => {
       creativeDirection:
         "A new narrative action moment with a dynamic diagonal composition, environmental depth and motion cues.",
     });
-    await reviewPrintProposal(owner, second.id, "approved", { note: "Approved second print." });
+    await fixtureApproved(owner, second.id, "Historical second-print fixture.");
     await expect(linkApprovedEdition(owner, second.id, editionId)).rejects.toMatchObject({
       code: "print_edition_artwork_mismatch",
     });
@@ -500,7 +576,7 @@ describe("multi-print proposals", () => {
 
   it("rejects a finish-only variation as a new print", async () => {
     await bootstrap();
-    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const owner = await strongOwner();
     const fixture = await fixturePool(owner);
     const artA = await addAsset(owner, "ast_print_a", "sha-print-a");
 
@@ -534,7 +610,7 @@ describe("multi-print proposals", () => {
 
   it("builds and persists one bounded original-IP vertical slice with three print roles", async () => {
     await bootstrap();
-    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const owner = await strongOwner();
     const fixture = await fixturePool(owner);
     const artPortrait = await addAsset(owner, "ast_print_portrait", "sha-print-portrait");
     const artAction = await addAsset(owner, "ast_print_action", "sha-print-action");
@@ -610,10 +686,7 @@ describe("multi-print proposals", () => {
 
     // One approved print is never silently a completed multi-print subject.
     await submitPrintProposal(owner, slice.proposals[0]!.id, { expectedRevision: 1 });
-    const firstApproved = await reviewPrintProposal(owner, slice.proposals[0]!.id, "approved", {
-      note: "Portrait approved after source and likeness review.",
-      expectedRevision: 2,
-    });
+    const firstApproved = await fixtureApproved(owner, slice.proposals[0]!.id, "Historical portrait fixture.");
     expect(firstApproved.status).toBe("approved");
     const single = await printCoverageForCard(owner, fixture.cardId);
     expect(single.approved_prints).toBe(1);
@@ -621,10 +694,7 @@ describe("multi-print proposals", () => {
     expect(single.label).toBe("single_print_requires_exception");
 
     await submitPrintProposal(owner, slice.proposals[1]!.id, { expectedRevision: 1 });
-    await reviewPrintProposal(owner, slice.proposals[1]!.id, "approved", {
-      note: "Action scene approved as a genuinely different print.",
-      expectedRevision: 2,
-    });
+    await fixtureApproved(owner, slice.proposals[1]!.id, "Historical action fixture.");
     const pair = await printCoverageForCard(owner, fixture.cardId);
     expect(pair.approved_prints).toBe(2);
     expect(pair.distinct_approved_artwork).toBe(2);

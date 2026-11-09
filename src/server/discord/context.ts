@@ -61,6 +61,20 @@ export function interactionUser(interaction: DiscordInteraction): DiscordUser {
   return user;
 }
 
+export function requireAllowedInstallationChannel(installation: DiscordInstallation, channelId: string | null | undefined): string[] {
+  let allowedChannels: string[];
+  try {
+    const parsed = JSON.parse(installation.channel_allowlist_json) as unknown;
+    if (!Array.isArray(parsed) || !parsed.every((value) => typeof value === "string" && isSnowflake(value))) throw new Error("invalid channel allowlist");
+    allowedChannels = parsed;
+  } catch {
+    throw new ApiError(403,"discord_channel_not_enabled","This server's channel configuration is unavailable. Ask the Bot Owner to review it.");
+  }
+  if (allowedChannels.length > 0 && (!channelId || !allowedChannels.includes(channelId)))
+    throw new ApiError(403,"discord_channel_not_enabled","Foilbury is not enabled in this channel. Try the configured play channel.");
+  return allowedChannels;
+}
+
 export async function resolveInstallation(
   env: DiscordEnv,
   interaction: DiscordInteraction,
@@ -96,24 +110,7 @@ export async function resolveInstallation(
       "Discord gameplay is paused for this installation. Nothing was charged.",
     );
   }
-  let allowedChannels: string[] = [];
-  try {
-    const parsed = JSON.parse(installation.channel_allowlist_json) as unknown;
-    if (Array.isArray(parsed))
-      allowedChannels = parsed.filter((value): value is string => typeof value === "string");
-  } catch {
-    allowedChannels = [];
-  }
-  if (
-    allowedChannels.length > 0 &&
-    (!interaction.channel_id || !allowedChannels.includes(interaction.channel_id))
-  ) {
-    throw new ApiError(
-      403,
-      "discord_channel_not_enabled",
-      "Foilbury is not enabled in this channel. Try the configured play channel.",
-    );
-  }
+  const allowedChannels = requireAllowedInstallationChannel(installation, interaction.channel_id);
   const tenant = await first<Tenant>(
     env.DB,
     "SELECT id, slug, name FROM fb_tenants WHERE id = ?",
@@ -133,6 +130,13 @@ function safeDisplayName(user: DiscordUser): string {
     .replace(/[\u0000-\u001f\u007f]/g, "")
     .trim();
   return (raw || "Discord Player").slice(0, 80);
+}
+
+function safeCapabilities(value: string | null): string[] {
+  try {
+    const parsed: unknown = JSON.parse(value ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch { return []; }
 }
 
 /**
@@ -197,11 +201,23 @@ export async function ensureDiscordPlayer(
         "This player is no longer an active member of this Bot. Nothing was changed.",
       );
     }
-    await env.DB.prepare(
-      "UPDATE fb_discord_identities SET username = ?, global_name = ?, last_seen_at = ? WHERE id = ?",
+    const updated = await env.DB.prepare(
+      `UPDATE fb_discord_identities SET username = ?, global_name = ?, last_seen_at = ? WHERE id = ? AND revoked_at IS NULL
+       AND EXISTS (SELECT 1 FROM fb_memberships m JOIN fb_users u ON u.id=m.user_id
+         WHERE m.tenant_id=fb_discord_identities.tenant_id AND m.user_id=fb_discord_identities.user_id
+         AND m.status='active' AND m.revoked_at IS NULL AND u.disabled_at IS NULL
+         AND (m.role<>'owner' OR EXISTS (SELECT 1 FROM fb_bots b WHERE b.tenant_id=m.tenant_id AND b.status='active' AND b.owner_user_id=m.user_id)))`,
     )
       .bind(discordUser.username, discordUser.global_name ?? null, nowIso(), existing.id)
       .run();
+    if (!updated.meta.changes) throw new ApiError(403,"membership_revoked","This player is no longer an active member of this Bot.");
+    const live = await first<{role:CurrentUser['role'];capabilities_json:string;self_grants_enabled:number;grant_limit:number;capability_revision:number;platform_admin:number}>(env.DB,
+      `SELECT m.role,m.capabilities_json,m.self_grants_enabled,m.grant_limit,m.capability_revision,
+         (u.platform_admin=1 AND EXISTS (SELECT 1 FROM fb_platform_admins pa WHERE pa.user_id=u.id AND pa.status='active' AND pa.revoked_at IS NULL)) AS platform_admin
+       FROM fb_discord_identities di JOIN fb_users u ON u.id=di.user_id JOIN fb_memberships m ON m.user_id=di.user_id AND m.tenant_id=di.tenant_id
+       WHERE di.id=? AND di.revoked_at IS NULL AND u.disabled_at IS NULL AND m.status='active' AND m.revoked_at IS NULL
+       AND (m.role<>'owner' OR EXISTS (SELECT 1 FROM fb_bots b WHERE b.tenant_id=m.tenant_id AND b.status='active' AND b.owner_user_id=m.user_id))`,existing.id);
+    if (!live) throw new ApiError(403,"membership_revoked","This player is no longer an active member of this Bot.");
     return {
       created: false,
       identity: existing,
@@ -209,14 +225,12 @@ export async function ensureDiscordPlayer(
         id: existing.user_id,
         email: existing.email,
         displayName: existing.user_display_name,
-        role: existing.role,
-        platformAdmin: Boolean(existing.platform_admin),
-        capabilities: existing.capabilities_json
-          ? (JSON.parse(existing.capabilities_json) as string[])
-          : [],
-        selfGrantsEnabled: Boolean(existing.self_grants_enabled),
-        grantLimit: Number(existing.grant_limit ?? 0),
-        capabilityRevision: Number(existing.capability_revision ?? 1),
+        role: live.role,
+        platformAdmin: Boolean(live.platform_admin),
+        capabilities: safeCapabilities(live.capabilities_json),
+        selfGrantsEnabled: Boolean(live.self_grants_enabled),
+        grantLimit: Number(live.grant_limit ?? 0),
+        capabilityRevision: Number(live.capability_revision ?? 1),
       },
     };
   }
@@ -279,7 +293,8 @@ export async function ensureDiscordPlayer(
       "This player is no longer an active member of this Bot. Nothing was changed.",
     );
   }
-  if (!priorMembership) await addMembership(env.DB, tenant.id, user.id, "player");
+  if (!priorMembership && !await addMembership(env.DB, tenant.id, user.id, "player", { insertOnly: true }))
+    throw new ApiError(409, "membership_changed", "Membership changed while joining this Bot. Try again or ask an administrator for help.");
   await ensureWallet(env.DB, tenant.id, user.id);
 
   const starterKey = `starter:${tenant.id}:${user.id}`;
@@ -309,6 +324,7 @@ export async function ensureDiscordPlayer(
           metadata: { source: "discord_first_interaction" },
           actorType: "system",
           actorId: "discord",
+          requireActiveMember: true,
         });
       } catch (error) {
         if (!String(error).includes("UNIQUE")) throw error;
@@ -318,10 +334,12 @@ export async function ensureDiscordPlayer(
 
   const identityId = newId("dci");
   try {
-    await env.DB.prepare(
+    const linked = await env.DB.prepare(
       `INSERT INTO fb_discord_identities
         (id, tenant_id, discord_user_id, user_id, username, global_name, linked_at, last_seen_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM fb_memberships m JOIN fb_users u ON u.id=m.user_id
+        WHERE m.tenant_id=? AND m.user_id=? AND m.status='active' AND m.revoked_at IS NULL AND u.disabled_at IS NULL
+        AND (m.role<>'owner' OR EXISTS (SELECT 1 FROM fb_bots b WHERE b.tenant_id=m.tenant_id AND b.status='active' AND b.owner_user_id=m.user_id)))`,
     )
       .bind(
         identityId,
@@ -332,8 +350,11 @@ export async function ensureDiscordPlayer(
         discordUser.global_name ?? null,
         nowIso(),
         nowIso(),
+        tenant.id,
+        user.id,
       )
       .run();
+    if (!linked.meta.changes) throw new ApiError(403,"membership_revoked","This player is no longer an active member of this Bot.");
   } catch (error) {
     if (!String(error).includes("UNIQUE")) throw error;
   }
@@ -353,17 +374,21 @@ export async function ensureDiscordPlayer(
     }
   >(
     env.DB,
-    `SELECT di.*, u.email, u.display_name AS user_display_name, u.platform_admin, u.disabled_at, m.role, t.name AS tenant_name
+    `SELECT di.*, u.email, u.display_name AS user_display_name,
+            (u.platform_admin=1 AND EXISTS (SELECT 1 FROM fb_platform_admins pa WHERE pa.user_id=u.id AND pa.status='active' AND pa.revoked_at IS NULL)) AS platform_admin,
+            u.disabled_at, m.role, m.capabilities_json, m.self_grants_enabled, m.grant_limit, m.capability_revision, t.name AS tenant_name
        FROM fb_discord_identities di
        JOIN fb_users u ON u.id = di.user_id
-       JOIN fb_memberships m ON m.user_id = u.id AND m.tenant_id = di.tenant_id
+       JOIN fb_memberships m ON m.user_id = u.id AND m.tenant_id = di.tenant_id AND m.status='active' AND m.revoked_at IS NULL
        JOIN fb_tenants t ON t.id = di.tenant_id
-      WHERE di.tenant_id = ? AND di.discord_user_id = ? AND di.revoked_at IS NULL`,
+      WHERE di.tenant_id = ? AND di.discord_user_id = ? AND di.revoked_at IS NULL AND u.disabled_at IS NULL
+        AND (m.role<>'owner' OR EXISTS (SELECT 1 FROM fb_bots b WHERE b.tenant_id=m.tenant_id AND b.status='active' AND b.owner_user_id=m.user_id))`,
     tenant.id,
     discordUser.id,
   );
   if (!resolved)
-    throw new ApiError(500, "player_link_failed", "The Discord identity could not be linked.");
+    throw new ApiError(403, "membership_revoked", "This player is no longer an active member of this Bot.");
+  if (resolved.user_id !== user.id) throw new ApiError(409,"discord_identity_conflict","This Discord identity is already linked to another account.");
   return {
     created,
     identity: resolved,
@@ -373,6 +398,10 @@ export async function ensureDiscordPlayer(
       displayName: resolved.user_display_name,
       role: resolved.role,
       platformAdmin: Boolean(resolved.platform_admin),
+      capabilities: safeCapabilities(resolved.capabilities_json),
+      selfGrantsEnabled: Boolean(resolved.self_grants_enabled),
+      grantLimit: Number(resolved.grant_limit ?? 0),
+      capabilityRevision: Number(resolved.capability_revision ?? 1),
     },
   };
 }
@@ -472,12 +501,14 @@ export function buildDiscordContext(
   user: CurrentUser,
   interaction: DiscordInteraction,
 ): Ctx {
+  const discordUser = interactionUser(interaction);
   return {
     db: env.DB,
     media: env.MEDIA,
     config: readConfig(env),
     requestId: `discord:${interaction.id}`,
-    clientKey: `discord:${interaction.user?.id ?? interaction.id}`,
+    clientKey: `discord:${discordUser.id}`,
+    discordPrincipal: { discordUserId: discordUser.id },
     tenant,
     user,
     actor: {
@@ -508,4 +539,26 @@ export function requireBotAdmin(user: CurrentUser): void {
       "Only this Bot's Owner or Admin can use admin commands. Ask the Bot Owner to link your Foilbury account on the website.",
     );
   }
+}
+
+/** Live, Bot-scoped content/economy authority for Discord admin reads. */
+export const discordAdminAuthoritySql = `EXISTS (
+    SELECT 1 FROM fb_memberships m JOIN fb_users u ON u.id=m.user_id
+    JOIN fb_bots b ON b.tenant_id=m.tenant_id AND b.status='active'
+    LEFT JOIN fb_bot_admins ba ON ba.bot_id=b.id AND ba.user_id=m.user_id
+    WHERE m.tenant_id=? AND m.user_id=? AND m.status='active' AND m.revoked_at IS NULL AND u.disabled_at IS NULL
+    AND ((m.role='owner' AND b.owner_user_id=u.id)
+      OR (u.platform_admin=1 AND EXISTS (SELECT 1 FROM fb_platform_admins pa WHERE pa.user_id=u.id AND pa.status='active' AND pa.revoked_at IS NULL))
+      OR (m.role<>'owner' AND ba.role='admin' AND ba.status='active' AND ba.revoked_at IS NULL AND NOT EXISTS (
+        SELECT 1 FROM json_each(?) needed WHERE NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(m.capabilities_json) THEN m.capabilities_json ELSE '[]' END) WHERE value=needed.value)
+          OR NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(ba.capabilities_json) THEN ba.capabilities_json ELSE '[]' END) WHERE value=needed.value))))
+  )`;
+export async function discordAdminHasCapabilities(ctx: Ctx, capabilities: string[]): Promise<boolean> {
+  if (!ctx.user || ctx.actor.type !== 'user' || ctx.actor.id !== ctx.user.id || ctx.actor.representedUserId !== ctx.user.id) return false;
+  const row=await first<{ok:number}>(ctx.db,`SELECT ${discordAdminAuthoritySql} AS ok`,ctx.tenant.id,ctx.user.id,JSON.stringify(capabilities));
+  return Boolean(row?.ok);
+}
+
+export async function requireDiscordAdminCapabilities(ctx: Ctx, capabilities: string[]): Promise<void> {
+  if (!await discordAdminHasCapabilities(ctx,capabilities)) throw new ApiError(403,'discord_admin_required','Your current Bot permissions do not allow this action.');
 }

@@ -1,0 +1,11 @@
+---
+import StudioLayout from "../../layouts/StudioLayout.astro";
+import VisibleInventorySummary from "../../components/admin/VisibleInventorySummary";
+---
+<StudioLayout>
+  <div class="studio-rule">
+    <div><p class="eyebrow">A partial view</p><h2 class="display-sm text-4xl uppercase">Your visible collection.</h2><p class="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--muted)]">See what your current account can access in this Bot. This is not a backup or a count of the whole Bot.</p></div>
+    <span class="studio-stamp">Your account</span>
+  </div>
+  <div class="mt-7"><VisibleInventorySummary client:load /></div>
+</StudioLayout>

@@ -83,7 +83,7 @@ export default function AdminTeam() {
 
   async function load() {
     try {
-      setData(await api<TeamData>("/api/v1/admin/team"));
+      setData(await api<TeamData>("/api/v1/admin/bot"));
     } catch (cause) { setError(describeError(cause)); }
   }
   useEffect(() => { void load(); }, []);

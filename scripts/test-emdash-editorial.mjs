@@ -8,38 +8,33 @@
  *
  * This is a local acceptance fixture. It creates a short-lived local CMS API
  * token in the local D1 database, never prints it, and deletes it in `finally`.
- * It refuses to run against a non-loopback origin. The human native-console
- * Access session remains a separate, explicitly recorded gate.
+ * It requires an explicit disposable D1, persistence root and loopback origin
+ * inside a network-none Linux container. The human native-console Access
+ * session remains a separate, explicitly recorded gate.
  */
 import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { chromium } from "@playwright/test";
+import { editorialIsolation, verifyEditorialServer, verifyEditorialDraft, verifiedEditorialCleanupIds, resolveEditorialPreview } from "./content/editorial-isolation.mjs";
 
-const baseURL = process.env.FOILBURY_URL ?? "http://localhost:5173";
-const host = new URL(baseURL).hostname;
-if (!["localhost", "127.0.0.1", "::1"].includes(host)) {
-  console.error("Refusing to run EmDash acceptance against a non-local origin.");
-  process.exit(2);
-}
-if (process.env.FOILBURY_ENV === "production") {
-  console.error("Refusing to run EmDash acceptance in production.");
-  process.exit(2);
-}
-
-const evidence = path.join("docs", "evidence");
-fs.mkdirSync(evidence, { recursive: true });
+const isolated = editorialIsolation(process.env);
+if (fs.realpathSync(process.cwd()) !== path.join(isolated.root,'project')) throw new Error('Run only from the isolated project directory.');
+verifyEditorialServer(isolated, process.env.FOILBURY_ISOLATED_SERVER_PID);
+const baseURL = isolated.origin;
+const evidence = isolated.evidence;
 const results = [];
 const pass = (name, detail = "") => { results.push({ name, status: "PASS", detail }); console.log(`PASS ${name}${detail ? ` · ${detail}` : ""}`); };
 const fail = (name, error) => { results.push({ name, status: "FAIL", detail: String(error?.message ?? error) }); console.error(`FAIL ${name} · ${error?.message ?? error}`); };
 
 function d1(sql) {
-  return execFileSync("pnpm", ["exec", "wrangler", "d1", "execute", "foilbury-local", "--local", "--json", "--command", sql], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  return execFileSync("pnpm", ["exec", "wrangler", "d1", "execute", isolated.db, "--config", isolated.configPath, "--persist-to", isolated.persist, "--local", "--json", "--command", sql], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 }
 
 function cli(args, token) {
-  const output = execFileSync("npx", ["emdash", ...args, "--url", baseURL, "--json"], {
+  verifyEditorialServer(isolated, process.env.FOILBURY_ISOLATED_SERVER_PID);
+  const output = execFileSync("pnpm", ["exec", "emdash", ...args, "--url", baseURL, "--json"], {
     encoding: "utf8",
     env: { ...process.env, EMDASH_TOKEN: token },
     stdio: ["ignore", "pipe", "pipe"],
@@ -52,13 +47,14 @@ function cli(args, token) {
 
 const rawToken = `ec_pat_${crypto.randomBytes(20).toString("hex")}`;
 const tokenHash = crypto.createHash("sha256").update(rawToken).digest("base64url");
-const tokenId = `tok_emdash_accept_${Date.now()}`;
-const slug = `editorial-roundtrip-${Date.now()}`;
+const tokenId = `tok_emdash_accept_${crypto.randomUUID()}`;
+const slug = `editorial-roundtrip-${crypto.randomUUID()}`;
 let createdId = null;
 let scheduledId = null;
+let bindingFailed = false;
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-let tokenCreated = false;
+let tokenAttempted = false;
 
 const content = [
   { _type: "block", _key: "t1", style: "normal", markDefs: [], children: [{ _type: "span", _key: "s1", text: "A draft authored through the native EmDash content API. ", marks: [] }, { _type: "span", _key: "s2", text: "It must not be public yet.", marks: ["strong"] }] },
@@ -79,27 +75,45 @@ const content = [
 ];
 
 try {
+  tokenAttempted = true;
   d1(`INSERT INTO _emdash_api_tokens (id, name, token_hash, prefix, user_id, scopes, expires_at, created_at) VALUES ('${tokenId}', 'Foilbury EmDash acceptance', '${tokenHash}', 'ec_pat_acc', (SELECT id FROM users ORDER BY role DESC LIMIT 1), '["admin"]', NULL, datetime('now'));`);
-  tokenCreated = true;
   const who = cli(["whoami"], rawToken);
   if (!who?.email) throw new Error("Temporary local EmDash token was not accepted.");
-  pass("temporary local EmDash operator session", who.email);
+  pass("temporary local EmDash operator session");
 
   const created = cli(["content", "create", "posts", "--draft", "--slug", slug, "--data", JSON.stringify({ title: "Editorial round-trip proof", excerpt: "A rich draft proving native blocks and publication status.", content })], rawToken);
   createdId = created?.id ?? created?.data?.id;
-  if (!createdId) throw new Error(`Create returned no id: ${JSON.stringify(created).slice(0, 400)}`);
+  if (!createdId || !/^[a-zA-Z0-9_-]+$/.test(createdId)) throw new Error('Create returned no valid content id.');
+  bindingFailed=true;
+  const found=JSON.parse(d1(`SELECT id,slug,status FROM ec_posts WHERE slug='${slug}' AND id='${createdId}'`));
+  verifyEditorialDraft(found,createdId,slug);
+  bindingFailed=false;
+  pass('created draft belongs to the selected isolated D1');
   pass("authored a rich draft through the native CMS API", createdId);
 
   const draftResponse = await fetch(`${baseURL}/journal/${slug}`);
   if (draftResponse.status !== 404) throw new Error(`Draft was publicly readable: ${draftResponse.status}`);
   pass("draft is not public before publication");
 
+  const previewResult = await fetch(`${baseURL}/_emdash/api/content/posts/${encodeURIComponent(createdId)}/preview-url`, {
+    method: 'POST', headers: { authorization: `Bearer ${rawToken}`, 'content-type': 'application/json' },
+    // EmDash's explicit pathPattern supports {id} and {collection}, not {slug}.
+    // This fixture already has the exact unique slug, so request that path.
+    body: JSON.stringify({ pathPattern: `/journal/${encodeURIComponent(slug)}` }),
+  });
+  const previewBody = await previewResult.json();
+  const previewPath = previewBody?.data?.url ?? previewBody?.url;
+  if (!previewResult.ok) throw new Error('A same-origin signed draft preview was not returned.');
+  const previewUrl = resolveEditorialPreview(previewPath, baseURL);
+  const preview = await fetch(previewUrl);
+  if (!preview.ok || !(await preview.text()).includes('It must not be public yet.')) throw new Error('Signed preview did not render the draft.');
+  pass('signed preview renders the unpublished draft');
+
   cli(["content", "publish", "posts", createdId], rawToken);
   const published = await fetch(`${baseURL}/journal/${slug}`);
   const html = await published.text();
   if (published.status !== 200) throw new Error(`Published entry returned ${published.status}`);
-  fs.mkdirSync(path.join(".foilbury", "evidence"), { recursive: true });
-  fs.writeFileSync(path.join(".foilbury", "evidence", "emdash-last.html"), html);
+  fs.writeFileSync(path.join(evidence, "emdash-last.html"), html);
   for (const [name, needle] of [
     ["heading", "<h2>Structure survives the round trip</h2>"],
     ["strong mark", "<strong>It must not be public yet.</strong>"],
@@ -138,6 +152,10 @@ try {
   const scheduledSlug = `${slug}-scheduled`;
   const scheduled = cli(["content", "create", "posts", "--draft", "--slug", scheduledSlug, "--data", JSON.stringify({ title: "Scheduled editorial proof", excerpt: "Not yet public.", content })], rawToken);
   scheduledId = scheduled?.id ?? scheduled?.data?.id;
+  if (!scheduledId || !/^[a-zA-Z0-9_-]+$/.test(scheduledId)) throw new Error('Scheduled draft returned no valid content id.');
+  bindingFailed=true;
+  verifyEditorialDraft(JSON.parse(d1(`SELECT id,slug,status FROM ec_posts WHERE slug='${scheduledSlug}' AND id='${scheduledId}'`)),scheduledId,scheduledSlug);
+  bindingFailed=false;
   const when = new Date(Date.now() + 60 * 60 * 1000).toISOString();
   cli(["content", "schedule", "posts", scheduledId, "--at", when], rawToken);
   const scheduledRow = cli(["content", "get", "posts", scheduledId, "--raw"], rawToken);
@@ -161,14 +179,21 @@ try {
   await page.screenshot({ path: path.join(evidence, "emdash-editorial-failure.png"), fullPage: true }).catch(() => undefined);
 } finally {
   await browser.close();
-  if (createdId) {
-    try { cli(["content", "delete", "posts", createdId], rawToken); } catch { /* already deleted */ }
+  // Reconcile by unique slug even if the CLI committed but its response was
+  // lost. If the server is gone, report retained artifacts for inspection.
+  try {
+    const rows=JSON.parse(d1(`SELECT id,slug FROM ec_posts WHERE slug IN ('${slug}','${slug}-scheduled') AND deleted_at IS NULL`)).flatMap((result)=>result.results ?? []);
+    for (const id of verifiedEditorialCleanupIds(bindingFailed,rows,slug)) cli(['content','delete','posts',id],rawToken);
+    const remaining=JSON.parse(d1(`SELECT id FROM ec_posts WHERE slug IN ('${slug}','${slug}-scheduled') AND deleted_at IS NULL`)).flatMap((result)=>result.results ?? []);
+    if (remaining.length) throw new Error('Acceptance entries remain in isolated D1.');
+  } catch { fail('isolated content cleanup',new Error('Cleanup could not be verified; retain the disposable container for inspection.')); }
+  if (tokenAttempted) {
+    try {
+      d1(`DELETE FROM _emdash_api_tokens WHERE id = '${tokenId}';`);
+      const rows=JSON.parse(d1(`SELECT id FROM _emdash_api_tokens WHERE id='${tokenId}'`)).flatMap((result)=>result.results ?? []);
+      if (rows.length) throw new Error('Temporary token remains.');
+    } catch { fail("temporary token cleanup", new Error("Cleanup failed; preserve and inspect the disposable database.")); }
   }
-  if (scheduledId) { try { cli(["content", "delete", "posts", scheduledId], rawToken); } catch { /* already deleted */ } }
-  if (tokenCreated) {
-    try { d1(`DELETE FROM _emdash_api_tokens WHERE id = '${tokenId}';`); } catch (error) { console.error(`Token cleanup failed: ${String(error)}`); }
-  }
-  try { fs.unlinkSync(path.join(".foilbury", "emdash-test-token")); } catch { /* not present */ }
 }
 
 const report = { generated_at: new Date().toISOString(), base_url: baseURL, results };

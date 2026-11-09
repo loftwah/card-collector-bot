@@ -5,7 +5,7 @@ import { readConfig, type RawEnv, type RuntimeConfig, type Role } from "./config
 export type { Role } from "./config";
 export { assertTrustedLocal } from "./config";
 import { all, first, nowIso } from "./db";
-import { hmacHex, sha256Hex } from "./ids";
+import { hmacHex, requestReference, sha256Hex } from "./ids";
 import { newId } from "./ids";
 import {
   audienceForPath,
@@ -48,6 +48,11 @@ export interface CurrentUser {
   globalCollectionScope?: GlobalCollectionScope | null;
   /** True only for an explicitly synthetic game actor. Never a login identity. */
   synthetic?: boolean;
+  /** Live Bot authority, intersected with an explicit admin grant for agents. */
+  agentBotCapabilities?: string[];
+  agentIsBotOwner?: boolean;
+  /** Verified platform provision, usable only by explicitly scoped content operations. */
+  agentPlatformContent?: boolean;
 }
 
 export interface Actor {
@@ -72,9 +77,11 @@ export interface Ctx {
   user: CurrentUser | null;
   actor: Actor;
   scopes: string[] | null;
+  /** Internal identity derived from a verified Discord interaction, never an HTTP API field. */
+  discordPrincipal?: { discordUserId: string };
+  /** Exact verified bearer credential; never inferred from the agent name. */
+  agentCredential?: { grantId: string; tokenId: string; verifiedTokenHash?: string } | null;
   sessionId: string | null;
-  /** Exact bearer token used for this request, for live authority checks. */
-  agentTokenId?: string | null;
   csrfToken: string;
   sessionAssurance: string | null;
   sessionAuthTime: string | null;
@@ -116,7 +123,7 @@ export async function buildContext(
   const raw = runtimeEnv();
   const config = readConfig(raw);
   const db = raw.DB;
-  const requestId = request.headers.get("cf-ray") ?? newId("req");
+  const requestId = requestReference(request);
   const clientKey = await trustedClientKey(request, config);
   const cookie = parseCookies(request.headers.get("cookie"));
   const sessionToken = cookie.fb_session;
@@ -130,8 +137,9 @@ export async function buildContext(
     label: "Anonymous",
   };
   let scopes: string[] | null = null;
+  let agentCredential: Ctx["agentCredential"] = null;
   let sessionId: string | null = null;
-  let agentTokenId: string | null = null;
+  let sessionTenantId: string | null = null;
   let csrfToken = cookie.fb_csrf ?? "";
   let sessionAssurance: string | null = null;
   let sessionAuthTime: string | null = null;
@@ -145,13 +153,14 @@ export async function buildContext(
     user = resolved.user;
     actor = resolved.actor;
     scopes = resolved.scopes;
-    agentTokenId = resolved.tokenId;
+    agentCredential = resolved.credential;
   } else if (sessionToken) {
     const resolved = await resolveSession(db, sessionToken);
     if (resolved) {
       tenant = resolved.tenant;
       user = resolved.user;
       sessionId = resolved.sessionId;
+      sessionTenantId = resolved.tenant.id;
       csrfToken = resolved.csrfToken;
       sessionAssurance = resolved.assurance;
       sessionAuthTime = resolved.authTime;
@@ -224,18 +233,19 @@ export async function buildContext(
           const strongSessionAge = sessionAuthTime
             ? Date.now() - new Date(sessionAuthTime).getTime()
             : Infinity;
-          // Gifts use the strictest local proof window (15 minutes).
+          // Preserve recent local proof; each sensitive action applies its own window.
           const hasRecentLocalProof =
+            sessionId !== null && sessionTenantId === tenant.id &&
             ["passkey", "mfa"].includes(sessionAssurance ?? "") &&
             strongSessionAge >= 0 &&
-            strongSessionAge <= 15 * 60_000;
+            strongSessionAge <= 30 * 60_000;
           const needsProviderProof =
             !["GET", "HEAD", "OPTIONS"].includes(request.method) && !hasRecentLocalProof;
           if (
-            platformPath ||
+            !hasRecentLocalProof && (platformPath ||
             (needsProviderProof &&
               (await resolveAccessIdentityProvider(assertion, accessIdentity, config)) ===
-                "cloudflare")
+                "cloudflare"))
           ) {
             sessionAssurance = "access";
             sessionAuthTime = nowIso();
@@ -298,8 +308,8 @@ export async function buildContext(
     user,
     actor,
     scopes,
+    agentCredential,
     sessionId,
-    agentTokenId,
     csrfToken,
     sessionAssurance,
     sessionAuthTime,
@@ -327,6 +337,13 @@ export async function trustedClientKey(
       : null;
   const raw = edgeAddress || "local-caller";
   return hmacHex(config.sessionSecret || "foilbury-local-rate-limit", raw);
+}
+
+/** Keep account identifiers out of durable rate-limit keys. */
+export async function rateLimitEmailKey(config: RuntimeConfig, namespace: string, email: string): Promise<string> {
+  const normalized = email.trim().toLowerCase();
+  const digest = await hmacHex(config.sessionSecret || "foilbury-local-rate-limit", `email:${namespace}:${normalized}`);
+  return `${namespace}:${digest}`;
 }
 
 export async function resolveSession(
@@ -416,7 +433,7 @@ export async function resolveAgent(
   config: RuntimeConfig,
   token: string,
   tenantFilter?: Tenant,
-): Promise<{ user: CurrentUser; actor: Actor; scopes: string[]; tenant: Tenant; tokenId: string }> {
+): Promise<{ user: CurrentUser; actor: Actor; scopes: string[]; tenant: Tenant; credential: { grantId: string; tokenId: string; verifiedTokenHash: string } }> {
   const tokenHash = await hmacHex(config.agentPepper || config.sessionSecret || "local", token);
   const row = await first<{
     id: string;
@@ -424,6 +441,11 @@ export async function resolveAgent(
     agent_name: string;
     agent_id: string;
     represented_user_id: string;
+    bot_owner_user_id: string | null;
+    admin_status: string | null;
+    admin_role: string | null;
+    admin_revoked_at: string | null;
+    admin_capabilities: string | null;
     scopes_json: string;
     status: string;
     expires_at: string;
@@ -445,14 +467,20 @@ export async function resolveAgent(
     db,
     `SELECT t.id, t.grant_id, g.agent_name, g.agent_id, g.represented_user_id,
             g.scopes_json, g.status, g.expires_at, g.revoked_at,
-            u.email, u.display_name, u.platform_admin, u.email_verified_at, u.disabled_at,
+            u.email, u.display_name,
+            (u.platform_admin = 1 AND EXISTS (SELECT 1 FROM fb_platform_admins pa WHERE pa.user_id = u.id AND pa.status = 'active' AND pa.revoked_at IS NULL)) AS platform_admin,
+            u.email_verified_at, u.disabled_at,
             m.role, m.capabilities_json, m.self_grants_enabled, m.grant_limit, m.capability_revision,
-            t2.id AS tenant_id, t2.slug AS tenant_slug, t2.name AS tenant_name
+            t2.id AS tenant_id, t2.slug AS tenant_slug, t2.name AS tenant_name,
+            b.owner_user_id AS bot_owner_user_id, ba.status AS admin_status, ba.role AS admin_role,
+            ba.revoked_at AS admin_revoked_at, ba.capabilities_json AS admin_capabilities
        FROM fb_agent_tokens t
        JOIN fb_agent_grants g ON g.id = t.grant_id
        JOIN fb_users u ON u.id = g.represented_user_id
-       JOIN fb_memberships m ON m.user_id = u.id AND m.tenant_id = g.tenant_id AND m.status = 'active'
+       JOIN fb_memberships m ON m.user_id = u.id AND m.tenant_id = g.tenant_id AND m.status = 'active' AND m.revoked_at IS NULL
        JOIN fb_tenants t2 ON t2.id = g.tenant_id
+       LEFT JOIN fb_bots b ON b.tenant_id = g.tenant_id AND b.status = 'active'
+       LEFT JOIN fb_bot_admins ba ON ba.bot_id = b.id AND ba.user_id = u.id
       WHERE t.token_hash = ? AND t.revoked_at IS NULL
         AND (? IS NULL OR g.tenant_id = ?)`,
     tokenHash,
@@ -476,22 +504,41 @@ export async function resolveAgent(
   } catch {
     capabilities = [];
   }
-  const scopes = JSON.parse(row.scopes_json) as string[];
+  let scopes: string[];
+  try {
+    const parsed = JSON.parse(row.scopes_json) as unknown;
+    if (!Array.isArray(parsed) || !parsed.every((scope) => typeof scope === "string")) throw new Error("invalid scopes");
+    scopes = parsed;
+  } catch {
+    throw new ApiError(401, "agent_unauthorised", "This agent credential is expired or revoked.");
+  }
+  const owner = row.role === "owner" && row.bot_owner_user_id === row.represented_user_id;
+  let adminCapabilities: string[] = [];
+  try {
+    const parsed = JSON.parse(row.admin_capabilities ?? "[]") as unknown;
+    if (Array.isArray(parsed)) adminCapabilities = parsed.filter((item): item is string => typeof item === "string");
+  } catch { /* malformed grants confer no authority */ }
+  const agentBotCapabilities = owner ? ["content", "economy", "grants", "inventory"] :
+    row.role !== "owner" && row.admin_role === "admin" && row.admin_status === "active" && !row.admin_revoked_at
+      ? capabilities.filter((capability) => adminCapabilities.includes(capability)) : [];
   await db
     .prepare("UPDATE fb_agent_tokens SET last_used_at = ? WHERE id = ?")
     .bind(nowIso(), row.id)
     .run()
     .catch(() => undefined);
   return {
-    tokenId: row.id,
     scopes,
+    credential: { grantId: row.grant_id, tokenId: row.id, verifiedTokenHash: tokenHash },
     tenant: { id: row.tenant_id, slug: row.tenant_slug, name: row.tenant_name },
     user: {
       id: row.represented_user_id,
       email: row.email,
       displayName: row.display_name,
       role: row.role,
-      platformAdmin: Boolean(row.platform_admin),
+      platformAdmin: false,
+      agentPlatformContent: Boolean(row.platform_admin),
+      agentBotCapabilities,
+      agentIsBotOwner: owner,
       emailVerified: Boolean(row.email_verified_at),
       capabilities,
       selfGrantsEnabled: Boolean(row.self_grants_enabled),
@@ -531,7 +578,7 @@ export function requireScope(ctx: Ctx, scope: string): void {
 
 export function canManageContent(ctx: Ctx): boolean {
   if (ctx.actor.type === "agent") {
-    if (ctx.scopes?.includes("content:write")) return true;
+    if (ctx.scopes?.includes("content:write") && ctx.user?.agentBotCapabilities?.includes("content")) return true;
     return false;
   }
   return ctx.user?.role === "owner" || ctx.user?.role === "editor";
@@ -539,7 +586,8 @@ export function canManageContent(ctx: Ctx): boolean {
 
 export function canManageEconomy(ctx: Ctx): boolean {
   if (ctx.actor.type === "agent") {
-    if (ctx.scopes?.includes("economy:write") || ctx.scopes?.includes("economy:grant")) return true;
+    if ((ctx.scopes?.includes("economy:write") || ctx.scopes?.includes("economy:grant")) &&
+        ctx.user?.agentBotCapabilities?.some((capability) => ["economy", "grants"].includes(capability))) return true;
     return false;
   }
   return ctx.user?.role === "owner" || ctx.user?.role === "economy_admin";
@@ -708,7 +756,7 @@ export function requireSuperAdmin(ctx: Ctx): CurrentUser {
  */
 export function requireSuperAdminContent(ctx: Ctx): CurrentUser {
   const user = requireUser(ctx);
-  if (!user.platformAdmin) {
+  if (!(ctx.actor.type === "agent" ? user.agentPlatformContent : user.platformAdmin)) {
     throw new ApiError(
       403,
       "super_admin_required",
@@ -763,25 +811,28 @@ export function requireRecentStrongAuth(ctx: Ctx, maxAgeMinutes = 20): void {
     );
   }
   const method = ctx.sessionAssurance ?? "";
-  if (method === "access" && (!ctx.accessIdentity || ctx.accessStatus !== "linked")) {
+  // Access proves the request identity but the verified token currently does
+  // not establish when the person last authenticated. It cannot satisfy a
+  // recent-auth requirement by assigning the request time as login time.
+  if (method === "access") {
     throw new ApiError(
       403,
       "strong_auth_required",
-      "This action needs recent strong authentication. Confirm with a passkey, authenticator code or Cloudflare Access to continue.",
+      "This action needs recent strong authentication. Confirm with a passkey or authenticator code to continue.",
     );
   }
-  if (!["access", "passkey", "mfa"].includes(method)) {
+  if (!["passkey", "mfa"].includes(method)) {
     throw new ApiError(
       403,
       "strong_auth_required",
-      "This action needs recent strong authentication. Confirm with a passkey, authenticator code or Cloudflare Access to continue.",
+      "This action needs recent strong authentication. Confirm with a passkey or authenticator code to continue.",
     );
   }
-  if (method !== "access") {
+  {
     const age = ctx.sessionAuthTime
       ? Date.now() - new Date(ctx.sessionAuthTime).getTime()
       : Number.POSITIVE_INFINITY;
-    if (!Number.isFinite(age) || age > maxAgeMinutes * 60_000) {
+    if (!Number.isFinite(age) || age < 0 || age > maxAgeMinutes * 60_000) {
       throw new ApiError(
         403,
         "strong_auth_stale",
@@ -833,23 +884,28 @@ export async function checkRateLimit(
   key: string,
   limit: number,
   windowSeconds: number,
+  legacyKey?: string,
 ): Promise<void> {
   const now = Math.floor(Date.now() / 1000);
   const windowStart = now - (now % windowSeconds);
   const row = await first<{ count: number; window_start: number }>(
     db,
-    `INSERT INTO fb_rate_limits (key, window_start, count) VALUES (?, ?, 1)
+    `INSERT INTO fb_rate_limits (key, window_start, count)
+     VALUES (?, ?, 1 + COALESCE((SELECT count FROM fb_rate_limits WHERE key = ? AND window_start = ?), 0))
      ON CONFLICT(key) DO UPDATE SET
-       count = CASE WHEN window_start < ? THEN 1 ELSE count + 1 END,
+       count = CASE WHEN window_start < ? THEN excluded.count ELSE count + 1 END,
        window_start = CASE WHEN window_start < ? THEN ? ELSE window_start END
      RETURNING count, window_start`,
     key,
+    windowStart,
+    legacyKey ?? null,
     windowStart,
     windowStart,
     windowStart,
     windowStart,
   );
   if ((row?.count ?? 0) > limit) {
-    throw new ApiError(429, "rate_limited", "Too many attempts. Try again shortly.");
+    const retryAfterSeconds = Math.max(1, Math.min(windowSeconds, (row?.window_start ?? windowStart) + windowSeconds - now));
+    throw new ApiError(429, "rate_limited", "Too many attempts. Try again shortly.", { retryAfterSeconds });
   }
 }

@@ -5,11 +5,12 @@ const session = Astro.locals.foilbury;
 const user = session?.user ?? null;
 const path = Astro.url.pathname;
 const links = [
-  { href: "/cabinet", label: "Browse originals" },
-  { href: "/#how-it-works", label: "How it works" },
+  { href: "/cabinet", label: "The Cabinet" },
+  { href: "/tour", label: "Tour" },
   { href: "/journal", label: "Journal" },
+  { href: "/play/draw", label: "Draw" },
 ];
-if (user) links.push({ href: "/play", label: "My library" });
+if (user) links.push({ href: "/play", label: "My Collection" });
 const canStudio = Boolean(
   user &&
   (user.platformAdmin ||
@@ -21,15 +22,10 @@ if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform"
 ---
 
 <header class="site-header">
-  <div class="container site-header__inner flex min-h-[68px] flex-wrap items-center justify-between gap-2 py-3 sm:gap-4">
-    <a
-      href="/"
-      class="flex shrink-0 items-center gap-1.5 no-underline"
-      aria-label="Foilbury home"
-    >
-      <span class="font-display text-[1.1rem] font-bold tracking-[-0.035em]">
-        Foilbury
-      </span>
+  <div class="container flex min-h-[68px] flex-wrap items-center justify-between gap-4 py-3">
+    <a href="/" class="flex items-center gap-2.5 no-underline" aria-label="Foilbury home">
+      <img src="/brand/mark.png" alt="" width="30" height="30" class="h-[30px] w-[30px]" />
+      <span class="font-display text-[1.35rem] tracking-[-0.03em]">Foilbury</span>
     </a>
 
     <nav class="hidden items-center gap-1 md:flex" aria-label="Primary">
@@ -37,7 +33,7 @@ if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform"
         <a
           href={link.href}
           class:list={[
-            "border-b-2 px-3 py-2 font-sans text-[0.85rem] font-medium no-underline transition-colors",
+            "border-b-2 px-3 py-2 font-mono text-[0.66rem] uppercase tracking-[0.1em] no-underline transition-colors",
             (
               link.href === "/play/draw"
                 ? path.startsWith("/play/draw")
@@ -54,23 +50,15 @@ if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform"
       ))}
     </nav>
 
-    <div class="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-0 min-[360px]:gap-1.5">
+    <div class="relative flex max-w-full min-w-0 flex-wrap items-center gap-1.5">
       {user ? (
         <>
           <a
             href="/play"
-            class="hidden min-h-[32px] items-center gap-1.5 rounded-full border border-[var(--line)] bg-[var(--panel)] px-2.5 py-1 font-sans text-[0.74rem] font-semibold no-underline sm:flex"
+            class="hidden items-center gap-2 rounded-[2px] border border-[var(--line)] bg-[var(--panel-2)] px-2.5 py-1.5 font-mono text-[0.64rem] uppercase tracking-[0.08em] no-underline sm:flex"
             title="Your Foil balance"
           >
-            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" class="h-[15px] w-[15px] text-[var(--signal)]">
-              <circle cx="10" cy="10" r="7.25" stroke="currentColor" stroke-width="1.5"></circle>
-              <path
-                d="M10 5.8v8.4M12.6 7.4c-.55-.8-1.45-1.2-2.55-1.2-1.35 0-2.3.7-2.3 1.8 0 1 .8 1.5 2.3 1.8 1.55.3 2.4.8 2.4 1.95 0 1.15-1 1.85-2.4 1.85-1.15 0-2.1-.45-2.65-1.25"
-                stroke="currentColor"
-                stroke-width="1.25"
-                stroke-linecap="round"
-              ></path>
-            </svg>
+            <span class="text-[var(--signal)]">✦</span>
             <span data-foil-balance>{session?.wallet ?? 0} Foil</span>
           </a>
           <a
@@ -79,28 +67,27 @@ if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform"
           >
             {user.displayName}
           </a>
+          {!["owner", "editor", "economy_admin"].includes(user.role) ? (
+            <a class="btn btn-secondary btn-sm hidden sm:inline-flex" href="/create-bot">
+              Create a Bot
+            </a>
+          ) : null}{" "}
           <LogoutButton client:load />
         </>
       ) : (
-        <a
-          class="btn btn-primary btn-sm min-h-[44px] shrink-0 whitespace-nowrap px-2"
-          href="/login"
-        >
+        <a class="btn btn-primary btn-sm whitespace-nowrap" href="/login">
           Sign in
         </a>
       )}
       <ThemeToggle client:load />
-      <details class="relative md:hidden">
-        <summary
-          class="btn btn-ghost btn-sm min-h-[44px] cursor-pointer list-none px-2"
-          aria-label="Menu"
-        >
+      <details class="md:hidden">
+        <summary class="btn btn-ghost btn-sm cursor-pointer list-none" aria-label="Menu">
           Menu
         </summary>
-        <div class="site-header__menu absolute right-0 top-11 z-30 border border-[var(--line-strong)] bg-[var(--paper)] p-2 shadow-xl">
+        <div class="absolute right-0 top-full z-30 mt-1 w-44 max-w-full border border-[var(--line-strong)] bg-[var(--paper)] p-2 shadow-xl">
           {links.map((link) => (
             <a
-              class="block px-3 py-2 font-sans text-[0.9rem] text-[var(--muted)] no-underline hover:bg-[var(--ink)]/5 hover:text-[var(--ink)]"
+              class="block px-3 py-2 font-mono text-[0.68rem] uppercase tracking-[0.08em] text-[var(--muted)] no-underline hover:bg-[var(--ink)]/5 hover:text-[var(--ink)]"
               href={link.href}
             >
               {link.label}
@@ -108,10 +95,18 @@ if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform"
           ))}
           {user ? (
             <a
-              class="block px-3 py-2 font-sans text-[0.9rem] text-[var(--muted)] no-underline hover:bg-[var(--ink)]/5 hover:text-[var(--ink)]"
+              class="block px-3 py-2 font-mono text-[0.68rem] uppercase tracking-[0.08em] text-[var(--muted)] no-underline hover:bg-[var(--ink)]/5 hover:text-[var(--ink)]"
               href="/account/security"
             >
               Account security
+            </a>
+          ) : null}
+          {!user ? (
+            <a
+              class="block px-3 py-2 font-mono text-[0.68rem] uppercase tracking-[0.08em] text-[var(--muted)] no-underline hover:bg-[var(--ink)]/5 hover:text-[var(--ink)]"
+              href="/create-bot"
+            >
+              Create a Bot
             </a>
           ) : null}
         </div>

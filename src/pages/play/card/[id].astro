@@ -4,7 +4,6 @@ import CardInspector from "../../../components/player/CardInspector";
 import CardDetailActions from "../../../components/player/CardDetailActions";
 import SharePanel from "../../../components/player/SharePanel";
 import { pageContext } from "../../../server/page";
-import { first } from "../../../server/db";
 import { getInstance } from "../../../server/modules/collection";
 import { getCard, listSets } from "../../../server/modules/catalogue";
 import { getWishlist } from "../../../server/modules/collection";
@@ -19,18 +18,6 @@ try {
   return Astro.redirect("/play/collection");
 }
 const { instance, history, draws } = detail;
-const ownedCopy = await first<{ id: string }>(
-  ctx.db,
-  `SELECT ci.id
-     FROM fb_card_instances ci
-     JOIN fb_card_definitions cd ON cd.id=ci.card_id AND cd.status='published' AND cd.archived_at IS NULL
-     JOIN fb_variants v ON v.id=ci.variant_id AND v.card_id=cd.id AND v.status='published' AND v.archived_at IS NULL
-     JOIN fb_artwork_editions e ON e.id=v.edition_id AND e.tenant_id=v.tenant_id AND e.card_id=cd.id AND e.status='published' AND e.archived_at IS NULL
-    WHERE ci.id=? AND ci.tenant_id=? AND ci.user_id=? AND ci.status IN ('owned','reserved')`,
-  instance.id,
-  ctx.tenant.id,
-  ctx.user!.id,
-);
 const sets = await listSets(ctx, ctx.user!.id);
 const set = sets.find(
   (item) => item.cards.some((card) => card.id === instance.card_id) && item.status === "published",
@@ -76,7 +63,7 @@ const artOriginLabel = (origin: string): string => {
 
 <PlayerLayout title={`${instance.card_name} · Collection`}>
   <nav
-    class="mb-6 font-mono text-[0.62rem] uppercase tracking-[0.12em] text-[var(--muted)]"
+    class="card-detail-breadcrumb mb-6 font-mono text-[0.62rem] uppercase tracking-[0.12em] text-[var(--muted)]"
     aria-label="Breadcrumb"
   >
     <a href="/play/collection">Collection</a> <span aria-hidden="true">/</span>{" "}
@@ -87,7 +74,7 @@ const artOriginLabel = (origin: string): string => {
     <div>
       <CardInspector
         client:load
-        inspectionInstanceId={ownedCopy ? instance.id : undefined}
+        instanceId={instance.id}
         frontUrl={instance.render_url}
         backUrl={instance.back_render_url}
         fallbackUrl="/brand/card-back.webp"
@@ -97,13 +84,6 @@ const artOriginLabel = (origin: string): string => {
         collection={instance.collection_name}
         serial={instance.serial}
       />
-      {ownedCopy && ctx.csrfToken ? <noscript>
-        <form method="post" action={`/play/card/${encodeURIComponent(instance.id)}/inspect`} class="mt-3">
-          <input type="hidden" name="csrf" value={ctx.csrfToken} />
-          <button type="submit" class="btn btn-secondary btn-sm">Record inspection for daily missions</button>
-          <p class="mt-2 text-xs text-[var(--muted)]">Use the front link below and <a class="underline underline-offset-4" href={instance.back_render_url ?? "/brand/card-back.webp"}>{instance.back_render_url ? "view the card back" : "view the generic card back"}</a>, then record your inspection.</p>
-        </form>
-      </noscript> : null}
       <div class="mt-4 flex flex-wrap items-center justify-between gap-2">
         <p class="font-mono text-[0.58rem] uppercase tracking-[0.12em] text-[var(--muted)]">
           Your copy ·{" "}
@@ -231,6 +211,8 @@ const artOriginLabel = (origin: string): string => {
         <CardDetailActions
           client:load
           instanceId={instance.id}
+          tenantId={ctx.tenant.id}
+          userId={ctx.user!.id}
           cardId={instance.card_id}
           initialFavourite={Boolean(instance.favourite)}
           initialLocked={Boolean(instance.locked)}

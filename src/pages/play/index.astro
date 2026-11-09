@@ -9,10 +9,10 @@ import { countInventory, getInventory } from "../../server/modules/collection";
 import { listSets } from "../../server/modules/catalogue";
 import { getEconomy, getPreferences } from "../../server/modules/economy";
 import { getPoolPreview } from "../../server/modules/pools";
+import { listCollections } from "../../server/modules/collections";
 import { listAchievements } from "../../server/modules/achievements";
 import { first } from "../../server/db";
 import { formatDual, printTitle as editionPrintTitle } from "../../lib/utils";
-import { cabinetNextStep } from "../../lib/cabinet-next-step";
 
 const ctx = await pageContext(Astro.request);
 const user = ctx.user!;
@@ -26,6 +26,7 @@ const [
   prefs,
   lastClaim,
   cabinetPool,
+  collections,
   achievements,
 ] = await Promise.all([
   getWalletSummary(ctx.db, ctx.tenant.id, user.id, 8),
@@ -44,6 +45,7 @@ const [
     poolError = true;
     return null;
   }),
+  listCollections(ctx),
   listAchievements(ctx, user.id),
 ]);
 const nextEligible = lastClaim
@@ -52,11 +54,12 @@ const nextEligible = lastClaim
     ).toISOString()
   : null;
 const canClaim = !nextEligible || new Date(nextEligible) <= new Date();
+const completed = sets.filter((set) => set.progress?.complete && !set.progress.claimed);
 const featured = inventory[0] ?? null;
 const recent = inventory.slice(1, 7);
-const printTitleOf = (item: (typeof inventory)[number] | null) =>
-  editionPrintTitle(item?.edition_name);
+const printTitleOf = (item: (typeof inventory)[number] | null) => editionPrintTitle(item?.edition_name);
 const featuredPrint = printTitleOf(featured);
+const enabledCollections = collections.filter((collection) => collection.enabled);
 const publishedSets = sets.filter((set) => set.status === "published");
 const activeSet =
   [...publishedSets]
@@ -68,32 +71,41 @@ const activeSet =
     )[0] ??
   publishedSets[0] ??
   null;
+const earnedAchievements = achievements.filter((item) => item.state === "earned");
 const nextAchievement =
   achievements
     .filter((item) => item.state !== "earned")
     .sort((a, b) => b.progress / Math.max(1, b.target) - a.progress / Math.max(1, a.target))[0] ??
   null;
-const nextMove = cabinetNextStep({
-  canClaim,
-  dailyReward: economy.daily_reward,
-  nextEligible: nextEligible ? formatDual(nextEligible) : null,
-  balance: wallet.balance,
-  pool: cabinetPool,
-});
-const activeOwned = activeSet?.progress?.owned ?? 0;
-const activeTotal = activeSet?.progress?.total ?? activeSet?.cards.length ?? 0;
-const activeRemaining = Math.max(0, activeTotal - activeOwned);
+const nextMove = canClaim
+  ? {
+      title: "Claim your daily Foil",
+      body: `✦ ${economy.daily_reward} is waiting. It takes one click and never expires into a purchase.`,
+      href: null,
+    }
+  : cabinetPool && wallet.balance >= cabinetPool.price
+    ? {
+        title: "Open a capsule",
+        body: `${cabinetPool.eligible_count} eligible finishes · ✦ ${cabinetPool.price}. Odds are shown before anything leaves your wallet.`,
+        href: "/play/draw",
+      }
+    : {
+        title: "Come back for the next allowance",
+        body: nextEligible
+          ? `The next daily Foil arrives ${formatDual(nextEligible)}.`
+          : "The daily allowance refills on a rolling schedule.",
+        href: "/play/collection",
+      };
 ---
 
-<PlayerLayout title="Your library · Foilbury">
-  <div class="cabinet-home">
-  <section class="grid gap-6 border-b border-[var(--line)] pb-7 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
+<PlayerLayout title="Your cabinet · Foilbury">
+  <section class="grid gap-6 border-b border-[var(--line)] pb-7 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-end">
     <div>
-      <h1 class="page-title">Your library</h1>
+      <p class="studio-kicker">Private cabinet · {ctx.tenant.name}</p>
+      <h1 class="page-title mt-3">Your cabinet, {user.displayName.split(" ")[0]}.</h1>
       <p class="mt-3 max-w-xl text-[var(--muted)]">
-        {activeSet
-          ? `You're ${activeRemaining} ${activeRemaining === 1 ? "card" : "cards"} from finishing ${activeSet.name}.`
-          : "Open a capsule to start your first collection. Every card is a real copy with a serial and a history."}
+        Every card here is a real copy with a serial and a history. Keep what matters; duplicates
+        can be gifted, traded or recycled.
       </p>
       <div class="mt-5 flex flex-wrap gap-2">
         <a class="btn btn-primary" href="/play/draw">
@@ -103,40 +115,26 @@ const activeRemaining = Math.max(0, activeTotal - activeOwned);
           My cards
         </a>
         <a class="btn btn-ghost" href="/play/collections">
-          Browse collections
+          Browse worlds
         </a>
       </div>
     </div>
-    <div class="grid gap-3">
-      {activeSet ? (
-        <a class="panel p-4 no-underline" href="/play/collections">
-          <p class="studio-stat__label">Continue collecting</p>
-          <p class="panel-title mt-1">{activeSet.name}</p>
-          <p class="mt-1 text-sm text-[var(--muted)]">
-            {activeOwned} of {activeTotal} cards
+    <div class="action-card">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <p class="studio-stat__label">Foil balance</p>
+          <p class="display-sm mt-0.5 text-4xl text-[var(--signal)]" data-foil-balance>
+            ✦ {wallet.balance}
           </p>
-          <div class="mt-3 h-1.5 bg-[var(--paper-3)]">
-            <div
-              class="h-full bg-[var(--signal)]"
-              style={`width:${activeTotal ? Math.round((activeOwned / activeTotal) * 100) : 0}%`}
-            ></div>
-          </div>
-          <p class="mt-2 text-sm font-semibold text-[var(--signal)]">View album →</p>
-        </a>
-      ) : null}
-      <div class="panel p-4">
-        <p class="studio-stat__label">Open a capsule</p>
-        <p class="panel-title mt-1">
-          {cabinetPool ? `${cabinetPool.price} Foil` : "No capsule available"}
-        </p>
-        <p class="mt-1 text-sm text-[var(--muted)]">
-          {cabinetPool ? `${cabinetPool.eligible_count} eligible cards` : "Check back soon."}
-        </p>
-        <a class="btn btn-primary btn-sm mt-3" href="/play/draw">Open a capsule</a>
+        </div>
+        <div class="text-right">
+          <p class="studio-stat__label">Cards kept</p>
+          <p class="display-sm mt-0.5 text-2xl">{totalCards}</p>
+        </div>
       </div>
-      <div class="panel p-4">
+      <div class="border-t border-[var(--line)] pt-3">
         <p class="studio-stat__label">Daily allowance</p>
-        <div class="mt-2">
+        <div class="mt-1.5">
           <ClaimButton
             client:load
             amount={economy.daily_reward}
@@ -148,7 +146,7 @@ const activeRemaining = Math.max(0, activeTotal - activeOwned);
     </div>
   </section>
 
-  <section class="latest-acquisition mt-7 grid gap-5 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)] lg:items-start">
+  <section class="mt-7 grid gap-5 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)] lg:items-start">
     <div class="surface p-4 sm:p-5">
       <div class="flex items-center justify-between gap-3 pb-3">
         <div>
@@ -168,7 +166,7 @@ const activeRemaining = Math.max(0, activeTotal - activeOwned);
           </a>
         ) : null}
       </div>
-      <div class="grid grid-cols-[minmax(0,160px)_minmax(0,1fr)] items-start gap-4 sm:grid-cols-[minmax(0,300px)_minmax(0,1fr)]">
+      <div class="grid items-start gap-4 sm:grid-cols-[minmax(0,300px)_minmax(0,1fr)]">
         <div>
           {featured?.render_url ? (
             <PublishedCard
@@ -184,7 +182,7 @@ const activeRemaining = Math.max(0, activeTotal - activeOwned);
             <div class="empty min-h-[280px]">
               <div>
                 <p class="display-sm text-2xl">The first card is waiting.</p>
-                <p class="mt-2 text-sm">Your first card will appear here after you open a capsule.</p>
+                <p class="mt-2 text-sm">Claim the allowance, then open the cabinet pool.</p>
               </div>
             </div>
           )}
@@ -194,22 +192,87 @@ const activeRemaining = Math.max(0, activeTotal - activeOwned);
             <p class="studio-stat__label">Next best move</p>
             <p class="panel-title">{nextMove.title}</p>
             <p class="text-sm leading-relaxed text-[var(--muted)]">{nextMove.body}</p>
-            {nextMove.kind === "claim" ? (
+            {canClaim ? (
               <p class="font-mono text-[0.58rem] uppercase tracking-[0.1em] text-[var(--signal)]">
                 Use the allowance control above
               </p>
             ) : (
               <a class="btn btn-primary btn-sm w-fit" href={nextMove.href ?? "/play/draw"}>
-                {nextMove.action}
+                Continue
               </a>
             )}
           </div>
-
+          <div class="kpi-grid">
+            <div class="kpi">
+              <p class="kpi__label">Worlds on</p>
+              <p class="kpi__value">{enabledCollections.length}</p>
+              <p class="kpi__hint">{publishedSets.length} releases</p>
+            </div>
+            <div class="kpi">
+              <p class="kpi__label">Badges</p>
+              <p class="kpi__value">{earnedAchievements.length}</p>
+              <p class="kpi__hint">of {achievements.length}</p>
+            </div>
+            <div class="kpi">
+              <p class="kpi__label">Completions</p>
+              <p class="kpi__value">{completed.length}</p>
+              <p class="kpi__hint">ready to claim</p>
+            </div>
+            <div class="kpi">
+              <p class="kpi__label">Capsule</p>
+              <p class="kpi__value">{cabinetPool ? `✦ ${cabinetPool.price}` : "—"}</p>
+              <p class="kpi__hint">
+                {cabinetPool ? `${cabinetPool.eligible_count} eligible` : "unavailable"}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
     <div class="grid gap-4">
+      {publishedSets.length ? (
+        <div class="panel">
+          <div class="panel-head px-4 pt-4">
+            <div>
+              <p class="studio-stat__label">Continue a release</p>
+              <p class="panel-title mt-0.5">{activeSet?.name ?? "Sets"}</p>
+            </div>
+            <a class="text-xs underline underline-offset-4" href="/play/rewards">
+              All rewards
+            </a>
+          </div>
+          <div class="panel-body grid gap-3">
+            {publishedSets.slice(0, 3).map((set) => {
+              const owned = set.progress?.owned ?? 0;
+              const total = set.progress?.total ?? set.cards.length;
+              const pct = total ? Math.round((owned / total) * 100) : 0;
+              return (
+                <div>
+                  <div class="flex items-baseline justify-between gap-2">
+                    <p class="text-sm font-semibold">{set.name}</p>
+                    <span class="font-mono text-[0.6rem] text-[var(--muted)]">
+                      {owned}/{total}
+                    </span>
+                  </div>
+                  <div class="mt-1.5 h-1.5 bg-[var(--paper-3)]">
+                    <div class="h-full bg-[var(--signal)]" style={`width:${pct}%`}></div>
+                  </div>
+                  <p class="mt-1 font-mono text-[0.54rem] uppercase tracking-[0.08em] text-[var(--muted)]">
+                    v{set.version} ·{" "}
+                    {set.progress?.claimed
+                      ? "reward claimed"
+                      : set.progress?.complete
+                        ? "completion ready"
+                        : `✦ ${set.reward_amount} on completion`}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
       {nextAchievement ? (
         <div class="panel">
           <div class="panel-head px-4 pt-4">
@@ -245,6 +308,34 @@ const activeRemaining = Math.max(0, activeTotal - activeOwned);
         </div>
       ) : null}
 
+      <div class="panel">
+        <div class="panel-head px-4 pt-4">
+          <div>
+            <p class="studio-stat__label">The cabinet</p>
+            <p class="panel-title mt-0.5">Your shortcuts</p>
+          </div>
+        </div>
+        <div class="panel-body grid grid-cols-2 gap-2">
+          <a class="card-toolbar__button justify-start" href="/play/missions">
+            Daily missions
+          </a>
+          <a class="card-toolbar__button justify-start" href="/play/wishlist">
+            Wishlist
+          </a>
+          <a class="card-toolbar__button justify-start" href="/play/gifts">
+            Gifts
+          </a>
+          <a class="card-toolbar__button justify-start" href="/play/trades">
+            Trades
+          </a>
+          <a class="card-toolbar__button justify-start" href="/play/profile">
+            Showcase
+          </a>
+          <a class="card-toolbar__button justify-start" href="/play/preferences">
+            Preferences
+          </a>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -291,7 +382,7 @@ const activeRemaining = Math.max(0, activeTotal - activeOwned);
       <div class="empty mt-4">
         <div>
           <p class="display-sm text-2xl">The drawers are empty.</p>
-          <p class="mt-2 text-sm">Your recent cards will appear here after your first opening.</p>
+          <p class="mt-2 text-sm">Claim the daily allowance, then open the draw room.</p>
         </div>
       </div>
     )}
@@ -315,5 +406,4 @@ const activeRemaining = Math.max(0, activeTotal - activeOwned);
     </a>
     .
   </p>
-  </div>
 </PlayerLayout>

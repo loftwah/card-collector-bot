@@ -1,14 +1,10 @@
 import { ApiError, type Ctx } from "../context";
-import { first, nowIso } from "../db";
+import { all, first, nowIso } from "../db";
 import { auditStatement } from "../http";
 import { newId, sha256Hex } from "../ids";
-import { getInventory } from "../modules/collection";
+import { assertDiscordInventoryFence, countInventory, getInventory, inventoryCounts } from "../modules/collection";
 import { displayFinish, printTitle as editionPrintTitle } from "../../lib/utils";
-import { claimDailyReward, getEconomy, getPreferences } from "../modules/economy";
-import {
-  getProfilePresentationOptions,
-  resolveProfilePresentation,
-} from "../modules/profile-presentation";
+import { adjustWallet, claimDailyReward, getEconomy } from "../modules/economy";
 import { getWalletSummary } from "../modules/wallet";
 import { getCard, listCards } from "../modules/catalogue";
 import {
@@ -21,17 +17,11 @@ import {
   executeDraw,
   getPoolPreview,
   listEligiblePools,
-  listPools,
+  readAuthorizedScopedDrawReplay,
+  recoverScopedDrawFailure,
 } from "../modules/pools";
 import { finishKey, listAchievements } from "../modules/achievements";
-import { compareNpc, getNpc, listNpcProfiles } from "../modules/npcs";
-import {
-  cancelNpcTrade,
-  confirmNpcTrade,
-  createNpcTrade,
-  npcTradeOffers,
-  previewNpcTrade,
-} from "../modules/npc-trades";
+import { compareNpc, listNpcProfiles } from "../modules/npcs";
 import { claimDailyMission, getDailyMissions } from "../modules/missions";
 import {
   achievementsOverviewMessage,
@@ -48,13 +38,14 @@ import {
 } from "./presentation";
 import {
   drawIdempotencyKey,
+  drawRecoveryMessage,
   drawReceiptFromResult,
   recoverDrawReceipt,
   recordInteractionReceipt,
 } from "./receipts";
 import { audienceRank, canViewCard, effectiveCardAudience } from "../modules/visibility";
 import { HELP_TEXT } from "./command-definitions";
-import { channelAudienceFor, isBotAdmin, requireBotAdmin } from "./context";
+import { discordAdminAuthoritySql, discordAdminHasCapabilities, requireDiscordAdminCapabilities } from "./context";
 import {
   assertCardInDiscordScope,
   discordScopeCardIds,
@@ -89,7 +80,7 @@ interface DrawReceipt {
   pool_name: string;
   price: number;
   currency: { name: string; symbol: string };
-  balance_after: number;
+  balance_after?: number;
   balance_after_debit?: number;
   current_balance?: number;
   credits_total?: number;
@@ -109,6 +100,11 @@ interface DailyReceipt {
   replayed: boolean;
 }
 
+interface GrantReceipt {
+  amount: number;
+  balance_after: number;
+  replayed: boolean;
+}
 
 const RARITY_COLORS: Record<string, number> = {
   common: 0x8a8f98,
@@ -174,9 +170,6 @@ function callback(message: DiscordMessage, ephemeral = false): DiscordCallback {
 
 function errorCallback(error: unknown, _ephemeral = true): DiscordCallback {
   const apiError = error instanceof ApiError ? error : null;
-  if (apiError && ["draw_outcome_unavailable", "unknown_commit_outcome"].includes(apiError.code)) {
-    return callback({content:"This opening may have completed. Check your collection and wallet before opening another capsule.",allowed_mentions:{parse:[]}},true);
-  }
   const nextEligibleAt =
     apiError?.details && typeof apiError.details.next_eligible_at === "string"
       ? apiError.details.next_eligible_at
@@ -191,6 +184,7 @@ function errorCallback(error: unknown, _ephemeral = true): DiscordCallback {
           : undefined;
   return stateFromError({
     code: apiError?.code,
+    outcomeUncertain: apiError?.details?.draw_outcome_uncertain === true,
     ...(apiError &&
     ["empty_pool", "stale_scope", "scope_empty", "card_outside_scope"].includes(apiError.code)
       ? { message: apiError.message }
@@ -260,11 +254,45 @@ export async function prepareDiscordDraw(
   idempotencyKey: string,
   providedScope?: DiscordScope,
 ): Promise<DiscordOpenPreparation> {
+  const poolSlug = validatePoolSlug(requestedPool ?? "cabinet-draw");
+  const idempotency = { key: idempotencyKey, digest: await sha256Hex(
+    `discord-open:${ctx.tenant.id}:${ctx.user!.id}:${poolSlug}:${interaction.id}`,
+  ) };
+  const recovery = async (): Promise<DiscordCallback | null> => {
+    if (!(await readAuthorizedScopedDrawReplay(ctx, idempotency))) return null;
+    const receipt = await recoverDrawReceipt(ctx.db, { tenantId: ctx.tenant.id, userId: ctx.user!.id, interactionId: interaction.id });
+    if (!receipt || receipt.kind !== "draw" || !(await readAuthorizedScopedDrawReplay(ctx, idempotency))) return null;
+    const message = drawRecoveryMessage({ receipt, origin: ctx.config.publicOrigin,
+      interactionId: interaction.id, reason: "This is the previously committed opening." });
+    if (message.embeds?.[0]) message.embeds[0].title = receipt.card_name.slice(0, 200);
+    return { type: 4, data: { ...message, flags: 64 } };
+  };
+  try {
+    const existing = await recovery();
+    if (existing) return { kind: "respond", callback: existing };
+    const prepared = await prepareDiscordDrawInternal(ctx, interaction, installation, requestedPool, idempotencyKey, providedScope);
+    if (prepared.kind === "respond") {
+      const concurrent = await recovery();
+      if (concurrent) return { kind: "respond", callback: concurrent };
+    }
+    return prepared;
+  } catch (error) {
+    await recoverScopedDrawFailure(ctx, idempotency, error);
+    const existing = await recovery();
+    if (existing) return { kind: "respond", callback: existing };
+    throw new ApiError(503, "draw_outcome_uncertain", "This opening's outcome could not be confirmed. Check your collection before opening again.", { draw_outcome_uncertain: true });
+  }
+}
+
+async function prepareDiscordDrawInternal(
+  ctx: Ctx, interaction: DiscordInteraction, installation: DiscordInstallation,
+  requestedPool: string | undefined, idempotencyKey: string, providedScope?: DiscordScope,
+): Promise<DiscordOpenPreparation> {
   const scope =
     providedScope ??
     (await resolveDiscordScope(ctx, installation, interaction.channel_id ?? null));
   if (scope.emptyReason) {
-    return { kind: "respond", callback: scopeFailureMessage(scope) };
+    throw new ApiError(403, "discord_scope_empty", scope.emptyReason);
   }
   const poolSlug = validatePoolSlug(requestedPool ?? "cabinet-draw");
   const poolScope = poolScopeFromDiscord(scope);
@@ -297,6 +325,7 @@ export async function prepareDiscordDraw(
               price: preview.price,
               eligibleCount: preview.eligible_count,
             })),
+            pendingOpening: true,
             packsCustomId: "foilbury:packs",
             browseUrl: absoluteUrl(ctx.config.publicOrigin, "/play/draw"),
           }),
@@ -347,10 +376,13 @@ export async function presentDiscordDraw(
   ).catch(() => null);
   const rarityName = await cardRarity(ctx, result.card_id).catch(() => null);
   const rarityKey = await cardRarityKey(ctx, result.card_id).catch(() => null);
+  // Retained channel shares are public-only until a durable, revocable
+  // Discord-to-Foilbury membership boundary is verified. A stored label or
+  // a point-in-time member census cannot establish that boundary.
   // Audience lookup failure must fail closed: no share control and a private
   // reveal. The draw itself is already committed and safe in the cabinet.
   const cardAudience = await effectiveCardAudience(ctx, result.card_id).catch(() => "private" as const);
-  const channelAudience = channelAudienceFor(installation, interaction.channel_id);
+  const channelAudience = "public" as const;
   const inScope = scope
     ? await assertCardInDiscordScope(ctx, scope, result.card_id)
         .then(() => true)
@@ -398,25 +430,23 @@ async function openCard(
   idempotencyKey: string,
   providedScope?: DiscordScope,
 ): Promise<DiscordCallback> {
-  const scope =
-    providedScope ??
-    (await resolveDiscordScope(ctx, installation, interaction.channel_id ?? null));
-  if (scope.emptyReason) return scopeFailureMessage(scope);
   const prepared = await prepareDiscordDraw(
     ctx,
     interaction,
     installation,
     requestedPool,
     idempotencyKey,
-    scope,
+    providedScope,
   );
   if (prepared.kind === "respond") return prepared.callback;
+  const scope = prepared.scope;
   const result = (await executeDraw(ctx, {
     pool: prepared.poolSlug,
     expectedRevision: prepared.expectedRevision,
     expectedDistribution: prepared.expectedDistribution,
     channelKey: prepared.channelKey,
     scope: poolScopeFromDiscord(scope),
+    discordInstallation: {id:installation.id,revision:Number(installation.configuration_revision ?? 1),botId:installation.bot_id ?? null,channelAllowlist:installation.channel_allowlist_json,collectionAllowlist:installation.collection_allowlist_json ?? null,channelAudience:installation.channel_audience_json ?? null,channelKey:installation.channel_key ?? null},
     idempotency: prepared.idempotency,
   })) as unknown as DrawReceipt;
 
@@ -471,15 +501,17 @@ async function redeliverReceipt(
             : `${receipt.card_name} — ${receipt.variant_name}`,
           description: [
             "This is the recorded result of your original draw. No second pull was made and no second debit was recorded.",
-            `**${receipt.price} ${receipt.currency_symbol}** was charged from **${receipt.pool_name}**. Current balance: **${receipt.balance_after} ${receipt.currency_symbol}**.`,
-            ...(credits > 0
+            receipt.settlement_pending
+              ? `**${receipt.price} ${receipt.currency_symbol}** was charged from **${receipt.pool_name}**. The balance is unconfirmed; check your wallet before opening another capsule.`
+              : `**${receipt.price} ${receipt.currency_symbol}** was charged from **${receipt.pool_name}**. Balance after that opening: **${receipt.balance_after} ${receipt.currency_symbol}**.`,
+            ...(!receipt.settlement_pending && credits > 0
               ? [
                   `Settled rewards: **+${credits} ${receipt.currency_symbol}**${creditNames.length ? ` · ${creditNames.join(", ")}` : ""}.`,
                 ]
               : []),
             ...(receipt.settlement_pending
               ? [
-                  "Reward settlement is still being confirmed from the ledger. The draw, serial and debit are already recorded and will not be paid twice.",
+                  "Reward settlement has not yet been confirmed from the ledger. The draw, serial and debit are already recorded and will not be paid twice.",
                 ]
               : []),
           ].join("\n\n"),
@@ -563,25 +595,26 @@ async function collection(
   ctx: Ctx,
   installation: DiscordInstallation,
   providedScope?: DiscordScope,
-  channelId?: string | null,
 ): Promise<DiscordCallback> {
   const scope =
     providedScope ??
-    (await resolveDiscordScope(ctx, installation, channelId ?? installation.channel_key ?? null));
+    (await resolveDiscordScope(ctx, installation, installation.channel_key ?? null));
   const scopedCardIds = await discordScopeCardIds(ctx, scope);
-  const allInventory = await getInventory(ctx, { limit: 500 });
-  const inventory = allInventory.filter(
-    (item) =>
-      scopedCardIds.has(item.card_id) &&
-      (scope.aiArtEnabled || !isAiEditionOrigin(item.subject_origin)),
-  );
-  const hidden = allInventory.length - inventory.length;
+  const discordFence = { epoch: scope.drawEpoch, installation: scope.drawInstallation };
+  const filter = { allowedCardIds: [...scopedCardIds], excludeAi: !scope.aiArtEnabled, discordFence };
+  const [inventory, counts, allCopies] = await Promise.all([
+    getInventory(ctx, { ...filter, limit: 8 }),
+    inventoryCounts(ctx, filter),
+    countInventory(ctx),
+  ]);
+  const hidden = Math.max(0, allCopies - counts.copies);
   const wallet = await getWalletSummary(ctx.db, ctx.tenant.id, ctx.user!.id, 1);
+  await assertDiscordInventoryFence(ctx, discordFence);
   const scopeNotice =
     hidden > 0
       ? `${hidden} historical ${hidden === 1 ? "copy is" : "copies are"} outside this server's current collection or AI-artwork scope. They remain owned and are visible in the signed-in website cabinet; they are not available to draw or share here.`
       : null;
-  if (inventory.length === 0) {
+  if (counts.copies === 0) {
     return cabinetSummaryMessage({
       scopeName: ctx.tenant.name,
       currencySymbol: wallet.currencySymbol,
@@ -596,16 +629,13 @@ async function collection(
       ...(scopeNotice ? { scopeNotice } : {}),
     });
   }
-  const counts = new Map<string, number>();
-  for (const item of inventory) counts.set(item.card_id, (counts.get(item.card_id) ?? 0) + 1);
-  const duplicates = [...counts.values()].filter((count) => count > 1).length;
   return cabinetSummaryMessage({
     scopeName: ctx.tenant.name,
     currencySymbol: wallet.currencySymbol,
     balance: wallet.balance,
-    owned: inventory.length,
-    unique: counts.size,
-    duplicates,
+    owned: counts.copies,
+    unique: counts.unique,
+    duplicates: counts.copies - counts.unique,
     items: inventory.slice(0, 8).map((item) => ({
       name: item.card_name,
       print: editionPrintTitle(item.edition_name),
@@ -620,38 +650,39 @@ async function collection(
   });
 }
 
+export function uniqueCardSearchMatch<T>(matches: T[]): T | null {
+  if (matches.length > 1) throw new ApiError(409, "card_name_ambiguous", "More than one card matches that name. Use the card's exact slug.");
+  return matches[0] ?? null;
+}
+
 async function card(
   ctx: Ctx,
   query: string,
   installation: DiscordInstallation,
   providedScope?: DiscordScope,
-  channelId?: string | null,
 ): Promise<DiscordCallback> {
   const scope =
     providedScope ??
-    (await resolveDiscordScope(ctx, installation, channelId ?? installation.channel_key ?? null));
+    (await resolveDiscordScope(ctx, installation, installation.channel_key ?? null));
   if (scope.emptyReason) return scopeFailureMessage(scope);
   let found: Awaited<ReturnType<typeof getCard>> | null = null;
   try {
     found = await getCard(ctx, query, { includeAi: scope.aiArtEnabled });
   } catch (error) {
     if (!(error instanceof ApiError) || error.code !== "card_not_found") throw error;
-    const matches = await listCards(ctx, {
+    let matches = await listCards(ctx, {
       search: query,
+      exactName: true,
       limit: 5,
       includeAi: scope.aiArtEnabled,
     });
-    found = matches[0] ?? null;
+    if (!matches.length) matches = await listCards(ctx, { search: query, limit: 5, includeAi: scope.aiArtEnabled });
+    found = uniqueCardSearchMatch(matches);
     if (!found) throw error;
   }
   await assertCardInDiscordScope(ctx, scope, found.id);
   if (found.status !== "published" || found.archived_at) {
-    if (!isBotAdmin(ctx.user!))
-      throw new ApiError(
-        404,
-        "card_not_found",
-        "That card is not available in the public catalogue.",
-      );
+    throw new ApiError(404,"card_not_found","That card is not available in the public catalogue.");
   }
   const variants = found.editions.flatMap((edition) =>
     edition.variants.filter((variant) => variant.status === "published"),
@@ -703,11 +734,10 @@ async function cardFace(
   side: "front" | "back",
   installation: DiscordInstallation,
   providedScope?: DiscordScope,
-  channelId?: string | null,
 ): Promise<DiscordCallback> {
   const scope =
     providedScope ??
-    (await resolveDiscordScope(ctx, installation, channelId ?? installation.channel_key ?? null));
+    (await resolveDiscordScope(ctx, installation, installation.channel_key ?? null));
   await assertCardInDiscordScope(ctx, scope, cardId);
   const found = await getCard(ctx, cardId, { includeAi: scope.aiArtEnabled });
   if (found.status !== "published")
@@ -763,11 +793,10 @@ async function cardDetails(
   cardId: string,
   installation: DiscordInstallation,
   providedScope?: DiscordScope,
-  channelId?: string | null,
 ): Promise<DiscordCallback> {
   const scope =
     providedScope ??
-    (await resolveDiscordScope(ctx, installation, channelId ?? installation.channel_key ?? null));
+    (await resolveDiscordScope(ctx, installation, installation.channel_key ?? null));
   await assertCardInDiscordScope(ctx, scope, cardId);
   const found = await getCard(ctx, cardId, { includeAi: scope.aiArtEnabled });
   const owned = await first<{ copies: number; finishes: number; serials: string | null }>(
@@ -796,15 +825,12 @@ async function cardDetails(
       ),
     ),
   ];
-  const aiOrigins = origins.filter((origin) => origin === "ai_assisted" || origin === "ai_generated");
-  const artworkLabel =
-    aiOrigins.length === 0
-      ? origins.includes("sourced")
-        ? "Sourced character reference; card design and finishes are Foilbury originals. Not AI-generated."
-        : "Foilbury original artwork."
-      : aiOrigins.length === origins.length
-        ? "AI-assisted print, reviewed; not official artwork. This Bot includes AI-assisted artwork."
-        : "Mixed editions: sourced/original and AI-assisted prints. The label on each print identifies its origin.";
+  // Origin describes recorded subject inputs, not visual approval or the
+  // complete composition's lineage. In particular, unknown is not original
+  // and a sourced subject does not establish that backgrounds are non-AI.
+  const artworkLabel = origins.length
+    ? `Recorded subject origin: ${origins.map((origin) => origin.replaceAll("_", " ")).join(", ")}. Composition inputs may have additional provenance.`
+    : "Artwork provenance is not available for the displayed editions.";
   return callback(
     {
       embeds: [
@@ -851,11 +877,10 @@ async function achievements(
   ctx: Ctx,
   installation: DiscordInstallation,
   providedScope?: DiscordScope,
-  channelId?: string | null,
 ): Promise<DiscordCallback> {
   const scope =
     providedScope ??
-    (await resolveDiscordScope(ctx, installation, channelId ?? installation.channel_key ?? null));
+    (await resolveDiscordScope(ctx, installation, installation.channel_key ?? null));
   const items = (await listAchievements(ctx, ctx.user!.id)).filter(
     (item) =>
       !item.criteria?.collection_id ||
@@ -894,11 +919,10 @@ async function packs(
   ctx: Ctx,
   installation: DiscordInstallation,
   providedScope?: DiscordScope,
-  channelId?: string | null,
 ): Promise<DiscordCallback> {
   const scope =
     providedScope ??
-    (await resolveDiscordScope(ctx, installation, channelId ?? installation.channel_key ?? null));
+    (await resolveDiscordScope(ctx, installation, installation.channel_key ?? null));
   if (scope.emptyReason) return scopeFailureMessage(scope);
   const pools = await listEligiblePools(
     ctx,
@@ -952,18 +976,14 @@ async function profile(
   ctx: Ctx,
   installation: DiscordInstallation,
   providedScope?: DiscordScope,
-  channelId?: string | null,
 ): Promise<DiscordCallback> {
   const scope =
     providedScope ??
-    (await resolveDiscordScope(ctx, installation, channelId ?? installation.channel_key ?? null));
+    (await resolveDiscordScope(ctx, installation, installation.channel_key ?? null));
   const wallet = await getWalletSummary(ctx.db, ctx.tenant.id, ctx.user!.id, 1);
   const scopedCardIds = await discordScopeCardIds(ctx, scope);
-  const inventory = (await getInventory(ctx, { limit: 500 })).filter(
-    (item) =>
-      scopedCardIds.has(item.card_id) &&
-      (scope.aiArtEnabled || !isAiEditionOrigin(item.subject_origin)),
-  );
+  const discordFence = { epoch: scope.drawEpoch, installation: scope.drawInstallation };
+  const counts = await inventoryCounts(ctx, { allowedCardIds: [...scopedCardIds], excludeAi: !scope.aiArtEnabled, discordFence });
   const lastReward = await first<{ created_at: string }>(
     ctx.db,
     "SELECT created_at FROM fb_reward_claims WHERE tenant_id = ? AND user_id = ? AND rule_key = 'daily-allowance' ORDER BY created_at DESC LIMIT 1",
@@ -981,96 +1001,28 @@ async function profile(
         scope.collectionIds.includes(achievement.criteria.collection_id)),
   );
   const earned = achievements.filter((achievement) => achievement.state === "earned").length;
-  const scopedBadgeNames = new Set(
-    achievements.filter((achievement) => achievement.state === "earned").map((achievement) => achievement.name),
-  );
-  const [prefs, profileOptions] = await Promise.all([
-    getPreferences(ctx),
-    getProfilePresentationOptions(ctx),
-  ]);
-  const presentation = resolveProfilePresentation(
-    prefs.profile_presentation,
-    profileOptions,
-    prefs.profile_presentation_version,
-  );
-  const featured = presentation.featured;
-  const render = featured ? await profileRenderFor(ctx, featured.id) : null;
-  const result = profileMessage({
+  await assertDiscordInventoryFence(ctx, discordFence);
+  return profileMessage({
     displayName: ctx.user!.displayName,
     scopeName: ctx.tenant.name,
     currencySymbol: wallet.currencySymbol,
     balance: wallet.balance,
-    ownedCards: inventory.length,
-    uniqueCards: new Set(inventory.map((item) => item.card_id)).size,
+    ownedCards: counts.copies,
+    uniqueCards: counts.unique,
     dailyAvailable: !next || next.getTime() <= Date.now(),
     nextDailyAt: next?.toISOString() ?? null,
     achievementsEarned: earned,
     publicBadgeCount: achievements.filter(
       (achievement) => achievement.visibility === "public" && achievement.state === "earned",
     ).length,
-    isBotAdmin: isBotAdmin(ctx.user!),
-    lookLabel: starterLookLabel(prefs.profile_look),
-    note: prefs.profile_bio || undefined,
-    featured: featured
-      ? {
-          name: featured.cardName,
-          variant: featured.variantName,
-          finish: featured.finish,
-        }
-      : undefined,
-    badgeNames: presentation.badges
-      .map((badge) => badge.name)
-      .filter((name) => scopedBadgeNames.has(name)),
-    imageAttachment: render ? "foilbury-profile.webp" : undefined,
-    attachment: render
-      ? {
-          r2Key: render.r2_key,
-          filename: "foilbury-profile.webp",
-          contentType: render.mime || "image/webp",
-        }
-      : undefined,
-    profileUrl: absoluteUrl(ctx.config.publicOrigin, "/play/profile")!,
-    customiseUrl: absoluteUrl(ctx.config.publicOrigin, "/play/profile#customise")!,
+    isBotAdmin: (await Promise.all(['content','economy','settings','inventory','members','grants'].map(cap=>discordAdminHasCapabilities(ctx,[cap])))).some(Boolean),
+    profileUrl: absoluteUrl(ctx.config.publicOrigin, "/play")!,
     dailyCustomId: "foilbury:daily",
     collectionCustomId: "foilbury:collection",
-    shareCustomId: `foilbury:tourshare:profile:${ctx.user!.id}`,
   });
-  return result;
 }
 
-async function profileRenderFor(
-  ctx: Ctx,
-  instanceId: string,
-): Promise<{ r2_key: string; mime: string; width: number; height: number } | null> {
-  return first<{ r2_key: string; mime: string; width: number; height: number }>(
-    ctx.db,
-    `SELECT a.r2_key, a.mime, vr.width, vr.height
-       FROM fb_card_instances ci
-       JOIN fb_variant_renders vr ON vr.variant_id = ci.variant_id AND vr.status = 'published'
-       JOIN fb_assets a ON a.id = vr.asset_id AND a.tenant_id = vr.tenant_id
-      WHERE ci.id = ? AND ci.tenant_id = ? AND ci.user_id = ? AND ci.status IN ('owned','reserved')
-      LIMIT 1`,
-    instanceId,
-    ctx.tenant.id,
-    ctx.user!.id,
-  );
-}
-
-function starterLookLabel(look: string): string {
-  return (
-    {
-      quiet: "Quiet archive",
-      signal: "Signal room",
-      binder: "Binder desk",
-      night: "Night shelf",
-    }[look] ?? "Quiet archive"
-  );
-}
-
-async function npcView(ctx: Ctx, installation: DiscordInstallation, query: string): Promise<DiscordCallback> {
-  const scope = await resolveDiscordScope(ctx, installation, installation.channel_key ?? null);
-  if (scope.emptyReason) return scopeFailureMessage(scope);
-  const allowedCardIds = await discordScopeCardIds(ctx, scope);
+async function npcView(ctx: Ctx, query: string): Promise<DiscordCallback> {
   const profiles = await listNpcProfiles(ctx);
   if (profiles.length === 0) {
     return callback(
@@ -1114,7 +1066,6 @@ async function npcView(ctx: Ctx, installation: DiscordInstallation, query: strin
     );
   }
   const comparison = await compareNpc(ctx, selected.id);
-  const offers = await npcTradeOffers(ctx, selected.id, { allowedCardIds });
   return callback(
     {
       embeds: [
@@ -1129,205 +1080,12 @@ async function npcView(ctx: Ctx, installation: DiscordInstallation, query: strin
             { name: "Recorded actions", value: String(selected.actions_count), inline: true },
             { name: "NPC album", value: `${selected.subjects} subjects · ${selected.cards} copies\n${selected.gold} Gold · ${selected.holographic} Holographic`, inline: true },
             { name: "Your album", value: `${comparison.viewer.subjects} subjects · ${comparison.viewer.cards} copies\n${comparison.viewer.gold} Gold · ${comparison.viewer.holographic} Holographic`, inline: true },
-            {
-              name: "Tradeable copies",
-              value:
-                offers.copies
-                  .slice(0, 6)
-                  .map((copy) => `${copy.card_name} · ${copy.variant_name} · \`${copy.serial}\``)
-                  .join("\n") || "No tradeable copies in an enabled collection.",
-              inline: false,
-            },
-            {
-              name: "Wants",
-              value:
-                offers.wants.missing_subjects.length
-                  ? `Missing subjects: ${offers.wants.missing_subjects.slice(0, 6).join(", ")}`
-                  : "No missing subjects in its current goal.",
-              inline: false,
-            },
-            {
-              name: "Trade",
-              value: `\`/foilbury trade npc:${selected.slug} give:<your serial> take:<its serial>\``,
-              inline: false,
-            },
             { name: "Honesty", value: "NPC · synthetic collector. Real draws, serials and ledger entries; never a human member or fabricated testimonial.", inline: false },
           ],
-          footer: { text: "Foilbury · on-demand NPC inspection and exchange" },
+          footer: { text: "Foilbury · on-demand NPC inspection" },
         },
       ],
-      components: components([
-        [
-          { type: 2, style: 5, label: "Open trade desk", url: absoluteUrl(ctx.config.publicOrigin, `/play/trades?npc=${selected.id}`)! },
-          { type: 2, style: 5, label: "Compare in the lounge", url: absoluteUrl(ctx.config.publicOrigin, "/play/rivals")! },
-        ],
-      ]),
-    },
-    true,
-  );
-}
-
-async function findTradeCopy(ctx: Ctx, userId: string, serial: string) {
-  return first<{ id: string; serial: string; card_name: string; variant_name: string }>(
-    ctx.db,
-    `SELECT ci.id, ci.serial, cd.name AS card_name, v.name AS variant_name
-       FROM fb_card_instances ci
-       JOIN fb_card_definitions cd ON cd.id = ci.card_id
-       JOIN fb_variants v ON v.id = ci.variant_id
-      WHERE ci.tenant_id = ? AND ci.user_id = ? AND ci.serial = ?
-        AND ci.status = 'owned' AND ci.locked = 0
-      LIMIT 1`,
-    ctx.tenant.id,
-    userId,
-    serial,
-  );
-}
-
-async function npcTradeCommand(
-  ctx: Ctx,
-  interaction: DiscordInteraction,
-  installation: DiscordInstallation,
-  values: Record<string, string | number | boolean | undefined>,
-): Promise<DiscordCallback> {
-  const scope = await resolveDiscordScope(ctx, installation, interaction.channel_id ?? null);
-  if (scope.emptyReason) return scopeFailureMessage(scope);
-  const query = typeof values.npc === "string" ? values.npc.trim().toLowerCase() : "";
-  const giveSerial = typeof values.give === "string" ? values.give.trim() : "";
-  const takeSerial = typeof values.take === "string" ? values.take.trim() : "";
-  if (!query || !giveSerial || !takeSerial) {
-    throw new ApiError(422, "npc_trade_options", "Choose an NPC by name or slug and provide both exact serials.");
-  }
-  const profiles = await listNpcProfiles(ctx);
-  const selected = profiles.find(
-    (npc) => npc.id.toLowerCase() === query || npc.slug.toLowerCase() === query || npc.name.toLowerCase().includes(query),
-  );
-  if (!selected) throw new ApiError(404, "npc_not_found", "That NPC collector is not active in this Bot.");
-  const npc = await getNpc(ctx, selected.id);
-  const give = await findTradeCopy(ctx, ctx.user!.id, giveSerial);
-  if (!give) throw new ApiError(404, "trade_give_not_found", `No owned, unlocked copy with serial ${giveSerial} was found. Use the serial from /foilbury collection.`);
-  const take = await findTradeCopy(ctx, npc.row.user_id, takeSerial);
-  if (!take) throw new ApiError(404, "trade_take_not_found", `The collector has no tradeable copy with serial ${takeSerial}. Use /foilbury npc name:${selected.slug}.`);
-  // The verified installation scope is a hard boundary for every Discord
-  // surface, including NPC exchanges. A collection enabled for the Bot but not
-  // for this server (or a later disabled collection) must not appear here.
-  const [giveCard, takeCard] = await Promise.all([
-    first<{ card_id: string }>(ctx.db, "SELECT card_id FROM fb_card_instances WHERE id = ? AND tenant_id = ?", give.id, ctx.tenant.id),
-    first<{ card_id: string }>(ctx.db, "SELECT card_id FROM fb_card_instances WHERE id = ? AND tenant_id = ?", take.id, ctx.tenant.id),
-  ]);
-  if (!giveCard || !takeCard) throw new ApiError(409, "npc_trade_unavailable", "A selected copy no longer exists.");
-  await assertCardInDiscordScope(ctx, scope, giveCard.card_id);
-  await assertCardInDiscordScope(ctx, scope, takeCard.card_id);
-  const preview = await previewNpcTrade(ctx, {
-    npcId: selected.id,
-    giveInstanceIds: [give.id],
-    takeInstanceIds: [take.id],
-  });
-  const exact = [
-    { name: "You give", value: `${give.card_name} · ${give.variant_name}\n\`${give.serial}\``, inline: true },
-    { name: "You receive", value: `${take.card_name} · ${take.variant_name}\n\`${take.serial}\``, inline: true },
-  ];
-  if (preview.decision !== "accept") {
-    return callback(
-      {
-        embeds: [
-          {
-            title: `${selected.name} declines`,
-            description: preview.reason,
-            color: 0x8a8f98,
-            fields: exact,
-            footer: { text: "NPC · synthetic collector · no copies moved" },
-          },
-        ],
-        components: components([
-          [
-            { type: 2, style: 5, label: "Open trade desk", url: absoluteUrl(ctx.config.publicOrigin, `/play/trades?npc=${selected.id}`)! },
-            { type: 2, style: 5, label: "Inspect the collector", url: absoluteUrl(ctx.config.publicOrigin, "/play/rivals")! },
-          ],
-        ]),
-      },
-      true,
-    );
-  }
-  const created = await createNpcTrade(ctx, {
-    npcId: selected.id,
-    giveInstanceIds: [give.id],
-    takeInstanceIds: [take.id],
-    idempotencyKey: `discord-npc-trade:${interaction.id}`,
-  });
-  return callback(
-    {
-      embeds: [
-        {
-          title: `${selected.name} accepts · exact offer held`,
-          description: "The collector's deterministic decision accepted this exchange. Both exact copies are reserved; nothing has moved yet. Confirm to complete the trade or cancel to release them.",
-          color: 0x00c8b8,
-          fields: [
-            ...exact,
-            { name: "Decision", value: preview.reason, inline: false },
-            { name: "Expires", value: formatDiscordTimestamp(created.trade.expires_at), inline: true },
-            { name: "Trade", value: `\`${created.trade.id}\``, inline: true },
-            { name: "Honesty", value: "NPC · synthetic collector. The decision is deterministic, based on its recorded holdings, goals and preset; no AI inference or human impersonation.", inline: false },
-          ],
-          footer: { text: "Foilbury · NPC exchange · reserved copies do not transfer until confirm" },
-        },
-      ],
-      components: components([
-        [
-          button("Confirm exchange", `foilbury:npc-confirm:${created.trade.id}`, 3),
-          button("Cancel offer", `foilbury:npc-cancel:${created.trade.id}`, 2),
-          { type: 2, style: 5, label: "Open trade desk", url: absoluteUrl(ctx.config.publicOrigin, `/play/trades?npc=${selected.id}`)! },
-        ],
-      ]),
-    },
-    true,
-  );
-}
-
-async function npcTradeConfirm(ctx: Ctx, tradeId: string): Promise<DiscordCallback> {
-  const result = await confirmNpcTrade(ctx, tradeId);
-  const items = result.trade.items;
-  const gave = items.filter((item) => item.side === "proposer");
-  const received = items.filter((item) => item.side === "recipient");
-  return callback(
-    {
-      embeds: [
-        {
-          title: `Exchange complete · ${result.decision.npc_name}`,
-          description: "The exact copies moved atomically. Serials and instance history are preserved; the NPC remains a labelled synthetic collector.",
-          color: 0x3f9d5a,
-          fields: [
-            { name: "You gave", value: gave.map((item) => `${item.card_name} · ${item.variant_name}\n\`${item.serial}\``).join("\n") || "—", inline: true },
-            { name: "You received", value: received.map((item) => `${item.card_name} · ${item.variant_name}\n\`${item.serial}\``).join("\n") || "—", inline: true },
-            { name: "Decision", value: result.decision.reason, inline: false },
-            { name: "Trade", value: `\`${result.trade.id}\` · ${result.trade.status}`, inline: false },
-          ],
-          footer: { text: "Foilbury · NPC exchange · serials preserved · no fabricated human activity" },
-        },
-      ],
-      components: components([
-        [
-          { type: 2, style: 5, label: "Open my trades", url: absoluteUrl(ctx.config.publicOrigin, "/play/trades")! },
-          { type: 2, style: 5, label: "Inspect the collector", url: absoluteUrl(ctx.config.publicOrigin, "/play/rivals")! },
-        ],
-      ]),
-    },
-    true,
-  );
-}
-
-async function npcTradeCancel(ctx: Ctx, tradeId: string): Promise<DiscordCallback> {
-  const result = await cancelNpcTrade(ctx, tradeId);
-  return callback(
-    {
-      embeds: [
-        {
-          title: "NPC offer cancelled",
-          description: "The exact copies were released from reservation. Nothing moved and no serial changed ownership.",
-          color: 0x8a8f98,
-          fields: [{ name: "Trade", value: `\`${result.trade.id}\` · ${result.trade.status}`, inline: false }],
-        },
-      ],
-      components: components([[{ type: 2, style: 5, label: "Open my trades", url: absoluteUrl(ctx.config.publicOrigin, "/play/trades")! }]]),
+      components: components([[{ type: 2, style: 5, label: "Compare in the lounge", url: absoluteUrl(ctx.config.publicOrigin, "/play/rivals")! }]]),
     },
     true,
   );
@@ -1390,19 +1148,15 @@ async function help(ctx: Ctx): Promise<DiscordCallback> {
 }
 
 async function adminStatus(ctx: Ctx, installation: DiscordInstallation): Promise<DiscordCallback> {
-  requireBotAdmin(ctx.user!);
-  const counts = await first<{ cards: number; pools: number; inventory: number; members: number }>(
+  const [content,inventory,members,settings] = await Promise.all([['content'],['inventory'],['members'],['settings']].map(c=>discordAdminHasCapabilities(ctx,c)));
+  if (!content && !inventory && !members && !settings) throw new ApiError(403,'discord_admin_required','Your current Bot permissions do not allow this action.');
+  const counts = await first<{ members: number }>(
     ctx.db,
     `SELECT
-       (SELECT COUNT(*) FROM fb_card_definitions WHERE tenant_id = ? AND status = 'published' AND archived_at IS NULL) AS cards,
-       (SELECT COUNT(*) FROM fb_pools WHERE tenant_id = ? AND status = 'active') AS pools,
-       (SELECT COUNT(*) FROM fb_card_instances WHERE tenant_id = ? AND status IN ('owned','reserved')) AS inventory,
        (SELECT COUNT(*) FROM fb_memberships WHERE tenant_id = ?) AS members`,
     ctx.tenant.id,
-    ctx.tenant.id,
-    ctx.tenant.id,
-    ctx.tenant.id,
   );
+  await requireDiscordAdminCapabilities(ctx,[content && 'content',inventory && 'inventory',members && 'members',settings && 'settings'].filter((value):value is string=>Boolean(value)));
   return callback(
     {
       embeds: [
@@ -1411,7 +1165,7 @@ async function adminStatus(ctx: Ctx, installation: DiscordInstallation): Promise
           description: "This is Bot administration, not Foilbury platform administration.",
           color: 0x3f9d5a,
           fields: [
-            {
+            ...(settings ? [{
               name: "Guild",
               value: `${installation.guild_name ?? "Unknown"} (\`${installation.guild_id}\`)`,
               inline: false,
@@ -1422,19 +1176,11 @@ async function adminStatus(ctx: Ctx, installation: DiscordInstallation): Promise
               inline: false,
             },
             {
-              name: "Game / website / API",
-              value: `${installation.game_enabled} / ${installation.website_enabled} / ${installation.api_enabled}`,
+              name: "Discord gameplay",
+              value: installation.game_enabled ? "Enabled" : "Disabled",
               inline: false,
-            },
-            {
-              name: "Catalogue / admin GUI",
-              value: `${installation.public_catalogue_enabled} / ${installation.admin_gui_enabled}`,
-              inline: false,
-            },
-            { name: "Published cards", value: String(counts?.cards ?? 0), inline: true },
-            { name: "Active pools", value: String(counts?.pools ?? 0), inline: true },
-            { name: "Owned cards", value: String(counts?.inventory ?? 0), inline: true },
-            { name: "Members", value: String(counts?.members ?? 0), inline: true },
+            }] : []),
+            ...(members ? [{ name: "Members", value: String(counts?.members ?? 0), inline: true }] : []),
           ],
         },
       ],
@@ -1447,8 +1193,10 @@ async function adminSettings(
   ctx: Ctx,
   installation: DiscordInstallation,
 ): Promise<DiscordCallback> {
-  requireBotAdmin(ctx.user!);
+  await requireDiscordAdminCapabilities(ctx,['economy']);
+  const canSeeAvailability = await discordAdminHasCapabilities(ctx,['settings']);
   const economy = await getEconomy(ctx);
+  await requireDiscordAdminCapabilities(ctx,canSeeAvailability ? ['economy','settings'] : ['economy']);
   return callback(
     {
       embeds: [
@@ -1470,35 +1218,15 @@ async function adminSettings(
               value: `${Math.round(economy.daily_cooldown_seconds / 3600)} hours`,
               inline: true,
             },
-            {
+            ...(canSeeAvailability ? [{
               name: "Game",
               value: installation.game_enabled ? "enabled" : "disabled",
               inline: true,
-            },
-            {
-              name: "Website",
-              value: installation.website_enabled ? "enabled" : "disabled",
-              inline: true,
-            },
-            {
-              name: "External API",
-              value: installation.api_enabled ? "enabled" : "disabled",
-              inline: true,
-            },
-            {
-              name: "Public catalogue",
-              value: installation.public_catalogue_enabled ? "enabled" : "disabled",
-              inline: true,
-            },
-            {
-              name: "Admin GUI",
-              value: installation.admin_gui_enabled ? "enabled" : "disabled",
-              inline: true,
-            },
+            }] : []),
             {
               name: "Sensitive changes",
               value:
-                "Use /foilbury admin enable|disable and confirm with the button. Grants require confirmation.",
+                "Change server availability in Studio with a passkey or authenticator. Foil adjustments also require Studio.",
               inline: false,
             },
           ],
@@ -1509,33 +1237,45 @@ async function adminSettings(
   );
 }
 
-async function adminPools(ctx: Ctx, installation: DiscordInstallation): Promise<DiscordCallback> {
-  requireBotAdmin(ctx.user!);
-  const pools = await listPools(ctx, true);
-  const lines: string[] = [];
-  for (const pool of pools.slice(0, 12)) {
-    let eligible = "—";
-    try {
-      const preview = await getPoolPreview(ctx, pool.slug, installation.channel_key ?? undefined, {
-        includeDraft: true,
-      });
-      eligible = String(preview.eligible_count);
-    } catch {
-      eligible = "0";
-    }
-    lines.push(
-      `• **${pool.name}** \`${pool.slug}\` · ${pool.status} · rev ${pool.revision} · ${pool.price} ✦ · ${eligible} eligible`,
-    );
-  }
+async function adminPools(ctx: Ctx, installation: DiscordInstallation, channelId: string | undefined): Promise<DiscordCallback> {
+  await requireDiscordAdminCapabilities(ctx,['content']);
+  // No unreviewed pool names, slugs, or hidden roster cardinalities are
+  // returned. The complete enabled roster must be public and distributed to
+  // this installation in the same statement as the live authority check.
+  const rows=await all<{price:number}>(ctx.db,`SELECT p.price FROM fb_pools p
+    JOIN fb_discord_installations di ON di.tenant_id=p.tenant_id AND di.id=? AND di.active=1 AND di.revoked_at IS NULL
+    JOIN fb_bots b ON b.tenant_id=di.tenant_id AND b.status='active' AND (di.bot_id IS NULL OR b.id=di.bot_id)
+    WHERE p.tenant_id=? AND p.status='active' AND di.game_enabled=1 AND ${discordAdminAuthoritySql}
+      AND json_type(CASE WHEN json_valid(di.channel_allowlist_json) THEN di.channel_allowlist_json ELSE 'null' END)='array'
+      AND (json_array_length(CASE WHEN json_valid(di.channel_allowlist_json) THEN di.channel_allowlist_json ELSE '[]' END)=0 OR EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(di.channel_allowlist_json) THEN di.channel_allowlist_json ELSE '[]' END) ch WHERE ch.type='text' AND ch.value=?))
+      AND (di.collection_allowlist_json IS NULL OR (json_type(CASE WHEN json_valid(di.collection_allowlist_json) THEN di.collection_allowlist_json ELSE 'null' END)='array'
+        AND NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(di.collection_allowlist_json) THEN di.collection_allowlist_json ELSE '[]' END) x WHERE x.type<>'text')))
+      AND EXISTS (SELECT 1 FROM fb_pool_entries pe WHERE pe.tenant_id=p.tenant_id AND pe.pool_id=p.id AND pe.pool_revision=p.revision AND pe.enabled=1)
+      AND NOT EXISTS (SELECT 1 FROM fb_pool_entries pe
+        LEFT JOIN fb_variants v ON v.id=pe.variant_id AND v.tenant_id=pe.tenant_id
+        LEFT JOIN fb_artwork_editions e ON e.id=v.edition_id AND e.tenant_id=v.tenant_id AND e.card_id=v.card_id
+        LEFT JOIN fb_card_definitions cd ON cd.id=v.card_id AND cd.tenant_id=v.tenant_id
+        WHERE pe.tenant_id=p.tenant_id AND pe.pool_id=p.id AND pe.pool_revision=p.revision AND pe.enabled=1 AND
+         (v.id IS NULL OR v.status<>'published' OR v.archived_at IS NOT NULL OR e.id IS NULL OR e.status<>'published' OR e.archived_at IS NOT NULL
+          OR cd.id IS NULL OR cd.status<>'published' OR cd.archived_at IS NOT NULL
+          OR NOT EXISTS (SELECT 1 FROM fb_collection_cards cc WHERE cc.card_id=cd.id)
+          OR EXISTS (SELECT 1 FROM fb_collection_cards cc LEFT JOIN fb_collections c ON c.id=cc.collection_id
+             LEFT JOIN fb_bot_collections bc ON bc.collection_id=c.id AND bc.bot_id=b.id
+             WHERE cc.card_id=cd.id AND (c.id IS NULL OR c.scope<>'global' OR c.status<>'published' OR c.archived_at IS NOT NULL
+               OR c.view_audience<>'public' OR c.public_approved_at IS NULL OR COALESCE(bc.enabled,0)<>1
+               OR (di.collection_allowlist_json IS NOT NULL AND NOT EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(di.collection_allowlist_json) THEN di.collection_allowlist_json ELSE '[]' END) a WHERE a.type='text' AND a.value=c.id))))))
+    ORDER BY p.price,p.id LIMIT 12`,installation.id,ctx.tenant.id,ctx.tenant.id,ctx.user!.id,JSON.stringify(['content']),channelId ?? '');
+  await requireDiscordAdminCapabilities(ctx,['content']);
+  const lines=rows.map((row,index)=>`• Public-only pool ${index+1} · price ${row.price}`);
   return callback(
     {
       embeds: [
         {
           title: "Pools",
-          description: lines.length ? lines.join("\n") : "No pools configured.",
+          description: lines.length ? `${lines.join('\n')}\n\nShowing up to 12 public-only pools. Player eligibility can vary. Use Studio for pool management.` : "No public-only pools are available for this server. Member and private pools are not shown here.",
           color: 0x7c6b4f,
           footer: {
-            text: "Pool membership and card availability are enforced by the domain service.",
+            text: "Names are withheld until pool metadata is reviewed for this audience.",
           },
         },
       ],
@@ -1590,38 +1330,54 @@ async function createConfirmation(
 
 async function adminToggle(
   ctx: Ctx,
-  interaction: DiscordInteraction,
   installation: DiscordInstallation,
   surface: string,
   enabled: boolean,
 ): Promise<DiscordCallback> {
-  requireBotAdmin(ctx.user!);
+  await requireDiscordAdminCapabilities(ctx,['settings']);
   const column = SURFACE_COLUMNS[surface];
   if (!column) throw new ApiError(422, "surface_invalid", "Choose a valid availability surface.");
-  return createConfirmation(
-    ctx,
-    interaction,
-    "installation.toggle",
-    { surface, enabled, installationId: installation.id },
-    `${enabled ? "Enable" : "Disable"} ${surface}?`,
-    `This changes **${surface}** availability for **${ctx.tenant.name}** in this installation. It does not delete cards, inventory or ledger history.`,
-  );
-}
-
-function studioGrantRequired(ctx: Ctx): DiscordCallback {
-  return callback({
-    embeds: [{ title: "Continue in Studio", description: "Foil grants need recent strong authentication. Confirm with a passkey, authenticator or Cloudflare Access, then grant in Studio.", color: 0x6b7280 }],
-    components: components([[{type:2,style:5,label:"Open Studio",url:new URL("/studio/economy",ctx.config.publicOrigin).href},
-      {type:2,style:5,label:"Account security",url:new URL("/account/security",ctx.config.publicOrigin).href}]])
-  },true);
+  if (surface !== 'game') return callback({embeds:[{title:'Availability control unavailable',description:'This interface cannot currently be switched from Discord or Studio. No setting was changed.',color:0x7c6b4f}]},true);
+  return callback({embeds:[{title:"Change availability in Studio",description:`Open ${absoluteUrl(ctx.config.publicOrigin,"/studio/discord")} and confirm with a passkey or authenticator to ${enabled ? "enable" : "disable"} ${surface} for ${installation.guild_name || "this server"}.`,color:0x7c6b4f}]},true);
 }
 
 async function adminGrant(
   ctx: Ctx,
-  _interaction: DiscordInteraction,
-  _values: Record<string, string | number | boolean>,
+  interaction: DiscordInteraction,
+  values: Record<string, string | number | boolean>,
 ): Promise<DiscordCallback> {
-  return studioGrantRequired(ctx);
+  await requireDiscordAdminCapabilities(ctx,['grants']);
+  const rawUser = typeof values.user === "string" ? values.user.trim() : "";
+  const discordUserId =
+    rawUser.match(/^<@!?(\d{15,22})>$/)?.[1] ?? rawUser.match(/^\d{15,22}$/)?.[0];
+  if (!discordUserId)
+    throw new ApiError(422, "discord_user_invalid", "Use a Discord user ID or mention.");
+  const amount = typeof values.amount === "number" ? values.amount : Number(values.amount);
+  if (!Number.isInteger(amount) || amount <= 0)
+    throw new ApiError(422, "amount_invalid", "Amount must be a positive integer.");
+  const reason = typeof values.reason === "string" ? values.reason.trim() : "";
+  if (reason.length < 3)
+    throw new ApiError(422, "reason_required", "Record a short reason for the grant.");
+  const target = await first<{ user_id: string }>(
+    ctx.db,
+    "SELECT user_id FROM fb_discord_identities WHERE tenant_id = ? AND discord_user_id = ? AND revoked_at IS NULL",
+    ctx.tenant.id,
+    discordUserId,
+  );
+  if (!target)
+    throw new ApiError(
+      404,
+      "player_not_linked",
+      "That Discord user has not played this Bot yet, so there is no inventory to credit.",
+    );
+  return createConfirmation(
+    ctx,
+    interaction,
+    "wallet.grant",
+    { targetUserId: target.user_id, amount, reason },
+    "Confirm admin grant",
+    `Grant **${amount} Foil** to <@${discordUserId}> with reason: ${truncate(reason, 200)}. This is an audited admin grant, not a random drop.`,
+  );
 }
 
 const TOUR_STAGES = [
@@ -1850,7 +1606,7 @@ async function tour(
               },
               {
                 name: "Your progress",
-                value: `${album.progress.owned_cards}/${album.progress.total_cards} unique cards · ${album.progress.complete ? "complete" : "incomplete"}`,
+                value: `${album.progress.owned_cards}/${album.progress.total_cards} visible unique cards · ${album.progress.complete === null ? "whole-collection completion unavailable" : album.progress.complete ? "complete" : "incomplete"}`,
                 inline: true,
               },
               {
@@ -2162,7 +1918,7 @@ async function tour(
       ? completion
         ? `Completion unlocked: **${completion.name}**${completion.reward_amount ? ` · +${completion.reward_amount} Foil credited once` : ""}${completion.earned_at ? ` · ${new Date(completion.earned_at).toISOString().slice(0, 10)}` : ""}${versionLabel ? ` · ${versionLabel}` : ""}${expandedAfterUnlock ? ` · the live roster has since expanded to ${album.progress.total_cards}; this earned version stays complete at ${frozenRoster}` : ""}`
         : "The album is complete. The milestone will be evaluated by the next committed acquisition; the tour does not award it passively."
-      : `Next target: ${next ? `${next.name} · ${Math.min(next.progress, next.target)}/${next.target}` : "keep collecting"}`;
+      : album.progress.complete === null ? "Showing visible-card progress. Whole-collection completion is temporarily unavailable." : `Next target: ${next ? `${next.name} · ${Math.min(next.progress, next.target)}/${next.target}` : "keep collecting"}`;
     return callback(
       {
         embeds: [
@@ -2192,7 +1948,7 @@ async function tour(
                 name: "Completion",
                 value: album.progress.complete
                   ? `${album.progress.total_cards}/${album.progress.total_cards} current roster${versionLabel ? ` · ${versionLabel}` : ""}`
-                  : "Incomplete",
+                  : album.progress.complete === null ? "Whole-collection completion unavailable" : "Incomplete",
                 inline: false,
               },
               ...(next
@@ -2218,9 +1974,6 @@ async function tour(
           [
             button("Achievements", "foilbury:achievements", 2),
             button("Share progress", "foilbury:tour:share", 2),
-            ...(album.progress.complete
-              ? [button("Share completion", `foilbury:tourshare:completion:${album.detail.id}`, 1)]
-              : []),
           ],
         ]),
       },
@@ -2235,7 +1988,7 @@ async function tour(
         scopedCardIds.has(item.card_id) &&
         (scope.aiArtEnabled || !isAiEditionOrigin(item.subject_origin)),
     );
-    const channelAudience = channelAudienceFor(installation, channelId);
+    const channelAudience = "public" as const;
     let publicCard: (typeof inventory)[number] | null = null;
     for (const item of inventory.slice(0, 20)) {
       if ((await effectiveCardAudience(ctx, item.card_id)) === "public") {
@@ -2261,9 +2014,6 @@ async function tour(
       (scope.aiArtEnabled || !["ai_assisted", "ai_generated"].includes(albumCardAi?.origin ?? "")) &&
       albumCardAudience !== "private" &&
       audienceRank(channelAudience) >= audienceRank(albumCardAudience);
-    const canShareCompletion =
-      album.detail.view_audience !== "private" &&
-      audienceRank(channelAudience) >= audienceRank(album.detail.view_audience);
     const available = [
       publicCard
         ? `• Public showcase card: ${publicCard.card_name} — ${publicCard.variant_name}`
@@ -2271,8 +2021,6 @@ async function tour(
       canShareAlbumCard && albumCard
         ? `• Member album card: ${albumCard.card_name} — ${albumCard.variant_name}`
         : "",
-      "• Your profile summary (no wallet or private account data)",
-      album.progress.complete && canShareCompletion ? "• This complete album" : "",
     ].filter(Boolean);
     return callback(
       {
@@ -2295,7 +2043,7 @@ async function tour(
                 name: "Available here",
                 value: available.length
                   ? available.join("\n")
-                  : "Only your profile summary is available in this channel.",
+                  : "No public card is available to share in this channel.",
                 inline: false,
               },
               ...(albumCard && !canShareAlbumCard
@@ -2320,10 +2068,6 @@ async function tour(
             ...(canShareAlbumCard && albumCard
               ? [button("Share album card", `foilbury:tourshare:card:${albumCard.id}`, 1)]
               : []),
-            button("Share profile", `foilbury:tourshare:profile:${ctx.user!.id}`, 2),
-            ...(album.progress.complete && canShareCompletion
-              ? [button("Share completion", `foilbury:tourshare:completion:${album.detail.id}`, 1)]
-              : []),
           ],
         ]),
       },
@@ -2332,7 +2076,8 @@ async function tour(
   }
 
   if (stage === "admin") {
-    if (!isBotAdmin(ctx.user!)) {
+    const permissions = await Promise.all(['content','economy','settings','inventory','members','grants'].map(cap=>discordAdminHasCapabilities(ctx,[cap])));
+    if (!permissions.some(Boolean)) {
       return callback(
         {
           embeds: [
@@ -2348,16 +2093,8 @@ async function tour(
         true,
       );
     }
-    const counts = await first<{ cards: number; pools: number; members: number }>(
-      ctx.db,
-      `SELECT
-         (SELECT COUNT(*) FROM fb_card_definitions WHERE tenant_id = ? AND status = 'published' AND archived_at IS NULL) AS cards,
-         (SELECT COUNT(*) FROM fb_pools WHERE tenant_id = ? AND status = 'active') AS pools,
-         (SELECT COUNT(*) FROM fb_memberships WHERE tenant_id = ? AND status = 'active') AS members`,
-      ctx.tenant.id,
-      ctx.tenant.id,
-      ctx.tenant.id,
-    );
+    const granted=['content','economy','settings','inventory','members','grants'].filter((_,index)=>permissions[index]);
+    await requireDiscordAdminCapabilities(ctx,granted);
     return callback(
       {
         embeds: [
@@ -2370,9 +2107,6 @@ async function tour(
             color: 0x245c4b,
             fields: [
               { name: "Bot", value: ctx.tenant.name, inline: true },
-              { name: "Published cards", value: String(counts?.cards ?? 0), inline: true },
-              { name: "Active pools", value: String(counts?.pools ?? 0), inline: true },
-              { name: "Active members", value: String(counts?.members ?? 0), inline: true },
               {
                 name: "Channel policy",
                 value:
@@ -2391,7 +2125,7 @@ async function tour(
               label: "Open Foilbury Studio",
               url: absoluteUrl(ctx.config.publicOrigin, "/studio")!,
             },
-            ...(ctx.user!.capabilities?.includes("grants") || ctx.user!.capabilities?.includes("economy")
+            ...(permissions[1] || permissions[5]
               ? [
                   {
                     type: 2,
@@ -2444,6 +2178,12 @@ async function tourShare(
   if (!["card", "completion", "profile"].includes(kind)) {
     throw new ApiError(422, "share_kind_invalid", "That share type is not available.");
   }
+  // A public label alone does not establish that every underlying card or
+  // achievement is public-safe. Hold summary posts until their complete inputs
+  // can be re-authorised at delivery, including stale buttons already sent.
+  if (["completion", "profile"].includes(kind)) {
+    throw new ApiError(403, "share_summary_unavailable", "Summary sharing is temporarily unavailable. Nothing was posted.");
+  }
   if (!interaction.channel_id)
     throw new ApiError(
       403,
@@ -2454,10 +2194,11 @@ async function tourShare(
     providedScope ??
     (await resolveDiscordScope(ctx, installation, interaction.channel_id));
   if (scope.emptyReason) throw new ApiError(403, "share_scope_empty", scope.emptyReason);
-  const channelAudience = channelAudienceFor(installation, interaction.channel_id);
+  const channelAudience = "public" as const;
   let embed: DiscordEmbed;
   let audience: "public" | "members" | "private" = "public";
   let render: { r2_key: string; mime: string; width: number; height: number } | null = null;
+  let publicCardShare: DiscordCallback['publicCardShare'];
 
   if (kind === "card") {
     const row = await first<{
@@ -2472,6 +2213,9 @@ async function tourShare(
       collection_name: string | null;
       r2_key: string;
       mime: string;
+      asset_id: string;
+      asset_sha256: string;
+      asset_bytes: number;
       width: number;
       height: number;
     }>(
@@ -2479,7 +2223,7 @@ async function tourShare(
       `SELECT ci.id, ci.card_id, ci.variant_id, cd.name AS card_name, v.name AS variant_name,
               m.key AS material_key, fx.key AS effect_key, ci.serial,
               (SELECT c.name FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id WHERE cc.card_id = cd.id ORDER BY CASE c.scope WHEN 'global' THEN 0 ELSE 1 END LIMIT 1) AS collection_name,
-              a.r2_key, a.mime, vr.width, vr.height
+              a.id AS asset_id, a.r2_key, a.mime, a.sha256 AS asset_sha256, a.bytes AS asset_bytes, vr.width, vr.height
          FROM fb_card_instances ci
          JOIN fb_card_definitions cd ON cd.id = ci.card_id
          JOIN fb_variants v ON v.id = ci.variant_id
@@ -2488,6 +2232,8 @@ async function tourShare(
          JOIN fb_variant_renders vr ON vr.variant_id = v.id AND vr.status = 'published'
          JOIN fb_assets a ON a.id = vr.asset_id AND a.tenant_id = vr.tenant_id
         WHERE ci.tenant_id = ? AND ci.user_id = ? AND ci.id = ? AND ci.status IN ('owned','reserved')
+          AND cd.status = 'published' AND cd.archived_at IS NULL
+          AND v.status = 'published' AND v.archived_at IS NULL AND v.card_id = ci.card_id AND v.tenant_id = ci.tenant_id
         LIMIT 1`,
       ctx.tenant.id,
       ctx.user!.id,
@@ -2537,6 +2283,9 @@ async function tourShare(
       image: { url: "attachment://foilbury-share.webp", width: row.width, height: row.height },
     };
     render = row;
+    publicCardShare = {tenantId:ctx.tenant.id,userId:ctx.user!.id,installationId:installation.id,
+      instanceId:row.id,cardId:row.card_id,variantId:row.variant_id,serial:row.serial,assetId:row.asset_id,renderKey:row.r2_key,
+      assetSha256:row.asset_sha256,assetBytes:row.asset_bytes,mime:row.mime,attemptId:newId('dsa'),epoch:scope.drawEpoch};
     objectId = row.card_id;
   } else if (kind === "completion") {
     const album = await getCollection(ctx, objectId);
@@ -2548,6 +2297,8 @@ async function tourShare(
       );
     }
     const progress = await collectionProgress(ctx, album.id);
+    if (progress.complete === null)
+      throw new ApiError(409, "completion_unavailable", "Whole-collection completion is temporarily unavailable. Nothing was shared.");
     if (!progress.complete)
       throw new ApiError(
         409,
@@ -2581,135 +2332,65 @@ async function tourShare(
       footer: { text: "Explicit completion share · no balance, email or admin controls" },
     };
   } else {
-    const [prefs, profileOptions] = await Promise.all([
-      getPreferences(ctx),
-      getProfilePresentationOptions(ctx),
-    ]);
-    const presentation = resolveProfilePresentation(
-      prefs.profile_presentation,
-      profileOptions,
-      prefs.profile_presentation_version,
+    const scopedCardIds = await discordScopeCardIds(ctx, scope);
+    const inventory = (await getInventory(ctx, { limit: 200 })).filter((item) =>
+      scopedCardIds.has(item.card_id),
     );
-    const featured = presentation.featured;
-    objectId = ctx.user!.id;
-    if (channelAudience === "public") {
-      const scopedCardIds = await discordScopeCardIds(ctx, scope);
-      const inventory = (await getInventory(ctx, { limit: 200 })).filter((item) =>
-        scopedCardIds.has(item.card_id),
-      );
-      const achievements = await listAchievements(ctx, ctx.user!.id);
-      const publicCards: string[] = [];
-      for (const item of inventory.slice(0, 20)) {
-        if ((await effectiveCardAudience(ctx, item.card_id)) === "public") publicCards.push(item.card_id);
-      }
-      const publicBadges = achievements.filter(
-        (item) =>
-          item.state === "earned" &&
-          item.visibility === "public" &&
-          (!item.criteria?.collection_id ||
-            (typeof item.criteria.collection_id === "string" &&
-              scope.collectionIds.includes(item.criteria.collection_id))),
-      );
-      audience = "public";
-      embed = {
-        title: `${ctx.user!.displayName} · collector profile`,
-        description:
-          "A member chose to share this public profile summary in an authorised channel. Member artwork and favourites stay private.",
-        color: 0x7c6b4f,
-        fields: [
-          {
-            name: "Public showcase cards",
-            value: String(new Set(publicCards).size),
-            inline: true,
-          },
-          { name: "Public badges", value: String(publicBadges.length), inline: true },
-        ],
-        footer: {
-          text: "Only approved public counts · no wallet, email, member roster, session or administrator data",
-        },
-      };
-    } else {
-      if (featured) {
-        await assertCardInDiscordScope(ctx, scope, featured.cardId);
-        const featuredAudience = await effectiveCardAudience(ctx, featured.cardId);
-        if (audienceRank(channelAudience) < audienceRank(featuredAudience)) {
-          throw new ApiError(
-            403,
-            "share_channel_audience",
-            "This channel has not been verified for the featured card's audience. Nothing was shared.",
-          );
-        }
-      }
-      render = featured ? await profileRenderFor(ctx, featured.id) : null;
-      const scopedBadgeNames = new Set(
-        (await listAchievements(ctx, ctx.user!.id))
-          .filter(
-            (achievement) =>
-              achievement.state === "earned" &&
-              (!achievement.criteria?.collection_id ||
-                (typeof achievement.criteria.collection_id === "string" &&
-                  scope.collectionIds.includes(achievement.criteria.collection_id))),
-          )
-          .map((achievement) => achievement.name),
-      );
-      const badgeNames = presentation.badges
-        .map((badge) => badge.name)
-        .filter((name) => scopedBadgeNames.has(name))
-        .slice(0, 6);
-      const fields: Array<{ name: string; value: string; inline?: boolean }> = [
-        { name: "Look", value: starterLookLabel(prefs.profile_look), inline: true },
-      ];
-      if (featured) {
-        const meta =
-          featured.finish && featured.finish !== featured.variantName
-            ? `${featured.variantName} · ${featured.finish}`
-            : featured.variantName;
-        fields.push({
-          name: "Featured copy",
-          value: `**${featured.cardName}**\n${meta}`,
-          inline: false,
-        });
-      }
-      if (badgeNames.length) {
-        fields.push({
-          name: "Selected badges",
-          value: badgeNames.join(" · ").slice(0, 1000),
-          inline: false,
-        });
-      }
-      if (prefs.profile_bio) {
-        fields.push({
-          name: "Collector note",
-          value: prefs.profile_bio.slice(0, 1000),
-          inline: false,
-        });
-      }
-      fields.push({
-        name: "Privacy",
-        value:
-          "Shared by explicit consent. No wallet, email, account ID, ledger or card serial is included.",
-        inline: false,
-      });
-      audience = "members";
-      embed = {
-        title: `${ctx.user!.displayName} · collector profile`,
-        description:
-          "A member chose to share this collector view in an authorised channel. The featured copy is the exact owned card; the look and badges are the saved composition.",
-        color: 0x2ce3d3,
-        fields,
-        ...(render
-          ? { image: { url: "attachment://foilbury-share.webp", width: 750, height: 1050 } }
-          : {}),
-        footer: {
-          text: "Foilbury composition · member audience · changing a look does not alter past awards",
-        },
-      };
+    const achievements = await listAchievements(ctx, ctx.user!.id);
+    const publicCards: string[] = [];
+    for (const item of inventory.slice(0, 20)) {
+      if ((await effectiveCardAudience(ctx, item.card_id)) === "public") publicCards.push(item.card_id);
     }
+    const publicBadges = achievements.filter(
+      (item) =>
+        item.state === "earned" &&
+        item.visibility === "public" &&
+        (!item.criteria?.collection_id ||
+          (typeof item.criteria.collection_id === "string" &&
+            scope.collectionIds.includes(item.criteria.collection_id))),
+    );
+    objectId = ctx.user!.id;
+    embed = {
+      title: `${ctx.user!.displayName} · collector profile`,
+      description: "A member chose to share this public profile summary in an authorised channel.",
+      color: 0x7c6b4f,
+      fields: [
+        {
+          name: "Public showcase cards",
+          value: String(new Set(publicCards).size),
+          inline: true,
+        },
+        { name: "Public badges", value: String(publicBadges.length), inline: true },
+      ],
+      footer: {
+        text: "Only approved public counts · no wallet, email, member roster, session or administrator data",
+      },
+    };
   }
 
   const shareId = newId("shr");
   try {
-    await ctx.db
+    if (publicCardShare) {
+      const now=nowIso();
+      const result=await ctx.db.batch([
+        ctx.db.prepare(`INSERT INTO fb_discord_shares (id,tenant_id,user_id,channel_id,object_type,object_id,created_at)
+          VALUES (?,?,?,?,?,?,?) ON CONFLICT (tenant_id,user_id,channel_id,object_type,object_id) DO NOTHING`)
+          .bind(shareId,ctx.tenant.id,ctx.user!.id,interaction.channel_id,kind,objectId,now),
+        ctx.db.prepare(`INSERT INTO fb_discord_share_attempts (id,share_id,interaction_id,state,created_at,updated_at)
+          SELECT ?,s.id,?,'reserved',?,? FROM fb_discord_shares s
+          WHERE s.tenant_id=? AND s.user_id=? AND s.channel_id=? AND s.object_type=? AND s.object_id=?
+            AND (changes()=1 OR (EXISTS (SELECT 1 FROM fb_discord_share_attempts a WHERE a.share_id=s.id AND a.state='not_sent')
+              AND NOT EXISTS (SELECT 1 FROM fb_discord_share_attempts a WHERE a.share_id=s.id AND a.state<>'not_sent')))
+          RETURNING id`)
+          .bind(publicCardShare.attemptId,interaction.id,now,now,ctx.tenant.id,ctx.user!.id,interaction.channel_id,kind,objectId),
+      ]);
+      if(result[1]?.results?.length!==1) {
+        const delivered=await first(ctx.db,`SELECT 1 FROM fb_discord_shares s JOIN fb_discord_share_attempts a ON a.share_id=s.id
+          WHERE s.tenant_id=? AND s.user_id=? AND s.channel_id=? AND s.object_type=? AND s.object_id=? AND a.state='delivered'`,
+          ctx.tenant.id,ctx.user!.id,interaction.channel_id,kind,objectId);
+        throw new ApiError(409,delivered?'share_already_delivered':'share_reconciliation_required','The share cannot be sent again yet.');
+      }
+    } else await ctx.db
       .prepare(
         `INSERT INTO fb_discord_shares (id, tenant_id, user_id, channel_id, object_type, object_id, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -2717,6 +2398,9 @@ async function tourShare(
       .bind(shareId, ctx.tenant.id, ctx.user!.id, interaction.channel_id, kind, objectId, nowIso())
       .run();
   } catch (error) {
+    if (/no such table: fb_discord_share_attempts\b/.test(String(error))) {
+      throw new ApiError(503,"share_temporarily_unavailable","Card sharing is temporarily unavailable. Nothing was posted.");
+    }
     if (String(error).includes("UNIQUE")) {
       throw new ApiError(
         409,
@@ -2735,11 +2419,8 @@ async function tourShare(
           {
             type: 2,
             style: 5,
-            label: kind === "profile" ? "View the full profile" : "Open the album",
-            url: absoluteUrl(
-              ctx.config.publicOrigin,
-              kind === "profile" ? "/play/profile" : "/play",
-            )!,
+            label: "Open the album",
+            url: absoluteUrl(ctx.config.publicOrigin, "/play")!,
           },
         ],
       ]),
@@ -2755,6 +2436,7 @@ async function tourShare(
       },
     ];
   }
+  if (publicCardShare) result.publicCardShare=publicCardShare;
   return result;
 }
 
@@ -2778,25 +2460,23 @@ export async function runCommand(
     case "missions":
       return missionsView(ctx);
     case "collection":
-      return collection(ctx, installation, undefined, interaction.channel_id);
+      return collection(ctx, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
     case "card": {
       const query = typeof values.query === "string" ? values.query.trim() : "";
       if (!query)
         throw new ApiError(422, "card_query_required", "Provide a card name, slug or ID.");
-      return card(ctx, query, installation, undefined, interaction.channel_id);
+      return card(ctx, query, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
     }
     case "packs":
-      return packs(ctx, installation, undefined, interaction.channel_id);
+      return packs(ctx, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
     case "achievements":
-      return achievements(ctx, installation, undefined, interaction.channel_id);
+      return achievements(ctx, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
     case "tour":
       return tour(ctx, installation, "welcome", interaction.channel_id);
     case "profile":
-      return profile(ctx, installation, undefined, interaction.channel_id);
+      return profile(ctx, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
     case "npc":
-      return npcView(ctx, installation, typeof values.name === "string" ? values.name : "");
-    case "trade":
-      return npcTradeCommand(ctx, interaction, installation, values);
+      return npcView(ctx, typeof values.name === "string" ? values.name : "");
     case "help":
       return help(ctx);
     case "admin:status":
@@ -2804,14 +2484,14 @@ export async function runCommand(
     case "admin:settings":
       return adminSettings(ctx, installation);
     case "admin:pools":
-      return adminPools(ctx, installation);
+      return adminPools(ctx,installation,interaction.channel_id);
     case "admin:enable": {
       const surface = typeof values.surface === "string" ? values.surface : "";
-      return adminToggle(ctx, interaction, installation, surface, true);
+      return adminToggle(ctx, installation, surface, true);
     }
     case "admin:disable": {
       const surface = typeof values.surface === "string" ? values.surface : "";
-      return adminToggle(ctx, interaction, installation, surface, false);
+      return adminToggle(ctx, installation, surface, false);
     }
     case "admin:grant":
       return adminGrant(ctx, interaction, values);
@@ -2855,53 +2535,47 @@ async function executeConfirmation(
       "confirmation_expired",
       "That confirmation expired. Run the admin command again.",
     );
-  requireBotAdmin(ctx.user!);
   const payload = JSON.parse(row.payload_json) as Record<string, unknown>;
 
   if (row.action === "installation.toggle") {
-    const surface = typeof payload.surface === "string" ? payload.surface : "";
-    const enabled = Boolean(payload.enabled);
-    const installationId = typeof payload.installationId === "string" ? payload.installationId : "";
-    const column = SURFACE_COLUMNS[surface];
-    if (!column || !installationId)
-      throw new ApiError(422, "surface_invalid", "Unknown availability surface.");
-    await ctx.db.batch([
-      ctx.db
-        .prepare(
-          `UPDATE fb_discord_installations SET ${column} = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`,
-        )
-        .bind(enabled ? 1 : 0, nowIso(), installationId, ctx.tenant.id),
-      ctx.db
-        .prepare("UPDATE fb_discord_confirmations SET used_at = ? WHERE id = ? AND used_at IS NULL")
-        .bind(nowIso(), confirmationId),
-      auditStatement(
-        ctx,
-        enabled ? "discord.surface.enabled" : "discord.surface.disabled",
-        "discord_installation",
-        installationId,
-        {
-          surface,
-          enabled,
-        },
-      ),
-    ]);
+    await requireDiscordAdminCapabilities(ctx,['settings']);
+    if (payload.surface !== 'game') return callback({embeds:[{title:'Availability control unavailable',description:'This interface cannot currently be switched from Discord or Studio. No setting was changed.',color:0x7c6b4f}]},true);
+    return callback({embeds:[{title:"Change availability in Studio",description:`Open ${absoluteUrl(ctx.config.publicOrigin,"/studio/discord")} and confirm with a passkey or authenticator to change server availability.`,color:0x7c6b4f}]},true);
+  }
+
+  if (row.action === "wallet.grant") {
+    await requireDiscordAdminCapabilities(ctx,['grants']);
+    const targetUserId = typeof payload.targetUserId === "string" ? payload.targetUserId : "";
+    const amount = typeof payload.amount === "number" ? payload.amount : Number(payload.amount);
+    const reason = typeof payload.reason === "string" ? payload.reason : "Discord admin grant";
+    if (!targetUserId || !Number.isInteger(amount) || amount <= 0)
+      throw new ApiError(422, "grant_invalid", "The recorded grant is invalid.");
+    const digest = await sha256Hex(
+      `discord-grant:${confirmationId}:${targetUserId}:${amount}:${reason}`,
+    );
+    const result = (await adjustWallet(ctx, {
+      userId: targetUserId,
+      amount,
+      reason,
+      idempotency: { key: `discord:grant:${confirmationId}`, digest },
+    })) as unknown as GrantReceipt;
+    await ctx.db
+      .prepare("UPDATE fb_discord_confirmations SET used_at = ? WHERE id = ? AND used_at IS NULL")
+      .bind(nowIso(), confirmationId)
+      .run();
     return callback(
       {
         embeds: [
           {
-            title: `${surface} ${enabled ? "enabled" : "disabled"}`,
-            description:
-              "The change is live. Inventory, ownership history and the other interfaces are unchanged.",
-            color: enabled ? 0x3f9d5a : 0xd97757,
+            title: "Admin grant recorded",
+            description: `Credited **${amount} Foil** to <@${discordUserId}>.\nBalance after: **${result.balance_after}**.\nReason: ${truncate(reason, 300)}`,
+            color: 0x3f9d5a,
+            footer: { text: "Audited admin grant, separate from random draws" },
           },
         ],
       },
       true,
     );
-  }
-
-  if (row.action === "wallet.grant") {
-    return studioGrantRequired(ctx);
   }
 
   throw new ApiError(
@@ -2943,30 +2617,23 @@ export async function runComponent(
     }
     return redeliverReceipt(ctx, interaction, originalInteractionId);
   }
-  if (customId === "foilbury:collection") return collection(ctx, installation, undefined, interaction.channel_id);
+  if (customId === "foilbury:collection") return collection(ctx, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
   if (customId === "foilbury:daily") return daily(ctx, interaction);
   if (customId.startsWith("foilbury:mission:claim:")) {
     const key = customId.slice("foilbury:mission:claim:".length);
     const claimed = await claimDailyMission(ctx, key, `discord:${interaction.id}:mission:${key}`);
     return missionsView(ctx, `+${claimed.amount} Foil credited. Balance ${claimed.balance_after}.`);
   }
-  if (customId === "foilbury:packs") return packs(ctx, installation, undefined, interaction.channel_id);
+  if (customId === "foilbury:packs") return packs(ctx, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
   if (customId === "foilbury:help") return help(ctx);
   if (customId.startsWith("foilbury:card:")) {
     const [, , cardId, variantId, action] = customId.split(":");
     if (!cardId)
       throw new ApiError(422, "card_component_invalid", "That card control is incomplete.");
     if (action === "front" || action === "back")
-      return cardFace(ctx, cardId, variantId ?? null, action, installation, undefined, interaction.channel_id);
-    if (action === "details")
-      return cardDetails(ctx, cardId, installation, undefined, interaction.channel_id);
+      return cardFace(ctx, cardId, variantId ?? null, action, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
+    if (action === "details") return cardDetails(ctx, cardId, installation, await resolveDiscordScope(ctx, installation, interaction.channel_id));
     throw new ApiError(404, "card_component_unknown", "That card control is not recognised.");
-  }
-  if (customId.startsWith("foilbury:npc-confirm:")) {
-    return npcTradeConfirm(ctx, customId.slice("foilbury:npc-confirm:".length));
-  }
-  if (customId.startsWith("foilbury:npc-cancel:")) {
-    return npcTradeCancel(ctx, customId.slice("foilbury:npc-cancel:".length));
   }
   if (customId.startsWith("foilbury:confirm:")) {
     return executeConfirmation(ctx, interaction, customId.slice("foilbury:confirm:".length));

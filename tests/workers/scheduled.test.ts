@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createScheduledRunner,
   runScheduledMaintenance,
@@ -146,5 +146,87 @@ describe("scheduled Worker entry", () => {
       fetchImpl: stub,
     });
     expect(result).toMatchObject({ configured: false, delivered: false, attempts: 0 });
+  });
+
+  it("does not send untrusted text, signed URLs, cookies or private prompts in alert fields", () => {
+    const privateText = "fixture-private-prompt";
+    const secret = "fixture-webhook-secret";
+    const signed = `https://example.test/private?token=${secret}`;
+    const payload = buildAdminAlert({
+      level: "error", message: `Cookie: session=${secret} ${signed}`,
+      correlationId: `discord:${secret}`, detail: `${privateText} ${signed}`,
+      occurredAt: `2026-11-04T00:00:00Z ${secret}`, secrets: [secret],
+    });
+    const text = JSON.stringify(payload);
+    for (const forbidden of [privateText, secret, signed, "Cookie", "session="]) expect(text).not.toContain(forbidden);
+    expect(text).toContain("Operational issue");
+    expect(text).toContain("Additional diagnostic detail withheld");
+    expect(text).not.toContain("Correlation:");
+  });
+
+  it("classifies provider errors without exposing the webhook URL or returned exception", async () => {
+    const secret = "fixture-webhook-secret";
+    const url = `https://discord.com/api/webhooks/123456789012345/${secret}`;
+    const stub = (async () => { throw new Error(`failed posting ${url} with Cookie: session=fixture-cookie`); }) as typeof fetch;
+    const result = await deliverAdminAlert({ ADMIN_DISCORD_WEBHOOK_URL: url }, buildAdminAlert({ level: "error", message: "delivery failed" }), { fetchImpl: stub });
+    expect(result).toMatchObject({ configured: true, delivered: false, attempts: 1, error: "delivery_transport_error" });
+    expect(JSON.stringify(result)).not.toContain(secret);
+    expect(JSON.stringify(result)).not.toContain("fixture-cookie");
+    const timeout = (async () => { throw new DOMException("private detail", "AbortError"); }) as typeof fetch;
+    await expect(deliverAdminAlert({ ADMIN_DISCORD_WEBHOOK_URL: url }, buildAdminAlert({ level: "error", message: "x" }), { fetchImpl: timeout })).resolves.toMatchObject({ error: "delivery_timeout", attempts: 1 });
+  });
+  it("keeps scheduled exception payloads out of receipts and logs while preserving failure classifications", async () => {
+    const secret = "fixture-sensitive-cookie";
+    const logged: string[] = [];
+    const log = vi.spyOn(console, "log").mockImplementation((...args) => { logged.push(args.join(" ")); });
+    const error = vi.spyOn(console, "error").mockImplementation((...args) => { logged.push(args.join(" ")); });
+    try {
+      const maintenance = await runScheduledMaintenance(runtime as unknown as ScheduledEnv, [{ name: "fixture_step", run: async () => { throw new Error(`Cookie: ${secret} https://example.test/signed?token=${secret}`); } }]);
+      expect(maintenance.steps[0].detail).toBe("operation_failed");
+      const runner = createScheduledRunner({ maintenance: async () => { throw new Error(secret); }, alert: async () => { throw new Error(secret); }, editorial: async () => { throw new Error(secret); } });
+      const result = await runner({} as ScheduledController, runtime as unknown as ScheduledEnv, { waitUntil: () => undefined } as unknown as ExecutionContext);
+      expect(result.maintenance.steps[0].detail).toBe("operation_failed");
+      expect(result.editorial.detail).toBe("operation_failed");
+      const output = JSON.stringify({ result, maintenance, logged });
+      expect(output).not.toContain(secret);
+      expect(output).not.toContain("https://example.test");
+      expect(output).toContain("scheduled.maintenance.completed");
+      expect(output).toContain("scheduled.alert.failed");
+      expect(output).toContain("scheduled.editorial.failed");
+      expect(output).toContain("scheduled.maintenance.failed");
+      expect(output).toContain("scheduled:run:");
+    } finally { log.mockRestore(); error.mockRestore(); }
+  });
+
+  it("logs undelivered alert states without provider text or retries", async () => {
+    const logged: string[] = [];
+    const logger = vi.spyOn(console, "error").mockImplementation((...args) => { logged.push(args.join(" ")); });
+    const stub = vi.fn(async () => new Response(null, { status: 503 }));
+    vi.stubGlobal("fetch", stub);
+    try {
+      const runner = createScheduledRunner({ maintenance: async () => ({ ok: false, steps: [{ name: "rate_limits", ok: false, detail: "timeout" }] }) });
+      const controller = {} as ScheduledController;
+      const execution = { waitUntil: () => undefined } as unknown as ExecutionContext;
+      await runner(controller, { ...runtime, ADMIN_DISCORD_WEBHOOK_URL: "" } as unknown as ScheduledEnv, execution);
+      expect(stub).toHaveBeenCalledTimes(0);
+      expect(logged.join(" ")).toContain('"error":"not_configured"');
+      await runner(controller, { ...runtime, ADMIN_DISCORD_WEBHOOK_URL: "https://example.test/webhook" } as unknown as ScheduledEnv, execution);
+      expect(stub).toHaveBeenCalledTimes(1);
+      expect(logged.join(" ")).toContain('"status":503');
+      stub.mockImplementationOnce(async () => { throw new DOMException("fixture secret", "AbortError"); });
+      await runner(controller, { ...runtime, ADMIN_DISCORD_WEBHOOK_URL: "https://example.test/webhook" } as unknown as ScheduledEnv, execution);
+      expect(stub).toHaveBeenCalledTimes(2);
+      expect(logged.join(" ")).toContain("delivery_timeout");
+      expect(logged.join(" ")).not.toContain("fixture secret");
+      expect(logged.join(" ")).toContain("scheduled.alert.undelivered");
+    } finally { vi.unstubAllGlobals(); logger.mockRestore(); }
+  });
+
+  it("includes only allowlisted step failure classes in alert details", () => {
+    const safe = buildAdminAlert({ level: "error", message: "Scheduled maintenance failed: rate_limits", detail: "rate_limits: timeout" });
+    expect(safe.content).toContain("rate_limits: timeout");
+    const unsafe = buildAdminAlert({ level: "error", message: "Scheduled maintenance failed: rate_limits", detail: "rate_limits: Cookie secret" });
+    expect(unsafe.content).toContain("Additional diagnostic detail withheld");
+    expect(unsafe.content).not.toContain("Cookie secret");
   });
 });

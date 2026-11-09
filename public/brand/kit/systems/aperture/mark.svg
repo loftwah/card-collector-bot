@@ -1,1 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" aria-label="Foilbury Aperture mark" role="img" viewBox="0 0 256 256"><rect width="256" height="256" fill="#0c1626"/><circle cx="128" cy="128" r="92" fill="none" stroke="#7ea8c4" stroke-width="18"/><path fill="#e7edf3" d="M128 36a92 92 0 0 1 78 49l-78 43z"/><path fill="#e4573f" d="M206 174a92 92 0 0 1-78 46v-95z"/><path fill="#9bc3d9" d="M50 174a92 92 0 0 1 0-92l78 46z"/><circle cx="128" cy="128" r="24" fill="#0c1626" stroke="#e7edf3" stroke-width="8"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Foilbury Aperture mark"><rect width="256" height="256" fill="#0c1626"/>
+    <circle cx="128" cy="128" r="92" fill="none" stroke="#7ea8c4" stroke-width="18"/>
+    <path d="M128 36a92 92 0 0 1 78 49l-78 43z" fill="#e7edf3"/>
+    <path d="M206 174a92 92 0 0 1-78 46v-95z" fill="#e4573f"/>
+    <path d="M50 174a92 92 0 0 1 0-92l78 46z" fill="#9bc3d9"/>
+    <circle cx="128" cy="128" r="24" fill="#0c1626" stroke="#e7edf3" stroke-width="8"/></svg>

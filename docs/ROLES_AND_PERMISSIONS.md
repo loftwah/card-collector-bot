@@ -31,19 +31,6 @@ Foilbury keeps five authorities separate. None is inferred from another.
 | Read another member's wallet or ledger | No | No | No | No | No |
 | Grant the scoped platform role | Yes | No | No | No | No |
 
-## Member pickers and contact records
-
-Operational pickers use `GET /api/v1/admin/people`, which returns only `id`,
-`display_name` and `role`. The economy, gift composer and agent-grant screens
-use this directory so an operator can choose a person without enumerating email
-addresses.
-
-Contact records and pending invitations use `GET /api/v1/admin/team` (or the
-lower-level `GET /api/v1/admin/members`). Both are human-only and require the
-Bot Owner, Super Admin, or a Bot Admin with the live `members` capability. An
-agent grant is denied even with `ops:read`. `GET /api/v1/admin/bot` returns Bot
-settings only and cannot be used as a back door to the people directory.
-
 ## Kaylee
 
 Target account:

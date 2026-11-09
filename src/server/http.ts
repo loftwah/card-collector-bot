@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { ApiError, type Ctx } from "./context";
 import { first, nowIso, statement } from "./db";
-import { canonicalJson, newId, sha256Hex } from "./ids";
+import { canonicalJson, newId, safeRequestReference, sha256Hex } from "./ids";
 
 export const MAX_BODY_BYTES = 1_000_000;
 
@@ -60,9 +60,9 @@ export async function findIdempotent(
   operation: string,
   input: IdempotencyInput,
 ): Promise<{ response: unknown; replayed: boolean } | null> {
-  const row = await first<{ request_digest: string; response_json: string; status: string }>(
+  const row = await first<{ request_digest: string; response_json: string }>(
     ctx.db,
-    `SELECT request_digest, response_json, status FROM fb_idempotency_keys
+    `SELECT request_digest, response_json FROM fb_idempotency_keys
       WHERE tenant_id = ? AND actor_type = ? AND actor_id = ? AND operation = ? AND idempotency_key = ?`,
     ctx.tenant.id,
     ctx.actor.type,
@@ -77,12 +77,6 @@ export async function findIdempotent(
       "idempotency_conflict",
       "This idempotency key was already used with a different request.",
     );
-  }
-  // A failed or still-running draw is not a completed receipt. Do not expose
-  // its stored payload or claim a specific outcome without a live-authorized
-  // reader. Existing completed receipts and other operations remain unchanged.
-  if (operation === "draw.execute" && row.status !== "completed") {
-    throw new ApiError(503, "draw_outcome_unavailable", "This opening's outcome could not be confirmed. Check your collection before opening another capsule.");
   }
   return { response: JSON.parse(row.response_json), replayed: true };
 }
@@ -111,26 +105,32 @@ export async function replayOrThrow(ctx: Ctx, operation: string, input: Idempote
 }
 
 export function apiErrorResponse(error: unknown, requestId: string): Response {
+  // Only carry bounded, recognisable correlation IDs from the request. A
+  // client-controlled header must not become arbitrary response or log text.
+  const reference = safeRequestReference(requestId);
   if (error instanceof ApiError) {
+    const retry = error.status === 429 && error.code === "rate_limited" ? error.details?.retryAfterSeconds : undefined;
     return json(
-      { error: { code: error.code, message: error.message, details: error.details }, request_id: requestId },
+      { error: { code: error.code, message: error.message, details: error.details }, request_id: reference },
       error.status,
+      typeof retry === "number" && Number.isSafeInteger(retry) && retry > 0 && retry <= 86400 ? { "retry-after": String(retry) } : undefined,
     );
   }
   console.error(
     JSON.stringify({
       level: "error",
-      request_id: requestId,
-      message: error instanceof Error ? error.message : "Unexpected error",
+      event_code: "api.unexpected_failure",
+      request_id: reference,
+      error: "operation_failed",
     }),
   );
   return json(
     {
       error: {
         code: "internal_error",
-        message: "The cabinet could not complete that action. Nothing was changed.",
+        message: "The cabinet could not complete that request. Check its status before trying again.",
       },
-      request_id: requestId,
+      request_id: reference,
     },
     500,
   );

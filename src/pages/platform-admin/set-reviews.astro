@@ -1,0 +1,9 @@
+---
+import PlatformAdminLayout from "../../layouts/PlatformAdminLayout.astro";
+import PublicSetReview from "../../components/platform/PublicSetReview";
+const tenantSlug = Astro.locals.foilbury?.tenantSlug ?? "current Bot";
+---
+
+<PlatformAdminLayout>
+  <PublicSetReview client:load tenantSlug={tenantSlug} />
+</PlatformAdminLayout>

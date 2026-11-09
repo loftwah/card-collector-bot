@@ -21,18 +21,20 @@ export function publicCard(card: CardView) {
     })(),
     source_work: card.source_work,
     review_status: card.review_status,
-    source_refs: (() => {
-      try {
-        return JSON.parse(card.source_refs_json ?? "[]") as string[];
-      } catch {
-        return [];
-      }
-    })(),
     class: card.class ? { key: card.class.key, name: card.class.name } : null,
     category: card.category ? { slug: card.category.slug, name: card.category.name } : null,
-    rarity: card.rarity ? { key: card.rarity.key, name: card.rarity.name, tone: card.rarity.tone } : null,
+    rarity: card.rarity
+      ? { key: card.rarity.key, name: card.rarity.name, tone: card.rarity.tone }
+      : null,
     tags: card.tags.map((tag) => ({ slug: tag.slug, name: tag.name })),
-    collections: card.collections.map(({ slug, name, scope, logo_url, accent, view_audience }) => ({ slug, name, scope, logo_url, accent, view_audience })),
+    collections: card.collections.map(({ slug, name, scope, logo_url, accent, view_audience }) => ({
+      slug,
+      name,
+      scope,
+      logo_url,
+      accent,
+      view_audience,
+    })),
     card_back_url: card.card_back_url,
     editions: card.editions
       .filter((edition) => edition.status === "published")
@@ -66,7 +68,7 @@ export function publicSet(set: {
   published_at: string | null;
   reward_amount: number;
   cards: Array<{ id: string; slug: string; name: string; sort: number }>;
-  progress?: { owned: number; total: number; complete: boolean; claimed: boolean };
+  progress?: { owned: number; total: number; complete: boolean | null; claimed: boolean | null };
 }) {
   return {
     id: set.id,
@@ -78,5 +80,6 @@ export function publicSet(set: {
     reward_amount: set.reward_amount,
     cards: set.cards.map(({ slug, name }) => ({ slug, name })),
     progress: set.progress,
+    progress_scope: set.progress ? "visible" : undefined,
   };
 }

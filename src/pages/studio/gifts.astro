@@ -1,0 +1,14 @@
+---
+import StudioLayout from "../../layouts/StudioLayout.astro";
+import GiftComposer from "../../components/admin/GiftComposer";
+---
+<StudioLayout>
+  <div class="studio-rule">
+    <div>
+      <h2 class="display-sm text-4xl uppercase">Send gifts.</h2>
+      <p class="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--muted)]">Send Foil, a reviewed opening value, or an eligible public card to members of this Bot. Your current grant policy applies to every recipient.</p>
+    </div>
+    <span class="studio-stamp">Bot-scoped</span>
+  </div>
+  <div class="mt-7"><GiftComposer client:load scoped platformAdmin={false} /></div>
+</StudioLayout>
