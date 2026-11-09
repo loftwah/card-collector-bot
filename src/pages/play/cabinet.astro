@@ -1,0 +1,324 @@
+---
+import PlayerLayout from "../../layouts/PlayerLayout.astro";
+import ProfileCard from "../../components/player/ProfileCard.astro";
+import ShareLinkButton from "../../components/player/ShareLinkButton";
+import Mascot from "../../components/Mascot.astro";
+import { pageContext } from "../../server/page";
+import { getCabinet } from "../../server/modules/cabinet";
+import { displayFinish, printTitle } from "../../lib/utils";
+
+const ctx = await pageContext(Astro.request);
+if (!ctx.user) return Astro.redirect(`/login?next=${encodeURIComponent("/play/cabinet")}`);
+const cabinet = await getCabinet(ctx);
+const { stats, recent, favourites, shelves, close } = cabinet;
+const displayName = ctx.user.displayName;
+const pinned = favourites[0] ?? recent[0] ?? null;
+const pinnedShelf = pinned
+  ? shelves.find((shelf) => shelf.cards.some((card) => card.id === pinned.id)) ?? null
+  : null;
+const morePinned = favourites.slice(1, 4);
+const nextAction =
+  stats.copies === 0
+    ? "Open your first capsule. The card is yours to keep, with its serial and finish."
+    : stats.dailyReady
+      ? `Your daily ${stats.dailyReward} Foil is ready. Open a capsule or take a moment to arrange your display.`
+      : stats.cheapestCapsule
+        ? `The next capsule costs ✦ ${stats.cheapestCapsule.price}. Browse a collection while your allowance returns.`
+        : "Browse the collections and decide what your cabinet needs next.";
+---
+
+<PlayerLayout title="Cabinet · Foilbury">
+  <div class="cabinet-page">
+    <header class="cabinet-hero">
+      <div class="cabinet-hero__copy">
+        <p class="eyebrow">The cabinet</p>
+        <h1 class="page-title">{displayName}’s cabinet</h1>
+        <p class="cabinet-hero__lede">
+          Your owned copies, the collections they belong to, and the next thing worth opening.
+          Every serial here is yours.
+        </p>
+        <div class="cabinet-hero__actions">
+          <a class="btn btn-primary" href="/play/draw">Open a capsule</a>
+          <a class="btn btn-secondary" href="/play/profile#customise">Arrange display</a>
+          <ShareLinkButton client:load kind="profile" label="Share my cabinet" size="md" />
+        </div>
+      </div>
+      <aside class="cabinet-balance" aria-label="Your Foil and daily allowance">
+        <p class="cabinet-balance__label">Foil on hand</p>
+        <p class="cabinet-balance__value">✦ {stats.balance}</p>
+        <p class="cabinet-balance__meta">
+          {stats.dailyReady
+            ? `Daily +${stats.dailyReward} ready`
+            : `Next daily +${stats.dailyReward} later`}
+        </p>
+        {stats.cheapestCapsule ? (
+          <p class="cabinet-balance__note">
+            Next capsule: {stats.cheapestCapsule.name} · ✦ {stats.cheapestCapsule.price}
+          </p>
+        ) : (
+          <p class="cabinet-balance__note">No capsule pool is open right now.</p>
+        )}
+      </aside>
+    </header>
+
+    <dl class="cabinet-stats">
+      <div>
+        <dt>Subjects</dt>
+        <dd>{stats.subjects}</dd>
+      </div>
+      <div>
+        <dt>Copies</dt>
+        <dd>{stats.copies}</dd>
+      </div>
+      <div>
+        <dt>Favourites</dt>
+        <dd>{stats.favourites}</dd>
+      </div>
+      <div>
+        <dt>Badges</dt>
+        <dd>{stats.badges}</dd>
+      </div>
+    </dl>
+
+    <p class="cabinet-next">
+      <span class="cabinet-next__label">Next</span>
+      {nextAction}
+    </p>
+
+    {
+      stats.copies === 0 ? (
+        <section class="cabinet-empty">
+          <Mascot expression="curious" size={150} class="empty-mascot" />
+          <div>
+            <h2 class="display-sm text-3xl">Your cabinet is waiting.</h2>
+            <p class="mt-2 max-w-xl text-sm text-[var(--muted)]">
+              Open a capsule to receive one real card copy with its own serial, finish and collection
+              mark. Then pin it to your profile when you are ready to show it off.
+            </p>
+            <div class="mt-4 flex flex-wrap gap-2">
+              <a class="btn btn-primary" href="/play/draw">Open your first capsule</a>
+              <a class="btn btn-secondary" href="/play/collections">Browse collections</a>
+            </div>
+          </div>
+        </section>
+      ) : (
+        <>
+          <section class="cabinet-pinned" aria-labelledby="cabinet-pinned-title">
+            <div class="cabinet-section-head">
+              <div>
+                <p class="eyebrow">Pinned display</p>
+                <h2 id="cabinet-pinned-title" class="cabinet-section-title">
+                  {favourites.length ? "The cards you chose" : "Your latest arrival"}
+                </h2>
+              </div>
+              <a class="cabinet-section-link" href="/play/profile#customise">
+                Edit display →
+              </a>
+            </div>
+            {pinned ? (
+              <div class="cabinet-pinned__layout">
+                <article class="cabinet-pinned__hero">
+                  <div class="cabinet-pinned__object">
+                    {pinned.render_url ? (
+                      <img
+                        src={pinned.render_url}
+                        alt={`${pinned.card_name} — ${printTitle(pinned.edition_name) ?? pinned.variant_name}`}
+                        width="750"
+                        height="1050"
+                        loading="eager"
+                      />
+                    ) : (
+                      <div class="card-face-fallback">{pinned.card_name.charAt(0)}</div>
+                    )}
+                  </div>
+                  <div class="cabinet-pinned__copy">
+                    <p class="eyebrow">
+                      {pinnedShelf?.collection.name ?? pinned.collection_name ?? "Your cabinet"}
+                    </p>
+                    <h3 class="cabinet-pinned__name">{pinned.card_name}</h3>
+                    <p class="cabinet-pinned__meta">
+                      {printTitle(pinned.edition_name) ?? pinned.variant_name}
+                    </p>
+                    <p class="cabinet-pinned__serial">{pinned.serial}</p>
+                    <p class="cabinet-pinned__finish">
+                      {displayFinish(pinned.variant_name, pinned.material_key, pinned.effect_key)}
+                    </p>
+                    <a class="btn btn-primary btn-sm" href={`/play/card/${pinned.id}`}>
+                      Inspect this copy
+                    </a>
+                  </div>
+                </article>
+                {morePinned.length ? (
+                  <div class="cabinet-pinned__rest">
+                    {morePinned.map((card) => (
+                      <ProfileCard
+                        card={{
+                          id: card.id,
+                          card_name: card.card_name,
+                          render_url: card.render_url,
+                          thumbnail_url: card.thumbnail_url,
+                          edition_name: card.edition_name,
+                          variant_name: card.variant_name,
+                          serial: card.serial,
+                        }}
+                        eager
+                      />
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </section>
+
+          <section class="cabinet-recent" aria-labelledby="cabinet-recent-title">
+            <div class="cabinet-section-head">
+              <div>
+                <p class="eyebrow">Recent pulls</p>
+                <h2 id="cabinet-recent-title" class="cabinet-section-title">
+                  What arrived lately
+                </h2>
+              </div>
+              <a class="cabinet-section-link" href="/play/collection">All copies →</a>
+            </div>
+            <div class="cabinet-recent__rail">
+              {recent.slice(0, 6).map((card) => (
+                <ProfileCard
+                  card={{
+                    id: card.id,
+                    card_name: card.card_name,
+                    render_url: card.render_url,
+                    thumbnail_url: card.thumbnail_url,
+                    edition_name: card.edition_name,
+                    variant_name: card.variant_name,
+                    serial: card.serial,
+                  }}
+                />
+              ))}
+            </div>
+          </section>
+
+          <section class="cabinet-shelves" aria-labelledby="cabinet-shelves-title">
+            <div class="cabinet-section-head">
+              <div>
+                <p class="eyebrow">Your shelves</p>
+                <h2 id="cabinet-shelves-title" class="cabinet-section-title">
+                  Owned by collection
+                </h2>
+              </div>
+              <a class="cabinet-section-link" href="/play/collections">Browse all collections →</a>
+            </div>
+            <div class="cabinet-shelf-list">
+              {shelves.map((shelf) => (
+                <article class="cabinet-shelf">
+                  <header class="cabinet-shelf__head">
+                    <div class="cabinet-shelf__identity">
+                      {shelf.collection.banner_url ? (
+                        <img
+                          class="cabinet-shelf__banner"
+                          src={shelf.collection.banner_url}
+                          alt=""
+                          width="320"
+                          height="180"
+                          loading="lazy"
+                        />
+                      ) : shelf.collection.logo_url ? (
+                        <span class="cabinet-shelf__mark">
+                          <img
+                            src={shelf.collection.logo_url}
+                            alt=""
+                            width="56"
+                            height="56"
+                            loading="lazy"
+                          />
+                        </span>
+                      ) : (
+                        <span class="cabinet-shelf__mark cabinet-shelf__mark--word">
+                          {shelf.collection.name}
+                        </span>
+                      )}
+                      <div>
+                        <h3>{shelf.collection.name}</h3>
+                        <p>
+                          {shelf.ownedSubjects}/{shelf.collection.card_count} subjects ·{" "}
+                          {shelf.missingSubjects
+                            ? `${shelf.missingSubjects} to find`
+                            : "roster complete"}
+                        </p>
+                      </div>
+                    </div>
+                    <a
+                      class="btn btn-secondary btn-sm"
+                      href={`/play/collection?collection=${shelf.collection.slug}`}
+                    >
+                      Open binder
+                    </a>
+                  </header>
+                  <div
+                    class="cabinet-shelf__bar"
+                    role="progressbar"
+                    aria-valuemin="0"
+                    aria-valuemax={shelf.collection.card_count}
+                    aria-valuenow={shelf.ownedSubjects}
+                    aria-label={`${shelf.collection.name} roster completion`}
+                  >
+                    <span style={`width:${shelf.completionPct}%`}></span>
+                  </div>
+                  <div class="cabinet-shelf__cards">
+                    {shelf.cards.map((card) => (
+                      <ProfileCard
+                        card={{
+                          id: card.id,
+                          card_name: card.card_name,
+                          render_url: card.render_url,
+                          thumbnail_url: card.thumbnail_url,
+                          edition_name: card.edition_name,
+                          variant_name: card.variant_name,
+                          serial: card.serial,
+                        }}
+                        eager
+                      />
+                    ))}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section class="cabinet-close" aria-labelledby="cabinet-close-title">
+            <div class="cabinet-section-head">
+              <div>
+                <p class="eyebrow">Close to finishing</p>
+                <h2 id="cabinet-close-title" class="cabinet-section-title">
+                  The nearest complete shelves
+                </h2>
+              </div>
+            </div>
+            {close.length ? (
+              <ol class="cabinet-close__list">
+                {close.map((target) => (
+                  <li>
+                    <a href={`/play/collection?collection=${target.collection.slug}`}>
+                      <span class="cabinet-close__name">{target.collection.name}</span>
+                      <span class="cabinet-close__meta">
+                        {target.ownedSubjects}/{target.totalSubjects} subjects ·{" "}
+                        {target.missingSubjects} to go
+                      </span>
+                      <span class="cabinet-close__bar" aria-hidden="true">
+                        <span style={`width:${target.completionPct}%`}></span>
+                      </span>
+                    </a>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p class="cabinet-close__empty">
+                Open a capsule to start your first collection shelf. Missing slots become targets,
+                not noise.
+              </p>
+            )}
+          </section>
+        </>
+      )
+    }
+  </div>
+</PlayerLayout>

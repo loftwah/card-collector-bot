@@ -11,9 +11,10 @@ interface Props {
     variant_name: string;
     serial: string;
   };
+  eager?: boolean;
 }
 
-const { card } = Astro.props;
+const { card, eager = false } = Astro.props;
 ---
 
 <article class="profile-card">
@@ -25,7 +26,7 @@ const { card } = Astro.props;
           alt={`${card.card_name} — ${printTitle(card.edition_name) ?? card.variant_name}`}
           width="300"
           height="420"
-          loading="lazy"
+          loading={eager ? "eager" : "lazy"}
         />
       ) : (
         <div class="card-face-fallback">{card.card_name.charAt(0)}</div>

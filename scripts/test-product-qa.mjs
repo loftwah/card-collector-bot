@@ -281,7 +281,7 @@ try {
 
   await failOnThrow("collection filters, totals and stale responses", async () => {
     await page.goto("/play/collection");
-    await page.getByRole("heading", { name: /my cards/i }).waitFor();
+    await page.getByRole("heading", { name: /all copies/i }).waitFor();
     await page.locator('[data-hydrated="true"]').waitFor();
     const totalLabel = await page.locator('[aria-live="polite"]').innerText();
     const apiTotal = await (await owner.request.get("/api/v1/inventory?limit=1")).json();
@@ -368,7 +368,7 @@ try {
       await route.continue();
     });
     await page.goto("/play/collection");
-    await page.getByRole("heading", { name: /my cards/i }).waitFor();
+    await page.getByRole("heading", { name: /all copies/i }).waitFor();
     await page.locator('[data-hydrated="true"]').waitFor();
     expectingFailure = true;
     await page.getByRole("button", { name: "Apply" }).click();
@@ -616,7 +616,7 @@ try {
       ),
     );
     await phone.goto("/play/collection");
-    await phone.getByRole("heading", { name: /my cards/i }).waitFor();
+    await phone.getByRole("heading", { name: /all copies/i }).waitFor();
     check(
       "mobile collection has no horizontal overflow",
       await phone.evaluate(

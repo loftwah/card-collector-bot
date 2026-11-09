@@ -21,7 +21,7 @@ Foilbury is a collectible-card cabinet. A player claims a free allowance, opens 
 - Generous free-play defaults (800 welcome / 480 daily), truthful finish odds and scoped administrator gifts.
 - Passwordless player sign-in: Discord OAuth, one-use email magic links, passkeys; authenticator TOTP and recovery codes for step-up.
 - Account security: passkeys, authenticator, recovery codes, session review and revocation.
-- Player cabinet: collection filtered by collection and set, draw studio, rewards, trades, preferences, collector showcase and share links.
+- Player cabinet at `/play/cabinet`: owned copies grouped by collection, pinned display, recent pulls, close-to-finish shelves and explicit share/view actions. `/play/collection` is the complete copy list and collection binder; `/play/collections` is discovery.
 - Bot administration at `/admin/*`: catalogue, artwork editions, collections, team invitations, sets, pools, economy, availability, imports, render studio and audit.
 - Scoped Studio at `/studio`: a normal signed-in workspace for Bot Owners/Admins and Global Collection Admins. It does not require Cloudflare Access and cannot grant platform root. `/studio/prints` reviews distinct artwork editions, records agent or human decisions separately, and links approved prints to catalogue editions.
 - Platform Administration at `/platform-admin`: accounts, People & roles, Access links, Bots, installations, global collections, explicit Super Admin record and audit.

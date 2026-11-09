@@ -62,8 +62,11 @@ try {
     await page.goto("/play");
     await page.getByRole("heading", { name: /your library/i }).waitFor();
     await audit(page, `${scheme} authenticated player home`, `ui-play-${scheme}.png`);
+    await page.goto("/play/cabinet");
+    await page.getByRole("heading", { name: /cabinet/i }).waitFor();
+    await audit(page, `${scheme} cabinet`, `ui-cabinet-${scheme}.png`);
     await page.goto("/play/collection");
-    await page.getByRole("heading", { name: /my cards/i }).waitFor();
+    await page.getByRole("heading", { name: /all copies/i }).waitFor();
     await audit(page, `${scheme} collection`);
     await page.goto("/play/collections");
     await page.getByRole("heading", { name: /^Collections$/i }).waitFor();
