@@ -88,7 +88,8 @@ const openingOdds = openingPool
     })
   : [];
 const openingBalance = wallet?.balance ?? 0;
-const openingShortfall = openingPool ? Math.max(0, openingPool.price - openingBalance) : 0;
+const openingAvailable = Boolean(openingPool && openingPool.eligible_count > 0);
+const openingShortfall = openingAvailable ? Math.max(0, openingPool!.price - openingBalance) : 0;
 const missingSubjects = binder
   ? binder.cards.filter((card) => !card.owned).map((card) => card.name)
   : [];
@@ -158,8 +159,13 @@ const otherBinderCards =
               <p class="pilot-album__lede">{presentation.lede}</p>
             </div>
             <div class="pilot-album__actions">
-              <a class="btn btn-primary" href={`/play/draw?pool=${presentation.openingPool}`}>
-                {presentation.openingCta}
+              <a
+                class="btn btn-primary"
+                href={
+                  openingAvailable ? `/play/draw?pool=${presentation.openingPool}` : "/play/draw"
+                }
+              >
+                {openingAvailable ? presentation.openingCta : "Open the cabinet draw"}
               </a>
               <a class="btn btn-secondary" href="#my-cards">
                 My cards
@@ -336,9 +342,11 @@ const otherBinderCards =
           <aside class="pilot-opening" aria-labelledby="pilot-opening-title">
             <p class="pilot-panel__kicker">What to open next</p>
             <h2 id="pilot-opening-title">
-              {openingPool?.pool.name ?? "This collection is in the cabinet draw"}
+              {openingAvailable && openingPool
+                ? openingPool.pool.name
+                : "The cabinet draw is the next step"}
             </h2>
-            {openingPool ? (
+            {openingAvailable && openingPool ? (
               <>
                 <p class="pilot-opening__copy">{openingPool.pool.description}</p>
                 <dl class="pilot-opening__facts">
@@ -381,8 +389,8 @@ const otherBinderCards =
             ) : (
               <>
                 <p class="pilot-opening__copy">
-                  There is no dedicated capsule available for this collection right now. The mixed
-                  cabinet draw is the honest next step.
+                  This collection is not currently dropping in this Bot. Your existing copies stay
+                  yours. The mixed cabinet draw is the honest next step.
                 </p>
                 <a class="btn btn-secondary btn-sm" href="/play/draw">
                   Open the cabinet draw
