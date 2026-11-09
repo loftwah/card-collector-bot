@@ -77,3 +77,35 @@ entitlement. The bot profile banner is a Developer Portal surface.
 - The final application icon, cover and description are applied through Discord's
   official `PATCH /applications/@me` endpoint and recorded in
   `public/brand/kit/selection.json`.
+
+## Collection identity repair (2026-11-09)
+
+Collection identity uses the collection's own banner or mark, never a card
+render. `cover_url` remains a card cover for card contexts only. The play
+collections grid, collection detail hero, preference rows, home shelf and share
+panel now follow that rule.
+
+The production Total Drama Island collection pointers were restored to the
+existing approved original-Foilbury mark and cover assets:
+
+- Logo: `ast_mvzdy3vn1p6c0gnmrxt95e48`
+  (`tenants/ten_mvyy304wagy8asnga8tg7r3f/assets/71c74a5c…png`)
+- Banner: `ast_mvzeos51g2kn57ppgrkagqz5`
+  (`tenants/ten_mvyy304wagy8asnga8tg7r3f/assets/59774069…png`)
+
+Previous pointers, retained for rollback:
+`logo_url=/media/asset/ast_mw6t0kqfyty1006xp1j8fcnk`,
+`banner_url=/media/asset/ast_mw6t0liq14xd5ydhks1r3ssk`.
+
+Production D1 JSON backup before the pointer change:
+`.foilbury/backups/d1-2026-11-09T04-53-13-147Z.json` (96 tables, 34,007 rows,
+SHA-256 `1a9088447493a57fc898cc2402bc0bba39186ec001c7c32c16fe7498c4e6c532`).
+
+Rollback:
+
+```sql
+UPDATE fb_collections
+SET logo_url = '/media/asset/ast_mw6t0kqfyty1006xp1j8fcnk',
+    banner_url = '/media/asset/ast_mw6t0liq14xd5ydhks1r3ssk'
+WHERE slug = 'total-drama-island';
+```
