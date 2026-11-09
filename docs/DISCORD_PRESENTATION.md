@@ -19,23 +19,24 @@ Discord-only card renderer and no re-composition of private source layers.
 
 ## Visual vocabulary
 
-The layer uses the repaired neutral/periwinkle tokens from `DESIGN.md`:
+The layer uses the Foil Standard tokens from `DESIGN.md`:
 
 | Token   | Value     | Use in embeds                                              |
 | ------- | --------- | ---------------------------------------------------------- |
-| Canvas  | `#11141b` | dark reference surface                                     |
-| Surface | `#1a1f2a` | sealed opening, committed receipt, card, profile and share |
-| Raised  | `#242b39` | quiet empty states and locked achievement surfaces         |
-| Action  | `#a8b8ff` | getting started, capsule picker and active progress        |
-| Focus   | `#c5d0ff` | cabinet-rare and review emphasis                           |
-| Success | `#8fe0bb` | completed album and earned achievement                     |
+| Canvas  | `#0a0a0a` | dark reference surface                                     |
+| Surface | `#121212` | sealed opening, committed receipt, card, profile and share |
+| Raised  | `#1a1a1a` | quiet empty states and locked achievement surfaces         |
+| Action  | `#1f5eff` | getting started, capsule picker and active progress        |
+| Focus   | `#8fb0ff` | cabinet-rare and review emphasis                           |
+| Success | `#7ee2b8` | completed album and earned achievement                     |
 | Warning | `#f2cb85` | legendary and pending states                               |
-| Danger  | `#ffadb7` | error and denied states                                    |
-| Muted   | `#b6bece` | common rarity and secondary labels                         |
+| Danger  | `#ff9a9a` | error and denied states                                    |
+| Muted   | `#a3a39e` | common rarity and secondary labels                         |
 
-The rejected Signal Fold aqua/lime palette is not used. Discord only guarantees
-a narrow colour strip for an embed, so the accent is the app's semantic token
-and never the only signal.
+Foil Standard replaced the earlier neutral/periwinkle tokens on 2026-11-09. The
+rejected Signal Fold aqua/lime palette is not used. Discord only guarantees a
+narrow colour strip for an embed, so the accent is the app's semantic token and
+never the only signal.
 
 Colour is therefore a second channel, never the only signal: every rarity,
 finish, progress,
@@ -268,7 +269,8 @@ The signed-in desktop Discord client, normal inline size, dark theme, in
   after-debit balance, `+280 ✦ · Four wishes`, settled balance `1720 ✦`,
   `0.60% for this copy`, and the committed artwork attachment
   `foilbury-reveal-card.webp`. The periwinkle action buttons and neutral embed
-  surface replaced the rejected Signal Fold styling.
+  surface replaced the rejected Signal Fold styling at the time; Foil Standard
+  replaced those tokens on 2026-11-09 without changing the message structure.
 - The first deploy's reveal (`1568899355954384908`) showed `Recorded result`
   incorrectly. The live run exposed it; source `08ffd727` persists
   `replayed: false` on a first commit and the re-run no longer shows that field.
