@@ -5,7 +5,7 @@ import sharp from "sharp";
 import { composeCard } from "../art/compose.mjs";
 import { requireQueuedBackground } from "./content/render-queued-front.mjs";
 import { readRenderSource } from "./content/render-bytes.mjs";
-import { apiForm, apiJson, ensureServer, BASE_URL, agentToken } from "./lib/api.mjs";
+import { apiForm, apiJson, ensureServer, BASE_URL, agentToken, accessHeaders } from "./lib/api.mjs";
 
 const args = new Set(process.argv.slice(2));
 const json = args.has("--json");
@@ -89,7 +89,7 @@ while (true) {
       const assetId = logoUrl.match(/^\/media\/asset\/([A-Za-z0-9_-]+)$/)?.[1];
       const logoRoute = assetId ? `/api/v1/admin/assets/${assetId}/bytes` : logoUrl;
       const logo = await fetch(`${BASE_URL}${logoRoute}`, {
-        headers: { authorization: `Bearer ${agentToken()}` },
+        headers: { authorization: `Bearer ${agentToken()}`, ...accessHeaders() },
       });
       const contentType = logo.headers.get("content-type") ?? "";
       if (logo.ok && contentType.startsWith("image/")) {
