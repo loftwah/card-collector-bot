@@ -1,8 +1,10 @@
 # Pilot card language: Danganronpa and Protocol 11
 
-Status: implemented in Slice 2 (2026-11-10) for the two pilot collections only.
-The shared renderer remains the only card renderer; the other collections keep
-their current presentation until Slice 3.
+Status: implemented and deployed in Slice 2 (2026-11-10) for the two pilot
+collections only. Source `24a1d67b31dd3db20a0523c5707528b18735c925`; Worker
+`302617c7-7fe0-4c2e-9afa-5a08ad8f05d7`. The shared renderer remains the only
+card renderer; the other collections keep their current presentation until
+Slice 3.
 
 ## Shared contract
 
@@ -76,7 +78,9 @@ slots remain dashed and are never given a finish frame.
 - Contact sheet reviewed at 32, 64, 128 and 256 px widths; the card silhouette,
   collection edge and name remain recognisable by 128 px.
 - Protocol 11 banner reviewed at 1440, 390 and in a circular Discord crop.
-- Collection pages reviewed at 1440 and 390, light and dark.
+- Production collection pages reviewed at 1440 and 390, light and dark, with no
+  horizontal overflow. The cabinet shelf uses the Protocol 11 key art as the
+  collection identity, not a card render.
 - The card detail facts grid was changed to one column on phones after a real
   390 px overflow (long provenance strings); `pnpm test:product` now passes the
   mobile inspector overflow check.

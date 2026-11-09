@@ -480,7 +480,10 @@ WHERE slug = 'the-simpsons';
 - `release_version`, `status` and `view_audience` are unchanged.
 - Source art: generated from the five supplied table-night portraits; provenance, prompt and hashes are in `docs/AI_COLLECTION_ART_PROVENANCE.md`.
 - Card language: `docs/CARD_LANGUAGE.md`; livery frames are authored by `art/generate-layers.mjs`.
-- Pre-change D1 backup and rollback are recorded by the release receipt for this change. The idempotent forward SQL is:
+- Pre-change D1 backup: `.foilbury/backups/d1-2026-11-09T14-54-48-722Z.json` (97 tables, 34,063 rows, SHA-256 `86473fba41426c37791e0570b77721133f7363470bc4acfb7ea154b050012ab2`).
+- Production runtime: source `24a1d67b31dd3db20a0523c5707528b18735c925`, Worker `302617c7-7fe0-4c2e-9afa-5a08ad8f05d7`.
+- Production render/back pass: 36 Danganronpa variants, 28 Protocol 11 variants and 64 designed backs uploaded through the authenticated admin API. The temporary production agent and Access service token were revoked/deleted afterwards.
+- Live verified at 1440 and 390, dark and light: collection heroes, grouped binders, exact next-opening/empty-pool states, card fronts/backs, and the cabinet collection shelf (banner, not card render). The idempotent forward SQL is:
 
 ```sql
 UPDATE fb_collections
