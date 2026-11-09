@@ -231,14 +231,14 @@ Create a wide 16:9 cinematic collection banner/key art for a classic yellow anim
 
 ### Protocol 11 — Table Night (2026-11-10)
 
-- Stored asset: `/art/collections/protocol-11-banner.webp` · 1920×1080 · image/webp · 252578 bytes
-- Stored SHA-256: `3ee41f01387524a1a6484e57771fe2f7a861062089619b5c5d7330d349fe6e2c`
-- Selected source: `.foilbury/generated/protocol-11/banner-candidate-3.png` · 2752×1536 · image/png
-- Source SHA-256: `db5dcb3bbfba512e0f1d668bef02384aed563432f488e12b3bca71f0f75b7190`
+- Stored asset: `/art/collections/protocol-11-key-art.webp` · 1920×1080 · image/webp · 252008 bytes
+- Stored SHA-256: `0056bc0803febd15e82d3e7f100fb090f2431a9cee1d7b791ced020d1f61c943`
+- Selected source: `.foilbury/generated/protocol-11/banner-candidate-4.png` · 2752×1536 · image/png
+- Source SHA-256: `772824ddbc08cb95197451d6b07b5dcb3689af81b85771c2e8a408a4b2aec3dd`
 - Model: `fal-ai/nano-banana-pro/edit` · 2K · 16:9 · generated 2026-11-10
 - Classification: public · origin ai_assisted · official false (original Foilbury project; not a third-party official or licensed asset) · review reviewed
 - Role: collection banner/hero only. The existing Protocol 11 geometric mark remains the secondary collection mark.
-- Bounded pass: three images (two base candidates plus one correction edit), US$0.45, pass ceiling US$1.00. The ledger entry is in `.foilbury/evidence/art-budget-ledger.json`.
+- Bounded pass: four images (two base candidates plus two correction edits), US$0.60, pass ceiling US$1.00. Knox is the shiba regular, not a robot; the final correction replaced the model’s robot with the supplied Knox portrait. The ledger entry is in `.foilbury/evidence/art-budget-ledger.json`.
 
 **Reference files** (private working copies, not public docs):
 
@@ -272,6 +272,12 @@ Do not change Gabe, Nora, the table, the lamp, the window, the plants, the biscu
 ```
 
 </details>
+
+**Final Knox correction**
+
+```text
+Edit the supplied group banner. Replace only the silver robot on the right with the Shiba Inu dog from the supplied portrait. The dog is an orange-and-tan shiba with a red headband, cream muzzle, dark eyes and a blue zip hoodie. Seat the shiba at the same place, scale, pose and perspective as the robot, holding cards over the table, lit by the same warm lamp. Keep the exact composition, camera, room, table, props, Gabe, Rhea, June, Nora, the cards, mugs, biscuits and dice unchanged. No text, letters, numbers, logos, watermarks, borders, card frames or UI.
+```
 
 ## Boundary
 

@@ -47,7 +47,7 @@ their current presentation until Slice 3.
   provenance.
 - **Audience:** public showcase, as the collection already was. The existing
   geometric mark remains; the new key art is the collection's banner first.
-- **Key art:** `public/art/collections/protocol-11-banner.webp`, generated from
+- **Key art:** `public/art/collections/protocol-11-key-art.webp`, generated from
   the five actual table-night portraits and the table scene. See
   `docs/AI_COLLECTION_ART_PROVENANCE.md`.
 

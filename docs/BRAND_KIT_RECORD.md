@@ -476,7 +476,7 @@ WHERE slug = 'the-simpsons';
 ## Protocol 11 pilot key art and card language — 2026-11-10
 
 - Production collection: `protocol-11`.
-- Change: set `banner_url` to the committed original key art `/art/collections/protocol-11-banner.webp`. `logo_url` remains `/art/collections/protocol-11.svg`; the mark is now secondary.
+- Change: set `banner_url` to the committed original key art `/art/collections/protocol-11-key-art.webp`. `logo_url` remains `/art/collections/protocol-11.svg`; the mark is now secondary.
 - `release_version`, `status` and `view_audience` are unchanged.
 - Source art: generated from the five supplied table-night portraits; provenance, prompt and hashes are in `docs/AI_COLLECTION_ART_PROVENANCE.md`.
 - Card language: `docs/CARD_LANGUAGE.md`; livery frames are authored by `art/generate-layers.mjs`.
@@ -484,10 +484,10 @@ WHERE slug = 'the-simpsons';
 
 ```sql
 UPDATE fb_collections
-SET banner_url = '/art/collections/protocol-11-banner.webp',
+SET banner_url = '/art/collections/protocol-11-key-art.webp',
     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
 WHERE slug = 'protocol-11'
-  AND (banner_url IS NULL OR banner_url <> '/art/collections/protocol-11-banner.webp');
+  AND (banner_url IS NULL OR banner_url <> '/art/collections/protocol-11-key-art.webp');
 ```
 
 Rollback:
