@@ -69,13 +69,13 @@ while (true) {
     const subject = await fetch(
       `${BASE_URL}/api/v1/admin/assets/${payload.subject_asset_id}/bytes`,
       {
-        headers: { authorization: `Bearer ${agentToken()}` },
+        headers: { authorization: `Bearer ${agentToken()}`, ...accessHeaders() },
       },
     );
     if (!subject.ok) throw new Error(`Subject asset fetch failed (${subject.status}).`);
     const background = payload.background_asset_id
       ? await fetch(`${BASE_URL}/api/v1/admin/assets/${payload.background_asset_id}/bytes`, {
-          headers: { authorization: `Bearer ${agentToken()}` },
+          headers: { authorization: `Bearer ${agentToken()}`, ...accessHeaders() },
         })
       : null;
     if (background && !background.ok)
