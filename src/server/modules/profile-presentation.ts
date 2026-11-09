@@ -58,7 +58,6 @@ export interface ProfilePresentationOptions {
     name: string;
     logoUrl: string | null;
     bannerUrl: string | null;
-    coverUrl: string | null;
   }>;
   copies: ProfileCopyView[];
   badges: ProfileBadgeView[];
@@ -156,7 +155,6 @@ export async function getProfilePresentationOptions(ctx: Ctx): Promise<ProfilePr
       name: collection.name,
       logoUrl: collection.logo_url,
       bannerUrl: collection.banner_url,
-      coverUrl: collection.cover_url,
     })),
     copies: copies.map(copyView),
     badges: achievements

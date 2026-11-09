@@ -60,7 +60,6 @@ export const profileOptionsFixture: ProfilePresentationOptions = {
       name: "Protocol 11",
       logoUrl: "/art/collections/protocol-11.svg",
       bannerUrl: "/media/showcase/card-16x9-1920.png",
-      coverUrl: "/media/showcase/card-4x5-1080.png",
     },
     {
       id: "col_neon",
@@ -68,7 +67,6 @@ export const profileOptionsFixture: ProfilePresentationOptions = {
       name: "Neon Alley",
       logoUrl: "/art/collections/shared.svg",
       bannerUrl: "/media/showcase/finish-mastery-16x9-1920.png",
-      coverUrl: "/media/showcase/card-1x1-1080.png",
     },
   ],
   copies,

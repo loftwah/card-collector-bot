@@ -25,6 +25,7 @@ export interface ShareView {
     view_audience: string;
     public_approved_at: string | null;
     logo_url: string | null;
+    banner_url: string | null;
     description: string;
   } | null;
   showSerial: boolean;
@@ -161,10 +162,11 @@ export async function resolveShareView(ctx: Ctx, rawToken: string): Promise<Shar
         view_audience: string;
         public_approved_at: string | null;
         logo_url: string | null;
+        banner_url: string | null;
         description: string;
       }>(
         ctx.db,
-        "SELECT id, slug, name, view_audience, public_approved_at, logo_url, description FROM fb_collections WHERE id = ? AND archived_at IS NULL",
+        "SELECT id, slug, name, view_audience, public_approved_at, logo_url, banner_url, description FROM fb_collections WHERE id = ? AND archived_at IS NULL",
         collectionId,
       )
     : null;

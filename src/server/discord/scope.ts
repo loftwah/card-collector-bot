@@ -23,7 +23,8 @@ export interface DiscordScopeCollection {
   release_version: number;
   card_count: number;
   enabled: boolean;
-  cover_url: string | null;
+  banner_url: string | null;
+  logo_url: string | null;
 }
 
 export interface DiscordScope {
@@ -200,7 +201,8 @@ export async function resolveDiscordScope(
       release_version: Number(collection.release_version ?? 1),
       card_count: Number(collection.card_count ?? 0),
       enabled: Boolean(collection.enabled),
-      cover_url: collection.cover_url ?? null,
+      banner_url: collection.banner_url ?? null,
+      logo_url: collection.logo_url ?? null,
     }))
     .sort((left, right) => left.name.localeCompare(right.name));
 

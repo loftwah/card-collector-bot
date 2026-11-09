@@ -2151,7 +2151,9 @@
         "isGlobalCollectionAdmin",
         "includes",
         "uploadAsset",
-        "arrayBuffer"
+        "arrayBuffer",
+        "parse",
+        "isArray"
       ],
       "studio_alias": false
     },

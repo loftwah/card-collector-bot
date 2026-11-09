@@ -4,6 +4,7 @@ import AchievementBadge from "../../components/player/AchievementBadge.astro";
 import { pageContext } from "../../server/page";
 import { resolveShareView } from "../../server/modules/shares";
 import { formatDate, formatDual } from "../../lib/utils";
+import { collectionBanner, collectionMark } from "../../lib/collection-art";
 
 const ctx = await pageContext(Astro.request);
 const raw = Astro.params.token ?? "";
@@ -14,6 +15,7 @@ if (!active) Astro.response.status = 404;
 const shareTitle = kind === "card" || kind === "latest" ? String(payload.card_name ?? "A shared card") : kind === "achievement" ? String(payload.achievement_name ?? "A shared badge") : kind === "collection" ? String(payload.collection_name ?? "A shared collection") : kind === "profile" ? String(payload.display_name ?? "A collector") : "A shared Foilbury cabinet";
 const pageTitle = active ? `${publicView ? shareTitle : "Member share"} · Foilbury` : "Share not found · Foilbury";
 const currentPublic = Boolean(collection && collection.view_audience === "public" && collection.public_approved_at);
+const collectionIdentity = collectionBanner(collection) ?? collectionMark(collection);
 const finishLabel = String(payload.finish ?? "").replaceAll("diamond", "holographic");
 const cardMeta = (variant: string | undefined, finish: string | undefined) => {
   const name = String(variant ?? "");
@@ -112,6 +114,7 @@ const shareBadges = sharePresentation?.badges?.length
 
         {kind === "collection" ? (
           <div class="mt-8 max-w-3xl border border-[var(--line)] p-5">
+            {collectionIdentity ? <img src={collectionIdentity} alt="" class:list={["mb-4 aspect-[16/9] w-full max-w-xl border border-[var(--line)]", collection?.banner_url ? "object-cover" : "bg-[var(--panel-3)] object-contain p-6"]} width="640" height="360" /> : null}
             <div class="flex items-center gap-4">
               {collection?.logo_url ? <img src={collection.logo_url} alt="" class="h-16 w-16 object-contain" width="64" height="64" /> : null}
               <div><p class="font-semibold">{collection?.name ?? payload.collection_name}</p><p class="font-mono text-[0.6rem] uppercase tracking-[0.1em] text-[var(--muted)]">{collection?.view_audience ?? "member"} · snapshot</p></div>

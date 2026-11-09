@@ -1925,11 +1925,24 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
         ? (String(form.get("reviewStatus")) as
             "unreviewed" | "reviewed" | "approved" | "rejected" | "placeholder")
         : "unreviewed",
-      provenance: {
-        note: String(
-          form.get("provenance") ?? "Original Foilbury interpretation. Not official artwork.",
-        ),
-      },
+      provenance: (() => {
+        const raw = form.get("provenanceJson");
+        if (raw) {
+          try {
+            const parsed: unknown = JSON.parse(String(raw));
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+              return parsed as Record<string, unknown>;
+            }
+          } catch {
+            // Fall through to the concise note when the structured record is invalid.
+          }
+        }
+        return {
+          note: String(
+            form.get("provenance") ?? "Original Foilbury interpretation. Not official artwork.",
+          ),
+        };
+      })(),
       source: {
         repo: form.get("sourceRepo") ? String(form.get("sourceRepo")) : undefined,
         path: form.get("sourcePath") ? String(form.get("sourcePath")) : undefined,
