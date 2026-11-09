@@ -328,3 +328,19 @@ SET logo_url = '/media/asset/ast_mw6t0mik66gft8rrc9eyrp19',
 WHERE slug = 'vocaloid';
 
 ```
+
+### Verification (2026-11-09)
+
+- Source: `64f9c0f153c5f7021c1aaac4aeb90bace537796a` (main).
+- Worker: `42453274-0455-412e-b371-d966fef47241`.
+- `pnpm check` — 7/7 gates. `pnpm test:ui` — 54/54. `pnpm test:product` — 57/57. `pnpm build` — production artifact.
+- Live signed-in production:
+  - 21 published collections across `/play/collections` pages 1–3; 11 sourced banners and 10 real marks; no card render, generated gradient, dot grid, initial, monogram, motif or card collage.
+  - All 21 `/play/collection` heroes use the banner first and the real mark second.
+  - `/play/preferences` shows all 21 collections with real art and no label/art overlap at 1440px or 390px.
+  - Profile pickers: 21 marks in the portrait picker and 11 banners in the banner picker.
+  - Public home shelf: the four original Foilbury marks, no card render.
+  - Collection share: Danganronpa renders the sourced banner and Death Note renders the real mark. The temporary shares were revoked and explicit sharing was returned to its previous disabled state.
+  - Desktop 1440px and mobile 390px, light and dark: no horizontal overflow; first visible banner tiles are `eager`, later banners have the collection-name fallback, and mark-only collections show the mark and name.
+- The first release attempt found the live production build had no `x-foilbury-build` header because the latest deployment had been made without `FOILBURY_BUILD_SHA`. A manual `wrangler deploy` of the exact built artifact with that variable restored the build identity; the formal `pnpm deploy:production` then deployed `64f9c0f` and passed its identity and HTTP smoke checks.
+- Not claimed: a separate live Discord embed render. The Discord scope payload now carries `banner_url` and `logo_url` instead of `cover_url`, but no live Discord interaction was re-exercised in this pass.
