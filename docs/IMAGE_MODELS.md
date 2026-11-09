@@ -1,7 +1,9 @@
 # Image model inventory and routing
 
 Credentials live in `.env` (never commit them). The project has working access
-to more than one model family; choose by the job, not by habit.
+to more than one model family; choose by the job, not by habit. Verified against
+the live APIs on 2026-11-09: OpenAI `gpt-image-2.6-sunburst`, FAL
+`fal-ai/flux/schnell`, Cloudflare `flux-2-klein-4b`.
 
 ## OpenAI — `OPENAI_API_KEY`
 
