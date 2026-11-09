@@ -199,6 +199,10 @@ const audienceLabel = (audience: string) =>
         return (
           <article class="collection-tile" data-tone={index % 4}>
             <div class:list={["collection-tile__art", !banner && "collection-tile__art--mark"]}>
+              <span class="collection-tile__fallback" aria-hidden="true">
+                {!banner && mark ? <img src={mark} alt="" width="512" height="512" loading={tileIndex < 3 ? "eager" : "lazy"} /> : null}
+                <span>{collection.name}</span>
+              </span>
               {banner ? (
                 <img
                   src={banner}
@@ -208,12 +212,7 @@ const audienceLabel = (audience: string) =>
                   width="1600"
                   height="900"
                 />
-              ) : (
-                <span class="collection-tile__fallback" aria-hidden="true">
-                  {mark ? <img src={mark} alt="" width="512" height="512" loading={tileIndex < 3 ? "eager" : "lazy"} /> : null}
-                  <span>{collection.name}</span>
-                </span>
-              )}
+              ) : null}
               <span class="collection-tile__audience">{audienceLabel(collection.view_audience)}</span>
             </div>
 
