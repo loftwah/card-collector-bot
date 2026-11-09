@@ -6895,7 +6895,7 @@ html[data-motion="reduced"] .layered-card__effect {
 
 .preference-world {
   display: grid;
-  grid-template-columns: 2.5rem minmax(0, 1fr) auto;
+  grid-template-columns: 5.5rem minmax(0, 1fr) auto;
   align-items: center;
   gap: 0.7rem;
   padding: 0.55rem 0.7rem;
