@@ -5638,6 +5638,15 @@ html[data-motion="reduced"] .layered-card__effect {
   background: var(--ink);
 }
 
+.share-panel--collection .share-panel__preview {
+  grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
+}
+
+.share-panel__collection-art {
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
 .share-proof {
   display: flex;
   flex-wrap: wrap;
@@ -5722,6 +5731,9 @@ html[data-motion="reduced"] .layered-card__effect {
   }
   .share-panel__preview img {
     max-width: 190px;
+  }
+  .share-panel--collection .share-panel__preview img {
+    max-width: 100%;
   }
   .tour-step {
     grid-template-columns: minmax(0, 1fr);

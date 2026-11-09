@@ -35,6 +35,7 @@ export default function SharePanel({
   const [copied, setCopied] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [expiryDays, setExpiryDays] = useState(7);
+  const isCollection = kind === "collection";
 
   async function create() {
     setBusy(true);
@@ -64,7 +65,7 @@ export default function SharePanel({
   }
 
   return (
-    <section className="share-panel" aria-label={`Share ${title}`}>
+    <section className={`share-panel${isCollection ? " share-panel--collection" : ""}`} aria-label={`Share ${title}`}>
       <div className="share-panel__head">
         <div>
           <p className="studio-kicker text-[var(--teal)]">Share deliberately</p>
@@ -75,7 +76,17 @@ export default function SharePanel({
       </div>
 
       <div className="share-panel__preview">
-        {frontUrl ? <img src={frontUrl} alt="" width="150" height="210" /> : <div className="grid h-[210px] w-[150px] place-items-center bg-[var(--ink)] p-3 text-center font-mono text-[0.55rem] uppercase tracking-[0.12em] text-[var(--paper)]">{title}</div>}
+        {frontUrl ? (
+          <img
+            className={isCollection ? "share-panel__collection-art" : undefined}
+            src={frontUrl}
+            alt=""
+            width={isCollection ? 640 : 150}
+            height={isCollection ? 360 : 210}
+          />
+        ) : (
+          <div className="grid h-[210px] w-[150px] place-items-center bg-[var(--ink)] p-3 text-center font-mono text-[0.55rem] uppercase tracking-[0.12em] text-[var(--paper)]">{title}</div>
+        )}
         <div className="min-w-0">
           <p className="font-semibold">{title}</p>
           <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">Recipients see exactly this object and its published front/back. No wallet, email, account ID, admin data, private source layers or other cards are included. The link is a snapshot; cards you obtain later never appear in it.</p>
