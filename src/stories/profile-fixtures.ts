@@ -75,6 +75,17 @@ export const profileOptionsFixture: ProfilePresentationOptions = {
 
 export const profilePresentationFixture: ResolvedProfilePresentation = {
   version: 1,
+  avatar: {
+    kind: "default",
+    defaultKey: "keeper",
+    label: "The Keeper",
+    src: "/avatars/default/keeper-256.png",
+    srcSet: "/avatars/default/keeper-64.png 64w, /avatars/default/keeper-128.png 128w, /avatars/default/keeper-256.png 256w",
+    assetId: null,
+    updatedAt: null,
+    fallback: false,
+    note: "Foilbury's cabinet mascot.",
+  },
   selection: {
     portrait: "collection:col_protocol",
     banner: "collection:col_protocol",
@@ -97,6 +108,7 @@ export const profilePresentationFixture: ResolvedProfilePresentation = {
     kind: "collection",
     label: "Protocol 11",
     imageUrl: "/media/showcase/card-16x9-1920.png",
+    assetId: null,
   },
   featured: copies[0]!,
   favourites: [copies[0]!, copies[1]!],

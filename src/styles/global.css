@@ -3017,14 +3017,45 @@ html[data-motion="reduced"] .layered-card__effect {
 
 .profile-avatar--image {
   overflow: hidden;
-  padding: 0.45rem;
-  background: #f4f2ec;
+  padding: 0;
+  background: var(--panel-3);
 }
 
 .profile-avatar--image img {
   width: 100%;
   height: 100%;
+  object-fit: cover;
+}
+
+.profile-affinity {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+  padding: 0.15rem 0.5rem 0.15rem 0.2rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.profile-affinity img {
+  width: 18px;
+  height: 18px;
+  flex: none;
   object-fit: contain;
+}
+
+.profile-affinity__label {
+  padding-left: 0.35rem;
+  border-left: 1px solid var(--line);
+  color: var(--muted);
+  opacity: 0.75;
 }
 
 .profile-hero__meta {
@@ -6159,6 +6190,7 @@ html[data-motion="reduced"] .layered-card__effect {
   height: 32px;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 50%;
   background: var(--panel-3);
@@ -6166,6 +6198,30 @@ html[data-motion="reduced"] .layered-card__effect {
   font-size: 0.68rem;
   font-weight: 700;
   text-decoration: none;
+}
+
+.player-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.site-avatar-link {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--panel-3);
+}
+
+.site-avatar-link img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .player-nav {
@@ -7811,4 +7867,335 @@ html[data-motion="reduced"] .layered-card__effect {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* Account identity media */
+.account-avatar {
+  display: grid;
+  gap: 1rem;
+}
+
+.account-avatar__current,
+.account-avatar__panel {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 1.1rem;
+}
+
+.account-avatar__current {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+}
+
+.account-avatar__preview {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 1rem;
+}
+
+.account-avatar__preview .profile-avatar {
+  width: 5.5rem;
+  height: 5.5rem;
+}
+
+.account-avatar__title {
+  margin-top: 0.18rem;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.account-avatar__note,
+.account-avatar__meta,
+.account-avatar__hint {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.account-avatar__note {
+  max-width: 42rem;
+}
+
+.account-avatar__meta {
+  margin: 0.35rem 0 0.65rem;
+  font-family: var(--font-mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.account-avatar__sizes {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.9rem;
+}
+
+.account-avatar__sizes figure {
+  display: grid;
+  gap: 0.35rem;
+  justify-items: center;
+}
+
+.account-avatar__size {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: var(--panel-3);
+}
+
+.account-avatar__size img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.account-avatar__sizes figcaption {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  letter-spacing: 0.05em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.account-avatar__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.account-avatar__tabs .profile-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.account-avatar__grid {
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+}
+
+.account-avatar__option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.55rem;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.account-avatar__option:hover {
+  border-color: var(--line-strong);
+}
+
+.account-avatar__option.is-selected {
+  border-color: var(--signal);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--signal) 22%, transparent);
+}
+
+.account-avatar__option img {
+  width: 56px;
+  height: 56px;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.account-avatar__option span {
+  display: grid;
+  min-width: 0;
+  gap: 0.12rem;
+}
+
+.account-avatar__option strong {
+  font-size: 0.82rem;
+}
+
+.account-avatar__option small {
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+.account-avatar__option svg {
+  flex: none;
+  margin-left: auto;
+  color: var(--signal);
+}
+
+.account-avatar__panel {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.account-avatar__discord {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.account-avatar__banner .account-avatar__section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.account-avatar__banner-preview {
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  padding: 0.5rem;
+}
+
+.account-avatar__banner-preview img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 8 / 3;
+  object-fit: cover;
+}
+
+.account-avatar__banner-preview figcaption {
+  margin-top: 0.45rem;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.52rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.account-avatar__hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.account-avatar__hint svg {
+  margin-top: 0.15rem;
+  flex: none;
+}
+
+.avatar-crop {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.avatar-drop {
+  position: relative;
+  display: grid;
+  max-width: 420px;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 1px dashed var(--line-strong);
+  background:
+    linear-gradient(45deg, transparent 49.5%, var(--line) 49.5%, var(--line) 50.5%, transparent 50.5%) 0 0 / 22px 22px,
+    var(--panel-2);
+  cursor: pointer;
+}
+
+.avatar-drop.has-image {
+  border-style: solid;
+  background: var(--ink);
+}
+
+.avatar-crop--banner .avatar-drop {
+  max-width: 720px;
+  aspect-ratio: 8 / 3;
+}
+
+.avatar-crop__canvas {
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+.avatar-crop__canvas:active {
+  cursor: grabbing;
+}
+
+.avatar-drop__prompt {
+  display: grid;
+  justify-items: center;
+  gap: 0.35rem;
+  padding: 1.5rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.avatar-drop__prompt strong {
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.avatar-drop__prompt small {
+  max-width: 24rem;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.avatar-crop__controls {
+  display: flex;
+  max-width: 720px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.avatar-crop__controls .field {
+  min-width: 180px;
+  flex: 1;
+}
+
+.avatar-crop__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.error-text {
+  color: var(--alert);
+  font-size: 0.78rem;
+}
+
+@media (max-width: 640px) {
+  .account-avatar__current,
+  .account-avatar__preview {
+    align-items: flex-start;
+  }
+
+  .account-avatar__sizes {
+    flex-wrap: wrap;
+  }
+}
+
+.foilbury-mascot {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+.empty-mascot {
+  width: clamp(76px, 18vw, 128px);
+  flex: none;
 }

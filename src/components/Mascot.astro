@@ -1,0 +1,26 @@
+---
+interface Props {
+  expression?: "neutral" | "curious" | "pleased" | "mischievous";
+  size?: number;
+  class?: string;
+  decorative?: boolean;
+}
+
+const {
+  expression = "neutral",
+  size = 160,
+  class: className,
+  decorative = true,
+} = Astro.props;
+const src = `/brand/mascot/keeper-${expression}-512.png`;
+---
+
+<img
+  class:list={["foilbury-mascot", className]}
+  src={src}
+  alt={decorative ? "" : "The Foilbury Keeper, a paper card creature with a cabinet key"}
+  width={size}
+  height={size}
+  loading="lazy"
+  aria-hidden={decorative ? "true" : undefined}
+/>

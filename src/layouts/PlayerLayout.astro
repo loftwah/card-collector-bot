@@ -1,6 +1,7 @@
 ---
 import BaseLayout from "./BaseLayout.astro";
 import ThemeToggle from "../components/ThemeToggle";
+import { accountAvatarViewFor } from "../server/modules/account-avatar";
 
 const session = Astro.locals.foilbury;
 const user = session?.user;
@@ -30,6 +31,7 @@ const more = [
   { href: "/play/rivals", label: "NPC collectors" },
   { href: "/play/preferences", label: "Preferences" },
   { href: "/tour", label: "Guided tour" },
+  { href: "/account/avatar", label: "Account avatar" },
   { href: "/account/security", label: "Account security" },
   { href: "/cabinet", label: "Public catalogue" },
   { href: "/logout", label: "Sign out" },
@@ -58,13 +60,7 @@ const primaryActive = (href: string) =>
         : isActive(href);
 
 const moreActive = more.some((link) => isActive(link.href));
-const initials = (user?.displayName ?? "Collector")
-  .split(/\s+/)
-  .filter(Boolean)
-  .map((part) => part[0])
-  .join("")
-  .slice(0, 2)
-  .toUpperCase();
+const avatar = user ? accountAvatarViewFor(user) : null;
 ---
 
 <BaseLayout
@@ -97,9 +93,19 @@ const initials = (user?.displayName ?? "Collector")
             </svg>
             <span data-foil-balance>{session?.wallet ?? 0} Foil</span>
           </a>
-          <a class="player-avatar" href="/play/profile">
-            {initials}
-            <span class="sr-only"> Open your profile</span>
+          <a class="player-avatar" href="/play/profile" aria-label={`${user?.displayName ?? "Your"} profile`}>
+            {avatar ? (
+              <img
+                src={avatar.src}
+                srcset={avatar.srcSet ?? undefined}
+                sizes="32px"
+                alt=""
+                width="32"
+                height="32"
+                data-avatar-img
+                data-fallback-src="/avatars/default/keeper-256.png"
+              />
+            ) : null}
           </a>
           <ThemeToggle client:load />
         </div>

@@ -77,6 +77,19 @@ import {
   updatePreferences,
 } from "../modules/economy";
 import {
+  accountAvatarViewFor,
+  accountBannerView,
+  DEFAULT_AVATARS,
+  loadAccountAvatar,
+  loadAccountBanner,
+  removeAccountAvatar,
+  removeAccountBanner,
+  setDefaultAvatar,
+  setDiscordAvatar,
+  setUploadedAvatar,
+  setUploadedBanner,
+} from "../modules/account-avatar";
+import {
   PROFILE_AVATAR_DECORATIONS,
   PROFILE_EFFECTS,
   PROFILE_FRAMES,
@@ -676,6 +689,97 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       }),
     );
     return json(await updatePreferences(ctx, body));
+  }
+  if (segments.length === 2 && segments[0] === "me" && segments[1] === "avatar" && method === "GET") {
+    playerWrite(ctx);
+    requireScope(ctx, "profile:read");
+    const [avatar, bannerRow, discord] = await Promise.all([
+      loadAccountAvatar(ctx, ctx.user!.id),
+      first<{ banner_asset_id: string | null; banner_updated_at: string | null }>(
+        ctx.db,
+        "SELECT banner_asset_id, banner_updated_at FROM fb_users WHERE id = ?",
+        ctx.user!.id,
+      ),
+      first<{ username: string | null; global_name: string | null; avatar_hash: string | null }>(
+        ctx.db,
+        `SELECT username, global_name, avatar_hash FROM fb_discord_identities
+          WHERE tenant_id = ? AND user_id = ? AND revoked_at IS NULL ORDER BY linked_at DESC LIMIT 1`,
+        ctx.tenant.id,
+        ctx.user!.id,
+      ),
+    ]);
+    return json({
+      avatar,
+      banner: accountBannerView(bannerRow),
+      defaults: DEFAULT_AVATARS,
+      discord: {
+        linked: Boolean(discord),
+        name: discord?.global_name ?? discord?.username ?? null,
+        hasAvatar: Boolean(discord?.avatar_hash),
+      },
+    });
+  }
+  if (segments.length === 3 && segments[0] === "me" && segments[1] === "avatar" && segments[2] === "default" && method === "POST") {
+    playerWrite(ctx);
+    requireScope(ctx, "profile:write");
+    const body = await readJson(request, z.object({ key: z.string().min(1).max(40) }));
+    return json({ avatar: await setDefaultAvatar(ctx, body.key) });
+  }
+  if (segments.length === 3 && segments[0] === "me" && segments[1] === "avatar" && segments[2] === "discord" && method === "POST") {
+    playerWrite(ctx);
+    requireScope(ctx, "profile:write");
+    return json({ avatar: await setDiscordAvatar(ctx) });
+  }
+  if (segments.length === 3 && segments[0] === "me" && segments[1] === "avatar" && segments[2] === "upload" && method === "POST") {
+    playerWrite(ctx);
+    requireScope(ctx, "profile:write");
+    const body = await readJson(
+      request,
+      z.object({
+        renditions: z
+          .array(
+            z.object({
+              size: z.number().int().min(16).max(1024),
+              data: z.string().min(64).max(900_000),
+              mime: z.string().max(60).optional(),
+            }),
+          )
+          .min(1)
+          .max(3),
+      }),
+    );
+    return json({ avatar: await setUploadedAvatar(ctx, body.renditions) });
+  }
+  if (segments.length === 2 && segments[0] === "me" && segments[1] === "avatar" && method === "DELETE") {
+    playerWrite(ctx);
+    requireScope(ctx, "profile:write");
+    return json({ avatar: await removeAccountAvatar(ctx) });
+  }
+  if (segments.length === 3 && segments[0] === "me" && segments[1] === "banner" && segments[2] === "upload" && method === "POST") {
+    playerWrite(ctx);
+    requireScope(ctx, "profile:write");
+    const body = await readJson(
+      request,
+      z.object({
+        renditions: z
+          .array(
+            z.object({
+              size: z.number().int().min(400).max(2000),
+              data: z.string().min(64).max(2_000_000),
+              mime: z.string().max(60).optional(),
+            }),
+          )
+          .min(1)
+          .max(2),
+      }),
+    );
+    return json({ banner: await setUploadedBanner(ctx, body.renditions) });
+  }
+  if (segments.length === 2 && segments[0] === "me" && segments[1] === "banner" && method === "DELETE") {
+    playerWrite(ctx);
+    requireScope(ctx, "profile:write");
+    await removeAccountBanner(ctx);
+    return json({ banner: null });
   }
   if (segments[0] === "wallet" && segments.length === 1 && method === "GET") {
     const user = requireUser(ctx);

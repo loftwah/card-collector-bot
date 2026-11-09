@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { buildContext, runtimeEnv } from "../../../server/context";
 import { createSession } from "../../../server/modules/identity";
 import { ensureDiscordPlayer, linkDiscordIdentity } from "../../../server/discord/context";
+import { syncDiscordAvatar } from "../../../server/modules/account-avatar";
 import type { DiscordEnv, DiscordUser } from "../../../server/discord/types";
 import { sessionCookies } from "../../../server/api/helpers";
 
@@ -83,6 +84,7 @@ export const GET: APIRoute = async ({ request, cookies }) => {
       const player = await ensureDiscordPlayer(raw, ctx.tenant, discordUser);
       user = player.user;
     }
+    await syncDiscordAvatar(ctx, user.id, discordUser).catch(() => undefined);
     const session = await createSession(ctx.db, ctx.tenant, user, {
       authMethod: "discord",
       assurance: "discord",

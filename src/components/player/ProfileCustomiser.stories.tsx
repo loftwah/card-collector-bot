@@ -11,6 +11,7 @@ const meta = {
   component: ProfileCustomiser,
   args: {
     displayName: "Dean",
+    avatar: profilePresentationFixture.avatar,
     initialLook: "quiet",
     initialBio: "Collecting quiet cards and loud covers.",
     looks: profileLooksFixture,
@@ -40,8 +41,8 @@ export const EmptyCollection: Story = {
       featured: null,
       favourites: [],
       badges: [],
-      portrait: { key: "monogram", kind: "monogram", label: "Monogram", imageUrl: null },
-      banner: { key: "none", kind: "none", label: "No banner", imageUrl: null },
+      portrait: { key: "mascot", kind: "mascot", label: "Foilbury Keeper", imageUrl: "/avatars/default/keeper-256.png" },
+      banner: { key: "none", kind: "none", label: "No banner", imageUrl: null, assetId: null },
     },
     options: { collections: [], copies: [], badges: [] },
   },
@@ -62,7 +63,7 @@ export const UnavailableSavedChoice: Story = {
       badges: [profileOptionsFixture.badges[0]!],
       fallbackNotes: [
         "The featured copy is no longer in your collection. Showing your first available favourite.",
-        "The chosen portrait is no longer available. Showing your monogram.",
+        "The chosen collector portrait is no longer available. Showing the Foilbury Keeper.",
       ],
     },
   },

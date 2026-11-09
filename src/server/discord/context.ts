@@ -159,10 +159,15 @@ export async function ensureDiscordPlayer(
       membership_status: string | null;
       membership_revoked_at: string | null;
       tenant_name: string;
+      avatar_kind: string | null;
+      avatar_default_key: string | null;
+      avatar_asset_id: string | null;
+      avatar_updated_at: string | null;
     }
   >(
     env.DB,
     `SELECT di.*, u.email, u.display_name AS user_display_name, u.platform_admin, u.disabled_at,
+            u.avatar_kind, u.avatar_default_key, u.avatar_asset_id, u.avatar_updated_at,
             m.role, m.capabilities_json, m.self_grants_enabled, m.grant_limit, m.capability_revision,
             m.status AS membership_status, m.revoked_at AS membership_revoked_at, t.name AS tenant_name
        FROM fb_discord_identities di
@@ -198,9 +203,9 @@ export async function ensureDiscordPlayer(
       );
     }
     await env.DB.prepare(
-      "UPDATE fb_discord_identities SET username = ?, global_name = ?, last_seen_at = ? WHERE id = ?",
+      "UPDATE fb_discord_identities SET username = ?, global_name = ?, avatar_hash = ?, last_seen_at = ? WHERE id = ?",
     )
-      .bind(discordUser.username, discordUser.global_name ?? null, nowIso(), existing.id)
+      .bind(discordUser.username, discordUser.global_name ?? null, discordUser.avatar ?? null, nowIso(), existing.id)
       .run();
     return {
       created: false,
@@ -211,6 +216,10 @@ export async function ensureDiscordPlayer(
         displayName: existing.user_display_name,
         role: existing.role,
         platformAdmin: Boolean(existing.platform_admin),
+        avatarKind: existing.avatar_kind ?? "default",
+        avatarDefaultKey: existing.avatar_default_key ?? "keeper",
+        avatarAssetId: existing.avatar_asset_id,
+        avatarUpdatedAt: existing.avatar_updated_at,
         capabilities: existing.capabilities_json
           ? (JSON.parse(existing.capabilities_json) as string[])
           : [],
@@ -320,8 +329,8 @@ export async function ensureDiscordPlayer(
   try {
     await env.DB.prepare(
       `INSERT INTO fb_discord_identities
-        (id, tenant_id, discord_user_id, user_id, username, global_name, linked_at, last_seen_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, tenant_id, discord_user_id, user_id, username, global_name, avatar_hash, linked_at, last_seen_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         identityId,
@@ -330,6 +339,7 @@ export async function ensureDiscordPlayer(
         user.id,
         discordUser.username,
         discordUser.global_name ?? null,
+        discordUser.avatar ?? null,
         nowIso(),
         nowIso(),
       )
@@ -350,10 +360,16 @@ export async function ensureDiscordPlayer(
       capability_revision: number;
       disabled_at: string | null;
       tenant_name: string;
+      avatar_kind: string | null;
+      avatar_default_key: string | null;
+      avatar_asset_id: string | null;
+      avatar_updated_at: string | null;
     }
   >(
     env.DB,
-    `SELECT di.*, u.email, u.display_name AS user_display_name, u.platform_admin, u.disabled_at, m.role, t.name AS tenant_name
+    `SELECT di.*, u.email, u.display_name AS user_display_name, u.platform_admin, u.disabled_at,
+            u.avatar_kind, u.avatar_default_key, u.avatar_asset_id, u.avatar_updated_at,
+            m.role, t.name AS tenant_name
        FROM fb_discord_identities di
        JOIN fb_users u ON u.id = di.user_id
        JOIN fb_memberships m ON m.user_id = u.id AND m.tenant_id = di.tenant_id
@@ -373,6 +389,10 @@ export async function ensureDiscordPlayer(
       displayName: resolved.user_display_name,
       role: resolved.role,
       platformAdmin: Boolean(resolved.platform_admin),
+      avatarKind: resolved.avatar_kind ?? "default",
+      avatarDefaultKey: resolved.avatar_default_key ?? "keeper",
+      avatarAssetId: resolved.avatar_asset_id,
+      avatarUpdatedAt: resolved.avatar_updated_at,
     },
   };
 }
@@ -417,14 +437,15 @@ export async function linkDiscordIdentity(
   const now = nowIso();
   if (existingForDiscord) {
     await env.DB.prepare(
-      "UPDATE fb_discord_identities SET username = ?, global_name = ?, last_seen_at = ? WHERE id = ?",
+      "UPDATE fb_discord_identities SET username = ?, global_name = ?, avatar_hash = ?, last_seen_at = ? WHERE id = ?",
     )
-      .bind(discordUser.username, discordUser.global_name ?? null, now, existingForDiscord.id)
+      .bind(discordUser.username, discordUser.global_name ?? null, discordUser.avatar ?? null, now, existingForDiscord.id)
       .run();
     return {
       ...existingForDiscord,
       username: discordUser.username,
       global_name: discordUser.global_name ?? null,
+      avatar_hash: discordUser.avatar ?? null,
       last_seen_at: now,
     };
   }
@@ -433,8 +454,8 @@ export async function linkDiscordIdentity(
   try {
     await env.DB.prepare(
       `INSERT INTO fb_discord_identities
-        (id, tenant_id, discord_user_id, user_id, username, global_name, linked_at, last_seen_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, tenant_id, discord_user_id, user_id, username, global_name, avatar_hash, linked_at, last_seen_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         id,
@@ -443,6 +464,7 @@ export async function linkDiscordIdentity(
         user.id,
         discordUser.username,
         discordUser.global_name ?? null,
+        discordUser.avatar ?? null,
         now,
         now,
       )

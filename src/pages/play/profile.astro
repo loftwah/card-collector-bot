@@ -5,6 +5,7 @@ import ShareLinkButton from "../../components/player/ShareLinkButton";
 import ShareManager from "../../components/player/ShareManager";
 import ProfileCustomiser from "../../components/player/ProfileCustomiser";
 import ProfileCard from "../../components/player/ProfileCard.astro";
+import Mascot from "../../components/Mascot.astro";
 import { pageContext } from "../../server/page";
 import { countInventory } from "../../server/modules/collection";
 import { listAchievements } from "../../server/modules/achievements";
@@ -14,6 +15,7 @@ import {
   getProfilePresentationOptions,
   resolveProfilePresentation,
 } from "../../server/modules/profile-presentation";
+import { accountAvatarViewFor } from "../../server/modules/account-avatar";
 import { first } from "../../server/db";
 
 const ctx = await pageContext(Astro.request);
@@ -55,6 +57,7 @@ const profile = resolveProfilePresentation(
   profileOptions,
   prefs.profile_presentation_version,
 );
+const avatar = accountAvatarViewFor(user);
 const featured = profile.featured;
 const showcase = profile.favourites.filter((card) => card.id !== featured?.id).slice(0, 4);
 const binderCards = [featured, ...showcase]
@@ -70,13 +73,6 @@ const shelfCard = (card: (typeof binderCards)[number]) => ({
   variant_name: card.variantName,
   serial: card.serial,
 });
-const initials = (user.displayName || "Collector")
-  .split(/\s+/)
-  .filter(Boolean)
-  .map((part) => part[0])
-  .join("")
-  .slice(0, 2)
-  .toUpperCase();
 const memberSince = membership?.created_at
   ? new Date(membership.created_at).toLocaleDateString("en-AU", {
       year: "numeric",
@@ -123,18 +119,30 @@ const starterLooks = [
       <img class="profile-hero__banner" src={profile.banner.imageUrl} alt="" aria-hidden="true" />
     ) : null}
     <div class="profile-hero__identity">
-      {profile.portrait.imageUrl ? (
-        <span class="profile-avatar profile-avatar--image" aria-hidden="true">
-          <img src={profile.portrait.imageUrl} alt="" width="64" height="64" />
-        </span>
-      ) : (
-        <span class="profile-avatar" aria-hidden="true">{initials}</span>
-      )}
+      <span class="profile-avatar profile-avatar--image" aria-hidden="true" data-avatar-frame>
+        <img
+          src={avatar.src}
+          srcset={avatar.srcSet ?? undefined}
+          sizes="(max-width: 640px) 64px, 96px"
+          alt=""
+          width="64"
+          height="64"
+          data-avatar-img
+          data-fallback-src="/avatars/default/keeper-256.png"
+        />
+      </span>
       <div class="min-w-0">
         <h1 class="page-title mt-1">{user.displayName}</h1>
         <p class="profile-hero__meta">
           Foilbury collector{memberSince ? ` · member since ${memberSince}` : ""}
         </p>
+        {profile.portrait.imageUrl ? (
+          <p class="profile-affinity">
+            <img src={profile.portrait.imageUrl} alt="" width="22" height="22" loading="lazy" />
+            <span>{profile.portrait.label}</span>
+            <span class="profile-affinity__label">Collector portrait</span>
+          </p>
+        ) : null}
         <p class="profile-hero__lede">
           A curated view of what you keep. Favourites, collection progress and the badges you
           actually earned. Your wallet, email and account ID are not part of this page.
@@ -144,6 +152,7 @@ const starterLooks = [
     </div>
     <div class="profile-hero__actions">
       <ShareLinkButton client:load kind="profile" label="Share profile" />
+      <a class="btn btn-secondary btn-sm" href="/account/avatar">Account avatar</a>
       <a class="btn btn-secondary btn-sm" href="#customise">Customise</a>
     </div>
     <dl class="profile-stats">
@@ -209,6 +218,7 @@ const starterLooks = [
         </>
       ) : (
         <div class="profile-feature__empty">
+          <Mascot expression="curious" size={128} class="empty-mascot" />
           <div>
             <p class="display-sm text-2xl">No favourite pinned yet.</p>
             <p class="mt-2 text-sm">
@@ -252,6 +262,7 @@ const starterLooks = [
         </>
       ) : (
         <div class="empty mt-5">
+          <Mascot expression="pleased" size={108} class="empty-mascot" />
           <div>
             <p class="display-sm text-2xl">Your shelf is waiting.</p>
             <p class="mt-2 text-sm">
@@ -280,6 +291,7 @@ const starterLooks = [
   <ProfileCustomiser
     client:load
     displayName={user.displayName}
+    avatar={avatar}
     initialLook={prefs.profile_look}
     initialBio={prefs.profile_bio}
     looks={starterLooks}

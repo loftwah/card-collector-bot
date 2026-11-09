@@ -53,6 +53,10 @@ declare namespace App {
         platformAdmin?: boolean;
         capabilities?: string[];
         platformRoles?: string[];
+        avatarKind?: string;
+        avatarDefaultKey?: string;
+        avatarAssetId?: string | null;
+        avatarUpdatedAt?: string | null;
         globalCollectionScope?: { all: boolean; collectionIds: string[] } | null;
       } | null;
       sessionId: string | null;

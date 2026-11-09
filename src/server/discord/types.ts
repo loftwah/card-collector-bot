@@ -15,6 +15,7 @@ export interface DiscordUser {
   global_name?: string | null;
   discriminator?: string;
   bot?: boolean;
+  avatar?: string | null;
 }
 
 export interface DiscordMember {
@@ -131,6 +132,7 @@ export interface DiscordIdentity {
   user_id: string;
   username: string | null;
   global_name: string | null;
+  avatar_hash: string | null;
   linked_at: string;
   last_seen_at: string;
   revoked_at: string | null;

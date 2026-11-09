@@ -1,0 +1,57 @@
+---
+import PlayerLayout from "../../layouts/PlayerLayout.astro";
+import AccountAvatarPicker from "../../components/account/AccountAvatarPicker";
+import MemberHeader from "../../components/player/MemberHeader.astro";
+import { pageContext } from "../../server/page";
+import { first } from "../../server/db";
+import {
+  DEFAULT_AVATARS,
+  loadAccountAvatar,
+  loadAccountBanner,
+} from "../../server/modules/account-avatar";
+
+const ctx = await pageContext(Astro.request);
+if (!ctx.user) return Astro.redirect(`/login?next=${encodeURIComponent("/account/avatar")}`);
+const [avatar, banner, discord] = await Promise.all([
+  loadAccountAvatar(ctx, ctx.user.id),
+  loadAccountBanner(ctx, ctx.user.id),
+  first<{ username: string | null; global_name: string | null; avatar_hash: string | null }>(
+    ctx.db,
+    `SELECT username, global_name, avatar_hash FROM fb_discord_identities
+      WHERE tenant_id = ? AND user_id = ? AND revoked_at IS NULL ORDER BY linked_at DESC LIMIT 1`,
+    ctx.tenant.id,
+    ctx.user.id,
+  ),
+]);
+---
+
+<PlayerLayout title="Account avatar · Foilbury">
+  <MemberHeader
+    title="Account avatar"
+    lede="Who you are across Foilbury: the header, profile, share page and Discord profile card all use this one choice."
+  >
+    <p class="member-head__note">
+      Your account avatar is separate from your collector portrait. The portrait shows collection affinity; this is
+      your face or chosen illustrated identity.
+    </p>
+    <div slot="aside" class="flex flex-wrap gap-2">
+      <a class="btn btn-secondary btn-sm" href="/play/profile">Collector profile</a>
+      <a class="btn btn-ghost btn-sm" href="/account/security">Account security</a>
+    </div>
+  </MemberHeader>
+
+  <div class="mt-6">
+    <AccountAvatarPicker
+      client:load
+      displayName={ctx.user.displayName}
+      initialAvatar={avatar}
+      initialBanner={banner}
+      defaults={DEFAULT_AVATARS}
+      discord={{
+        linked: Boolean(discord),
+        name: discord?.global_name ?? discord?.username ?? null,
+        hasAvatar: Boolean(discord?.avatar_hash),
+      }}
+    />
+  </div>
+</PlayerLayout>

@@ -3,6 +3,14 @@ import { listAchievements } from "./achievements";
 import { getInventory, type InventoryRow } from "./collection";
 import { listCollections } from "./collections";
 import { displayFinish, printTitle } from "../../lib/utils";
+import {
+  accountAvatarViewFor,
+  defaultAvatarSrc,
+  loadAccountBanner,
+  memberMediaSrc,
+  type AccountAvatarView,
+  type AccountBannerView,
+} from "./account-avatar";
 
 import {
   DEFAULT_PROFILE_PRESENTATION,
@@ -61,25 +69,31 @@ export interface ProfilePresentationOptions {
   }>;
   copies: ProfileCopyView[];
   badges: ProfileBadgeView[];
+  /** The account avatar is independent of the collector portrait. */
+  accountAvatar?: AccountAvatarView;
+  /** A private member banner, only exposed through the chosen profile surface. */
+  memberBanner?: AccountBannerView | null;
 }
 
 export interface ResolvedProfilePortrait {
   key: string;
-  kind: "monogram" | "collection";
+  kind: "mascot" | "collection";
   label: string;
   imageUrl: string | null;
 }
 
 export interface ResolvedProfileBanner {
   key: string;
-  kind: "none" | "collection";
+  kind: "none" | "collection" | "upload";
   label: string;
   imageUrl: string | null;
+  assetId: string | null;
 }
 
 export interface ResolvedProfilePresentation {
   version: number;
   selection: ProfilePresentationSelection;
+  avatar: AccountAvatarView;
   portrait: ResolvedProfilePortrait;
   banner: ResolvedProfileBanner;
   featured: ProfileCopyView | null;
@@ -115,11 +129,12 @@ export function parseProfilePresentation(raw: string | null | undefined): Profil
   const value = parsed as Record<string, unknown>;
   return {
     portrait:
-      typeof value.portrait === "string" && (value.portrait === "monogram" || collectionKey(value.portrait))
+      typeof value.portrait === "string" && (value.portrait === "mascot" || collectionKey(value.portrait))
         ? value.portrait
-        : "monogram",
+        : "mascot",
     banner:
-      typeof value.banner === "string" && (value.banner === "none" || collectionKey(value.banner))
+      typeof value.banner === "string" &&
+      (value.banner === "none" || value.banner === "upload" || collectionKey(value.banner))
         ? value.banner
         : "none",
     frame: isOneOf(PROFILE_FRAMES, value.frame) ? value.frame : "none",
@@ -143,10 +158,11 @@ export function profilePresentationVersion(row: { profile_presentation_version?:
 }
 
 export async function getProfilePresentationOptions(ctx: Ctx): Promise<ProfilePresentationOptions> {
-  const [collections, copies, achievements] = await Promise.all([
+  const [collections, copies, achievements, memberBanner] = await Promise.all([
     listCollections(ctx),
     getInventory(ctx, { limit: 120, status: "owned" }),
     listAchievements(ctx, ctx.user?.id),
+    ctx.user ? loadAccountBanner(ctx, ctx.user.id) : Promise.resolve(null),
   ]);
   return {
     collections: collections.map((collection) => ({
@@ -166,6 +182,8 @@ export async function getProfilePresentationOptions(ctx: Ctx): Promise<ProfilePr
         artKey: achievement.art_key,
         collectionLogoUrl: achievement.collection_logo_url ?? null,
       })),
+    accountAvatar: accountAvatarViewFor(ctx.user),
+    memberBanner,
   };
 }
 
@@ -193,13 +211,23 @@ function resolvePortrait(
   options: ProfilePresentationOptions,
   notes: string[],
 ): ResolvedProfilePortrait {
-  if (selection.portrait === "monogram") {
-    return { key: "monogram", kind: "monogram", label: "Monogram", imageUrl: null };
+  if (selection.portrait === "mascot") {
+    return {
+      key: "mascot",
+      kind: "mascot",
+      label: "Foilbury Keeper",
+      imageUrl: defaultAvatarSrc("keeper"),
+    };
   }
   const collection = collectionById(options, collectionKey(selection.portrait));
   if (!collection?.logoUrl) {
-    notes.push("The chosen portrait is no longer available. Showing your monogram.");
-    return { key: "monogram", kind: "monogram", label: "Monogram", imageUrl: null };
+    notes.push("The chosen collector portrait is no longer available. Showing the Foilbury Keeper.");
+    return {
+      key: "mascot",
+      kind: "mascot",
+      label: "Foilbury Keeper",
+      imageUrl: defaultAvatarSrc("keeper"),
+    };
   }
   return {
     key: `collection:${collection.id}`,
@@ -215,19 +243,33 @@ function resolveBanner(
   notes: string[],
 ): ResolvedProfileBanner {
   if (selection.banner === "none") {
-    return { key: "none", kind: "none", label: "No banner", imageUrl: null };
+    return { key: "none", kind: "none", label: "No banner", imageUrl: null, assetId: null };
+  }
+  if (selection.banner === "upload") {
+    if (!options.memberBanner?.assetId) {
+      notes.push("The uploaded banner is no longer available. Using the plain surface.");
+      return { key: "none", kind: "none", label: "No banner", imageUrl: null, assetId: null };
+    }
+    return {
+      key: "upload",
+      kind: "upload",
+      label: "Uploaded banner",
+      imageUrl: options.memberBanner.src,
+      assetId: options.memberBanner.assetId,
+    };
   }
   const collection = collectionById(options, collectionKey(selection.banner));
   const imageUrl = collection?.bannerUrl ?? null;
   if (!collection || !imageUrl) {
     notes.push("The chosen banner is no longer available. Using the plain surface.");
-    return { key: "none", kind: "none", label: "No banner", imageUrl: null };
+    return { key: "none", kind: "none", label: "No banner", imageUrl: null, assetId: null };
   }
   return {
     key: `collection:${collection.id}`,
     kind: "collection",
     label: collection.name,
     imageUrl,
+    assetId: null,
   };
 }
 
@@ -276,6 +318,7 @@ export function resolveProfilePresentation(
       portrait: portrait.key,
       banner: banner.key,
     },
+    avatar: options.accountAvatar ?? accountAvatarViewFor(null),
     portrait,
     banner,
     featured,
@@ -293,15 +336,19 @@ export function validateProfilePresentation(
     throw new ApiError(422, "profile_presentation_invalid", "Choose a valid profile composition.");
   }
   const input = value as Record<string, unknown>;
-  const portrait = typeof input.portrait === "string" ? input.portrait : "monogram";
-  if (portrait !== "monogram") {
+  const portrait = typeof input.portrait === "string" ? input.portrait : "mascot";
+  if (portrait !== "mascot") {
     const collection = collectionById(options, collectionKey(portrait));
     if (!collection?.logoUrl) {
       throw new ApiError(422, "profile_portrait_unavailable", "That portrait is not available to this account.");
     }
   }
   const banner = typeof input.banner === "string" ? input.banner : "none";
-  if (banner !== "none") {
+  if (banner === "upload") {
+    if (!options.memberBanner?.assetId) {
+      throw new ApiError(422, "profile_banner_unavailable", "Upload a banner before choosing it.");
+    }
+  } else if (banner !== "none") {
     const collection = collectionById(options, collectionKey(banner));
     if (!collection || !collection.bannerUrl) {
       throw new ApiError(422, "profile_banner_unavailable", "That banner is not available to this account.");
@@ -350,8 +397,14 @@ export function validateProfilePresentation(
 }
 
 export interface ProfileSharePresentation {
-  portrait: { kind: "monogram" | "collection"; label: string; image_url: string | null };
-  banner: { kind: "none" | "collection"; label: string; image_url: string | null };
+  avatar: {
+    kind: AccountAvatarView["kind"];
+    default_key: string;
+    asset_id: string | null;
+    label: string;
+  };
+  portrait: { kind: "mascot" | "collection"; label: string; image_url: string | null };
+  banner: { kind: "none" | "collection" | "upload"; label: string; image_url: string | null; asset_id: string | null };
   frame: ProfileFrame;
   avatar_decoration: ProfileAvatarDecoration;
   name_treatment: ProfileNameTreatment;
@@ -373,6 +426,12 @@ export interface ProfileSharePresentation {
 
 export function profileSharePresentation(resolved: ResolvedProfilePresentation): ProfileSharePresentation {
   return {
+    avatar: {
+      kind: resolved.avatar.kind,
+      default_key: resolved.avatar.defaultKey,
+      asset_id: resolved.avatar.assetId,
+      label: resolved.avatar.label,
+    },
     portrait: {
       kind: resolved.portrait.kind,
       label: resolved.portrait.label,
@@ -382,6 +441,7 @@ export function profileSharePresentation(resolved: ResolvedProfilePresentation):
       kind: resolved.banner.kind,
       label: resolved.banner.label,
       image_url: resolved.banner.imageUrl,
+      asset_id: resolved.banner.assetId,
     },
     frame: resolved.selection.frame,
     avatar_decoration: resolved.selection.avatarDecoration,

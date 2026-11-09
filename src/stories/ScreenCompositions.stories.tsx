@@ -120,6 +120,7 @@ function ProfileComposition() {
         </section>
         <ProfileCustomiser
           displayName="Dean"
+          avatar={profilePresentationFixture.avatar}
           initialLook="quiet"
           initialBio="Collecting quiet cards and loud covers."
           looks={profileLooksFixture}

@@ -37,6 +37,10 @@ export interface CurrentUser {
   role: Role;
   platformAdmin: boolean;
   emailVerified?: boolean;
+  avatarKind?: string;
+  avatarDefaultKey?: string;
+  avatarAssetId?: string | null;
+  avatarUpdatedAt?: string | null;
   capabilities?: string[];
   /** Scoped money authority. Only controls the explicitly granted `grants` capability. */
   selfGrantsEnabled?: boolean;
@@ -353,6 +357,10 @@ export async function resolveSession(
     display_name: string;
     platform_admin: number;
     email_verified_at: string | null;
+    avatar_kind: string | null;
+    avatar_default_key: string | null;
+    avatar_asset_id: string | null;
+    avatar_updated_at: string | null;
     capabilities_json: string;
     self_grants_enabled: number;
     grant_limit: number;
@@ -366,6 +374,7 @@ export async function resolveSession(
     db,
     `SELECT s.id, s.user_id, s.csrf_token, s.expires_at, s.revoked_at, s.assurance, s.auth_time,
             u.email, u.display_name, u.platform_admin, u.email_verified_at, u.disabled_at,
+            u.avatar_kind, u.avatar_default_key, u.avatar_asset_id, u.avatar_updated_at,
             m.role, m.capabilities_json, m.self_grants_enabled, m.grant_limit, m.capability_revision,
             t.id AS tenant_id, t.slug AS tenant_slug, t.name AS tenant_name
        FROM fb_sessions s
@@ -403,6 +412,10 @@ export async function resolveSession(
       role: row.role,
       platformAdmin: Boolean(row.platform_admin),
       emailVerified: Boolean(row.email_verified_at),
+      avatarKind: row.avatar_kind ?? "default",
+      avatarDefaultKey: row.avatar_default_key ?? "keeper",
+      avatarAssetId: row.avatar_asset_id,
+      avatarUpdatedAt: row.avatar_updated_at,
       capabilities,
       selfGrantsEnabled: Boolean(row.self_grants_enabled),
       grantLimit: Number(row.grant_limit ?? 0),
@@ -432,6 +445,10 @@ export async function resolveAgent(
     display_name: string;
     platform_admin: number;
     email_verified_at: string | null;
+    avatar_kind: string | null;
+    avatar_default_key: string | null;
+    avatar_asset_id: string | null;
+    avatar_updated_at: string | null;
     capabilities_json: string;
     self_grants_enabled: number;
     grant_limit: number;
@@ -446,6 +463,7 @@ export async function resolveAgent(
     `SELECT t.id, t.grant_id, g.agent_name, g.agent_id, g.represented_user_id,
             g.scopes_json, g.status, g.expires_at, g.revoked_at,
             u.email, u.display_name, u.platform_admin, u.email_verified_at, u.disabled_at,
+            u.avatar_kind, u.avatar_default_key, u.avatar_asset_id, u.avatar_updated_at,
             m.role, m.capabilities_json, m.self_grants_enabled, m.grant_limit, m.capability_revision,
             t2.id AS tenant_id, t2.slug AS tenant_slug, t2.name AS tenant_name
        FROM fb_agent_tokens t
@@ -493,6 +511,10 @@ export async function resolveAgent(
       role: row.role,
       platformAdmin: Boolean(row.platform_admin),
       emailVerified: Boolean(row.email_verified_at),
+      avatarKind: row.avatar_kind ?? "default",
+      avatarDefaultKey: row.avatar_default_key ?? "keeper",
+      avatarAssetId: row.avatar_asset_id,
+      avatarUpdatedAt: row.avatar_updated_at,
       capabilities,
       selfGrantsEnabled: Boolean(row.self_grants_enabled),
       grantLimit: Number(row.grant_limit ?? 0),

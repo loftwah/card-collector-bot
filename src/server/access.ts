@@ -191,9 +191,14 @@ async function loadMember(db: D1Database, tenantId: string, userId: string): Pro
     disabled_at: string | null;
     role: Role;
     capabilities_json: string;
+    avatar_kind: string | null;
+    avatar_default_key: string | null;
+    avatar_asset_id: string | null;
+    avatar_updated_at: string | null;
   }>(
     db,
     `SELECT u.id, u.email, u.display_name, u.platform_admin, u.email_verified_at, u.disabled_at,
+            u.avatar_kind, u.avatar_default_key, u.avatar_asset_id, u.avatar_updated_at,
             m.role, m.capabilities_json
        FROM fb_users u
        LEFT JOIN fb_memberships m ON m.user_id = u.id AND m.tenant_id = ? AND m.status = 'active'
@@ -216,6 +221,10 @@ async function loadMember(db: D1Database, tenantId: string, userId: string): Pro
     role: row.role ?? "player",
     platformAdmin: Boolean(row.platform_admin),
     emailVerified: Boolean(row.email_verified_at),
+    avatarKind: row.avatar_kind ?? "default",
+    avatarDefaultKey: row.avatar_default_key ?? "keeper",
+    avatarAssetId: row.avatar_asset_id,
+    avatarUpdatedAt: row.avatar_updated_at,
     capabilities,
   };
 }

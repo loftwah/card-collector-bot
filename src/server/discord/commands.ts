@@ -9,6 +9,12 @@ import {
   getProfilePresentationOptions,
   resolveProfilePresentation,
 } from "../modules/profile-presentation";
+import {
+  accountAvatarViewFor,
+  defaultAvatarPng,
+  memberMediaById,
+  renditionForSize,
+} from "../modules/account-avatar";
 import { getWalletSummary } from "../modules/wallet";
 import { getCard, listCards } from "../modules/catalogue";
 import {
@@ -1079,6 +1085,24 @@ async function profile(
   );
   const featured = presentation.featured;
   const render = featured ? await profileRenderFor(ctx, featured.id) : null;
+  const avatar = accountAvatarViewFor(ctx.user);
+  let avatarThumb: { attachment?: string; url?: string } | undefined;
+  let avatarAttachment: { r2Key: string; filename: string; contentType: string } | undefined;
+  if (avatar.assetId) {
+    const media = await memberMediaById(ctx, avatar.assetId);
+    const rendition = media ? renditionForSize(media, 256) : null;
+    if (rendition) {
+      const ext = rendition.mime === "image/png" ? "png" : rendition.mime === "image/webp" ? "webp" : "jpg";
+      const filename = `foilbury-avatar.${ext}`;
+      avatarAttachment = { r2Key: rendition.r2_key, filename, contentType: rendition.mime };
+      avatarThumb = { attachment: filename };
+    }
+  }
+  if (!avatarThumb) {
+    avatarThumb = {
+      url: absoluteUrl(ctx.config.publicOrigin, defaultAvatarPng(avatar.defaultKey, 256)) ?? undefined,
+    };
+  }
   const result = profileMessage({
     displayName: ctx.user!.displayName,
     scopeName: ctx.tenant.name,
@@ -1115,6 +1139,8 @@ async function profile(
       : undefined,
     profileUrl: absoluteUrl(ctx.config.publicOrigin, "/play/profile")!,
     customiseUrl: absoluteUrl(ctx.config.publicOrigin, "/play/profile#customise")!,
+    avatar: avatarThumb,
+    avatarAttachment,
     dailyCustomId: "foilbury:daily",
     collectionCustomId: "foilbury:collection",
     shareCustomId: `foilbury:tourshare:profile:${ctx.user!.id}`,

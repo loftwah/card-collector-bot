@@ -20,6 +20,7 @@ import type {
   ProfilePresentationOptions,
   ResolvedProfilePresentation,
 } from "@/server/modules/profile-presentation";
+import type { AccountAvatarView } from "@/server/modules/account-avatar";
 import { Button } from "../ui/button";
 
 export interface ProfileLookOption {
@@ -65,6 +66,7 @@ function move<T>(items: T[], index: number, direction: -1 | 1): T[] {
 
 function ProfilePreview({
   displayName,
+  avatar,
   draft,
   look,
   bio,
@@ -72,6 +74,7 @@ function ProfilePreview({
   mode,
 }: {
   displayName: string;
+  avatar: AccountAvatarView;
   draft: ProfilePresentationSelection;
   look: string;
   bio: string;
@@ -80,6 +83,7 @@ function ProfilePreview({
 }) {
   const portrait = collectionFor(options, draft.portrait);
   const banner = collectionFor(options, draft.banner);
+  const uploadedBanner = options.memberBanner?.src ?? null;
   const featured =
     options.copies.find((copy) => copy.id === draft.featuredInstanceId) ??
     options.copies.find((copy) => copy.favourite) ??
@@ -87,15 +91,7 @@ function ProfilePreview({
     null;
   const favourites = selectedCopies(options, draft.favouriteInstanceIds).filter((copy) => copy.id !== featured?.id);
   const badges = selectedBadges(options, draft.badgeIds);
-  const bannerUrl = banner?.bannerUrl ?? null;
-  const initials =
-    displayName
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((part) => part[0])
-      .join("")
-      .slice(0, 2)
-      .toUpperCase() || "You";
+  const bannerUrl = draft.banner === "upload" ? uploadedBanner : (banner?.bannerUrl ?? null);
 
   return (
     <div
@@ -110,19 +106,26 @@ function ProfilePreview({
       <div className="profile-preview__hero">
         {bannerUrl ? <img className="profile-preview__banner" src={bannerUrl} alt="" aria-hidden="true" /> : null}
         <div className="profile-preview__identity">
-          {portrait?.logoUrl ? (
-            <span className="profile-avatar profile-avatar--image" aria-hidden="true">
-              <img src={portrait.logoUrl} alt="" width="48" height="48" />
-            </span>
-          ) : (
-            <span className="profile-avatar" aria-hidden="true">
-              {initials}
-            </span>
-          )}
+          <span className="profile-avatar profile-avatar--image" aria-hidden="true">
+            <img
+              src={avatar.src}
+              srcSet={avatar.srcSet ?? undefined}
+              sizes="48px"
+              alt=""
+              width="48"
+              height="48"
+              data-avatar-img
+              data-fallback-src="/avatars/default/keeper-256.png"
+            />
+          </span>
           <div className="min-w-0">
             <p className="profile-preview__name">{displayName}</p>
             <p className="profile-preview__meta">
               {look} · {featured ? "featured copy" : "no featured copy"}
+            </p>
+            <p className="profile-affinity">
+              <img src={portrait?.logoUrl ?? "/avatars/default/keeper-256.png"} alt="" width="18" height="18" />
+              <span>{portrait?.name ?? "Foilbury Keeper"}</span>
             </p>
           </div>
         </div>
@@ -191,6 +194,7 @@ function ProfilePreview({
 
 export default function ProfileCustomiser({
   displayName,
+  avatar,
   initialLook,
   initialBio,
   looks,
@@ -198,6 +202,7 @@ export default function ProfileCustomiser({
   options,
 }: {
   displayName: string;
+  avatar: AccountAvatarView;
   initialLook: string;
   initialBio: string;
   looks: ProfileLookOption[];
@@ -385,11 +390,11 @@ export default function ProfileCustomiser({
           </fieldset>
 
           <fieldset className="profile-customiser__group">
-            <legend>Portrait</legend>
+            <legend>Collector portrait</legend>
             <label className="field">
-              <span>Portrait artwork</span>
+              <span>Collection affinity</span>
               <select value={draft.portrait} onChange={(event) => update("portrait", event.target.value)}>
-                <option value="monogram">Monogram</option>
+                <option value="mascot">Foilbury Keeper</option>
                 {portraitOptions.map((collection) => (
                   <option key={collection.id} value={`collection:${collection.id}`}>
                     {collection.name} mark
@@ -398,8 +403,11 @@ export default function ProfileCustomiser({
               </select>
             </label>
             <p className="profile-customiser__hint">
-              A collection mark shows affinity. It does not claim ownership of a card or collection.
+              Separate from your account avatar. A collection mark shows affinity; it does not claim ownership of a card or collection.
             </p>
+            <a className="btn btn-ghost btn-sm" href="/account/avatar">
+              Change account avatar
+            </a>
           </fieldset>
 
           <fieldset className="profile-customiser__group">
@@ -408,6 +416,7 @@ export default function ProfileCustomiser({
               <span>Banner artwork</span>
               <select value={draft.banner} onChange={(event) => update("banner", event.target.value)}>
                 <option value="none">No banner</option>
+                {options.memberBanner ? <option value="upload">Uploaded banner</option> : null}
                 {bannerOptions.map((collection) => (
                   <option key={collection.id} value={`collection:${collection.id}`}>
                     {collection.name}
@@ -415,6 +424,12 @@ export default function ProfileCustomiser({
                 ))}
               </select>
             </label>
+            <p className="profile-customiser__hint">
+              Uploaded banners are private member assets until you explicitly share a profile snapshot.
+            </p>
+            <a className="btn btn-ghost btn-sm" href="/account/avatar#banner">
+              {options.memberBanner ? "Replace banner" : "Upload a banner"}
+            </a>
           </fieldset>
 
           <fieldset className="profile-customiser__group">
@@ -703,6 +718,7 @@ export default function ProfileCustomiser({
           </div>
           <ProfilePreview
             displayName={displayName}
+            avatar={avatar}
             draft={draft}
             look={look}
             bio={bio}

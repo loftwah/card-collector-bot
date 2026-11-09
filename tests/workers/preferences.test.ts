@@ -272,7 +272,7 @@ describe("collection-first draw preferences and preview consent", () => {
     await updatePreferences(player, {
       profilePresentationVersion: 1,
       profilePresentation: {
-        portrait: "monogram",
+        portrait: "mascot",
         banner: "none",
         frame: "double",
         avatarDecoration: "stamp",
@@ -291,7 +291,7 @@ describe("collection-first draw preferences and preview consent", () => {
     await updatePreferences(owner, {
       profilePresentationVersion: 1,
       profilePresentation: {
-        portrait: "monogram",
+        portrait: "mascot",
         banner: "none",
         frame: "hairline",
         avatarDecoration: "none",

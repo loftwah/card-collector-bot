@@ -21,7 +21,7 @@ export interface ProfilePresentationSelection {
 }
 
 export const DEFAULT_PROFILE_PRESENTATION: ProfilePresentationSelection = {
-  portrait: "monogram",
+  portrait: "mascot",
   banner: "none",
   frame: "none",
   avatarDecoration: "none",

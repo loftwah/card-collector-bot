@@ -2,8 +2,10 @@
 import BrandMark from "./BrandMark.astro";
 import ThemeToggle from "./ThemeToggle";
 import LogoutButton from "./LogoutButton";
+import { accountAvatarViewFor } from "../server/modules/account-avatar";
 const session = Astro.locals.foilbury;
 const user = session?.user ?? null;
+const avatar = user ? accountAvatarViewFor(user) : null;
 const path = Astro.url.pathname;
 const links = [
   { href: "/cabinet", label: "Browse originals" },
@@ -74,6 +76,23 @@ if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform"
               ></path>
             </svg>
             <span data-foil-balance>{session?.wallet ?? 0} Foil</span>
+          </a>
+          <a
+            href="/play/profile"
+            class="site-avatar-link"
+            aria-label={`${user.displayName} profile`}
+            title={`${user.displayName} profile`}
+          >
+            <img
+              src={avatar?.src ?? "/avatars/default/keeper-256.png"}
+              srcset={avatar?.srcSet ?? undefined}
+              sizes="28px"
+              alt=""
+              width="28"
+              height="28"
+              data-avatar-img
+              data-fallback-src="/avatars/default/keeper-256.png"
+            />
           </a>
           <a
             href="/account/security"

@@ -113,6 +113,8 @@ async function processDeferred(
     const discordUser = interactionUser(interaction);
     const player = await ensureDiscordPlayer(env, resolved.tenant, discordUser);
     const ctx = buildDiscordContext(env, resolved.tenant, player.user, interaction);
+    const { syncDiscordAvatar } = await import("../modules/account-avatar");
+    await syncDiscordAvatar(ctx, player.user.id, discordUser).catch(() => undefined);
     await recordInteractionStart(env, interaction);
     const callback =
       interaction.type === 2
@@ -273,6 +275,8 @@ export async function handleDiscordInteraction(
     const discordUser = interactionUser(interaction);
     const player = await ensureDiscordPlayer(env, resolved.tenant, discordUser);
     const ctx = buildDiscordContext(env, resolved.tenant, player.user, interaction);
+    const { syncDiscordAvatar } = await import("../modules/account-avatar");
+    await syncDiscordAvatar(ctx, player.user.id, discordUser).catch(() => undefined);
     await recordInteractionStart(env, interaction);
     let callback: DiscordCallback;
     if (interaction.type === 2) {

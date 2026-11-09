@@ -282,6 +282,7 @@ export interface EmbedInput {
   timestamp?: string;
   accent?: number;
   image?: EmbedImageInput;
+  thumbnail?: EmbedImageInput;
 }
 
 function assertPublicUrl(
@@ -379,6 +380,7 @@ export function buildEmbed(input: EmbedInput): DiscordEmbed {
       : clipText(visibleText(input.footer, "embed.footer"), DISCORD_LIMITS.footer);
   const accent = assertDiscordAccent(input.accent ?? DISCORD_PALETTE.surface);
   const image = input.image ? buildEmbedImage(input.image) : undefined;
+  const thumbnail = input.thumbnail ? buildEmbedImage(input.thumbnail) : undefined;
   const timestamp =
     input.timestamp === undefined
       ? undefined
@@ -392,6 +394,7 @@ export function buildEmbed(input: EmbedInput): DiscordEmbed {
     ...(footer ? { footer: { text: footer } } : {}),
     ...(timestamp ? { timestamp } : {}),
     ...(image ? { image } : {}),
+    ...(thumbnail ? { thumbnail: { url: thumbnail.url } } : {}),
   };
 
   const total = embedCharacterCount(embed);
@@ -800,15 +803,17 @@ function assertAttachmentReferences(
 ): void {
   const filenames = new Set(attachments.map((attachment) => attachment.filename));
   for (const embed of embeds) {
-    const url = embed.image?.url;
-    if (!url?.startsWith("attachment://")) continue;
-    const filename = url.slice("attachment://".length);
-    if (!filenames.has(filename)) {
-      fail(
-        "unsafe_attachment",
-        "embed.image.url",
-        "An attachment image reference must match a delivered attachment filename.",
-      );
+    for (const image of [embed.image, embed.thumbnail]) {
+      const url = image?.url;
+      if (!url?.startsWith("attachment://")) continue;
+      const filename = url.slice("attachment://".length);
+      if (!filenames.has(filename)) {
+        fail(
+          "unsafe_attachment",
+          "embed.image.url",
+          "An attachment image reference must match a delivered attachment filename.",
+        );
+      }
     }
   }
 }
@@ -2027,6 +2032,8 @@ export interface ProfileInput {
   badgeNames?: string[];
   imageAttachment?: string;
   attachment?: DiscordAttachment;
+  avatar?: { attachment?: string; url?: string };
+  avatarAttachment?: DiscordAttachment;
   profileUrl: string;
   customiseUrl?: string;
   dailyCustomId?: string;
@@ -2136,10 +2143,17 @@ export function profileMessage(input: ProfileInput): DiscordCallback {
       ...(input.imageAttachment
         ? { image: { attachment: input.imageAttachment, width: 750, height: 1050 } }
         : {}),
+      ...(input.avatar?.attachment
+        ? { thumbnail: { attachment: input.avatar.attachment } }
+        : input.avatar?.url
+          ? { thumbnail: { url: input.avatar.url } }
+          : {}),
       footer: "Private response · sharing is separate and explicit",
     },
     rows,
-    ...(input.attachment ? { attachments: [input.attachment] } : {}),
+    ...(input.attachment || input.avatarAttachment
+      ? { attachments: [input.attachment, input.avatarAttachment].filter((item): item is DiscordAttachment => Boolean(item)) }
+      : {}),
   });
 }
 

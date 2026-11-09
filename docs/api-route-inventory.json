@@ -1,5 +1,5 @@
 {
-  "route_count": 175,
+  "route_count": 182,
   "direct_route_count": 21,
   "routes": [
     {
@@ -158,6 +158,150 @@
         "positive",
         "int",
         "updatePreferences"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/me/avatar",
+      "guards": [
+        "requireScope"
+      ],
+      "auth_only": [
+        "playerWrite"
+      ],
+      "scopes": [
+        "profile:read"
+      ],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "loadAccountAvatar",
+        "accountBannerView"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/me/avatar/default",
+      "guards": [
+        "requireScope"
+      ],
+      "auth_only": [
+        "playerWrite"
+      ],
+      "scopes": [
+        "profile:write"
+      ],
+      "roles": [],
+      "schema": "{ key:string }",
+      "calls": [
+        "max",
+        "min",
+        "setDefaultAvatar"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/me/avatar/discord",
+      "guards": [
+        "requireScope"
+      ],
+      "auth_only": [
+        "playerWrite"
+      ],
+      "scopes": [
+        "profile:write"
+      ],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "setDiscordAvatar"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/me/avatar/upload",
+      "guards": [
+        "requireScope"
+      ],
+      "auth_only": [
+        "playerWrite"
+      ],
+      "scopes": [
+        "profile:write"
+      ],
+      "roles": [],
+      "schema": "{ renditions?:object }",
+      "calls": [
+        "max",
+        "min",
+        "int",
+        "optional",
+        "setUploadedAvatar"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/me/avatar",
+      "guards": [
+        "requireScope"
+      ],
+      "auth_only": [
+        "playerWrite"
+      ],
+      "scopes": [
+        "profile:write"
+      ],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "removeAccountAvatar"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/me/banner/upload",
+      "guards": [
+        "requireScope"
+      ],
+      "auth_only": [
+        "playerWrite"
+      ],
+      "scopes": [
+        "profile:write"
+      ],
+      "roles": [],
+      "schema": "{ renditions?:object }",
+      "calls": [
+        "max",
+        "min",
+        "int",
+        "optional",
+        "setUploadedBanner"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/me/banner",
+      "guards": [
+        "requireScope"
+      ],
+      "auth_only": [
+        "playerWrite"
+      ],
+      "scopes": [
+        "profile:write"
+      ],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "removeAccountBanner"
       ],
       "studio_alias": false
     },
