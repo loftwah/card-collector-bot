@@ -344,3 +344,137 @@ WHERE slug = 'vocaloid';
   - Desktop 1440px and mobile 390px, light and dark: no horizontal overflow; first visible banner tiles are `eager`, later banners have the collection-name fallback, and mark-only collections show the mark and name.
 - The first release attempt found the live production build had no `x-foilbury-build` header because the latest deployment had been made without `FOILBURY_BUILD_SHA`. A manual `wrangler deploy` of the exact built artifact with that variable restored the build identity; the formal `pnpm deploy:production` then deployed `64f9c0f` and passed its identity and HTTP smoke checks.
 - Not claimed: a separate live Discord embed render. The Discord scope payload now carries `banner_url` and `logo_url` instead of `cover_url`, but no live Discord interaction was re-exercised in this pass.
+
+## AI-assisted collection banners (2026-11-09)
+
+This supersedes the sourced-banner choice for the ten collections listed below. The real series logos remain the marks; the AI-assisted composition is only the 16:9 banner. The generated art is member/private, `origin=ai_assisted`, `official=0`, and is not claimed official or licensed.
+
+Full per-banner provenance (model, prompt, FAL source URL, reference files, source and stored SHA-256, dimensions, access) is in `docs/AI_COLLECTION_ART_PROVENANCE.md`.
+
+- Generator: `fal-ai/nano-banana-pro/edit`, 2K, 16:9. Ten images generated in this bounded pass; no additional top-up was made.
+- D1 JSON backup before the AI asset/pointer changes: `.foilbury/backups/d1-2026-11-09T10-43-56-823Z.json` (96 tables, 34,050 rows, SHA-256 `9c139f2882e228f2c6de6fd59c91058a07b74b18686aef5790c6ed5b3388e89e`).
+- Assets were provisioned through the existing Wrangler production configuration with `scripts/content/provision-ai-collection-banners.mjs`; pointers were updated with `scripts/content/apply-ai-banner-pointers.mjs`. Both are idempotent by SHA-256/guard.
+
+### Pointer changes
+
+| Collection | Previous banner_url | New banner asset | Release |
+| --- | --- | --- | ---: |
+| Alien Stage — Stage Lights | `/media/asset/ast_a893485348864ec3a48baffe` | `ast_d1269e79274536b36e7288d4` | 5 |
+| Chainsaw Man — Public Safety, Part 1 | `/media/asset/ast_0854d8f8b50074d2c09eaf62` | `ast_f063dd38f64d5f7e1ad50aad` | 5 |
+| Danganronpa — Three Killing Games | `/media/asset/ast_be1ceb505beb9688f0101664` | `ast_50774e60e5abd50215d16b55` | 6 |
+| Death Note — The Kira Case | null | `ast_414b7935e4af32eb3234fad2` | 5 |
+| NANA — Two Nanas, One Tokyo | `/media/asset/ast_e3471c4b9c47e0b43cf2f1ae` | `ast_d5a30f28da05bb82137016e8` | 5 |
+| NBA — Opening Night | null | `ast_0436a3249f8e0e656fc57dae` | 5 |
+| Neon Genesis Evangelion — Episodes 1–26 | null | `ast_a7d69875c3259b82ce54b768` | 5 |
+| Rick and Morty — Portal | null | `ast_7cec5e691763231a0ed1d900` | 5 |
+| Scott Pilgrim — Six Volumes, One City | null | `ast_6eed1bcc9cbd9ece96c47198` | 5 |
+| The Simpsons — Springfield, U.S.A. | null | `ast_3a1957f79c7166700a01092a` | 5 |
+
+### AI banner hashes
+
+| Collection | Banner SHA-256 |
+| --- | --- |
+| Danganronpa — Three Killing Games | `50774e60e5abd50215d16b55306c35a12fa88da2b7817e0f869a40ebb3bd4c31` |
+| NANA — Two Nanas, One Tokyo | `d5a30f28da05bb82137016e8ef1a404f4ac82c3030ba3bc529e1a8e8137e0dac` |
+| Neon Genesis Evangelion — Episodes 1–26 | `a7d69875c3259b82ce54b7680c213827a536b839d02bdc6cb6a882cb2afc6fdf` |
+| Rick and Morty — Portal | `7cec5e691763231a0ed1d900af9a9588f0b212490a2ec3ccc0e7ccda20502edf` |
+| Scott Pilgrim — Six Volumes, One City | `6eed1bcc9cbd9ece96c471989a8265812594c1c585fbe8665b41920543a7d6d5` |
+| NBA — Opening Night | `0436a3249f8e0e656fc57dae1a0f0880752738fbf27f5992840a6821aa6c1614` |
+| Chainsaw Man — Public Safety, Part 1 | `f063dd38f64d5f7e1ad50aad046e2a4606b574f15e0efe4b68cd3680f212eba3` |
+| Alien Stage — Stage Lights | `d1269e79274536b36e7288d4161f4fd0458925e65147abf97162baaafb74b777` |
+| Death Note — The Kira Case | `414b7935e4af32eb3234fad2f38543081e66c3d03671ae992866ab6c35536d5e` |
+| The Simpsons — Springfield, U.S.A. | `3a1957f79c7166700a01092a9b992848c2258ce3b2626b935698676050cbc3dc` |
+
+### Rollback
+
+The following restores the previous banner pointers. It does not delete the AI assets.
+
+```sql
+-- alien-stage
+UPDATE fb_collections
+SET banner_url = '/media/asset/ast_a893485348864ec3a48baffe',
+    banner_asset_id = 'ast_a893485348864ec3a48baffe',
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+WHERE slug = 'alien-stage';
+
+-- chainsaw-man-public-safety
+UPDATE fb_collections
+SET banner_url = '/media/asset/ast_0854d8f8b50074d2c09eaf62',
+    banner_asset_id = 'ast_0854d8f8b50074d2c09eaf62',
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+WHERE slug = 'chainsaw-man-public-safety';
+
+-- danganronpa-three-games
+UPDATE fb_collections
+SET banner_url = '/media/asset/ast_be1ceb505beb9688f0101664',
+    banner_asset_id = 'ast_be1ceb505beb9688f0101664',
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+WHERE slug = 'danganronpa-three-games';
+
+-- death-note
+UPDATE fb_collections
+SET banner_url = NULL,
+    banner_asset_id = NULL,
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+WHERE slug = 'death-note';
+
+-- nana-two-nanas
+UPDATE fb_collections
+SET banner_url = '/media/asset/ast_e3471c4b9c47e0b43cf2f1ae',
+    banner_asset_id = 'ast_e3471c4b9c47e0b43cf2f1ae',
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+WHERE slug = 'nana-two-nanas';
+
+-- nba-opening-night
+UPDATE fb_collections
+SET banner_url = NULL,
+    banner_asset_id = NULL,
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+WHERE slug = 'nba-opening-night';
+
+-- neon-genesis-evangelion
+UPDATE fb_collections
+SET banner_url = NULL,
+    banner_asset_id = NULL,
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+WHERE slug = 'neon-genesis-evangelion';
+
+-- rick-and-morty
+UPDATE fb_collections
+SET banner_url = NULL,
+    banner_asset_id = NULL,
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+WHERE slug = 'rick-and-morty';
+
+-- scott-pilgrim
+UPDATE fb_collections
+SET banner_url = NULL,
+    banner_asset_id = NULL,
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+WHERE slug = 'scott-pilgrim';
+
+-- the-simpsons
+UPDATE fb_collections
+SET banner_url = NULL,
+    banner_asset_id = NULL,
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+WHERE slug = 'the-simpsons';
+
+```
+
+### Live verification
+
+- Runtime source: `7b9a6ea9fa04c66c72cc8d6037e19d8bdccb6090`; Worker `b8868de2-15f0-4ef9-a0a2-65f160ee1489`.
+- All 21 published collections across `/play/collections` pages 1–3: 17 banners (10 AI-assisted + 7 sourced) and 4 original mark tiles.
+- All 21 collection detail heroes use the banner first; all 17 third-party banners are 1920×1080 and load on the live signed-in site.
+- `/play/preferences`: 17 banner rows and 4 original mark rows; no art/label overlap at 1440px or 390px.
+- Profile pickers: 21 marks (plus monogram) and 17 banners (plus “No banner”).
+- Collection share panel now renders collection art at 16:9 (260×146 at desktop) instead of cropping it into a portrait card slot; the share page itself uses the banner at 16:9.
+- Desktop 1440px and mobile 390px, light and dark: no horizontal overflow; first visible tiles remain eager and later banners retain the collection-name fallback.
+- `pnpm check` passed 7/7 after the share-panel fix; `pnpm deploy:production` passed its check, build, identity and smoke suite.
+
+### Boundary
+
+- The AI banners are derivative AI-assisted compositions from published reference art. They are not official, licensed or exact canonical artwork.
+- They remain member/private and are served through the authenticated `/media/asset/<id>` path, not public showcase media.
+- The real series logo remains the collection mark; no AI-generated logo is used.
