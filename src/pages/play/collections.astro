@@ -192,7 +192,7 @@ const audienceLabel = (audience: string) =>
     </div>
 
     <div class="collection-tile-grid mt-4">
-      {pageItems.map((item) => {
+      {pageItems.map((item, tileIndex) => {
         const { collection, owned, total, pct, cardCount, finishStarted, finishMastered, index } = item;
         const banner = collectionBanner(collection);
         const mark = collectionMark(collection);
@@ -203,14 +203,14 @@ const audienceLabel = (audience: string) =>
                 <img
                   src={banner}
                   alt=""
-                  loading={index < 3 ? "eager" : "lazy"}
-                  fetchpriority={index === 0 ? "high" : "auto"}
+                  loading={tileIndex < 3 ? "eager" : "lazy"}
+                  fetchpriority={tileIndex === 0 ? "high" : "auto"}
                   width="1600"
                   height="900"
                 />
               ) : (
                 <span class="collection-tile__fallback" aria-hidden="true">
-                  {mark ? <img src={mark} alt="" width="512" height="512" loading="lazy" /> : null}
+                  {mark ? <img src={mark} alt="" width="512" height="512" loading={tileIndex < 3 ? "eager" : "lazy"} /> : null}
                   <span>{collection.name}</span>
                 </span>
               )}
