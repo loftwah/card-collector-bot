@@ -61,12 +61,16 @@ const esc = (value) =>
 async function logoData(card) {
   const logo = card.collections?.[0]?.logo_url;
   if (!logo) return "";
-  const response = await fetch(`${BASE_URL}${logo}`, {
+  const assetId = logo.match(/^\/media\/asset\/([A-Za-z0-9_-]+)$/)?.[1];
+  const route = assetId ? `/api/v1/admin/assets/${assetId}/bytes` : logo;
+  const response = await fetch(`${BASE_URL}${route}`, {
     headers: { authorization: `Bearer ${agentToken()}`, ...accessHeaders() },
   }).catch(() => null);
   if (!response?.ok) return "";
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.startsWith("image/")) return "";
   const bytes = Buffer.from(await response.arrayBuffer());
-  const mime = logo.endsWith(".svg") ? "image/svg+xml" : "image/png";
+  const mime = contentType.includes("svg") || logo.endsWith(".svg") ? "image/svg+xml" : "image/png";
   return `data:${mime};base64,${bytes.toString("base64")}`;
 }
 

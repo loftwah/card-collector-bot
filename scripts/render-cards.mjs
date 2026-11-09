@@ -86,12 +86,16 @@ while (true) {
     let markMime;
     const logoUrl = entry.card.collections?.[0]?.logo_url;
     if (logoUrl) {
-      const logo = await fetch(`${BASE_URL}${logoUrl}`, {
+      const assetId = logoUrl.match(/^\/media\/asset\/([A-Za-z0-9_-]+)$/)?.[1];
+      const logoRoute = assetId ? `/api/v1/admin/assets/${assetId}/bytes` : logoUrl;
+      const logo = await fetch(`${BASE_URL}${logoRoute}`, {
         headers: { authorization: `Bearer ${agentToken()}` },
       });
-      if (logo.ok) {
+      const contentType = logo.headers.get("content-type") ?? "";
+      if (logo.ok && contentType.startsWith("image/")) {
         markBuffer = await readRenderSource(logo);
-        markMime = logoUrl.endsWith(".svg") ? "image/svg+xml" : "image/png";
+        markMime =
+          contentType.includes("svg") || logoUrl.endsWith(".svg") ? "image/svg+xml" : "image/png";
       }
     }
     // A multi-print edition is named "Subject — Print title". The face keeps
