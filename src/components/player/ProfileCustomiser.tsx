@@ -87,7 +87,7 @@ function ProfilePreview({
     null;
   const favourites = selectedCopies(options, draft.favouriteInstanceIds).filter((copy) => copy.id !== featured?.id);
   const badges = selectedBadges(options, draft.badgeIds);
-  const bannerUrl = banner?.bannerUrl ?? banner?.coverUrl ?? null;
+  const bannerUrl = banner?.bannerUrl ?? null;
   const initials =
     displayName
       .split(/\s+/)
@@ -219,7 +219,7 @@ export default function ProfileCustomiser({
   const [previewMode, setPreviewMode] = useState<"compact" | "full">("full");
 
   const portraitOptions = options.collections.filter((collection) => Boolean(collection.logoUrl));
-  const bannerOptions = options.collections.filter((collection) => Boolean(collection.bannerUrl ?? collection.coverUrl));
+  const bannerOptions = options.collections.filter((collection) => Boolean(collection.bannerUrl));
   const favouriteCopies = options.copies.filter((copy) => copy.favourite);
   const currentFavourites = selectedCopies(options, draft.favouriteInstanceIds);
   const currentBadges = selectedBadges(options, draft.badgeIds);

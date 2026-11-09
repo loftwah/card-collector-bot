@@ -56,6 +56,7 @@ export interface CollectionSummary extends CollectionRow {
   manageable: boolean;
   owner_name: string;
   audience_label: string;
+  /** A card render used as a fallback cover. Collection identity uses banner_url or logo_url. */
   cover_url: string | null;
 }
 

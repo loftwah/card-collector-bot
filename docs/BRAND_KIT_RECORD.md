@@ -53,6 +53,10 @@ The default share image is the Foil Standard Open Graph card. Public card shares
 use the saved card render with its real dimensions; member/private shares fall
 back to the brand image, never a private render.
 
+Collection identity uses the collection's own `banner_url` or `logo_url`, never
+a card render. `cover_url` is a card cover for card contexts only. Collections
+without a banner use the designed mark tile.
+
 ## Historical note
 
 Signal Fold was selected under delegated authority on 2026-11-04 and applied to

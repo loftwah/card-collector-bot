@@ -10,6 +10,7 @@ import {
   collectionProgress,
   listCollections,
 } from "../../server/modules/collections";
+import { collectionBanner, collectionMark } from "../../lib/collection-art";
 
 const ctx = await pageContext(Astro.request);
 const user = ctx.user!;
@@ -33,6 +34,8 @@ const publishedSets = sets.filter((set) => set.status === "published");
 const selected = initialCollection
   ? (collections.find((collection) => collection.slug === initialCollection) ?? null)
   : null;
+const selectedBanner = collectionBanner(selected);
+const selectedMark = collectionMark(selected);
 const [progress, binder] = selected
   ? await Promise.all([collectionProgress(ctx, selected.id), collectionBinder(ctx, selected.id)])
   : [null, null];
@@ -63,12 +66,11 @@ const finishLabel = (key: string) => finishLabels[key] ?? key;
     selected && progress && binder ? (
       <div class="collection-album">
         <header class="collection-album__hero">
-          <div class="collection-album__cover">
-            {selected.cover_url ? (
-              <img src={selected.cover_url} alt="" width="750" height="1050" loading="eager" />
+          <div class:list={["collection-album__cover", "collection-album__cover--mark"]}>
+            {selectedMark ? (
+              <img src={selectedMark} alt="" width="512" height="512" loading="eager" />
             ) : (
               <span class="collection-album__cover-fallback" aria-hidden="true">
-                {selected.logo_url ? <img src={selected.logo_url} alt="" width="72" height="72" /> : null}
                 <span>{selected.name}</span>
               </span>
             )}
@@ -312,7 +314,7 @@ const finishLabel = (key: string) => finishLabels[key] ?? key;
               targetId={selected.id}
               title={selected.name}
               description={`${progress.owned_cards}/${progress.total_cards} subjects · ${progress.owned_variants}/${progress.total_variants} core variants. The share is a labelled snapshot, not live inventory.`}
-              frontUrl={selected.cover_url}
+              frontUrl={selectedBanner ?? selectedMark}
             />
           </div>
         </section>

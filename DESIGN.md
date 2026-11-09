@@ -64,6 +64,10 @@ decorative wash. Do not tint card artwork to match the interface.
 
 - A collection has a mark, palette, description, source boundary and frozen
   release roster. The card front and designed back carry the collection emblem.
+- A collection is represented by its own `banner_url` or `logo_url`, never by
+  one of its card renders. `cover_url` is a card cover for card contexts only;
+  the shell must not present it as the collection's identity. Collections
+  without a banner use the designed mark tile.
 - Fronts are art-led; backs are designed information objects with a concise bio,
   typed context and credits. No wall of wiki text on the printed face.
 - Finish is material and effect: Plain, Silver, Gold, Holographic. Holographic

@@ -8,7 +8,8 @@ import { Switch } from "../ui/switch";
 interface CollectionChoice {
   id: string;
   name: string;
-  cover_url: string | null;
+  logo_url: string | null;
+  banner_url: string | null;
   audience_label: string;
   enabled: boolean;
 }
@@ -248,13 +249,13 @@ export default function PreferenceForm({
                 const included = !hiddenCollections.includes(collection.id);
                 return (
                   <label key={collection.id} className="preference-world">
-                    <span className="preference-world__art">
-                      {collection.cover_url ? (
+                    <span className="preference-world__art preference-world__art--mark">
+                      {collection.logo_url ? (
                         <img
-                          src={collection.cover_url}
+                          src={collection.logo_url}
                           alt=""
-                          width="96"
-                          height="134"
+                          width="512"
+                          height="512"
                           loading={index < 8 ? "eager" : "lazy"}
                           decoding="async"
                         />

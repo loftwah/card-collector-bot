@@ -219,11 +219,9 @@ const albumFeatures = [
                   {collection.description || "An approved original collection."}
                 </span>
                 <span class="home-shelf__count">{collection.card_count} cards</span>
-                <span class="home-shelf__thumb">
-                  {collection.cover_url ? (
-                    <img src={collection.cover_url} alt="" width="750" height="1050" loading="lazy" />
-                  ) : collection.logo_url ? (
-                    <img src={collection.logo_url} alt="" width="72" height="72" loading="lazy" />
+                <span class="home-shelf__mark">
+                  {collection.logo_url ? (
+                    <img src={collection.logo_url} alt="" width="512" height="512" loading="lazy" />
                   ) : (
                     <span aria-hidden="true">{collection.name.charAt(0)}</span>
                   )}

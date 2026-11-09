@@ -7479,25 +7479,33 @@ html[data-motion="reduced"] .layered-card__effect {
   -webkit-line-clamp: 2;
 }
 
-.home-shelf__thumb {
+.home-shelf__mark {
+  position: relative;
   display: grid;
-  width: 3.2rem;
-  aspect-ratio: 5 / 7;
+  width: 4rem;
+  aspect-ratio: 1;
   place-items: center;
   overflow: hidden;
   border: 1px solid var(--line-strong);
-  background: var(--card-object);
+  background: #0a0a0a;
 }
 
-.home-shelf__thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center 30%;
+.home-shelf__mark::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 3px;
+  background: var(--holo);
 }
 
-.home-shelf__thumb span {
-  color: var(--paper);
+.home-shelf__mark img {
+  width: 66%;
+  height: 66%;
+  object-fit: contain;
+}
+
+.home-shelf__mark span {
+  color: #fafaf8;
   font-family: var(--font-display);
   font-size: 1.4rem;
 }
@@ -7669,8 +7677,8 @@ html[data-motion="reduced"] .layered-card__effect {
     display: none;
   }
 
-  .home-shelf__thumb {
-    width: 2.6rem;
+  .home-shelf__mark {
+    width: 2.8rem;
   }
 }
 
@@ -7713,4 +7721,56 @@ html[data-motion="reduced"] .layered-card__effect {
   .home-shelf__arrow {
     transition: none;
   }
+}
+
+/* Collection identity: banner or mark, never a card render. */
+.collection-tile__fallback {
+  background: #0a0a0a;
+  color: #fafaf8;
+}
+
+.collection-tile__fallback::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 3px;
+  background: var(--holo);
+}
+
+.collection-tile__fallback img {
+  width: 4.5rem;
+  height: 4.5rem;
+}
+
+.collection-album__cover--mark {
+  display: grid;
+  place-items: center;
+  background: #0a0a0a;
+}
+
+.collection-album__cover--mark::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 3px;
+  background: var(--holo);
+}
+
+.collection-album__cover--mark > img {
+  width: 58%;
+  height: auto;
+  object-fit: contain;
+}
+
+.preference-world__art--mark {
+  width: 2.8rem;
+  min-width: 2.8rem;
+  height: 2.8rem;
+  background: #0a0a0a;
+}
+
+.preference-world__art--mark img {
+  width: 66%;
+  height: 66%;
+  object-fit: contain;
 }

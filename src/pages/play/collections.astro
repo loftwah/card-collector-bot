@@ -2,6 +2,7 @@
 import PlayerLayout from "../../layouts/PlayerLayout.astro";
 import { pageContext } from "../../server/page";
 import { listCollections, collectionProgress } from "../../server/modules/collections";
+import { collectionBanner, collectionMark } from "../../lib/collection-art";
 
 const ctx = await pageContext(Astro.request);
 const collections = await listCollections(ctx);
@@ -193,25 +194,26 @@ const audienceLabel = (audience: string) =>
     <div class="collection-tile-grid mt-4">
       {pageItems.map((item) => {
         const { collection, owned, total, pct, cardCount, finishStarted, finishMastered, index } = item;
-        const cover = collection.cover_url ?? collection.banner_url;
-        const mark = collection.logo_url;
+        const banner = collectionBanner(collection);
+        const mark = collectionMark(collection);
         return (
           <article class="collection-tile" data-tone={index % 4}>
-            <div class="collection-tile__art">
-              <span class="collection-tile__fallback" aria-hidden="true">
-                {mark ? <img src={mark} alt="" width="72" height="72" loading="lazy" /> : null}
-                <span>{collection.name}</span>
-              </span>
-              {cover ? (
+            <div class:list={["collection-tile__art", !banner && "collection-tile__art--mark"]}>
+              {banner ? (
                 <img
-                  src={cover}
+                  src={banner}
                   alt=""
                   loading={index < 3 ? "eager" : "lazy"}
                   fetchpriority={index === 0 ? "high" : "auto"}
-                  width="750"
-                  height="1050"
+                  width="1600"
+                  height="900"
                 />
-              ) : null}
+              ) : (
+                <span class="collection-tile__fallback" aria-hidden="true">
+                  {mark ? <img src={mark} alt="" width="512" height="512" loading="lazy" /> : null}
+                  <span>{collection.name}</span>
+                </span>
+              )}
               <span class="collection-tile__audience">{audienceLabel(collection.view_audience)}</span>
             </div>
 

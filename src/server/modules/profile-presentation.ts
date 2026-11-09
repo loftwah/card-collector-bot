@@ -220,7 +220,7 @@ function resolveBanner(
     return { key: "none", kind: "none", label: "No banner", imageUrl: null };
   }
   const collection = collectionById(options, collectionKey(selection.banner));
-  const imageUrl = collection?.bannerUrl ?? collection?.coverUrl ?? null;
+  const imageUrl = collection?.bannerUrl ?? null;
   if (!collection || !imageUrl) {
     notes.push("The chosen banner is no longer available. Using the plain surface.");
     return { key: "none", kind: "none", label: "No banner", imageUrl: null };
@@ -305,7 +305,7 @@ export function validateProfilePresentation(
   const banner = typeof input.banner === "string" ? input.banner : "none";
   if (banner !== "none") {
     const collection = collectionById(options, collectionKey(banner));
-    if (!collection || !(collection.bannerUrl ?? collection.coverUrl)) {
+    if (!collection || !collection.bannerUrl) {
       throw new ApiError(422, "profile_banner_unavailable", "That banner is not available to this account.");
     }
   }
