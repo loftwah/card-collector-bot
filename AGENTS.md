@@ -86,6 +86,25 @@ Keep production deterministic and headless/API-first. AI belongs in the operator
 - Bot Owner/Admin authority is Bot-scoped. Invitations are expiring, single-use and bound to the invitee's email. Global Collection Admin is a scoped platform role in `fb_platform_role_assignments`, limited to assigned collections; it cannot approve public showcase content, grant Super Admin, change Access, hold secrets or touch wallets. See `docs/ROLES_AND_PERMISSIONS.md`.
 - `/studio` is the normal signed-in scoped workspace, not an Access-gated or platform-root surface. `/platform-admin` requires Cloudflare Access plus the provisioned Super Admin. Sensitive mutations require recent strong authentication (`access`, `passkey` or `mfa`), not merely a cookie.
 
+## Image generation and artwork
+
+The owner has explicitly rejected the earlier flat vector avatar set, the
+procedural paper render and any "designed in code" substitute for real
+character artwork. Do not ship SVG avatars, flat geometric portraits or
+procedural stand-ins. When the task calls for character or illustration work,
+use the configured image models, inspect the actual output and iterate.
+
+- **OpenAI GPT Image 2.6 Sunburst** — prompt/layout adherence, consistent
+  character edits, expression sets and character sheets.
+- **FAL.ai Flux Pro / Seedream** — high-aesthetic hero art, banners and scenes.
+- **Cloudflare Workers AI Flux Klein** — explicit fallback only.
+
+Generate one base character, then edit that exact base for family variants so
+the character, paper, lighting and palette stay coherent. Review at 32, 64, 128
+and 256 pixels and in a circular Discord crop. Record the model and prompts in
+the relevant domain doc. See `docs/IMAGE_MODELS.md` and
+`docs/ACCOUNT_IDENTITY.md`.
+
 ## Collections, artwork and product boundaries
 
 - Foilbury is a free, non-commercial collectible-card scrapbook/library. Actual collections, characters and artwork are the content; keep the application shell restrained. No shop, parallel economy, second CMS or whole-app rewrite.

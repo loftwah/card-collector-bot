@@ -32,12 +32,23 @@ to `keeper`. The final artwork is raster PNG in
 `public/avatars/default/`; regenerate it with:
 
 ```sh
-node scripts/brand/render-avatar-art.mjs
+set -a; source .env; set +a
+node scripts/brand/generate-openai-avatars.mjs
 ```
 
-That pipeline renders tactile paper, ink bleed, foil and photographed shadows at
-512, 256, 128, 64 and 32 pixels. The mascot poses are in
-`public/brand/mascot/` and are used by empty states.
+The canonical model is OpenAI `gpt-image-2.6-sunburst`. One base mascot is
+generated, then every role and expression is an image edit against that exact
+base so the character, paper texture, lighting and palette stay coherent.
+The script writes 256, 128, 64 and 32 pixel avatar PNGs; the mascot poses are
+512 pixels. Review the actual output at 32, 64, 128 and 256 and in a circular
+crop; a clean detector is not acceptance.
+
+**Owner decision:** the flat vector avatar set and the procedural paper render
+were rejected. Do not reintroduce SVG avatars, flat geometric portraits or
+procedural stand-ins when the image models are available. OpenAI GPT Image is
+the right tool for consistent character edits and layout; FAL.ai Flux Pro /
+Seedream is the right tool for high-aesthetic hero, banner and scene art. Use
+Cloudflare Workers AI only as an explicit fallback, not as the default.
 
 ## Persistence
 

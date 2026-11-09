@@ -60,6 +60,15 @@ decorative wash. Do not tint card artwork to match the interface.
 - The brand kit uses **Foil Standard** as the canonical identity. Do not mix the
   historical marks on one surface.
 
+## Identity avatars
+
+The account avatar is separate from the collector portrait. A member chooses a
+Discord avatar (cached privately), a private uploaded photo, or one of the
+AI-assisted paper-craft Keeper avatars. The Keeper is the universal fallback;
+letter monograms and flat vector portraits are rejected. The header, profile,
+share page and Discord profile card all use the same chosen avatar. See
+`docs/ACCOUNT_IDENTITY.md`.
+
 ## Collections and cards
 
 - A collection has a mark, palette, description, source boundary and frozen

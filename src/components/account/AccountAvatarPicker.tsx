@@ -598,7 +598,15 @@ export default function AccountAvatarPicker({
                 disabled={busy}
                 aria-pressed={avatar.kind === "default" && avatar.defaultKey === option.key}
               >
-                <img src={`/avatars/default/${option.key}-256.png`} alt="" width="96" height="96" loading="lazy" />
+                <img
+                  src={`/avatars/default/${option.key}-64.png`}
+                  srcSet={`/avatars/default/${option.key}-64.png 64w, /avatars/default/${option.key}-128.png 128w`}
+                  sizes="56px"
+                  alt=""
+                  width="96"
+                  height="96"
+                  loading="lazy"
+                />
                 <span>
                   <strong>{option.label}</strong>
                   <small>{option.note}</small>
