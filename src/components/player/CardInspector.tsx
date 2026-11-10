@@ -328,7 +328,7 @@ export default function CardInspector({
           </button>
         ) : null}
       </div>
-      <p className="mt-2 font-mono text-[0.56rem] tracking-[0.1em] text-[var(--muted)] uppercase">
+      <p className="mt-2 font-mono text-[0.6875rem] tracking-[0.1em] text-[var(--muted)] uppercase">
         {reduced
           ? "Static inspection · reduced motion is on"
           : enabled

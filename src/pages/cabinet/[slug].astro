@@ -21,6 +21,7 @@ const variants = clean.editions.flatMap((edition) =>
 );
 const setName = clean.sets[0]?.name ?? null;
 ---
+
 <BaseLayout
   title={`${clean.name} · Foilbury`}
   description={clean.description}
@@ -28,28 +29,57 @@ const setName = clean.sets[0]?.name ?? null;
   shareImageWidth={variants[0]?.render_url ? 750 : 1200}
   shareImageHeight={variants[0]?.render_url ? 1050 : 630}
 >
-  <script type="application/ld+json" set:html={JSON.stringify({
-    "@context": "https://schema.org",
-    "@type": "VisualArtwork",
-    name: clean.name,
-    description: clean.bio_safe ?? clean.description,
-    creator: { "@type": "Organization", name: "Foilbury" },
-    isPartOf: clean.collections[0] ? { "@type": "CollectionPage", name: clean.collections[0].name } : undefined,
-    genre: clean.source_work ?? "Collectible card",
-    image: new URL(variants[0]?.render_url ?? "/brand/social-preview.jpg", Astro.site ?? Astro.url).href,
-    url: new URL(Astro.url.pathname, Astro.site ?? Astro.url).href,
-  })} />
-  <script type="application/ld+json" set:html={JSON.stringify({
-    "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
-    itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Foilbury", item: new URL("/", Astro.site ?? Astro.url).href },
-      { "@type": "ListItem", position: 2, name: "Public showcase", item: new URL("/cabinet", Astro.site ?? Astro.url).href },
-      { "@type": "ListItem", position: 3, name: clean.name, item: new URL(Astro.url.pathname, Astro.site ?? Astro.url).href },
-    ],
-  })} />
+  <script
+    type="application/ld+json"
+    set:html={JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "VisualArtwork",
+      name: clean.name,
+      description: clean.bio_safe ?? clean.description,
+      creator: { "@type": "Organization", name: "Foilbury" },
+      isPartOf: clean.collections[0]
+        ? { "@type": "CollectionPage", name: clean.collections[0].name }
+        : undefined,
+      genre: clean.source_work ?? "Collectible card",
+      image: new URL(
+        variants[0]?.render_url ?? "/brand/social-preview.jpg",
+        Astro.site ?? Astro.url,
+      ).href,
+      url: new URL(Astro.url.pathname, Astro.site ?? Astro.url).href,
+    })}
+  />
+  <script
+    type="application/ld+json"
+    set:html={JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        {
+          "@type": "ListItem",
+          position: 1,
+          name: "Foilbury",
+          item: new URL("/", Astro.site ?? Astro.url).href,
+        },
+        {
+          "@type": "ListItem",
+          position: 2,
+          name: "Public showcase",
+          item: new URL("/cabinet", Astro.site ?? Astro.url).href,
+        },
+        {
+          "@type": "ListItem",
+          position: 3,
+          name: clean.name,
+          item: new URL(Astro.url.pathname, Astro.site ?? Astro.url).href,
+        },
+      ],
+    })}
+  />
   <section class="container py-12 md:py-16">
-    <nav class="mb-8 font-mono text-[0.62rem] uppercase tracking-[0.12em] text-[var(--muted)]" aria-label="Breadcrumb">
+    <nav
+      class="mb-8 font-mono text-[0.6875rem] uppercase tracking-[0.12em] text-[var(--muted)]"
+      aria-label="Breadcrumb"
+    >
       <a href="/cabinet">Cabinet</a> <span aria-hidden="true">/</span> <span>{clean.name}</span>
     </nav>
     <PublicVariantViewer
@@ -59,21 +89,46 @@ const setName = clean.sets[0]?.name ?? null;
       description={clean.description}
       bio={clean.bio}
       quote={clean.quote}
-      collection={clean.collections[0] ? { name: clean.collections[0].name, logo_url: clean.collections[0].logo_url, description: clean.collections[0].name } : null}
+      collection={
+        clean.collections[0]
+          ? {
+              name: clean.collections[0].name,
+              logo_url: clean.collections[0].logo_url,
+              description: clean.collections[0].name,
+            }
+          : null
+      }
       cardBackUrl={clean.card_back_url}
       rarity={clean.rarity?.name ?? null}
       setName={setName}
       tags={clean.tags.map((tag) => tag.name)}
-      attributes={clean.attributes as Array<{ label?: string; value?: string; unit?: string | null }>}
+      attributes={
+        clean.attributes as Array<{ label?: string; value?: string; unit?: string | null }>
+      }
       sourceWork={clean.source_work}
       sourceRefs={clean.source_refs as string[]}
       reviewStatus={clean.review_status}
       variants={variants}
     />
     <div class="mt-14 grid gap-4 border-t border-[var(--line)] pt-8 md:grid-cols-3">
-      <div><p class="eyebrow">Identity</p><p class="mt-1 text-sm">{clean.class?.name ?? "Cabinet card"} · {clean.category?.name ?? "Uncategorised"}</p></div>
-      <div><p class="eyebrow">Sets</p><p class="mt-1 text-sm">{clean.sets.map((set) => set.name).join(", ") || "No published set"}</p></div>
-      <div><p class="eyebrow">Credit</p><p class="mt-1 text-sm">Source art credited by the owner. Technical provenance is retained privately.</p></div>
+      <div>
+        <p class="eyebrow">Identity</p>
+        <p class="mt-1 text-sm">
+          {clean.class?.name ?? "Cabinet card"} · {clean.category?.name ?? "Uncategorised"}
+        </p>
+      </div>
+      <div>
+        <p class="eyebrow">Sets</p>
+        <p class="mt-1 text-sm">
+          {clean.sets.map((set) => set.name).join(", ") || "No published set"}
+        </p>
+      </div>
+      <div>
+        <p class="eyebrow">Credit</p>
+        <p class="mt-1 text-sm">
+          Source art credited by the owner. Technical provenance is retained privately.
+        </p>
+      </div>
     </div>
   </section>
 </BaseLayout>

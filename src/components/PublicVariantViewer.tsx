@@ -112,7 +112,7 @@ export default function PublicVariantViewer({
                           className="mb-2 h-10 w-10 object-contain"
                         />
                       ) : null}
-                      <p className="font-mono text-[0.56rem] tracking-[0.14em] text-[#d9bf8b] uppercase">
+                      <p className="font-mono text-[0.6875rem] tracking-[0.14em] text-[#d9bf8b] uppercase">
                         {collection?.name ?? "Foilbury cabinet"}
                       </p>
                       <p className="font-display mt-1 text-2xl leading-tight">{name}</p>
@@ -129,7 +129,7 @@ export default function PublicVariantViewer({
         )}
         {inspect ? null : (
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-            <p className="font-mono text-[0.6rem] tracking-[0.12em] text-[var(--muted)] uppercase">
+            <p className="font-mono text-[0.6875rem] tracking-[0.12em] text-[var(--muted)] uppercase">
               {showBack
                 ? `Card back${printTitle ? ` · ${printTitle}` : ""}`
                 : `Published render · ${printTitle ? `${printTitle} · ` : ""}${variant?.name ?? "Awaiting render"}`}
@@ -180,7 +180,7 @@ export default function PublicVariantViewer({
           <dl className="mt-7 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-[var(--line)] pt-5 text-sm">
             {attributes.slice(0, 6).map((attribute) => (
               <div key={`${attribute.label}-${attribute.value}`}>
-                <dt className="font-mono text-[0.56rem] tracking-[0.12em] text-[var(--muted)] uppercase">
+                <dt className="font-mono text-[0.6875rem] tracking-[0.12em] text-[var(--muted)] uppercase">
                   {attribute.label}
                 </dt>
                 <dd className="mt-1">
@@ -195,17 +195,17 @@ export default function PublicVariantViewer({
         <div className="mt-5 grid gap-2 border-t border-[var(--line)] pt-4 text-sm text-[var(--muted)]">
           {sourceWork ? (
             <p>
-              <span className="font-mono text-[0.56rem] tracking-[0.12em] uppercase">Source</span> ·{" "}
-              {sourceWork}
+              <span className="font-mono text-[0.6875rem] tracking-[0.12em] uppercase">Source</span>{" "}
+              · {sourceWork}
             </p>
           ) : null}
           <p>
-            <span className="font-mono text-[0.56rem] tracking-[0.12em] uppercase">Review</span> ·{" "}
+            <span className="font-mono text-[0.6875rem] tracking-[0.12em] uppercase">Review</span> ·{" "}
             {reviewStatus ?? "unreviewed"}
           </p>
           {sourceRefs.length ? (
             <p className="break-words">
-              <span className="font-mono text-[0.56rem] tracking-[0.12em] uppercase">
+              <span className="font-mono text-[0.6875rem] tracking-[0.12em] uppercase">
                 References
               </span>{" "}
               · {sourceRefs.length} retained source {sourceRefs.length === 1 ? "link" : "links"} in
@@ -230,7 +230,7 @@ export default function PublicVariantViewer({
                     : "border-[var(--line)] text-[var(--muted)] hover:border-[var(--brass)] hover:text-[var(--ink)]",
                 )}
               >
-                <span className="block font-mono text-[0.58rem] tracking-[0.1em] uppercase">
+                <span className="block font-mono text-[0.6875rem] tracking-[0.1em] uppercase">
                   {multiplePrints && printTitleOf(item)
                     ? printTitleOf(item)
                     : item.material_key === "diamond"
@@ -241,7 +241,7 @@ export default function PublicVariantViewer({
                   {displayFinish(item.name, item.material_key, item.effect_key)}
                 </span>
                 {multiplePrints && printTitleOf(item) ? (
-                  <span className="mt-0.5 block font-mono text-[0.5rem] tracking-[0.08em] text-[var(--muted)] uppercase">
+                  <span className="mt-0.5 block font-mono text-[0.6875rem] tracking-[0.08em] text-[var(--muted)] uppercase">
                     {item.material_key === "diamond" ? "holographic" : item.material_key}
                   </span>
                 ) : null}
@@ -252,7 +252,7 @@ export default function PublicVariantViewer({
 
         <div className="notice mt-8 flex gap-3">
           <Sparkles size={18} className="mt-0.5 shrink-0 text-[var(--brass)]" aria-hidden="true" />
-          <p className="text-sm leading-relaxed">
+          <p className="max-w-[58ch] text-sm leading-relaxed">
             The illustration stays the same identity. The material and effect are separate authored
             layers with pinned recipe versions, so a later asset change cannot silently alter an
             owned card.
