@@ -11066,3 +11066,237 @@ html[data-motion="reduced"] .layered-card__effect {
 .collection-tile__art::after {
   background: none;
 }
+
+/* Dense brand browsing: icons are icons, not hero banners. */
+.brand-grid--icons {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.brand-grid--icons .brand-tile__view {
+  background: var(--paper-2);
+}
+
+.brand-grid--icons .brand-tile__view img {
+  aspect-ratio: 1;
+  max-height: none;
+  padding: 0.8rem;
+  object-fit: contain;
+}
+
+.brand-grid--icons .brand-tile__body {
+  gap: 0.08rem;
+}
+
+.brand-grid--icons .brand-tile__meta {
+  -webkit-line-clamp: 1;
+}
+
+.brand-grid--mascots {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.brand-grid--mascots .brand-tile__view img {
+  aspect-ratio: 1;
+  max-height: none;
+  object-fit: cover;
+}
+
+.brand-grid--wide {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.brand-grid--wide .brand-tile__view img {
+  aspect-ratio: 16 / 9;
+  max-height: none;
+  object-fit: cover;
+}
+
+@media (min-width: 768px) {
+  .brand-grid--icons {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .brand-grid--mascots {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .brand-grid--wide {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .brand-grid--icons {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+}
+
+/* All art: one dense shelf for cards, icons, mascots, styles and brand files. */
+.all-art-bar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.all-art-bar h2 {
+  font-size: 1.45rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.all-art-bar p {
+  margin-top: 0.15rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.52rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.all-art-filters {
+  display: flex;
+  gap: 0.25rem;
+  overflow-x: auto;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--line);
+  scrollbar-width: thin;
+}
+
+.all-art-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  align-items: start;
+}
+
+.all-art-grid--icons {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.all-art-grid--mascots,
+.all-art-grid--styles {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.all-art-grid--wide {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.all-art-tile {
+  display: grid;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: zoom-in;
+}
+
+.all-art-tile__object {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--paper-2);
+}
+
+.all-art-tile__object img {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+.all-art-grid--icons .all-art-tile__object img {
+  aspect-ratio: 1;
+  padding: 0.45rem;
+}
+
+.all-art-grid--mascots .all-art-tile__object img,
+.all-art-grid--styles .all-art-tile__object img {
+  aspect-ratio: 1;
+  object-fit: cover;
+}
+
+.all-art-grid--wide .all-art-tile__object img {
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
+.all-art-tile__kind {
+  position: absolute;
+  top: 0.3rem;
+  left: 0.3rem;
+  padding: 0.1rem 0.25rem;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.44rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.all-art-tile__name {
+  padding-top: 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.all-art-tile__meta {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.48rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.all-art-tile:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 3px;
+}
+
+@media (min-width: 768px) {
+  .all-art-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .all-art-grid--icons {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .all-art-grid--mascots {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .all-art-grid--styles {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .all-art-grid--wide {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .all-art-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .all-art-grid--icons {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+}

@@ -1,0 +1,10 @@
+---
+import StudioLayout from "../../layouts/StudioLayout.astro";
+import AllArt from "../../components/art/AllArt";
+import { BRAND_ASSETS } from "../../lib/brand-catalogue";
+import { CARD_STYLES } from "../../lib/card-styles";
+---
+
+<StudioLayout compact>
+  <AllArt client:load assets={BRAND_ASSETS} styles={CARD_STYLES} />
+</StudioLayout>

@@ -302,7 +302,8 @@ shelf:
   `createRenderAsset` to the live `fb_variant_renders` row.
 - The Art Lab index and candidate wall show the style on each pin and filter
   by style, including an `Unstyled` state for candidates generated before the
-  catalogue existed. The brief header names the selected styles, finish,
+  catalogue existed. The New brief picker shows all twelve directions as
+  thumbnails; the rail scrolls horizontally. The brief header names the selected styles, finish,
   model, status and spend without a paragraph.
 - Member card queries read `vr.style_key`, so the card detail and shared viewer
   name the style. Ownership and serials do not change.
@@ -313,7 +314,8 @@ shelf:
 
 - `/studio/art` candidate pins and the review wall;
 - `/studio/prints` print proposals and printed editions;
-- `/platform-admin/art` brand files and card-style previews;
+- `/platform-admin/art` brand files, icons, mascots and card-style previews;
+- `/studio/all-art`, the dense all-art shelf;
 - `/play/cabinet`, `/play/collection`, `/play/collections` and the card binder;
 - `/play/card/[id]` through the inspector's Expand action and variant previews;
 - the catalogue saved-render reference, the catalogue table thumbnails and the
@@ -325,6 +327,23 @@ action, front/back tabs, arrow-key paging, Enter/Space activation, Escape close,
 a focus trap, visible focus and a reduced-motion fallback. On phones it is a
 full-screen sheet; on desktop a centred viewer with a facts rail. It never
 recomposes private source layers.
+
+## All art
+
+`/studio/all-art` is the single visual shelf for every art asset the operator
+can inspect: Art Lab card candidates, published card renders where they are
+already in the Art Lab, the seven distinct icon directions, four Keeper mascot
+concepts, twelve card-style studies, wordmarks, OG, banners, shareables and
+other brand files. It is a dense 2/3/4/8-column grid with one title line and
+one metadata line; icons use a small 8-column shelf rather than a hero tile.
+The same shared viewer opens every item, with arrow-key paging inside the
+current filter.
+
+The platform Art Lab now exposes **Mascots** as a real category alongside
+Icons, Logo, OG images, Shareables, Banners and Other art. The six new icon
+directions (folded F, Keeper owl, card fan, archive drawer, foil seal, signal
+aperture) are selectable as the site icon; the four Keeper concepts are
+Wedding, Fairy, Gothic and Neon.
 
 ## Brand asset catalogue and selection
 

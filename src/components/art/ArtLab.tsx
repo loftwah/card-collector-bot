@@ -16,7 +16,8 @@ import { CARD_STYLES, CARD_STYLE_LABEL } from "@/lib/card-styles";
 import { BRAND_ASSETS, type BrandKind } from "@/lib/brand-catalogue";
 
 type Surface = "studio" | "platform";
-type ArtCategory = "cards" | "icons" | "logo" | "og_images" | "shareables" | "banners" | "other";
+type ArtCategory =
+  "cards" | "icons" | "mascots" | "logo" | "og_images" | "shareables" | "banners" | "other";
 type ArtMethod = "whole_card" | "composed_scene" | "composed_texture" | "raw_art";
 type FeedbackTag =
   | "too-busy"
@@ -309,6 +310,7 @@ interface OptionsData {
 
 const BRAND_KIND_BY_CATEGORY: Partial<Record<ArtCategory, BrandKind>> = {
   icons: "icons",
+  mascots: "mascots",
   logo: "logos",
   og_images: "og_images",
   banners: "banners",
@@ -319,6 +321,7 @@ const BRAND_KIND_BY_CATEGORY: Partial<Record<ArtCategory, BrandKind>> = {
 const CATEGORY_LABELS: Record<ArtCategory, string> = {
   cards: "Cards",
   icons: "Icons",
+  mascots: "Mascots",
   logo: "Logo",
   og_images: "OG images",
   shareables: "Shareables",
@@ -969,6 +972,9 @@ export default function ArtLab({ surface }: { surface: Surface }) {
           </p>
         </div>
         <div className="artlab-bar__actions">
+          <a className="btn btn-secondary btn-sm" href="/studio/all-art">
+            All art
+          </a>
           {canWrite ? (
             <Button size="sm" onClick={() => setShowNew((open) => !open)}>
               {showNew ? "Close" : "New brief"}

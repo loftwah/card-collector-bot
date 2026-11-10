@@ -37,7 +37,10 @@ const groups = [
         ? [{ href: "/studio/prints", label: "Print studio" }]
         : []),
       ...(isBotAdmin || isGlobalCollectionAdmin || isPlatform
-        ? [{ href: "/studio/art", label: "Art Lab" }]
+        ? [
+            { href: "/studio/art", label: "Art Lab" },
+            { href: "/studio/all-art", label: "All art" },
+          ]
         : []),
       { href: "/brand-kit", label: "Brand kit" },
       ...(isBotAdmin ? [{ href: "/admin/editorial", label: "EmDash editorial" }] : []),

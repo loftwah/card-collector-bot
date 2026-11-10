@@ -103,10 +103,11 @@ share page and Discord profile card all use the same chosen avatar. See
   masonry or contact sheet, one title line and one metadata line, with status,
   method and style as small overlays. Creation, intent, job history and long
   provenance are progressive disclosure.
-- Six named art directions are the shared vocabulary: Atelier, Cinematic,
-  Editorial, Archive, Manga, Minimal. These are directions; Plain, Silver,
-  Gold and Holographic remain finishes. A candidate, its brief, its approval
-  and the published render all carry the same style key.
+- Named art directions are the shared vocabulary: Atelier, Cinematic,
+  Editorial, Archive, Manga, Minimal, Wedding, Fairy, Gothic, Neon, Broadcast
+  and Street. These are directions; Plain, Silver, Gold and Holographic remain
+  finishes. A candidate, its brief, its approval and the published render all
+  carry the same style key.
 - Tool headings use Geist Sans. Display type stays for editorial and hero
   moments, not panel titles, filters or data.
 - The viewer is a mobile full-screen sheet and a desktop centred viewer. Focus

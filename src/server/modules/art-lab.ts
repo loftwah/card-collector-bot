@@ -48,6 +48,7 @@ import {
 export const ART_CATEGORIES = [
   "cards",
   "icons",
+  "mascots",
   "logo",
   "og_images",
   "shareables",
@@ -58,6 +59,7 @@ export type ArtCategory = (typeof ART_CATEGORIES)[number];
 
 export const BRAND_CATEGORIES: ArtCategory[] = [
   "icons",
+  "mascots",
   "logo",
   "og_images",
   "shareables",
@@ -68,6 +70,7 @@ export const BRAND_CATEGORIES: ArtCategory[] = [
 export const ART_CATEGORY_LABELS: Record<ArtCategory, string> = {
   cards: "Cards",
   icons: "Icons",
+  mascots: "Mascots",
   logo: "Logo",
   og_images: "OG images",
   shareables: "Shareables",

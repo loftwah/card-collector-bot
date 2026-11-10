@@ -125,6 +125,15 @@ export default function BrandShelf({
   }
   if (!group) return null;
 
+  const mainGridClass = [
+    "brand-grid",
+    kind === "icons" ? "brand-grid--icons" : "",
+    kind === "mascots" ? "brand-grid--mascots" : "",
+    kind === "og_images" || kind === "banners" || kind === "shareables" ? "brand-grid--wide" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <section className="brand-shelf" aria-label={`${group.label} brand art`}>
       <div className="brand-shelf__head">
@@ -137,7 +146,7 @@ export default function BrandShelf({
           No {group.label.toLowerCase()} file is published yet. Generate one with a brief.
         </p>
       ) : (
-        <div className="brand-grid">
+        <div className={mainGridClass}>
           {group.assets.map((asset, index) => {
             const selected = selectionMatches(asset, data!.selections);
             const wide = (asset.width ?? 1) > (asset.height ?? 1) * 1.25;
