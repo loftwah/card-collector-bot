@@ -29,24 +29,27 @@ public-route entry point.
 
 ## Methods
 
-| Method             | What the provider generates      | How the candidate is shown                                             |
-| ------------------ | -------------------------------- | ---------------------------------------------------------------------- |
-| `whole_card`       | The complete 5:7 card            | The generated card, scaled to 750×1050 and reviewed at 750/400/214/128 |
-| `composed_scene`   | Scene or key art only            | Composed card front and back through `art/card-render.mjs`             |
-| `composed_texture` | Background or texture plate only | Composed card front and back through `art/card-render.mjs`             |
-| `raw_art`          | A standalone brand asset         | Raw asset; type, layout and marks stay in code                         |
+| Method             | What the provider generates                                | How the candidate is shown                                             |
+| ------------------ | ---------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `whole_card`       | The complete 5:7 card from the real-source reference sheet | The generated card, scaled to 750×1050 and reviewed at 750/400/214/128 |
+| `composed_scene`   | Scene or key art only                                      | Comparison: composed card front/back through `art/card-render.mjs`     |
+| `composed_texture` | Background or texture plate only                           | Comparison: composed card front/back through `art/card-render.mjs`     |
+| `raw_art`          | A standalone brand asset                                   | Raw asset; type, layout and marks stay in code                         |
 
-`whole_card` is selected by default for Cards. It is the direct answer to the
-owner's hypothesis that the JS renderer is the bottleneck. A whole-card
-candidate is labelled **Whole-card AI · generated card**; a composed candidate
-is labelled **Composed card · not an AI image**. The review board never hides
-which method produced the object.
+`whole_card` is the production method and the default for Cards. GPT Image 2.6
+Sunburst is the default model; FAL `fal-ai/bytedance/seedream/v4/edit` is the
+reference-guided FAL alternative. FLUX Pro 1.1 Ultra and Seedream v4 Text are
+available for scene/comparison methods. The runner prepares a **reference sheet** from the
+real subject art, the supplied collection mark, the current live card and the
+exact copy (name, role, collection, rarity, finish, print code and provenance).
+OpenAI receives it through `/v1/images/edits`; FAL receives it through its image
+reference field.
 
-The lab prompts whole-card generation to use only the supplied card and
-collection names and to avoid invented official logos, fake serials, fake
-signatures, watermarks, shop language and casino language. That is a prompt
-constraint, not a guarantee: the owner must inspect lettering and marks at 400
-and 214 px before approving.
+A whole-card candidate is labelled **Whole-card AI · reference-guided**; a
+composed candidate is labelled **Composed card · not an AI image**. The review
+board never hides which method produced the object. A card with gibberish,
+invented text or missing card structure is a failed card, not a stylistic
+variant.
 
 ## Data
 
@@ -180,13 +183,40 @@ A bounded real comparison was run on the local Art Lab, not production:
   so the aesthetic is not the v2 proof language.
 - Conclusion: whole-card AI is now testable, but FLUX did not honour the card
   contract. The JS renderer is not the only problem; the model did not produce a
-  card. GPT Image 2.6 is the better next test for layout/text adherence, but the
-  configured `OPENAI_API_KEY` returned `401 invalid_api_key`. The job failed
-  with that exact reason, recorded US$0.05 and made no fallback call.
+  card. GPT Image 2.6 is the default next test for layout/text adherence. The
+  first OpenAI attempt used a stale `OPENAI_API_KEY` inherited from the
+  developer shell and failed `401 invalid_api_key`; the project `.env` key
+  returns 200 and the runner now prefers `.env` over the shell. The failed job
+  recorded US$0.05 and made no fallback call.
 
 The Art Lab is deliberately built to keep both methods side by side. The owner
 can now judge a model's whole-card output against the composed object instead of
 arguing from one chat image.
+
+## Reference-guided GPT Image 2.6 result (2026-11-10, local)
+
+A second bounded real run used the production direction:
+
+- Brief: `Aki · reference-guided whole card`; OpenAI
+  `gpt-image-2.6-sunburst`; two `whole_card` candidates; **US$0.10** recorded.
+- The runner prepared a 5:7 reference sheet from the real Aki subject art, the
+  supplied `CS` collection mark, the current live card and the exact copy
+  (name, role, collection, rarity, finish, print code and provenance).
+- Both candidates returned as **finished 5:7 card objects** with exact copy and
+  no gibberish. Candidate 2 was checked at 214×300: `Aki Hayakawa`, `RARE`,
+  `PLAIN`, the collection and the print code remain readable.
+- This is the method now selected by default. The remaining judgement is
+  aesthetic, not structural: the owner still decides whether the result clears
+  the card bar, and no production publish has been made.
+- Operational fix: the first OpenAI failure came from a stale
+  `OPENAI_API_KEY` inherited from the developer shell. The project `.env` key
+  returns 200; the runner now parses `.env` explicitly and prefers it over the
+  shell.
+
+A FAL Seedream Edit run also completed two reference-guided cards for US$0.06.
+Candidate 1 kept the exact copy and a clean card structure; candidate 2 had
+duplicated/malformed small type. This is why the review board requires a
+candidate-level decision and why GPT Image 2.6 is the default.
 
 ## Production verification (2026-11-10)
 

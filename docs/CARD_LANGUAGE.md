@@ -1,5 +1,11 @@
 # Collection card language
 
+> **Current owner direction (2026-11-10):** whole-card AI with GPT Image 2.6
+> Sunburst or a top-tier FAL model is the primary card production method. The
+> v2 renderer and the language below are retained for reference sheets,
+> publishing metadata and comparison. They are not the mandatory final card
+> composition. See `AGENTS.md` and `docs/ART_LAB.md`.
+
 Status: **card language v2 is production-verified on three proof collections**
 (2026-11-10). The Slice 3 rollout below is historical: its frames, flat
 material tints and dark-blur backgrounds are superseded. The remaining

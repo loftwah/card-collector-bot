@@ -3,27 +3,30 @@
  * Foilbury Art Lab runner.
  *
  * The browser queues a bounded job. This local worker claims one job at a time,
- * calls exactly the recorded provider/model, uploads the real bytes and records
- * what it observed. It never falls back to another provider and never tops up a
- * budget.
+ * prepares the real-source information sheet, calls exactly the recorded
+ * provider/model, uploads the real bytes and records what it observed. It never
+ * falls back to another provider and never tops up a budget.
  *
- *   node scripts/art-lab-runner.mjs
- *   node scripts/art-lab-runner.mjs --job=artj_... --dry-run
- *   node scripts/art-lab-runner.mjs --limit=2
- *
- * Whole-card generation is a real method: the returned card is resized to the
- * 5:7 contract and uploaded as the candidate front. The composed methods invoke
- * the shared art/card-render.mjs renderer for comparison.
+ * Whole-card AI is the production card method. The reference sheet is prepared
+ * from the real subject art, the supplied collection mark, the current live card
+ * and the exact copy. GPT Image 2.6 Sunburst and the top FAL models receive that
+ * sheet as an image reference. The shared renderer is retained only as a
+ * comparison method.
  */
-import "dotenv/config";
+import dotenv from "dotenv";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import sharp from "sharp";
+import { Resvg } from "@resvg/resvg-js";
 import { hasLivery } from "../art/card-render.mjs";
 import { composeCard, composeCardBack } from "../art/compose.mjs";
 import { accessHeaders, agentToken, apiForm, apiJson, BASE_URL, ensureServer } from "./lib/api.mjs";
 
+// A developer shell can contain a stale key. The project's `.env` is the
+// authoritative local provider configuration for this operator script, so parse
+// it explicitly and prefer it over inherited process env.
+const projectEnv = dotenv.config({ processEnv: {} }).parsed ?? {};
 const args = new Set(process.argv.slice(2));
 const dryRun = args.has("--dry-run");
 const limitArg = process.argv.find((arg) => arg.startsWith("--limit="));
@@ -33,12 +36,39 @@ const requestedJob = jobArg?.split("=")[1]?.trim() || undefined;
 const presentations = JSON.parse(
   fs.readFileSync(path.join(process.cwd(), "src/data/collection-presentations.json"), "utf8"),
 );
+const livery = JSON.parse(
+  fs.readFileSync(path.join(process.cwd(), "src/data/collection-livery.json"), "utf8"),
+);
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "foilbury-art-lab-"));
+const fontFiles = [
+  "art/fonts/card/Fraunces-SemiBold.ttf",
+  "art/fonts/card/Fraunces-Bold.ttf",
+  "art/fonts/card/Manrope-Regular.ttf",
+  "art/fonts/card/Manrope-SemiBold.ttf",
+  "art/fonts/card/Manrope-Bold.ttf",
+  "art/fonts/IBMPlexMono-Regular.ttf",
+  "art/fonts/IBMPlexMono-SemiBold.ttf",
+].map((file) => path.join(process.cwd(), file));
 let generated = 0;
 let failed = 0;
 
 function log(message) {
   console.log(message);
+}
+
+function providerKey(provider) {
+  const envKey =
+    provider === "fal"
+      ? projectEnv.FAL_AI_API_KEY?.trim()
+      : provider === "openai"
+        ? projectEnv.OPENAI_API_KEY?.trim()
+        : "";
+  if (envKey) return envKey;
+  return provider === "fal"
+    ? (process.env.FAL_AI_API_KEY?.trim() ?? "")
+    : provider === "openai"
+      ? (process.env.OPENAI_API_KEY?.trim() ?? "")
+      : "";
 }
 
 async function binaryGet(route) {
@@ -59,17 +89,183 @@ function aspectFor(run) {
   if (run.brief.category !== "cards") {
     return ["banners", "og_images"].includes(run.brief.category) ? "16:9" : "1:1";
   }
-  // FAL accepts 3:4; the result is normalised to the 5:7 card contract locally.
   return "3:4";
 }
 
-function providerKey(provider) {
-  if (provider === "fal") return process.env.FAL_AI_API_KEY?.trim() ?? "";
-  if (provider === "openai") return process.env.OPENAI_API_KEY?.trim() ?? "";
-  return "";
+function finishLabel(variant) {
+  const material = variant?.material_key ?? "plain";
+  if (
+    material === "diamond" ||
+    material === "holographic" ||
+    variant?.effect_key === "holographic"
+  ) {
+    return "HOLOGRAPHIC";
+  }
+  return material.toUpperCase();
 }
 
-async function callProvider(run, index) {
+function cardCopy(run) {
+  const provenance =
+    run.brief.audience === "public"
+      ? "PUBLIC SHOWCASE · ORIGINAL FOILBURY PROJECT"
+      : "MEMBER ARCHIVE · THIRD-PARTY ART · NOT OFFICIAL";
+  return {
+    name: run.card?.name ?? run.brief.title,
+    role: run.card?.subtitle ?? run.card?.class?.name ?? "Member subject",
+    collection: run.collection?.name ?? "Foilbury",
+    rarity: (run.card?.rarity?.name ?? "RARE").toUpperCase(),
+    finish: finishLabel(run.variant),
+    code: run.catalogue_code ?? "FB-ART-001",
+    provenance,
+  };
+}
+
+function escapeXml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function wrap(value, max) {
+  const words = String(value).split(/\s+/);
+  const lines = [];
+  let line = "";
+  for (const word of words) {
+    if (!word) continue;
+    if (!line) {
+      line = word;
+    } else if (`${line} ${word}`.length <= max) {
+      line += ` ${word}`;
+    } else {
+      lines.push(line);
+      line = word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+function dataUri(buffer, mime = "image/png") {
+  return `data:${mime};base64,${buffer.toString("base64")}`;
+}
+
+async function buildReferenceSheet(run) {
+  if (run.brief.category !== "cards") return null;
+  if (!run.card || !run.collection) {
+    throw new Error("The card brief is missing its subject or collection.");
+  }
+  const subjectAssetId = run.source_assets?.subject_asset_id;
+  if (!subjectAssetId) {
+    throw new Error("The target edition has no real subject art for the reference sheet.");
+  }
+  const subject = await binaryGet(`/api/v1/admin/assets/${subjectAssetId}/bytes`);
+  const mark = run.source_assets?.logo_asset_id
+    ? await binaryGet(`/api/v1/admin/assets/${run.source_assets.logo_asset_id}/bytes`)
+    : null;
+  const current = run.current_render_url
+    ? await binaryGet(run.current_render_url).catch(() => null)
+    : null;
+  const subjectPng = await sharp(subject.bytes)
+    .resize(600, 900, {
+      fit: "contain",
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    })
+    .png()
+    .toBuffer();
+  const markPng = mark
+    ? await sharp(mark.bytes)
+        .resize(250, 130, {
+          fit: "contain",
+          background: { r: 0, g: 0, b: 0, alpha: 0 },
+        })
+        .png()
+        .toBuffer()
+    : null;
+  const currentPng = current
+    ? await sharp(current.bytes).resize(250, 350, { fit: "contain" }).png().toBuffer()
+    : null;
+  const copy = cardCopy(run);
+  const accent = run.collection?.accent ?? livery[run.collection?.slug]?.accent ?? "#1f5eff";
+  const paper = "#fafaf8";
+  const ink = "#0a0a0a";
+  const graphite = "#5b5b57";
+  const rule = "#e4e4df";
+  const foil = "#1f5eff";
+  const nameLines = wrap(copy.name, 18).slice(0, 2);
+  const roleLines = wrap(copy.role, 30).slice(0, 3);
+  const collectionLines = wrap(copy.collection, 32).slice(0, 3);
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1960" viewBox="0 0 1400 1960">
+  <rect width="1400" height="1960" fill="${paper}"/>
+  <rect x="0" y="0" width="1400" height="14" fill="${ink}"/>
+  <text x="60" y="62" font-family="IBM Plex Mono" font-size="22" letter-spacing="4" fill="${ink}">FOILBURY · CARD REFERENCE</text>
+  <text x="60" y="92" font-family="IBM Plex Mono" font-size="16" letter-spacing="1.5" fill="${graphite}">NOT THE FINAL CARD · USE FOR IDENTITY, MARK AND EXACT COPY</text>
+  <line x1="60" y1="116" x2="1340" y2="116" stroke="${rule}" stroke-width="1"/>
+
+  <rect x="60" y="150" width="650" height="1000" fill="#111111"/>
+  <rect x="60" y="150" width="650" height="1000" fill="none" stroke="${accent}" stroke-width="3"/>
+  <image x="85" y="175" width="600" height="900" href="${dataUri(subjectPng)}" preserveAspectRatio="xMidYMid meet"/>
+  <text x="82" y="1140" font-family="IBM Plex Mono" font-size="15" letter-spacing="2" fill="${graphite}">REAL SUBJECT ART · KEEP FACE, HAIR, OUTFIT AND PROPS</text>
+
+  <rect x="750" y="150" width="590" height="1000" fill="#ffffff" stroke="${rule}" stroke-width="1"/>
+  <text x="780" y="188" font-family="IBM Plex Mono" font-size="16" letter-spacing="2" fill="${graphite}">SUPPLIED COLLECTION MARK</text>
+  ${markPng ? `<image x="1040" y="165" width="270" height="140" href="${dataUri(markPng)}" preserveAspectRatio="xMidYMid meet"/>` : `<text x="1040" y="230" font-family="IBM Plex Mono" font-size="16" fill="${graphite}">no mark supplied</text>`}
+  <line x1="780" y1="318" x2="1310" y2="318" stroke="${rule}" stroke-width="1"/>
+
+  <text x="780" y="360" font-family="IBM Plex Mono" font-size="15" letter-spacing="2" fill="${graphite}">NAME</text>
+  ${nameLines.map((line, index) => `<text x="780" y="${414 + index * 68}" font-family="Fraunces" font-weight="600" font-size="62" fill="${ink}">${escapeXml(line)}</text>`).join("")}
+  <text x="780" y="530" font-family="IBM Plex Mono" font-size="15" letter-spacing="2" fill="${graphite}">ROLE</text>
+  ${roleLines.map((line, index) => `<text x="780" y="${566 + index * 32}" font-family="Manrope" font-size="28" fill="${ink}">${escapeXml(line)}</text>`).join("")}
+  <text x="780" y="690" font-family="IBM Plex Mono" font-size="15" letter-spacing="2" fill="${graphite}">COLLECTION</text>
+  ${collectionLines.map((line, index) => `<text x="780" y="${726 + index * 28}" font-family="Manrope" font-size="24" fill="${ink}">${escapeXml(line)}</text>`).join("")}
+  <text x="780" y="838" font-family="IBM Plex Mono" font-size="15" letter-spacing="2" fill="${graphite}">RARITY / FINISH</text>
+  <text x="780" y="878" font-family="Manrope" font-weight="600" font-size="28" fill="${ink}">${escapeXml(`${copy.rarity} · ${copy.finish}`)}</text>
+  <text x="780" y="936" font-family="IBM Plex Mono" font-size="15" letter-spacing="2" fill="${graphite}">PRINT CODE</text>
+  <text x="780" y="974" font-family="IBM Plex Mono" font-size="22" fill="${ink}">${escapeXml(copy.code)}</text>
+  <text x="780" y="1030" font-family="IBM Plex Mono" font-size="15" letter-spacing="2" fill="${graphite}">PROVENANCE</text>
+  <text x="780" y="1064" font-family="IBM Plex Mono" font-size="16" fill="${ink}">${escapeXml(copy.provenance)}</text>
+  <text x="780" y="1110" font-family="Manrope" font-weight="600" font-size="18" fill="${foil}">USE EXACTLY THESE WORDS. NO OTHER TEXT.</text>
+
+  ${
+    currentPng
+      ? `<text x="750" y="1200" font-family="IBM Plex Mono" font-size="15" letter-spacing="2" fill="${graphite}">CURRENT LIVE CARD · LAYOUT REFERENCE</text>
+  <image x="750" y="1218" width="250" height="350" href="${dataUri(currentPng)}" preserveAspectRatio="xMidYMid meet"/>`
+      : ""
+  }
+  <text x="1040" y="1218" font-family="IBM Plex Mono" font-size="15" letter-spacing="2" fill="${graphite}">PALETTE</text>
+  <rect x="1040" y="1240" width="90" height="90" fill="${paper}" stroke="${rule}"/>
+  <rect x="1140" y="1240" width="90" height="90" fill="${ink}"/>
+  <rect x="1240" y="1240" width="90" height="90" fill="${foil}"/>
+  <rect x="1040" y="1340" width="90" height="90" fill="${accent}"/>
+  <text x="1040" y="1468" font-family="IBM Plex Mono" font-size="14" fill="${graphite}">PAPER · INK · FOIL BLUE · COLLECTION</text>
+
+  <rect x="60" y="1700" width="1280" height="200" fill="${ink}"/>
+  <text x="90" y="1745" font-family="IBM Plex Mono" font-size="18" letter-spacing="3" fill="${paper}">THE FINISHED OBJECT</text>
+  <text x="90" y="1795" font-family="Manrope" font-size="30" fill="${paper}">One 5:7 collectible card. Designed frame. Reserved information band.</text>
+  <text x="90" y="1840" font-family="Manrope" font-size="24" fill="${paper}">Name, rarity and print code readable at 214 × 300. Real subject. Supplied mark. Exact copy.</text>
+  <text x="90" y="1878" font-family="IBM Plex Mono" font-size="15" letter-spacing="2" fill="${foil}">NO POSTER · NO MOOD BOARD · NO GIBBERISH · NO INVENTED LOGOS</text>
+  </svg>`;
+
+  const resvg = new Resvg(svg, {
+    fitTo: { mode: "width", value: 1400 },
+    font: {
+      fontFiles,
+      loadSystemFonts: false,
+      defaultFontFamily: "Manrope",
+    },
+  });
+  const png = resvg.render().asPng();
+  const jpeg = await sharp(png)
+    .resize(1024, 1434, { fit: "fill" })
+    .jpeg({ quality: 92 })
+    .toBuffer();
+  return { jpeg, png, copy };
+}
+
+async function callProvider(run, index, prompt, reference) {
   const { provider, model } = run.job;
   const key = providerKey(provider);
   if (!key) {
@@ -78,25 +274,83 @@ async function callProvider(run, index) {
     );
   }
   const seed = Math.floor(Date.now() / 1000) + index;
+  if (provider === "openai") {
+    if (reference) {
+      const form = new FormData();
+      form.append("model", model);
+      form.append("prompt", prompt);
+      form.append("n", "1");
+      form.append("size", "1024x1536");
+      form.append(
+        "image",
+        new Blob([reference], { type: "image/jpeg" }),
+        "foilbury-card-reference.jpg",
+      );
+      const response = await fetch("https://api.openai.com/v1/images/edits", {
+        method: "POST",
+        headers: { authorization: `Bearer ${key}` },
+        body: form,
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`OpenAI ${model} edit failed (${response.status}): ${text.slice(0, 700)}`);
+      }
+      return parseOpenAIImage(await response.json(), seed, model);
+    }
+    const response = await fetch("https://api.openai.com/v1/images/generations", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${key}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        prompt,
+        n: 1,
+        size: "1024x1536",
+        output_format: "png",
+      }),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`OpenAI ${model} failed (${response.status}): ${text.slice(0, 700)}`);
+    }
+    return parseOpenAIImage(await response.json(), seed, model);
+  }
   if (provider === "fal") {
+    const isSeedream = model.includes("seedream");
+    const body = {
+      prompt,
+      num_images: 1,
+      seed,
+      ...(isSeedream
+        ? { image_size: "portrait_4_3" }
+        : {
+            aspect_ratio: aspectFor(run),
+            output_format: "png",
+            enable_safety_checker: true,
+          }),
+    };
+    if (reference && run.price?.supports_reference) {
+      const uri = dataUri(reference, "image/jpeg");
+      if (run.price.reference_param === "image_urls") {
+        body.image_urls = [uri];
+      } else {
+        body.image_url = uri;
+        body.image_prompt_strength = 0.65;
+      }
+    }
     const response = await fetch(`https://fal.run/${model}`, {
       method: "POST",
       headers: {
         authorization: `Key ${key}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify({
-        prompt: run.job.prompt,
-        num_images: 1,
-        seed,
-        output_format: "png",
-        enable_safety_checker: true,
-        aspect_ratio: aspectFor(run),
-      }),
+      body: JSON.stringify(body),
     });
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(`FAL ${model} failed (${response.status}): ${text.slice(0, 500)}`);
+      throw new Error(`FAL ${model} failed (${response.status}): ${text.slice(0, 700)}`);
     }
     const payload = await response.json();
     const url = payload?.images?.[0]?.url ?? payload?.image?.url;
@@ -110,37 +364,21 @@ async function callProvider(run, index) {
       model,
     };
   }
-  if (provider === "openai") {
-    const response = await fetch("https://api.openai.com/v1/images/generations", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${key}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        prompt: run.job.prompt,
-        n: 1,
-        size: "1024x1536",
-        output_format: "png",
-      }),
-    });
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`OpenAI ${model} failed (${response.status}): ${text.slice(0, 500)}`);
-    }
-    const payload = await response.json();
-    const entry = payload?.data?.[0];
-    if (entry?.b64_json) {
-      return {
-        bytes: Buffer.from(entry.b64_json, "base64"),
-        seed: String(seed),
-        provider: "openai",
-        model,
-      };
-    }
-    if (entry?.url) {
-      const image = await fetch(entry.url);
+  throw new Error(`No runner adapter exists for provider "${provider}".`);
+}
+
+function parseOpenAIImage(payload, seed, model) {
+  const entry = payload?.data?.[0];
+  if (entry?.b64_json) {
+    return {
+      bytes: Buffer.from(entry.b64_json, "base64"),
+      seed: String(seed),
+      provider: "openai",
+      model,
+    };
+  }
+  if (entry?.url) {
+    return fetch(entry.url).then(async (image) => {
       if (!image.ok) throw new Error(`OpenAI output download failed (${image.status}).`);
       return {
         bytes: Buffer.from(await image.arrayBuffer()),
@@ -148,10 +386,9 @@ async function callProvider(run, index) {
         provider: "openai",
         model,
       };
-    }
-    throw new Error(`OpenAI ${model} returned no image data.`);
+    });
   }
-  throw new Error(`No runner adapter exists for provider "${provider}".`);
+  throw new Error(`OpenAI ${model} returned no image data.`);
 }
 
 async function cardSizes(raw) {
@@ -234,9 +471,6 @@ async function compose(run, rawScene) {
     returnBytes: true,
   };
   const front = await composeCard(cardInput);
-  // The v2 livery renderer has a designed back for its four proof collections.
-  // Legacy collections keep their existing live back; the Art Lab publishes the
-  // approved front and leaves that back in place rather than inventing one.
   const back = hasLivery(run.collection.slug) ? await composeCardBack(cardInput) : null;
   return {
     front: front.buffer ?? front,
@@ -247,7 +481,7 @@ async function compose(run, rawScene) {
 
 async function uploadCandidate(run, raw, extra, index) {
   const form = new FormData();
-  form.append("raw", new Blob([raw], { type: "image/png" }), `raw-${index + 1}.png`);
+  form.append("raw", new Blob([raw]), `raw-${index + 1}`);
   if (extra?.front) {
     form.append(
       "front",
@@ -279,6 +513,14 @@ async function uploadCandidate(run, raw, extra, index) {
       `thumb-${index + 1}.webp`,
     );
   }
+  if (extra?.reference) {
+    form.append(
+      "reference",
+      new Blob([extra.reference], { type: "image/jpeg" }),
+      `reference-${index + 1}.jpg`,
+    );
+  }
+  if (extra?.prompt) form.append("prompt", extra.prompt);
   form.append("seed", String(extra?.seed ?? ""));
   return apiForm(`/api/v1/admin/art/jobs/${run.job.id}/candidates`, form);
 }
@@ -287,6 +529,24 @@ async function processJob(run, counters) {
   log(
     `Claimed ${run.job.id}: ${run.brief.title} · ${run.job.method} · ${run.job.count} candidate(s)`,
   );
+  let reference = null;
+  let prompt = run.job.prompt;
+  try {
+    if (run.job.method === "whole_card" && run.brief.category === "cards") {
+      const sheet = await buildReferenceSheet(run);
+      reference = sheet.jpeg;
+      prompt = `${prompt}\n\nThe attached reference sheet contains the real subject art, the supplied collection mark, the current live card and the exact copy. Use it as source material. Create a new finished card; do not reproduce the reference-board layout.`;
+      log("  prepared real-source reference sheet");
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await apiJson(`/api/v1/admin/art/jobs/${run.job.id}/fail`, {
+      method: "POST",
+      body: { message, actualCostCents: 0 },
+    }).catch(() => undefined);
+    log(`  failed before provider call: ${message}`);
+    return;
+  }
   for (let index = 0; index < run.job.count; index += 1) {
     let attempted = false;
     try {
@@ -297,13 +557,18 @@ async function processJob(run, counters) {
         );
       }
       attempted = true;
-      const result = await callProvider(run, index);
+      const result = await callProvider(run, index, prompt, reference);
       counters.generated += 1;
       if (run.job.method === "whole_card") {
         const sizes = await cardSizes(result.bytes);
-        await uploadCandidate(run, result.bytes, { ...sizes, seed: result.seed }, index);
+        await uploadCandidate(
+          run,
+          result.bytes,
+          { ...sizes, seed: result.seed, reference, prompt },
+          index,
+        );
       } else if (run.job.method === "raw_art") {
-        await uploadCandidate(run, result.bytes, { seed: result.seed }, index);
+        await uploadCandidate(run, result.bytes, { seed: result.seed, prompt }, index);
       } else {
         const composed = await compose(run, result.bytes);
         const sizes = await cardSizes(composed.front);
@@ -317,6 +582,7 @@ async function processJob(run, counters) {
             preview400: sizes.preview400,
             thumb128: sizes.thumb128,
             seed: result.seed,
+            prompt,
           },
           index,
         );

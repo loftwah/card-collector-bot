@@ -94,16 +94,38 @@ character artwork. Do not ship SVG avatars, flat geometric portraits or
 procedural stand-ins. When the task calls for character or illustration work,
 use the configured image models, inspect the actual output and iterate.
 
-- **OpenAI GPT Image 2.6 Sunburst** — prompt/layout adherence, consistent
-  character edits, expression sets and character sheets.
-- **FAL.ai Flux Pro / Seedream** — high-aesthetic hero art, banners and scenes.
-- **Cloudflare Workers AI Flux Klein** — explicit fallback only.
+**Current card-art production decision (2026-11-10): whole-card AI is the
+primary method.** Generate the finished 5:7 card with **OpenAI GPT Image 2.6
+Sunburst** by default, or a top-tier FAL model (FLUX Pro 1.1 Ultra / Seedream
+v4) when its aesthetic is the better fit. Use the real subject art, the
+supplied collection mark, the current live card and the exact copy as an image
+reference sheet. `art/card-render.mjs` is for preparing reference/information
+sheets, publishing metadata and comparison only; it is not the default final
+card composition. Do not restore the old "never generate a whole card" rule.
+Do not present a reference sheet or renderer comparison as the delivered card
+when the owner asked for whole-card art.
 
-Generate one base character, then edit that exact base for family variants so
-the character, paper, lighting and palette stay coherent. Review at 32, 64, 128
-and 256 pixels and in a circular Discord crop. Record the model and prompts in
-the relevant domain doc. See `docs/IMAGE_MODELS.md` and
-`docs/ACCOUNT_IDENTITY.md`.
+- **Exact copy:** put the card name, role, collection, rarity, finish, print
+  code and provenance in the prompt/reference sheet word for word. Do not
+  invent other lettering, Japanese text, fake serials, watermarks or official
+  marks. Inspect the actual output at 400, 214 and 128 px. A card with
+  gibberish or invented text is a failed card; regenerate or fix the prompt.
+- **Real references:** use the real source subject and the real collection
+  mark. If the selected model cannot accept an image reference, say so and use
+  the closest authorized method; do not silently degrade to a text-only card or
+  a different provider.
+- **Models:** OpenAI GPT Image 2.6 Sunburst first for layout and copy
+  adherence; FAL FLUX Pro 1.1 Ultra / Seedream v4 for high-aesthetic scenes.
+  Cloudflare Workers AI Flux Klein is an explicit fallback only.
+- **Record provenance:** model, prompt, references, seed, dimensions, SHA-256,
+  audience, `official:false`, status and cost. No silent provider fallback and
+  no silent top-up.
+- Generate one base character, then edit that exact base for family variants so
+  the character, paper, lighting and palette stay coherent. Review identity
+  work at 32, 64, 128 and 256 pixels and in a circular Discord crop. For cards,
+  review at 750, 400, 214 and 128. Record the model and prompts in the relevant
+  domain doc. See `docs/IMAGE_MODELS.md`, `docs/ART_LAB.md` and
+  `docs/ACCOUNT_IDENTITY.md`.
 
 ## Collections, artwork and product boundaries
 
@@ -114,7 +136,7 @@ the relevant domain doc. See `docs/IMAGE_MODELS.md` and
 - Foilbury owns cards, artwork editions, taxonomy, pools, awards and inventory; EmDash owns journal content/media. Respect `docs/EMDASH_BOUNDARY.md`; do not create two editable catalogues.
 - **Signal Fold is rejected under #26.** Historical selections, manifests and screenshots are not current owner approval. Agents choose, critique and ship routine Foilbury-owned design improvements without an owner aesthetic vote. Do not restore rejected branding to satisfy a stale test. Public-audience approval is separate from ordinary design decisions.
 - Use good existing artwork and preserve originals/issued copies. Generic procedural covers, monograms or rendered placeholders are not approved finished art. Code may compose actual artwork, typography and effects. Correct provenance is evidence-based; do not guess official/fan/AI origin from appearance.
-- Card contract: one 5:7 object; reserved artwork/information bands; controls outside the card; container-relative type; medallion crop only for square opaque avatars; contain tall/wide art. Member surfaces use saved front/back renders, not recomposed private source layers.
+- Card contract: one 5:7 object; the selected whole-card model output is the card object. Reserve artwork/information bands in the prompt, keep controls outside the card, supply exact copy and the real source reference, and keep type readable at 214×300. The shared renderer is a reference/comparison tool, not a mandatory composition gate. Member surfaces use saved front/back renders, not recomposed private source layers.
 - Brand masters/exports remain under `public/brand/kit`; public-safe showcase media under `public/media/showcase`. Private replays, screenshots and launch manifests stay under `.foilbury/`. Keep prior assets as history, not as the current accepted design.
 
 ## Safe execution

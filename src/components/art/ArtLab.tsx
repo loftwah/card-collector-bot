@@ -158,6 +158,7 @@ interface Candidate {
     master: string | null;
     preview400: string | null;
     thumb128: string | null;
+    reference: string | null;
     download: string;
   };
   feedback: Feedback[];
@@ -314,7 +315,7 @@ function statusLabel(value: string): string {
 
 function methodNote(candidate: Candidate): string {
   if (candidate.method === "whole_card") {
-    return "Whole-card AI · generated card";
+    return "Whole-card AI · reference-guided";
   }
   if (candidate.method === "composed_scene" || candidate.method === "composed_texture") {
     return "Composed card · not an AI image";
@@ -375,8 +376,8 @@ export default function ArtLab({ surface }: { surface: Surface }) {
     references: "",
     audience: "members" as "private" | "members" | "public",
     candidateCount: 6,
-    provider: "fal",
-    model: "fal-ai/flux-pro/v1.1-ultra",
+    provider: "openai",
+    model: "gpt-image-2.6-sunburst",
     methods: (surface === "studio" ? ["whole_card"] : ["raw_art"]) as ArtMethod[],
     notes: "",
     costCapCents: 200,
@@ -777,7 +778,7 @@ export default function ArtLab({ surface }: { surface: Surface }) {
           <h2 className="display-sm mt-1 text-3xl uppercase md:text-4xl">Try the real thing.</h2>
           <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
             {surface === "studio"
-              ? "Whole-card AI is the default card method. The shared renderer is a comparison method, not a gate. Every candidate keeps its provider, prompt, seed, dimensions, hash and spend. Approval and publish stay separate."
+              ? "Whole-card AI is the production card method. The runner prepares a reference sheet from the real subject art, the supplied collection mark and the exact copy, then GPT Image 2.6 or a top FAL model makes the finished card. The shared renderer is a comparison tool. Approval and publish stay separate."
               : "Raw brand candidates, with type, layout, serials and official marks staying in code. Every candidate keeps its provider, prompt, seed, dimensions, hash and spend. Only the provisioned Super Admin can publish."}
           </p>
         </div>
@@ -1040,7 +1041,7 @@ export default function ArtLab({ surface }: { surface: Surface }) {
               </div>
               <p className="mt-2 text-xs leading-relaxed text-[var(--muted)]">
                 {form.category === "cards"
-                  ? "Whole-card AI generates the complete card. Scene and texture methods generate an art plate and compose it through the shared renderer. Keep both selected to compare methods in one review."
+                  ? "Whole-card AI is the production method and uses the prepared real-source reference sheet with the exact copy. Scene and texture methods are comparison tools. Keep both selected only when you want to challenge the model against the renderer."
                   : "Brand categories use raw art candidates. Type, layout, serials and official marks stay in code; a logo needs a reviewed vector source before approval."}
               </p>
             </fieldset>
@@ -1663,6 +1664,19 @@ function CandidatePanel(props: {
           {methodNote(candidate)}
         </figcaption>
       </figure>
+      {candidate.files.reference ? (
+        <p className="mt-2 text-xs text-[var(--muted)]">
+          <a
+            href={candidate.files.reference}
+            target="_blank"
+            rel="noreferrer"
+            className="underline underline-offset-4"
+          >
+            Open the reference sheet used
+          </a>{" "}
+          · real subject, collection mark and exact copy
+        </p>
+      ) : null}
 
       <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
         <Fact label="Method" value={candidate.method_label} />

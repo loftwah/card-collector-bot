@@ -77,11 +77,11 @@ export const ART_METHOD_LABELS: Record<ArtMethod, string> = {
 
 export const ART_METHOD_NOTES: Record<ArtMethod, string> = {
   whole_card:
-    "The provider generates the complete 5:7 card. Code only scales it and records provenance. Review all lettering and marks at 400 and 214 px before publishing.",
+    "The provider generates the complete 5:7 card from the real subject, the supplied collection mark and the exact copy prepared on a reference sheet. Code only scales it and records provenance.",
   composed_scene:
-    "The provider generates scene/key art. The shared card renderer composes the card, type and back.",
+    "Comparison method. The provider generates scene/key art; the shared card renderer composes the card, type and back.",
   composed_texture:
-    "The provider generates a texture or background plate. The shared card renderer composes the card, type and back.",
+    "Comparison method. The provider generates a texture or background plate; the shared card renderer composes the card, type and back.",
   raw_art: "The provider generates a standalone brand asset. Type, layout and marks stay in code.",
 };
 
@@ -128,6 +128,10 @@ export interface ArtModelPrice {
   unitCents: number;
   priceNote: string;
   methods: ArtMethod[];
+  /** Whether the runner can attach the prepared real-source reference sheet. */
+  supportsReference?: boolean;
+  /** FAL models disagree on the field name for a reference image. */
+  referenceParam?: "image_url" | "image_urls";
 }
 
 export interface ArtProviderPrice {
@@ -142,31 +146,14 @@ export interface ArtProviderPrice {
  * planning estimates, never a claim about a provider invoice. The runner records
  * the actual spend it observed; a failed job still records the estimated spend
  * unless the runner can prove no billed call was made.
+ *
+ * Whole-card AI is the primary card production method. OpenAI GPT Image 2.6
+ * Sunburst is the default because it is the strongest layout/copy-adherence
+ * model available to this project. FAL FLUX Pro Ultra and Seedream v4 are the
+ * equivalent top-tier alternatives and both accept the prepared real-source
+ * reference sheet.
  */
 export const ART_PRICE_TABLE: ArtProviderPrice[] = [
-  {
-    provider: "fal",
-    label: "FAL.ai",
-    keyEnv: "FAL_AI_API_KEY",
-    models: [
-      {
-        id: "fal-ai/flux-pro/v1.1-ultra",
-        label: "FLUX Pro 1.1 Ultra",
-        unitCents: 6,
-        priceNote:
-          "US$0.06 per image planning estimate. Record the actual provider spend on completion.",
-        methods: ["whole_card", "composed_scene", "composed_texture", "raw_art"],
-      },
-      {
-        id: "fal-ai/bytedance/seedream/v4",
-        label: "Seedream v4",
-        unitCents: 3,
-        priceNote:
-          "US$0.03 per image planning estimate. Record the actual provider spend on completion.",
-        methods: ["whole_card", "composed_scene", "composed_texture", "raw_art"],
-      },
-    ],
-  },
   {
     provider: "openai",
     label: "OpenAI",
@@ -179,6 +166,42 @@ export const ART_PRICE_TABLE: ArtProviderPrice[] = [
         priceNote:
           "US$0.05 per image planning estimate. OpenAI bills by output size and quality; record the reported spend on completion.",
         methods: ["whole_card", "composed_scene", "composed_texture", "raw_art"],
+        supportsReference: true,
+      },
+    ],
+  },
+  {
+    provider: "fal",
+    label: "FAL.ai",
+    keyEnv: "FAL_AI_API_KEY",
+    models: [
+      {
+        id: "fal-ai/flux-pro/v1.1-ultra",
+        label: "FLUX Pro 1.1 Ultra",
+        unitCents: 6,
+        priceNote:
+          "US$0.06 per image planning estimate. Record the actual provider spend on completion.",
+        methods: ["composed_scene", "composed_texture", "raw_art"],
+        supportsReference: false,
+      },
+      {
+        id: "fal-ai/bytedance/seedream/v4/edit",
+        label: "Seedream v4 Edit",
+        unitCents: 3,
+        priceNote:
+          "US$0.03 per image planning estimate. Record the actual provider spend on completion.",
+        methods: ["whole_card"],
+        supportsReference: true,
+        referenceParam: "image_urls",
+      },
+      {
+        id: "fal-ai/bytedance/seedream/v4/text-to-image",
+        label: "Seedream v4 Text",
+        unitCents: 3,
+        priceNote:
+          "US$0.03 per image planning estimate. Record the actual provider spend on completion.",
+        methods: ["composed_scene", "composed_texture", "raw_art"],
+        supportsReference: false,
       },
     ],
   },
@@ -337,6 +360,7 @@ export interface ArtCandidateView {
     master: string | null;
     preview400: string | null;
     thumb128: string | null;
+    reference: string | null;
     download: string;
   };
   feedback: Array<
@@ -450,6 +474,7 @@ interface CollectionRef {
   banner_asset_id: string | null;
   logo_url: string | null;
   banner_url: string | null;
+  accent: string | null;
   archived_at: string | null;
 }
 
@@ -728,7 +753,7 @@ async function loadCollection(ctx: Ctx, collectionId: string): Promise<Collectio
   const collection = await first<CollectionRef>(
     ctx.db,
     `SELECT id, slug, name, scope, owner_tenant_id, status, view_audience,
-            logo_asset_id, banner_asset_id, logo_url, banner_url, archived_at
+            logo_asset_id, banner_asset_id, logo_url, banner_url, accent, archived_at
        FROM fb_collections
       WHERE id = ? AND archived_at IS NULL`,
     collectionId,
@@ -983,29 +1008,67 @@ async function assertBudget(ctx: Ctx, brief: ArtBriefRow, additionalCents: numbe
   }
 }
 
+function finishLabel(
+  variant: { material_key?: string | null; effect_key?: string | null } | null,
+): string {
+  const material = variant?.material_key ?? "plain";
+  if (
+    material === "diamond" ||
+    material === "holographic" ||
+    variant?.effect_key === "holographic"
+  ) {
+    return "HOLOGRAPHIC";
+  }
+  return material.toUpperCase();
+}
+
+function exactCopyLines(input: {
+  brief: ArtBriefRow;
+  card: { name: string; subtitle: string | null; rarity_name: string | null } | null;
+  collection: CollectionRef | null;
+  variant: { material_key: string; effect_key: string | null } | null;
+  catalogueCode: string | null;
+}): string[] {
+  const provenance =
+    input.brief.audience === "public"
+      ? "PUBLIC SHOWCASE · ORIGINAL FOILBURY PROJECT"
+      : "MEMBER ARCHIVE · THIRD-PARTY ART · NOT OFFICIAL";
+  return [
+    `NAME: ${input.card?.name ?? input.brief.title}`,
+    `ROLE: ${input.card?.subtitle ?? "Member subject"}`,
+    `COLLECTION: ${input.collection?.name ?? "Foilbury"}`,
+    `RARITY: ${(input.card?.rarity_name ?? "RARE").toUpperCase()}`,
+    `FINISH: ${finishLabel(input.variant)}`,
+    `PRINT CODE: ${input.catalogueCode ?? "FB-ART-001"}`,
+    `PROVENANCE: ${provenance}`,
+  ];
+}
+
 function promptForBrief(
   brief: ArtBriefRow,
   method: ArtMethod,
   card: { name: string; subtitle: string | null; rarity_name: string | null } | null,
   collection: CollectionRef | null,
+  variant: { material_key: string; effect_key: string | null } | null,
+  catalogueCode: string | null,
 ): string {
   const references = parseJson<string[]>(brief.references_json, []);
   const referenceLine = references.length
-    ? ` References for composition only: ${references.join("; ")}.`
+    ? ` Additional references: ${references.join("; ")}.`
     : "";
-  const targetLine = card
-    ? ` Card: "${card.name}"${card.subtitle ? ` (${card.subtitle})` : ""}. Collection: "${collection?.name ?? "Foilbury"}". Rarity: "${card.rarity_name ?? "member"}".`
-    : "";
-  const base = `${brief.title}. ${brief.intent.replace(/\.+$/, "")}.${targetLine} Audience: ${brief.audience}. Do not invent official logos, signatures, watermarks, serial numbers, shop language or casino language.${referenceLine}`;
+  const copy = exactCopyLines({ brief, card, collection, variant, catalogueCode });
+  const base = `${brief.title}. ${brief.intent.replace(/\.+$/, "")}. Audience: ${brief.audience}.${referenceLine}`;
 
   if (method === "whole_card") {
     return [
       base,
-      "Generate the complete 5:7 collectible card as one image.",
-      "The object must read as a finished printed card: artwork, border, title plate, rarity and finish treatment, and a clean information band.",
-      "Use only the supplied card and collection names. Do not add other lettering, fake serials, fake logos or UI.",
-      "Compose for legibility at 400 px and at the 214 x 300 Discord inline size. Keep the name and rarity large and uncluttered.",
-    ].join(" ");
+      "Create one finished 5:7 collectible card object as a single image. It is a card, not a poster, not a mood board and not a character illustration with a caption.",
+      "Use the attached prepared reference sheet as the source for the real subject art, the supplied collection mark and the exact copy. Do not reproduce the reference sheet layout; use its information to make the finished card.",
+      `EXACT COPY — use these words exactly and add no other lettering:\n${copy.join("\n")}`,
+      "The object must have a designed border or frame, a reserved information band and a clear hierarchy. The name and rarity must remain readable at 214 x 300 Discord inline size.",
+      "Keep the subject's face, hair, outfit, props and silhouette consistent with the supplied source art. Reproduce only the supplied collection mark; do not invent a different official logo.",
+      "No Japanese text, no gibberish, no fake serial numbers, no watermarks, no UI, no shop language and no casino language.",
+    ].join("\n\n");
   }
   if (method === "composed_scene") {
     return [
@@ -1068,8 +1131,8 @@ export async function createArtBrief(
   const user = requireCategoryWrite(ctx, category);
   const title = cleanText(input.title, "title", 2, 160);
   const intent = cleanText(input.intent, "intent", 12, 4000);
-  const provider = input.provider?.trim() || (category === "cards" ? "fal" : "fal");
-  const model = input.model?.trim() || "fal-ai/flux-pro/v1.1-ultra";
+  const provider = input.provider?.trim() || "openai";
+  const model = input.model?.trim() || "gpt-image-2.6-sunburst";
   const methods = input.methods?.length
     ? input.methods
     : category === "cards"
@@ -1384,6 +1447,9 @@ function candidateView(
 ): ArtCandidateView {
   const displayAssetId = candidate.render_asset_id ?? candidate.asset_id;
   const displayAsset = assets.get(displayAssetId);
+  const metadata = parseJson<Record<string, unknown>>(candidate.metadata_json, {});
+  const referenceAssetId =
+    typeof metadata.reference_asset_id === "string" ? metadata.reference_asset_id : null;
   const feedbackRows = feedback.map((row) => ({
     id: row.id,
     decision: row.decision,
@@ -1419,7 +1485,7 @@ function candidateView(
     preview_400_asset_id: candidate.preview_400_asset_id,
     thumb_128_asset_id: candidate.thumb_128_asset_id,
     display_side: candidate.render_asset_id ? "render" : "raw",
-    metadata: parseJson<Record<string, unknown>>(candidate.metadata_json, {}),
+    metadata,
     files: {
       display: `${basePath}/candidates/${candidate.id}/file?side=display`,
       raw: `${basePath}/candidates/${candidate.id}/file?side=raw`,
@@ -1434,6 +1500,9 @@ function candidateView(
         : null,
       thumb128: candidate.thumb_128_asset_id
         ? `${basePath}/candidates/${candidate.id}/file?side=thumb128`
+        : null,
+      reference: referenceAssetId
+        ? `${basePath}/candidates/${candidate.id}/file?side=reference`
         : null,
       download: `${basePath}/candidates/${candidate.id}/file?side=display&download=1`,
     },
@@ -1740,13 +1809,36 @@ export async function queueArtGeneration(
       )
     : null;
   const collection = brief.collection_id ? await loadCollection(ctx, brief.collection_id) : null;
+  const targetVariant = brief.target_variant_id
+    ? await first<{ material_key: string; effect_key: string | null }>(
+        ctx.db,
+        `SELECT m.key AS material_key, e.key AS effect_key
+           FROM fb_variants v
+           JOIN fb_materials m ON m.id = v.material_id
+           LEFT JOIN fb_effects e ON e.id = v.effect_id
+          WHERE v.id = ? AND v.tenant_id = ?`,
+        brief.target_variant_id,
+        ctx.tenant.id,
+      )
+    : null;
+  const catalogueCode =
+    brief.category === "cards" && brief.collection_id && brief.card_id
+      ? await catalogueCodeFor(ctx, brief.collection_id, brief.card_id)
+      : null;
   const now = nowIso();
   const statements = [];
   const created: string[] = [];
   for (const entry of distribution) {
     const id = newId("artj");
     created.push(id);
-    const prompt = promptForBrief(brief, entry.method, card, collection);
+    const prompt = promptForBrief(
+      brief,
+      entry.method,
+      card,
+      collection,
+      targetVariant,
+      catalogueCode,
+    );
     statements.push(
       statement(
         ctx.db,
@@ -1935,6 +2027,8 @@ export async function claimArtJob(
     edition,
     variant: targetVariant,
     catalogue_code: catalogueCode,
+    current_render_url: targetVariant?.render_url ?? null,
+    current_back_render_url: targetVariant?.back_render_url ?? null,
     source_assets: {
       subject_asset_id: edition?.subject_asset_id ?? null,
       background_asset_id: edition?.background_asset_id ?? null,
@@ -1947,6 +2041,8 @@ export async function claimArtJob(
           model: price.model.id,
           unit_cents: price.model.unitCents,
           note: price.model.priceNote,
+          supports_reference: price.model.supportsReference ?? false,
+          reference_param: price.model.referenceParam ?? null,
         }
       : null,
   };
@@ -1981,6 +2077,7 @@ export async function addArtCandidate(
   const masterFile = form.get("master");
   const preview400File = form.get("preview400");
   const thumb128File = form.get("thumb128");
+  const referenceFile = form.get("reference");
   if (!(rawFile instanceof File)) {
     throw new ApiError(422, "art_raw_required", "Upload the generated raw image.");
   }
@@ -2022,6 +2119,7 @@ export async function addArtCandidate(
     master: null,
     preview400: null,
     thumb128: null,
+    reference: null,
   };
   const uploadOne = async (
     file: FormDataEntryValue | null,
@@ -2049,6 +2147,7 @@ export async function addArtCandidate(
   uploads.master = await uploadOne(masterFile, "render", "master");
   uploads.preview400 = await uploadOne(preview400File, "render", "preview-400");
   uploads.thumb128 = await uploadOne(thumb128File, "render", "thumb-128");
+  uploads.reference = await uploadOne(referenceFile, "render", "reference");
   const raw = uploads.raw;
   if (!raw) throw new ApiError(422, "art_raw_required", "Upload the generated raw image.");
   const display = uploads.front ?? raw;
@@ -2078,6 +2177,7 @@ export async function addArtCandidate(
     master_asset_id: uploads.master?.id ?? null,
     preview_400_asset_id: uploads.preview400?.id ?? null,
     thumb_128_asset_id: uploads.thumb128?.id ?? null,
+    reference_asset_id: uploads.reference?.id ?? null,
     references: parseJson<string[]>(brief.references_json, []),
     audience: brief.audience,
     official: false,
@@ -2128,7 +2228,15 @@ export async function addArtCandidate(
   ]);
   const row = await loadCandidateRow(ctx, id);
   const assets = new Map(
-    [raw, display, uploads.back, uploads.master, uploads.preview400, uploads.thumb128]
+    [
+      raw,
+      display,
+      uploads.back,
+      uploads.master,
+      uploads.preview400,
+      uploads.thumb128,
+      uploads.reference,
+    ]
       .filter((asset): asset is AssetRow => Boolean(asset))
       .map((asset) => [asset.id, asset]),
   );
@@ -3436,6 +3544,12 @@ export async function readArtCandidateFile(
     master: candidate.master_asset_id,
     preview400: candidate.preview_400_asset_id,
     thumb128: candidate.thumb_128_asset_id,
+    reference:
+      typeof parseJson<Record<string, unknown>>(candidate.metadata_json, {}).reference_asset_id ===
+      "string"
+        ? (parseJson<Record<string, unknown>>(candidate.metadata_json, {})
+            .reference_asset_id as string)
+        : null,
   };
   const assetId = map[side];
   if (!assetId) {
