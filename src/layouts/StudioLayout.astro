@@ -46,6 +46,7 @@ const groups = [
   },
 ];
 const label = roleLabel(user);
+const { compact = false } = Astro.props;
 ---
 
 <BaseLayout
@@ -53,39 +54,60 @@ const label = roleLabel(user);
   description="Foilbury Studio: scoped collection and Bot administration without platform-root access."
   noIndex
 >
-  <section class="studio-band">
-    <div class="container py-8 md:py-10">
-      <div class="flex flex-wrap items-end justify-between gap-5">
-        <div>
-          <p class="studio-kicker">Studio · {label}</p>
-          <h1 class="display-sm mt-2 text-4xl uppercase md:text-5xl">
-            {isGlobalCollectionAdmin && !isBotAdmin
-              ? "Shared worlds, scoped."
-              : "The cabinet office."}
-          </h1>
-          <p class="mt-2 max-w-2xl text-sm leading-relaxed text-[rgba(244,240,230,0.78)]">
-            A normal Foilbury session with live role checks. No Cloudflare Access is required here,
-            and this surface never grants platform root, secrets, wallets or another Bot.
-          </p>
-        </div>
+  {compact ? (
+    <section class="studio-band">
+      <div class="container flex flex-wrap items-center justify-between gap-3 py-3">
+        <p class="studio-kicker">Studio · {label}</p>
         <div class="flex flex-wrap gap-2">
           {isPlatform ? (
             <a class="btn btn-signal btn-sm" href="/platform-admin">
               Platform root ↗
             </a>
           ) : null}
-          <a class="btn btn-secondary btn-sm" href="/account/security">
-            Account security
-          </a>
           <a class="btn btn-secondary btn-sm" href="/play">
             My album
           </a>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
+  ) : (
+    <section class="studio-band">
+      <div class="container py-8 md:py-10">
+        <div class="flex flex-wrap items-end justify-between gap-5">
+          <div>
+            <p class="studio-kicker">Studio · {label}</p>
+            <h1 class="display-sm mt-2 text-4xl uppercase md:text-5xl">
+              {isGlobalCollectionAdmin && !isBotAdmin
+                ? "Shared worlds, scoped."
+                : "The cabinet office."}
+            </h1>
+            <p class="mt-2 max-w-2xl text-sm leading-relaxed text-[rgba(244,240,230,0.78)]">
+              A normal Foilbury session with live role checks. No Cloudflare Access is required
+              here, and this surface never grants platform root, secrets, wallets or another Bot.
+            </p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            {isPlatform ? (
+              <a class="btn btn-signal btn-sm" href="/platform-admin">
+                Platform root ↗
+              </a>
+            ) : null}
+            <a class="btn btn-secondary btn-sm" href="/account/security">
+              Account security
+            </a>
+            <a class="btn btn-secondary btn-sm" href="/play">
+              My album
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  )}
   <section class="container grid gap-8 py-8 lg:grid-cols-[230px_1fr] lg:items-start">
-    <nav class="grid gap-5 lg:sticky lg:top-24" aria-label="Studio sections">
+    <nav
+      class:list={["gap-5 lg:sticky lg:top-24", compact ? "hidden lg:grid" : "grid"]}
+      aria-label="Studio sections"
+    >
       {groups.map((group) => (
         <div>
           <p class="mb-1 px-3 font-mono text-[0.58rem] uppercase tracking-[0.14em] text-[var(--muted)]">

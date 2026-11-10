@@ -3,20 +3,6 @@ import StudioLayout from "../../layouts/StudioLayout.astro";
 import ArtLab from "../../components/art/ArtLab";
 ---
 
-<StudioLayout>
-  <div class="studio-rule">
-    <div>
-      <h2 class="display-sm text-4xl uppercase">Art lab.</h2>
-      <p class="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--muted)]">
-        Create a brief, generate real options and compare them at 750, 400, 214 and 128 pixels.
-        Whole-card AI is a first-class method; the shared renderer is one comparison method, not a
-        gate. Feedback is durable, approval is a direction, and publish is a separate audited action
-        with rollback.
-      </p>
-    </div>
-    <span class="studio-stamp">Scoped · art</span>
-  </div>
-  <div class="mt-7">
-    <ArtLab client:load surface="studio" />
-  </div>
+<StudioLayout compact>
+  <ArtLab client:load surface="studio" />
 </StudioLayout>

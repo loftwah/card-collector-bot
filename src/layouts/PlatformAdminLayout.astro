@@ -12,6 +12,7 @@ const links = [
   { href: "/platform-admin/art", label: "Art Lab" },
   { href: "/platform-admin/audit", label: "Audit" },
 ];
+const { compact = false } = Astro.props;
 ---
 
 <BaseLayout
@@ -19,35 +20,46 @@ const links = [
   description="Platform-wide Foilbury identity, Bot, installation, permission and audit operations."
   noIndex
 >
-  <section class="admin-band">
-    <div class="container py-8 md:py-10">
-      <div class="flex flex-wrap items-end justify-between gap-5">
-        <div>
-          <p class="eyebrow eyebrow-bright">Platform administration · Super Admin</p>
-          <h1 class="display-sm mt-2 text-4xl md:text-5xl">The platform desk.</h1>
-          <p class="mt-2 max-w-2xl text-sm leading-relaxed text-[rgba(244,240,230,0.78)]">
-            Account and Access links, Bot lifecycle, installations, global collections and audit.
-            This area does not invent operational metrics, and Cloudflare Access admission is never
-            treated as a Foilbury role.
-          </p>
-        </div>
-        <div class="flex flex-wrap gap-2">
-          <a class="btn btn-signal btn-sm" href="/studio">
-            Studio
-          </a>
-          <a class="btn btn-secondary btn-sm" href="/admin">
-            Bot administration
-          </a>
-          <a class="btn btn-secondary btn-sm" href="/account/security">
-            Account security
-          </a>
-          <a class="btn btn-secondary btn-sm" href="/logout">
-            Sign out
-          </a>
+  {compact ? (
+    <section class="admin-band">
+      <div class="container flex flex-wrap items-center justify-between gap-3 py-3">
+        <p class="eyebrow eyebrow-bright">Platform administration · Super Admin</p>
+        <a class="btn btn-signal btn-sm" href="/studio">
+          Studio
+        </a>
+      </div>
+    </section>
+  ) : (
+    <section class="admin-band">
+      <div class="container py-8 md:py-10">
+        <div class="flex flex-wrap items-end justify-between gap-5">
+          <div>
+            <p class="eyebrow eyebrow-bright">Platform administration · Super Admin</p>
+            <h1 class="display-sm mt-2 text-4xl md:text-5xl">The platform desk.</h1>
+            <p class="mt-2 max-w-2xl text-sm leading-relaxed text-[rgba(244,240,230,0.78)]">
+              Account and Access links, Bot lifecycle, installations, global collections and audit.
+              This area does not invent operational metrics, and Cloudflare Access admission is
+              never treated as a Foilbury role.
+            </p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <a class="btn btn-signal btn-sm" href="/studio">
+              Studio
+            </a>
+            <a class="btn btn-secondary btn-sm" href="/admin">
+              Bot administration
+            </a>
+            <a class="btn btn-secondary btn-sm" href="/account/security">
+              Account security
+            </a>
+            <a class="btn btn-secondary btn-sm" href="/logout">
+              Sign out
+            </a>
+          </div>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
+  )}
   <section class="container grid gap-8 py-8 lg:grid-cols-[220px_1fr] lg:items-start">
     <nav class="grid gap-1 lg:sticky lg:top-24" aria-label="Platform administration sections">
       {links.map((link) => (

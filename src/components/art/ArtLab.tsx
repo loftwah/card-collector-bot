@@ -61,8 +61,28 @@ interface BriefSummary {
   approved_count: number;
   latest_job_status: string | null;
   latest_error: string | null;
+  cover_candidate_id: string | null;
+  cover_url: string | null;
+  cover_method: ArtMethod | null;
   created_at: string;
   updated_at: string;
+}
+
+interface ArtPin {
+  candidate_id: string;
+  brief_id: string;
+  brief_title: string;
+  category: ArtCategory;
+  collection_name: string | null;
+  card_name: string | null;
+  label: string;
+  method: ArtMethod;
+  status: string;
+  width: number;
+  height: number;
+  audience: string;
+  created_at: string;
+  image_url: string;
 }
 
 interface CategoryCount {
@@ -76,6 +96,7 @@ interface CategoryCount {
 
 interface IndexData {
   briefs: BriefSummary[];
+  pins: ArtPin[];
   categories: CategoryCount[];
   daily: DailySpend;
   permissions: Permissions;
@@ -347,6 +368,7 @@ export default function ArtLab({ surface }: { surface: Surface }) {
   const [detail, setDetail] = useState<BriefDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [selectedCandidateId, setSelectedCandidateId] = useState("");
+  const [pendingCandidateId, setPendingCandidateId] = useState("");
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [compareSize, setCompareSize] = useState<300 | 750 | 400 | 214 | 128>(750);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -401,6 +423,7 @@ export default function ArtLab({ surface }: { surface: Surface }) {
     .map((id) => candidates.find((candidate) => candidate.id === id))
     .filter((candidate): candidate is Candidate => Boolean(candidate));
   const categoryBriefs = (index?.briefs ?? []).filter((brief) => brief.category === category);
+  const categoryPins = (index?.pins ?? []).filter((pin) => pin.category === category);
   const visibleCategories = (index?.categories ?? []).filter((entry) =>
     surface === "studio" ? entry.key === "cards" : entry.key !== "cards",
   );
@@ -511,9 +534,13 @@ export default function ArtLab({ surface }: { surface: Surface }) {
     try {
       const data = await api<BriefDetail>(`${base}/briefs/${briefId}`);
       setDetail(data);
-      if (!data.candidates.some((candidate) => candidate.id === selectedCandidateId)) {
-        setSelectedCandidateId(data.candidates[0]?.id ?? "");
-      }
+      const preferred =
+        data.candidates.find((candidate) => candidate.id === pendingCandidateId)?.id ??
+        (data.candidates.some((candidate) => candidate.id === selectedCandidateId)
+          ? selectedCandidateId
+          : (data.candidates[0]?.id ?? ""));
+      setSelectedCandidateId(preferred);
+      setPendingCandidateId("");
     } catch (cause) {
       setError(describeError(cause));
     } finally {
@@ -672,6 +699,11 @@ export default function ArtLab({ surface }: { surface: Surface }) {
     await refresh();
   }
 
+  function openPin(pin: ArtPin) {
+    setPendingCandidateId(pin.candidate_id);
+    setSelectedBriefId(pin.brief_id);
+  }
+
   function updateCategory(next: ArtCategory) {
     if (surface === "studio" && next !== "cards") return;
     if (surface === "platform" && next === "cards") return;
@@ -770,41 +802,20 @@ export default function ArtLab({ surface }: { surface: Surface }) {
 
   return (
     <div className="min-w-0">
-      <header className="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--line)] pb-4">
-        <div className="max-w-3xl">
-          <p className="eyebrow">
-            Art Lab · {surface === "studio" ? "scoped studio" : "Super Admin"}
-          </p>
-          <h2 className="display-sm mt-1 text-3xl uppercase md:text-4xl">Try the real thing.</h2>
-          <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
-            {surface === "studio"
-              ? "Whole-card AI is the production card method. The runner prepares a reference sheet from the real subject art, the supplied collection mark and the exact copy, then GPT Image 2.6 or a top FAL model makes the finished card. The shared renderer is a comparison tool. Approval and publish stay separate."
-              : "Raw brand candidates, with type, layout, serials and official marks staying in code. Every candidate keeps its provider, prompt, seed, dimensions, hash and spend. Only the provisioned Super Admin can publish."}
-          </p>
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] pb-3">
+        <div className="flex items-baseline gap-3">
+          <h2 className="text-2xl font-semibold tracking-tight">Art Lab</h2>
+          <span className="font-mono text-[0.58rem] tracking-[0.1em] text-[var(--muted)] uppercase">
+            {surface === "studio" ? "card art" : "brand art"}
+          </span>
         </div>
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="border border-[var(--line)] bg-[var(--paper)] p-3">
-            <p className="font-mono text-[0.58rem] tracking-[0.1em] text-[var(--muted)] uppercase">
-              Today · {index?.daily.day ?? "—"}
-            </p>
-            <p className="mt-1 font-mono text-sm">
-              {money(index?.daily.spent_cents)} / {money(index?.daily.cap_cents)}
-            </p>
-            <div className="mt-2 h-1 w-40 overflow-hidden bg-[var(--line)]">
-              <div
-                className="h-full bg-[var(--signal)]"
-                style={{
-                  width: `${Math.min(
-                    100,
-                    ((index?.daily.spent_cents ?? 0) / (index?.daily.cap_cents || 1)) * 100,
-                  )}%`,
-                }}
-              />
-            </div>
-          </div>
+        <div className="flex items-center gap-3">
+          <p className="font-mono text-[0.58rem] tracking-[0.08em] text-[var(--muted)] uppercase">
+            {money(index?.daily.spent_cents)} / {money(index?.daily.cap_cents)} today
+          </p>
           {index?.permissions.write ? (
-            <Button onClick={() => setShowNew((open) => !open)}>
-              {showNew ? "Close brief" : "New brief"}
+            <Button size="sm" onClick={() => setShowNew((open) => !open)}>
+              {showNew ? "Close" : "New brief"}
             </Button>
           ) : null}
         </div>
@@ -852,15 +863,9 @@ export default function ArtLab({ surface }: { surface: Surface }) {
 
       {showNew ? (
         <section className="panel mt-4 p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 className="display-sm text-xl uppercase">Create a brief</h3>
-              <p className="mt-1 text-sm text-[var(--muted)]">
-                The brief is the ceiling and the intent. Generation is queued separately, so a
-                failed provider cannot silently change the method or spend.
-              </p>
-            </div>
-            <span className="badge">Per-brief cap {money(form.costCapCents)}</span>
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-lg font-semibold">New brief</h3>
+            <span className="badge">Cap {money(form.costCapCents)}</span>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <label className="field">
@@ -1039,10 +1044,10 @@ export default function ArtLab({ surface }: { surface: Surface }) {
                     </label>
                   ))}
               </div>
-              <p className="mt-2 text-xs leading-relaxed text-[var(--muted)]">
+              <p className="mt-2 text-xs text-[var(--muted)]">
                 {form.category === "cards"
-                  ? "Whole-card AI is the production method and uses the prepared real-source reference sheet with the exact copy. Scene and texture methods are comparison tools. Keep both selected only when you want to challenge the model against the renderer."
-                  : "Brand categories use raw art candidates. Type, layout, serials and official marks stay in code; a logo needs a reviewed vector source before approval."}
+                  ? "Whole-card is production. Scene and texture are comparison."
+                  : "Raw art. Type and marks stay in code."}
               </p>
             </fieldset>
             <label className="field">
@@ -1100,11 +1105,7 @@ export default function ArtLab({ surface }: { surface: Surface }) {
               />
             </label>
           </div>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-4">
-            <p className="max-w-xl text-xs leading-relaxed text-[var(--muted)]">
-              The queue reads the price table in <code>src/server/modules/art-lab.ts</code>. A
-              failed call records its spend and reason; there is no silent fallback or top-up.
-            </p>
+          <div className="mt-4 flex justify-end border-t border-[var(--line)] pt-3">
             <Button
               onClick={() => void createBrief()}
               disabled={
@@ -1122,72 +1123,69 @@ export default function ArtLab({ surface }: { surface: Surface }) {
       ) : null}
 
       {!detail ? (
-        <section className="mt-6">
-          <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[var(--line)] pb-3">
-            <h3 className="display-sm text-2xl uppercase">{activeCategoryLabel}</h3>
-            <p className="font-mono text-[0.6rem] tracking-[0.1em] text-[var(--muted)] uppercase">
-              {categoryBriefs.length} brief{categoryBriefs.length === 1 ? "" : "s"}
-            </p>
-          </div>
+        <section className="mt-4">
           {categoryBriefs.length ? (
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1" aria-label="Boards">
               {categoryBriefs.map((brief) => (
                 <button
                   key={brief.id}
                   type="button"
-                  onClick={() => setSelectedBriefId(brief.id)}
-                  className="panel group min-h-48 p-4 text-left transition-colors hover:border-[var(--ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--signal)] motion-reduce:transition-none"
+                  onClick={() => {
+                    setPendingCandidateId("");
+                    setSelectedBriefId(brief.id);
+                  }}
+                  className="chip max-w-[260px] shrink-0 hover:border-[var(--line-strong)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--signal)]"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="eyebrow">
-                      {CATEGORY_LABELS[brief.category]} · {brief.methods.length} method
-                      {brief.methods.length === 1 ? "" : "s"}
-                    </p>
+                  <span className="truncate">{brief.title}</span>
+                  <span className="text-[var(--muted)]">{brief.candidate_total}</span>
+                  {brief.pending_count ? (
                     <span
-                      className={`font-mono text-[0.58rem] tracking-[0.08em] uppercase ${STATUS_TONE[brief.status] ?? ""}`}
-                    >
-                      {statusLabel(brief.status)}
-                    </span>
-                  </div>
-                  <h4 className="display-sm mt-2 text-xl">{brief.title}</h4>
-                  <p className="mt-1 text-sm text-[var(--muted)]">
-                    {brief.collection_name ?? "Brand kit"}
-                    {brief.card_name ? ` · ${brief.card_name}` : ""}
-                  </p>
-                  <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-[var(--muted)]">
-                    {brief.intent}
-                  </p>
-                  <div className="mt-4 flex flex-wrap gap-2 font-mono text-[0.58rem] tracking-[0.08em] text-[var(--muted)] uppercase">
-                    <span>{brief.candidate_total} candidates</span>
-                    <span className={brief.pending_count ? "text-[var(--signal)]" : ""}>
-                      {brief.pending_count} pending
-                    </span>
-                    <span>
-                      {money(brief.spend_cents)} / {money(brief.cost_cap_cents)}
-                    </span>
-                  </div>
-                  {brief.latest_error ? (
-                    <p className="mt-2 line-clamp-2 text-xs text-[var(--oxblood)]">
-                      {brief.latest_error}
-                    </p>
+                      className="h-1.5 w-1.5 rounded-full bg-[var(--signal)]"
+                      aria-label="Pending"
+                    />
                   ) : null}
                 </button>
               ))}
             </div>
+          ) : null}
+
+          {categoryPins.length ? (
+            <div className="columns-2 gap-3 md:columns-3 xl:columns-4">
+              {categoryPins.map((pin) => (
+                <button
+                  key={pin.candidate_id}
+                  type="button"
+                  onClick={() => openPin(pin)}
+                  className="group mb-3 block w-full break-inside-avoid text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--signal)]"
+                >
+                  <div className="relative overflow-hidden bg-[var(--paper-2)]">
+                    <img
+                      src={pin.image_url}
+                      alt={`${pin.brief_title} · ${pin.label}`}
+                      className="h-auto w-full transition-transform duration-200 group-hover:scale-[1.02] motion-reduce:transition-none"
+                      loading="lazy"
+                    />
+                    <span className="absolute top-2 left-2 bg-[var(--paper)]/90 px-1.5 py-0.5 font-mono text-[0.48rem] tracking-[0.08em] text-[var(--ink)] uppercase backdrop-blur-sm">
+                      {statusLabel(pin.status)}
+                    </span>
+                    <span className="absolute right-2 bottom-2 bg-[var(--ink)]/85 px-1.5 py-0.5 font-mono text-[0.48rem] tracking-[0.08em] text-[var(--paper)] uppercase">
+                      {pin.method === "whole_card" ? "AI" : "CMP"}
+                    </span>
+                  </div>
+                  <p className="mt-1 line-clamp-1 text-xs font-medium">{pin.brief_title}</p>
+                  <p className="font-mono text-[0.5rem] tracking-[0.06em] text-[var(--muted)] uppercase">
+                    {pin.card_name ?? pin.collection_name ?? "Brand"} · {pin.label}
+                  </p>
+                </button>
+              ))}
+            </div>
           ) : (
-            <div className="empty mt-4">
+            <div className="empty">
               <div>
-                <p className="font-mono text-[0.62rem] tracking-[0.12em] uppercase">
-                  No briefs yet
-                </p>
-                <p className="mt-2 max-w-md text-sm">
-                  {surface === "studio"
-                    ? "Create a brief, queue four to eight candidates and compare whole-card AI against the composed renderer at 750, 400 and 128 pixels."
-                    : "Create a brand brief, queue raw candidates and review them at their real sizes before a Super Admin approval and publish."}
-                </p>
+                <p className="font-mono text-[0.62rem] tracking-[0.12em] uppercase">No cards yet</p>
                 {index?.permissions.write ? (
-                  <Button className="mt-4" size="sm" onClick={() => setShowNew(true)}>
-                    Create the first brief
+                  <Button className="mt-3" size="sm" onClick={() => setShowNew(true)}>
+                    Create a brief
                   </Button>
                 ) : null}
               </div>
@@ -1207,107 +1205,85 @@ export default function ArtLab({ surface }: { surface: Surface }) {
             >
               ← All briefs
             </button>
-            <span
-              className={`font-mono text-[0.6rem] tracking-[0.1em] uppercase ${STATUS_TONE[detail.brief.status] ?? ""}`}
-            >
-              {statusLabel(detail.brief.status)}
-            </span>
           </div>
 
-          <header className="mt-3 flex flex-wrap items-start justify-between gap-4 border-b border-[var(--line)] pb-4">
-            <div className="max-w-3xl">
-              <p className="eyebrow">
+          <header className="mt-2 flex flex-wrap items-start justify-between gap-3 border-b border-[var(--line)] pb-3">
+            <div className="min-w-0">
+              <h3 className="truncate text-xl font-semibold tracking-tight">
+                {detail.brief.title}
+              </h3>
+              <p className="mt-0.5 truncate font-mono text-[0.56rem] tracking-[0.06em] text-[var(--muted)] uppercase">
                 {CATEGORY_LABELS[detail.brief.category]}
                 {detail.collection ? ` · ${detail.collection.name}` : ""}
                 {detail.card ? ` · ${detail.card.name}` : ""}
-              </p>
-              <h3 className="display-sm mt-1 text-3xl uppercase">{detail.brief.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
-                {detail.brief.intent}
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {detail.brief.methods.map((method) => (
-                  <span key={method} className="badge">
-                    {method.replaceAll("_", " ")}
-                  </span>
-                ))}
-                <span className="badge">
-                  {detail.brief.provider} / {detail.brief.model}
-                </span>
-                <span className="badge">{detail.brief.audience}</span>
-                {detail.target_variant ? (
-                  <span className="badge">
-                    Finish · {detail.target_variant.material_key}
-                    {detail.target_variant.effect_key
-                      ? ` / ${detail.target_variant.effect_key}`
-                      : ""}
-                  </span>
-                ) : null}
-                <span className="badge">
-                  {money(detail.brief.spend_cents)} / {money(detail.brief.cost_cap_cents)}
-                </span>
-              </div>
-            </div>
-            <div className="flex flex-col items-end gap-2">
-              <Button
-                onClick={() => void generate()}
-                disabled={
-                  busy === "generate" ||
-                  !detail.permissions.write ||
-                  detail.jobs.some((job) => job.status === "queued" || job.status === "running")
-                }
-              >
-                {busy === "generate" ? "Queueing…" : "Generate options"}
-              </Button>
-              <p className="max-w-56 text-right text-xs leading-relaxed text-[var(--muted)]">
-                Run <code>pnpm art:run</code> locally. The job claims one provider, records spend
-                and fails with the provider reason.
+                {detail.target_variant ? ` · ${detail.target_variant.material_key}` : ""}
+                {` · ${money(detail.brief.spend_cents)} / ${money(detail.brief.cost_cap_cents)}`}
               </p>
             </div>
+            <Button
+              size="sm"
+              onClick={() => void generate()}
+              disabled={
+                busy === "generate" ||
+                !detail.permissions.write ||
+                detail.jobs.some((job) => job.status === "queued" || job.status === "running")
+              }
+            >
+              {busy === "generate" ? "Queueing…" : "Generate"}
+            </Button>
           </header>
+          <details className="mt-2 text-xs text-[var(--muted)]">
+            <summary className="cursor-pointer font-mono text-[0.56rem] tracking-[0.08em] uppercase">
+              Brief · {detail.brief.provider} / {detail.brief.model} · {detail.brief.audience}
+            </summary>
+            <p className="mt-2 max-w-3xl leading-relaxed">{detail.brief.intent}</p>
+            <p className="mt-1 max-w-3xl leading-relaxed">
+              Whole-card is the production method. The runner prepares the real-source reference
+              sheet and exact copy. Scene and texture methods compare the shared renderer.
+            </p>
+          </details>
 
-          <section className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-            {detail.jobs.map((job) => (
-              <article key={job.id} className="border border-[var(--line)] bg-[var(--paper)] p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-mono text-[0.58rem] tracking-[0.08em] uppercase">
-                    {job.method.replaceAll("_", " ")} · {job.count} × {job.provider}
-                  </p>
-                  <span
-                    className={`font-mono text-[0.58rem] tracking-[0.08em] uppercase ${STATUS_TONE[job.status] ?? ""}`}
-                  >
-                    {job.status}
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-[var(--line)] py-2 font-mono text-[0.55rem] tracking-[0.06em] uppercase">
+            {detail.jobs.length ? (
+              detail.jobs.map((job) => (
+                <span key={job.id} className="inline-flex items-center gap-1.5">
+                  <span className={STATUS_TONE[job.status] ?? ""}>{job.status}</span>
+                  <span className="text-[var(--muted)]">
+                    {job.method.replaceAll("_", " ")} · {job.count} ·{" "}
+                    {money(job.cost_actual_cents ?? job.cost_estimate_cents)}
                   </span>
+                  {["queued", "running"].includes(job.status) && detail.permissions.write ? (
+                    <button
+                      type="button"
+                      className="text-[var(--muted)] hover:text-[var(--oxblood)]"
+                      onClick={() => void cancelJob(job)}
+                      aria-label="Cancel job"
+                    >
+                      ×
+                    </button>
+                  ) : null}
+                </span>
+              ))
+            ) : (
+              <span className="text-[var(--muted)]">No generation queued</span>
+            )}
+            {detail.jobs.some((job) => job.error) ? (
+              <details className="w-full">
+                <summary className="cursor-pointer text-[var(--oxblood)]">Jobs</summary>
+                <div className="mt-1 grid gap-1">
+                  {detail.jobs
+                    .filter((job) => job.error)
+                    .map((job) => (
+                      <p key={job.id} className="text-[var(--oxblood)] normal-case">
+                        {job.method.replaceAll("_", " ")}: {job.error}
+                      </p>
+                    ))}
                 </div>
-                <p className="mt-2 font-mono text-[0.6rem] text-[var(--muted)]">
-                  {money(job.cost_actual_cents ?? job.cost_estimate_cents)} recorded
-                  {job.cost_source ? ` · ${job.cost_source.replaceAll("_", " ")}` : ""}
-                </p>
-                {job.error ? (
-                  <p className="mt-2 text-xs leading-relaxed text-[var(--oxblood)]">{job.error}</p>
-                ) : null}
-                {["queued", "running"].includes(job.status) && detail.permissions.write ? (
-                  <button
-                    type="button"
-                    className="mt-2 font-mono text-[0.55rem] tracking-[0.08em] text-[var(--muted)] uppercase underline underline-offset-4 hover:text-[var(--oxblood)]"
-                    onClick={() => void cancelJob(job)}
-                  >
-                    Cancel job
-                  </button>
-                ) : null}
-              </article>
-            ))}
-            {!detail.jobs.length ? (
-              <p className="border border-dashed border-[var(--line-strong)] p-3 text-sm text-[var(--muted)]">
-                No generation queued. The brief is a draft until you generate.
-              </p>
+              </details>
             ) : null}
-          </section>
+          </div>
 
-          <div className="mt-5 flex flex-wrap items-center gap-3 border-y border-[var(--line)] py-3">
-            <span className="font-mono text-[0.58rem] tracking-[0.1em] text-[var(--muted)] uppercase">
-              Review board
-            </span>
+          <div className="mt-3 flex items-center gap-2 overflow-x-auto border-y border-[var(--line)] py-2">
             <select
               className="select h-8 text-xs"
               style={{ width: "auto", minWidth: "9rem" }}
@@ -1367,7 +1343,7 @@ export default function ArtLab({ surface }: { surface: Surface }) {
                 </option>
               ))}
             </select>
-            <span className="ml-auto font-mono text-[0.58rem] tracking-[0.08em] text-[var(--muted)] uppercase">
+            <span className="ml-auto hidden shrink-0 font-mono text-[0.58rem] tracking-[0.08em] text-[var(--muted)] uppercase sm:inline">
               {filteredCandidates.length} shown · {compareIds.length} selected
             </span>
           </div>
@@ -1433,7 +1409,7 @@ export default function ArtLab({ surface }: { surface: Surface }) {
               ) : filteredCandidates.length ? (
                 <div
                   ref={gridRef}
-                  className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+                  className="grid gap-4 sm:grid-cols-2"
                   onKeyDown={onGridKeyDown}
                   aria-label="Candidate contact sheet"
                 >
@@ -1641,7 +1617,9 @@ function CandidatePanel(props: {
     <div className="panel p-4">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="eyebrow">Candidate {candidate.label}</p>
+          <p className="font-mono text-[0.56rem] tracking-[0.08em] text-[var(--muted)] uppercase">
+            Candidate {candidate.label}
+          </p>
           <p className="mt-1 font-mono text-[0.58rem] tracking-[0.08em] text-[var(--muted)] uppercase">
             {candidate.method_label} · {candidate.status}
           </p>
@@ -1691,7 +1669,6 @@ function CandidatePanel(props: {
           value={`${money(Number(candidate.metadata.cost_estimate_cents ?? 0))} estimate`}
         />
       </dl>
-      <p className="mt-2 text-xs leading-relaxed text-[var(--muted)]">{candidate.method_note}</p>
       <details className="mt-3 text-xs">
         <summary className="cursor-pointer font-mono text-[0.58rem] tracking-[0.08em] text-[var(--muted)] uppercase">
           Prompt and provenance
@@ -1703,7 +1680,9 @@ function CandidatePanel(props: {
 
       {candidate.feedback.length ? (
         <section className="mt-4 border-t border-[var(--line)] pt-3">
-          <p className="eyebrow">Feedback · {candidate.feedback.length}</p>
+          <p className="font-mono text-[0.56rem] tracking-[0.08em] text-[var(--muted)] uppercase">
+            Thread · {candidate.feedback.length}
+          </p>
           <ol className="mt-2 grid gap-2">
             {candidate.feedback.map((entry) => (
               <li key={entry.id} className="border-l-2 border-[var(--line-strong)] pl-2 text-xs">
@@ -1725,7 +1704,9 @@ function CandidatePanel(props: {
 
       {candidate.status !== "published" ? (
         <section className="mt-4 border-t border-[var(--line)] pt-3">
-          <p className="eyebrow">Leave feedback</p>
+          <p className="font-mono text-[0.56rem] tracking-[0.08em] text-[var(--muted)] uppercase">
+            Feedback
+          </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {tags.map((tag) => (
               <button
@@ -1793,16 +1774,17 @@ function CandidatePanel(props: {
       ) : null}
 
       <section className="mt-4 border-t border-[var(--line)] pt-3">
-        <p className="eyebrow">Direction</p>
+        <p className="font-mono text-[0.56rem] tracking-[0.08em] text-[var(--muted)] uppercase">
+          Decision
+        </p>
         {approved ? (
           <p className="mt-2 text-xs leading-relaxed text-[var(--green)]">
             Approved for {candidate.approval?.usage}.{" "}
             {published ? "Published; rollback is available." : "Publish makes it live."}
           </p>
         ) : (
-          <p className="mt-2 text-xs leading-relaxed text-[var(--muted)]">
-            Approve means “this is the direction”. Publish is a separate action with a confirmation
-            and a recorded previous render.
+          <p className="mt-1 text-[0.65rem] text-[var(--muted)]">
+            Approve first; publish is separate.
           </p>
         )}
         {!approved && candidate.status !== "rejected" ? (

@@ -124,6 +124,11 @@ when the owner asked for whole-card art.
   public Worker. For production, use the existing trusted production-agent and
   Cloudflare Access service-token workflow; never commit the token or put it in
   a payload, screenshot or log.
+- **Art Lab surface:** an image-first proof wall, not a text dashboard. Cards
+  and candidates lead in a masonry grid; brief titles, status and spend are
+  small captions. Creation, filters, intent, jobs and metadata are progressive
+  disclosure. Do not add repeated page headings, explanatory paragraphs or a
+  dashboard of equal-weight text cards above the work.
 - Generate one base character, then edit that exact base for family variants so
   the character, paper, lighting and palette stay coherent. Review identity
   work at 32, 64, 128 and 256 pixels and in a circular Discord crop. For cards,

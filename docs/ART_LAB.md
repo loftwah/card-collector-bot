@@ -145,9 +145,15 @@ estimate and the runner records the actual observed spend.
 
 ## Review and publication
 
+- The index is an image-first proof wall, not a text dashboard: a Pinterest-like
+  masonry of card candidates with a compact board chip rail, small captions and
+  progressive disclosure for creation. Studio and platform share the same
+  surface.
 - Review board: 4–8 candidates by default, 300 px contact sheet, compare at
-  750/400/214/128, filters by status, method and feedback tag, multi-select and
-  keyboard navigation.
+  750/400/214/128, filters by status, model, method and feedback tag,
+  multi-select and keyboard navigation.
+- Brief intent, job history and candidate metadata are disclosed only when
+  needed. The work leads.
 - Feedback tags: `too-busy`, `wrong-palette`, `wrong-face`, `too-generic`,
   `text-unreadable`, `flat-material`, `composition`, `keep`.
 - Approve means "this is the direction". It records usage, notes and, for logo,

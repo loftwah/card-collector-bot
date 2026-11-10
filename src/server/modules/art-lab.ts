@@ -396,8 +396,28 @@ export interface ArtBriefSummary {
   approved_count: number;
   latest_job_status: string | null;
   latest_error: string | null;
+  cover_candidate_id: string | null;
+  cover_url: string | null;
+  cover_method: ArtMethod | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ArtPin {
+  candidate_id: string;
+  brief_id: string;
+  brief_title: string;
+  category: ArtCategory;
+  collection_name: string | null;
+  card_name: string | null;
+  label: string;
+  method: ArtMethod;
+  status: CandidateStatus;
+  width: number;
+  height: number;
+  audience: string;
+  created_at: string;
+  image_url: string;
 }
 
 export interface ArtBriefDetail {
@@ -460,6 +480,9 @@ interface BriefSummaryRow extends ArtBriefRow {
   spend_cents: number;
   latest_job_status: string | null;
   latest_error: string | null;
+  cover_candidate_id: string | null;
+  cover_method: ArtMethod | null;
+  cover_status: string | null;
 }
 
 interface CollectionRef {
@@ -1280,6 +1303,11 @@ function summaryFromRow(row: BriefSummaryRow): ArtBriefSummary {
     approved_count: Number(row.approved_count ?? 0),
     latest_job_status: row.latest_job_status,
     latest_error: row.latest_error,
+    cover_candidate_id: row.cover_candidate_id,
+    cover_url: row.cover_candidate_id
+      ? `${artFileBase(row.category)}/candidates/${row.cover_candidate_id}/file?side=display`
+      : null,
+    cover_method: row.cover_method,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -1290,6 +1318,7 @@ export async function listArtBriefs(
   options?: { category?: string; limit?: number },
 ): Promise<{
   briefs: ArtBriefSummary[];
+  pins: ArtPin[];
   categories: Array<{
     key: ArtCategory;
     label: string;
@@ -1351,6 +1380,8 @@ export async function listArtBriefs(
                                       WHEN j.cost_actual_cents IS NOT NULL THEN j.cost_actual_cents
                                       ELSE j.cost_estimate_cents END), 0)
                FROM fb_art_jobs j WHERE j.brief_id = b.id) AS spend_cents,
+            (SELECT k.id FROM fb_art_candidates k WHERE k.brief_id = b.id ORDER BY k.created_at DESC LIMIT 1) AS cover_candidate_id,
+            (SELECT k.method FROM fb_art_candidates k WHERE k.brief_id = b.id ORDER BY k.created_at DESC LIMIT 1) AS cover_method,
             (SELECT j.status FROM fb_art_jobs j WHERE j.brief_id = b.id ORDER BY j.created_at DESC LIMIT 1) AS latest_job_status,
             (SELECT j.error FROM fb_art_jobs j WHERE j.brief_id = b.id AND j.status = 'failed' ORDER BY j.created_at DESC LIMIT 1) AS latest_error
        FROM fb_art_briefs b
@@ -1362,6 +1393,38 @@ export async function listArtBriefs(
     ...params,
   );
   const briefs = rows.map(summaryFromRow);
+  const pinRows = await all<{
+    candidate_id: string;
+    brief_id: string;
+    brief_title: string;
+    category: ArtCategory;
+    collection_name: string | null;
+    card_name: string | null;
+    label: string;
+    method: ArtMethod;
+    status: CandidateStatus;
+    width: number;
+    height: number;
+    audience: string;
+    created_at: string;
+  }>(
+    ctx.db,
+    `SELECT k.id AS candidate_id, k.brief_id, b.title AS brief_title, b.category,
+            c.name AS collection_name, cd.name AS card_name, k.label, k.method, k.status,
+            k.width, k.height, k.audience, k.created_at
+       FROM fb_art_candidates k
+       JOIN fb_art_briefs b ON b.id = k.brief_id
+       LEFT JOIN fb_collections c ON c.id = b.collection_id
+       LEFT JOIN fb_card_definitions cd ON cd.id = b.card_id
+      WHERE ${where.join(" AND ")}
+      ORDER BY k.created_at DESC
+      LIMIT 120`,
+    ...params.slice(0, -1),
+  );
+  const pins: ArtPin[] = pinRows.map((row) => ({
+    ...row,
+    image_url: `${artFileBase(row.category)}/candidates/${row.candidate_id}/file?side=display`,
+  }));
   const categories = allowed.map((key) => {
     const matching = briefs.filter((brief) => brief.category === key);
     return {
@@ -1376,6 +1439,7 @@ export async function listArtBriefs(
   const daily = await dailySpend(ctx);
   return {
     briefs,
+    pins,
     categories,
     daily: {
       cap_cents: DAILY_CAP_CENTS,
@@ -1654,6 +1718,7 @@ export async function getArtBrief(ctx: Ctx, briefId: string): Promise<ArtBriefDe
     : null;
   const spend = await briefSpendCents(ctx, brief.id);
   const pending = candidates.filter((candidate) => candidate.status === "generated").length;
+  const cover = candidates.at(-1) ?? null;
   const price = findModelPrice(brief.provider, brief.model);
   const summary: ArtBriefSummary = {
     id: brief.id,
@@ -1677,6 +1742,11 @@ export async function getArtBrief(ctx: Ctx, briefId: string): Promise<ArtBriefDe
     approved_count: candidates.filter((candidate) => candidate.status === "approved").length,
     latest_job_status: jobs.at(-1)?.status ?? null,
     latest_error: [...jobs].reverse().find((job) => job.status === "failed")?.error ?? null,
+    cover_candidate_id: cover?.id ?? null,
+    cover_url: cover
+      ? `${artFileBase(brief.category)}/candidates/${cover.id}/file?side=display`
+      : null,
+    cover_method: cover?.method ?? null,
     created_at: brief.created_at,
     updated_at: brief.updated_at,
   };
