@@ -163,6 +163,31 @@ estimate and the runner records the actual observed spend.
   was uploaded to exercise the review and publication pipeline. The fixture is
   not presented as generated artwork and is not part of the shipped source.
 
+## First real provider comparison (2026-11-10, local)
+
+A bounded real comparison was run on the local Art Lab, not production:
+
+- Brief: `Aki · real method comparison`; FAL `fal-ai/flux-pro/v1.1-ultra`;
+  one `whole_card` candidate and one `composed_scene` candidate; US$0.12 actual
+  spend recorded.
+- **Whole-card FLUX output:** a moody rain poster with a silhouette. It had no
+  card frame, no collection identity, no rarity/finish treatment and its small
+  lettering was model-authored gibberish. It was not a finished 5:7 card object
+  and should not be published.
+- **Composed output:** a real card object with the exact `Aki Hayakawa` name,
+  `CHAINSAW MAN · PUBLIC SAFETY`, `RARE`, `PLAIN` and provenance. It remained
+  legible at 214×300. This collection still uses the pre-v2 Chainsaw Man livery,
+  so the aesthetic is not the v2 proof language.
+- Conclusion: whole-card AI is now testable, but FLUX did not honour the card
+  contract. The JS renderer is not the only problem; the model did not produce a
+  card. GPT Image 2.6 is the better next test for layout/text adherence, but the
+  configured `OPENAI_API_KEY` returned `401 invalid_api_key`. The job failed
+  with that exact reason, recorded US$0.05 and made no fallback call.
+
+The Art Lab is deliberately built to keep both methods side by side. The owner
+can now judge a model's whole-card output against the composed object instead of
+arguing from one chat image.
+
 ## Production verification (2026-11-10)
 
 - Pre-change D1 JSON backup:
