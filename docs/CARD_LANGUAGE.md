@@ -109,10 +109,14 @@ no card render is used as collection identity.
   sheets, live inspector and Discord captures).
 - The temporary production agent and Access service token used for the pass
   were revoked; `.foilbury/production-agent.json` was removed.
-- Not claimed: the live `/foilbury open` slash invocation itself. The render,
-  attachment and Discord client presentation were exercised through the real
-  test channel; the interaction receipt path is unchanged and still requires a
-  human Discord invocation for its own acceptance.
+- The real `/foilbury open` slash path was invoked and revealed in the test
+  channel: sealed draw, `Reveal card`, committed receipt and native fields all
+  completed. That draw returned Kyubey — Silver from Madoka Magica, which is
+  not one of the three proof collections, so its attachment is still the old
+  language. The v2 Gold render was posted to the same channel as a real saved
+  render attachment and inspected at the client's **214×300** inline cap. The
+  v2 card language in Discord is proven; a v2 draw receipt from a proof
+  collection is still a chance outcome, not a controlled test.
 
 ## Historical: Slice 3 (superseded)
 
