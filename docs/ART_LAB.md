@@ -371,6 +371,35 @@ the shared viewer and each slot has one explicit action.
   `art/brand-variants.mjs` from the real mark, wordmark, type and palette. The
   historical Signal Fold shareables are not presented as current identity.
 
+## Production card proof: Tux · Neon signal keeper (2026-11-11)
+
+A real whole-card run was made against production after the twelve-style
+release:
+
+- Brief `artb_mwautj8n2q2knsv183qs0z8a`, candidate
+  `artc_mwauw3w8vxm8adqdfmqyqqrd`, style `neon`, model
+  `gpt-image-2.6-sunburst`, four candidates, **US$0.20** recorded by the
+  runner.
+- The runner prepared the real Tux subject reference and exact copy. The
+  selected front reads `Tux`, `RARE`, `Root access`, `Fighter`, `PLAIN`,
+  `FB-F-005` and `PUBLIC SHOWCASE · ORIGINAL FOILBURY PROJECT`.
+- The front was inspected at 750, 400, 214 and 128. Candidate 3 carried a
+  `FOILBURY · CARD REFERENCE` artefact and was rejected. Candidate 2 was clean
+  and selected. No gibberish, fake serial, invented logo or watermark.
+- A separate AI back was generated with the same exact copy and a designed
+  record; it was cropped to 5:7 and attached to the candidate through the
+  render endpoint. It was inspected at 750, 400, 214 and 128.
+- The candidate was approved by Dean and published to the Tux Plain variant
+  `var_mvyy31qvaahfz5gc6bcks0dk` with `publishBack: true` through the trusted
+  production agent. New front asset `rnd_mwav6i5ovj5fhvmyjc756eda`, new back
+  `rnd_mwav6imqxn4r6f39jw3ccz0y`; previous front/back snapshotted for rollback.
+- Live `/cabinet/tux` served the new front and back at 1440; the public card
+  page's front/back switch worked. Only the Plain variant was replaced; the
+  other finishes and prints keep their existing renders.
+- The selected Neon frame is prismatic while the variant label is Plain. This
+  is the named Neon style frame, not a second finish claim; future Neon
+  prompts should keep the requested finish material explicit.
+
 ## Card experience production verification (2026-11-11)
 
 - `pnpm check` passed (types, unit, workers, script, API inventory).
@@ -418,4 +447,11 @@ the shared viewer and each slot has one explicit action.
 - Live signed-in `/admin/catalogue` and `/admin/design`: the catalogue saved
   render, table thumbnails and Render Studio card faces opened the shared
   viewer at 1440 (four variants paged in the same dialog).
-- No paid provider call was made for this change.
+- Art expansion spend: US$0.20 actual for the four Tux whole-card candidates
+  and an estimated US$0.20 for the icon, mascot, style and back sheets; total
+  about US$0.40 against a declared US$2.00 ceiling. No top-up.
+- The new production assets are served from `/art/icons/`,
+  `/art/mascots/` and `/art/styles/`; the platform catalogue exposes seven
+  distinct icon directions and four Keeper mascots, and `/studio/all-art` is
+  live with 51 pieces (4 card candidates, 7 icons, 4 mascots, 12 styles, 5
+  logos, 5 OG, 4 banners, 4 shareables, 6 other).
