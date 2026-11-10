@@ -563,10 +563,53 @@ async function compose(run, rawScene) {
   };
   const front = await composeCard(cardInput);
   const back = hasLivery(run.collection.slug) ? await composeCardBack(cardInput) : null;
+  const material = run.variant.material_key;
+  const theme = presentation.theme ?? "";
+  const styleKey = run.brief.styles?.[0] ?? "";
+  const frameName = theme ? `frame-${theme}-${material}.png` : `frame-${material}.png`;
+  const aiEffect = styleKey ? `ai/${styleKey}-holo.png` : null;
+  const layers = [
+    { key: "scene", label: "AI scene", source: "provider", kind: "ai" },
+    {
+      key: "subject",
+      label: "Real subject art",
+      source: "sourced",
+      kind: "sourced",
+      asset_id: subjectAssetId,
+    },
+    {
+      key: "material",
+      label: `${material} material`,
+      path: `/art/layers/material-${material}.png`,
+      blend: material === "silver" ? "overlay" : material === "diamond" ? "screen" : "soft-light",
+      kind: "authored",
+    },
+    {
+      key: "frame",
+      label: "Card frame",
+      path: `/art/layers/${frameName}`,
+      blend: "over",
+      kind: "authored",
+    },
+    ...(aiEffect && (material === "diamond" || run.variant.effect_key === "holographic")
+      ? [
+          {
+            key: "effect",
+            label: "AI holographic effect",
+            path: `/art/layers/${aiEffect}`,
+            blend: "screen",
+            opacity: 0.34,
+            kind: "ai",
+          },
+        ]
+      : []),
+    { key: "type", label: "Exact code type", source: "code", kind: "code" },
+  ];
   return {
     front: front.buffer ?? front,
     master: front.masterPng,
     back: back?.buffer ?? back ?? null,
+    layers,
   };
 }
 
@@ -614,6 +657,7 @@ async function uploadCandidate(run, raw, extra, index) {
   if (extra?.prompt) form.append("prompt", extra.prompt);
   if (extra?.label) form.append("label", extra.label);
   form.append("seed", String(extra?.seed ?? ""));
+  if (extra?.layers) form.append("layers", JSON.stringify(extra.layers));
   return apiForm(`/api/v1/admin/art/jobs/${run.job.id}/candidates`, form);
 }
 

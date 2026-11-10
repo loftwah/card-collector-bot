@@ -2240,6 +2240,10 @@ export async function addArtCandidate(
     String(form.get("label") ?? "").trim() || (await nextCandidateLabel(ctx, brief.id))
   ).slice(0, 60);
   const prompt = String(form.get("prompt") ?? job.prompt).slice(0, 12000);
+  const layers = parseJson<Array<Record<string, unknown>>>(
+    String(form.get("layers") ?? "[]"),
+    [],
+  ).slice(0, 16);
   const method = job.method;
   const isComposed = method === "composed_scene" || method === "composed_texture";
   if (isComposed && !(frontFile instanceof File)) {
@@ -2337,6 +2341,7 @@ export async function addArtCandidate(
     audience: brief.audience,
     official: false,
     cost_estimate_cents: job.cost_estimate_cents,
+    layers,
     fixture: String(form.get("fixture") ?? "") === "1",
   };
   await ctx.db.batch([

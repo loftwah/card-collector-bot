@@ -376,6 +376,42 @@ function methodNote(candidate: Candidate): string {
   return "Raw brand art · type stays in code";
 }
 
+interface LayerInfo {
+  key: string;
+  label: string;
+  path: string | null;
+  blend: string | null;
+  opacity: number | null;
+  kind: string | null;
+  source: string | null;
+}
+
+function readLayers(candidate: Candidate): LayerInfo[] {
+  const raw = candidate.metadata.layers;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((entry): LayerInfo | null => {
+      if (!entry || typeof entry !== "object") return null;
+      const record = entry as Record<string, unknown>;
+      const key = typeof record.key === "string" ? record.key : "";
+      if (!key) return null;
+      return {
+        key,
+        label: typeof record.label === "string" ? record.label : key.replaceAll("_", " "),
+        path: typeof record.path === "string" ? record.path : null,
+        blend: typeof record.blend === "string" ? record.blend : null,
+        opacity:
+          typeof record.opacity === "number" && Number.isFinite(record.opacity)
+            ? record.opacity
+            : null,
+        kind: typeof record.kind === "string" ? record.kind : null,
+        source: typeof record.source === "string" ? record.source : null,
+      };
+    })
+    .filter((entry): entry is LayerInfo => Boolean(entry))
+    .slice(0, 16);
+}
+
 function exactCopyFromPrompt(prompt: string): string | null {
   const match = prompt.match(/EXACT COPY[^\n]*\n([\s\S]*?)(?:\n\n|$)/);
   return match?.[1]?.trim() || null;
@@ -1987,6 +2023,63 @@ function CandidatePanel(props: {
           {methodNote(candidate)}
         </figcaption>
       </figure>
+      {readLayers(candidate).length ? (
+        <section className="candidate-layers">
+          <p className="card-viewer__review-title">Layer stack · {readLayers(candidate).length}</p>
+          <ol>
+            {readLayers(candidate).map((layer) => (
+              <li key={layer.key}>
+                {layer.key === "scene" || layer.path ? (
+                  <button
+                    type="button"
+                    className="candidate-layers__thumb"
+                    onClick={() =>
+                      openCardViewer(
+                        [
+                          {
+                            id: `${candidate.id}-${layer.key}`,
+                            name: layer.label,
+                            subtitle: `${candidate.label} layer`,
+                            collection: detail.collection?.name ?? null,
+                            method: layer.kind ?? "Layer",
+                            status: layer.blend
+                              ? `${layer.blend}${layer.opacity ? ` · ${layer.opacity}` : ""}`
+                              : "Layer",
+                            width: layer.key === "scene" ? candidate.width : 750,
+                            height: layer.key === "scene" ? candidate.height : 1050,
+                            front: layer.key === "scene" ? candidate.files.raw : layer.path!,
+                            downloadUrl: layer.key === "scene" ? candidate.files.raw : layer.path!,
+                          },
+                        ],
+                        0,
+                      )
+                    }
+                    aria-label={`Open ${layer.label} layer full size`}
+                  >
+                    <img
+                      src={layer.key === "scene" ? candidate.files.raw : layer.path!}
+                      alt=""
+                      loading="lazy"
+                    />
+                  </button>
+                ) : (
+                  <span className="candidate-layers__code" aria-hidden="true">
+                    {layer.key === "type" ? "Aa" : "—"}
+                  </span>
+                )}
+                <div>
+                  <p>{layer.label}</p>
+                  <p>
+                    {[layer.kind, layer.source, layer.blend, layer.opacity]
+                      .filter(Boolean)
+                      .join(" · ") || layer.key}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
       {candidate.files.reference ? (
         <p className="mt-2 text-xs text-[var(--muted)]">
           <a

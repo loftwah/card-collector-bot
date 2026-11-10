@@ -11438,3 +11438,68 @@ html[data-motion="reduced"] .layered-card__effect {
 .candidate-tile__variation {
   color: var(--ink);
 }
+
+/* Candidate layer stack: see what the card is made of, not just the result. */
+.candidate-layers {
+  margin-top: 0.75rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--line);
+}
+
+.candidate-layers ol {
+  display: grid;
+  gap: 0.3rem;
+  margin-top: 0.4rem;
+  list-style: none;
+}
+
+.candidate-layers li {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.candidate-layers__thumb,
+.candidate-layers__code {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--paper-2);
+  color: var(--muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.55rem;
+}
+
+.candidate-layers__thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.candidate-layers__thumb:hover,
+.candidate-layers__thumb:focus-visible {
+  border-color: var(--signal);
+  outline: 2px solid var(--signal);
+  outline-offset: 1px;
+}
+
+.candidate-layers li p:first-child {
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.candidate-layers li p:last-child {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.48rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
