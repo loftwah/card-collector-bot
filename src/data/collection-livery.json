@@ -17,7 +17,9 @@
     "collectionName": "Doki Doki Literature Club",
     "setLine": "The clubroom, 2017",
     "setNote": "Four members, one after-school room, and a poem exchange that is not quite what it seems.",
-    "backSurface": "paper"
+    "backSurface": "paper",
+    "subjectHeight": 1000,
+    "subjectTop": 16
   },
   "project-sekai": {
     "theme": "stage",
@@ -37,7 +39,9 @@
     "collectionName": "Project Sekai",
     "setLine": "Five units, one stage",
     "setNote": "Five units, one virtual singer, and a stage that keeps changing hands.",
-    "backSurface": "dark"
+    "backSurface": "dark",
+    "subjectHeight": 960,
+    "subjectTop": 40
   },
   "scott-pilgrim": {
     "theme": "manga",
@@ -57,6 +61,30 @@
     "collectionName": "Scott Pilgrim",
     "setLine": "Six volumes, one city",
     "setNote": "Six volumes, one city, and a league of exes standing between Scott and a quiet life.",
-    "backSurface": "paper"
+    "backSurface": "paper",
+    "subjectHeight": 900,
+    "subjectTop": 66
+  },
+  "danganronpa-three-games": {
+    "theme": "archive",
+    "family": "archive",
+    "ground": "#0b0b0d",
+    "paper": "#f2ece0",
+    "paper2": "#e5dbcb",
+    "ink": "#141016",
+    "accent": "#ff2e7e",
+    "accent2": "#c9c9c9",
+    "key": "#ffd1e3",
+    "motif": "claw",
+    "badge": "wide",
+    "display": "manrope",
+    "plinth": "dark",
+    "era": "2010–2017 · VISUAL NOVEL",
+    "collectionName": "Danganronpa",
+    "setLine": "Three killing games",
+    "setNote": "Three games, one bear, and a class trial that keeps voting.",
+    "backSurface": "dark",
+    "subjectHeight": 720,
+    "subjectTop": 42
   }
 }

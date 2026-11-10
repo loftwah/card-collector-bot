@@ -335,15 +335,24 @@ async function subjectLayer(subjectPath, targetHeight, { key, shadow = 0.5, rim 
   return { buffer: layer, width: cw, height: ch, pad, artWidth: width, artHeight: height };
 }
 
-async function markData(markPath, markBuffer, markMime) {
-  const source = markBuffer ?? (markPath && fs.existsSync(markPath) ? markPath : null);
-  if (!source) return { uri: "", aspect: 1 };
-  const meta = await sharp(source).metadata();
+async function markData(markPath, markBuffer, markMime, crop) {
+  let bytes =
+    markBuffer ?? (markPath && fs.existsSync(markPath) ? fs.readFileSync(markPath) : null);
+  if (!bytes) return { uri: "", aspect: 1 };
+  if (crop) {
+    const meta = await sharp(bytes).metadata();
+    bytes = await sharp(bytes)
+      .extract({
+        left: Math.round((meta.width ?? 0) * crop.x),
+        top: Math.round((meta.height ?? 0) * crop.y),
+        width: Math.round((meta.width ?? 0) * crop.w),
+        height: Math.round((meta.height ?? 0) * crop.h),
+      })
+      .toBuffer();
+  }
+  const meta = await sharp(bytes).metadata();
   return {
-    uri: dataUri(
-      typeof source === "string" ? fs.readFileSync(source) : markBuffer,
-      markMime ?? "image/png",
-    ),
+    uri: dataUri(bytes, markMime ?? "image/png"),
     aspect: meta.width && meta.height ? meta.width / meta.height : 1,
   };
 }
@@ -404,6 +413,13 @@ function motif(kind, x, y, r, fill, opacity = 1) {
   }
   if (kind === "star") {
     return `<g transform="translate(${x} ${y})" fill="${fill}" opacity="${opacity}"><path d="M0 ${-r} C ${r * 0.1} ${-r * 0.24} ${r * 0.24} ${-r * 0.1} ${r} 0 C ${r * 0.24} ${r * 0.1} ${r * 0.1} ${r * 0.24} 0 ${r} C ${-r * 0.1} ${r * 0.24} ${-r * 0.24} ${r * 0.1} ${-r} 0 C ${-r * 0.24} ${-r * 0.1} ${-r * 0.1} ${-r * 0.24} 0 ${-r}Z"/><circle cx="${r * 0.72}" cy="${-r * 0.72}" r="${r * 0.14}"/></g>`;
+  }
+  if (kind === "claw") {
+    return `<g transform="translate(${x} ${y}) rotate(-18)" fill="none" stroke="${fill}" stroke-width="${Math.max(1.4, r * 0.2)}" stroke-linecap="round" opacity="${opacity}">
+      <path d="M${-r * 0.9} ${r * 0.55} Q${-r * 0.2} ${-r * 0.2} ${r * 0.45} ${-r * 0.85}"/>
+      <path d="M${-r * 0.45} ${r * 0.85} Q${r * 0.15} ${r * 0.1} ${r * 0.8} ${-r * 0.5}"/>
+      <path d="M${r * 0.05} ${r * 1.0} Q${r * 0.55} ${r * 0.45} ${r * 0.95} ${-r * 0.05}"/>
+    </g>`;
   }
   if (kind === "bolt") {
     return `<g transform="translate(${x} ${y}) scale(${r / 12})" fill="${fill}" opacity="${opacity}"><path d="M2 -12 L-7 2 H-1 L-3 12 L7 -3 H1Z"/></g>`;
@@ -677,12 +693,28 @@ function render(svg, width = W * S) {
 function serialiseData(input, theme) {
   const parts = String(input.serial ?? "").split(" · ");
   const serial = input.catalogueCode ?? parts[0] ?? "MEMBER EDITION";
-  const role = input.subtitle || input.className || "Member";
+  const subtitleParts = String(input.subtitle ?? "")
+    .split(" · ")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const className = String(input.className ?? "").trim();
+  const epithet = subtitleParts.find(
+    (part) => part !== className && !/\(\d{4}\)/.test(part) && !/^trigger happy/i.test(part),
+  );
+  const role =
+    className && subtitleParts.length
+      ? epithet
+        ? `${className} · ${epithet}`
+        : className
+      : input.subtitle || className || "Member";
+  const cardEra =
+    input.cardEra ??
+    (subtitleParts[0] && /\(\d{4}\)/.test(subtitleParts[0]) ? subtitleParts[0] : theme.era);
   return {
     name: input.name ?? "Untitled",
     role,
     collection: input.collectionName ?? theme.collectionName ?? input.setName ?? "Foilbury",
-    era: theme.era ?? "MEMBER ARCHIVE",
+    era: cardEra ?? "MEMBER ARCHIVE",
     rarity: input.rarity || "Cabinet Rare",
     serial,
     edition: input.edition || parts[1] || "Member archive",
@@ -711,12 +743,7 @@ export async function renderFront(input) {
   const material = materialKey(
     input.effect === "holographic" ? "diamond" : (input.material ?? "plain"),
   );
-  const mark = await markData(
-    input.markPath,
-    input.markBuffer,
-    input.markMime,
-    input.collectionSlug,
-  );
+  const mark = await markData(input.markPath, input.markBuffer, input.markMime, theme.markCrop);
   theme.markUri = mark.uri;
   theme.markAspect = mark.aspect;
 
@@ -733,16 +760,21 @@ export async function renderFront(input) {
         path.join(root, ".foilbury/sourced", input.collectionSlug, `${input.cardSlug}-subject.png`),
       ].find((candidate) => fs.existsSync(candidate)) ?? input.subjectPath)
     : input.subjectPath;
-  const subject = await subjectLayer(
-    sourceSubject,
-    input.subjectHeight ?? (theme.family === "manga" ? 900 : theme.family === "stage" ? 960 : 1000),
-    {
-      key: theme.key,
-    },
-  );
+  const subjectHeight =
+    input.subjectHeight ??
+    theme.subjectHeight ??
+    (theme.family === "manga" ? 900 : theme.family === "stage" ? 960 : 1000);
+  const subjectTop =
+    input.subjectTop ??
+    theme.subjectTop ??
+    (theme.family === "manga" ? 66 : theme.family === "stage" ? 40 : 16);
+  const subject = await subjectLayer(sourceSubject, subjectHeight, {
+    key: theme.key,
+  });
   const artUri = { uri: dataUri(art.buffer) };
   const subjectUri = { ...subject, uri: dataUri(subject.buffer) };
   const data = serialiseData(input, theme);
+  data.subjectTop = subjectTop;
   const png = render(frontSvg(theme, material, artUri, subjectUri, data));
   const grain = await grainBuffer();
   const finished = await sharp(png)
@@ -779,12 +811,7 @@ export async function renderBack(input) {
   const material = materialKey(
     input.effect === "holographic" ? "diamond" : (input.material ?? "plain"),
   );
-  const mark = await markData(
-    input.markPath,
-    input.markBuffer,
-    input.markMime,
-    input.collectionSlug,
-  );
+  const mark = await markData(input.markPath, input.markBuffer, input.markMime, theme.markCrop);
   theme.markUri = mark.uri;
   theme.markAspect = mark.aspect;
   const data = serialiseData(input, theme);
