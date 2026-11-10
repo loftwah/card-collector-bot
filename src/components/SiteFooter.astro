@@ -3,6 +3,7 @@ import BrandMark from "./BrandMark.astro";
 const year = new Date().getFullYear();
 const local = Astro.locals.foilbury;
 ---
+
 <footer class="site-footer">
   <div class="container grid gap-10 py-12 md:grid-cols-[1.4fr_1fr_1fr]">
     <div>
@@ -21,29 +22,59 @@ const local = Astro.locals.foilbury;
     <div>
       <p class="mb-3 text-sm font-semibold text-[var(--ink)]">The cabinet</p>
       <ul class="grid gap-2 text-sm">
-        <li><a href="/cabinet">Public catalogue</a></li>
-        <li><a href="/tour">Guided tour</a></li>
-        <li><a href="/showcase">Showcase &amp; video</a></li>
-        <li><a href="/brand-kit">Brand kit</a></li>
-        <li><a href="/journal">The journal</a></li>
-        <li><a href="/play">Your collection</a></li>
-        <li><a href="/play/draw">Draw room</a></li>
+        <li>
+          <a href="/cabinet">Public catalogue</a>
+        </li>
+        <li>
+          <a href="/tour">Guided tour</a>
+        </li>
+        <li>
+          <a href="/showcase">Showcase &amp; video</a>
+        </li>
+        <li>
+          <a href="/brand-kit">Brand kit</a>
+        </li>
+        <li>
+          <a href="/journal">The journal</a>
+        </li>
+        <li>
+          <a href="/play">Your collection</a>
+        </li>
+        <li>
+          <a href="/play/draw">Draw room</a>
+        </li>
       </ul>
     </div>
     <div>
       <p class="mb-3 text-sm font-semibold text-[var(--ink)]">For creators & agents</p>
       <ul class="grid gap-2 text-sm">
-        <li><a href="/docs/agent-guide">Agent guide</a></li>
-        <li><a href="/openapi.json">OpenAPI</a></li>
-        <li><a href="/create-bot">Create a Bot</a></li>
-        <li><a href="/account/security">Account security</a></li>
-        <li><a href="/studio">Studio · scoped admin</a></li>
-        <li><a href="/platform-admin">Platform administration</a></li>
+        <li>
+          <a href="/docs/agent-guide">Agent guide</a>
+        </li>
+        <li>
+          <a href="/openapi.json">OpenAPI</a>
+        </li>
+        <li>
+          <a href="/create-bot">Create a Bot</a>
+        </li>
+        <li>
+          <a href="/account/security">Account security</a>
+        </li>
+        <li>
+          <a href="/studio">Studio · scoped admin</a>
+        </li>
+        <li>
+          <a href="/platform-admin">Platform administration</a>
+        </li>
       </ul>
     </div>
   </div>
   <div class="container flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] py-5">
-    <p class="font-mono text-[0.6rem] uppercase tracking-[0.14em] text-[var(--muted)]">© {year} Foilbury · Australian English · Melbourne time</p>
-    <p class="font-mono text-[0.6rem] uppercase tracking-[0.14em] text-[var(--muted)]">Earned currency only · no purchase · no cash-out</p>
+    <p class="font-mono text-[0.6875rem] uppercase tracking-[0.14em] text-[var(--muted)]">
+      © {year} Foilbury · Australian English · Melbourne time
+    </p>
+    <p class="font-mono text-[0.6875rem] uppercase tracking-[0.14em] text-[var(--muted)]">
+      Earned currency only · no purchase · no cash-out
+    </p>
   </div>
 </footer>

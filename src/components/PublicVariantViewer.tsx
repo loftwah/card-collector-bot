@@ -217,42 +217,38 @@ export default function PublicVariantViewer({
         <div className="mt-8">
           <p className="eyebrow mb-3">Published finishes</p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {variants.map((item, index) => (
-              <button
-                type="button"
-                key={item.id}
-                onClick={() => setSelected(index)}
-                aria-pressed={index === selected}
-                className={cn(
-                  "border px-3 py-2 text-left transition-colors",
-                  index === selected
-                    ? "surface-selected border-ink"
-                    : "border-[var(--line)] text-[var(--muted)] hover:border-[var(--brass)] hover:text-[var(--ink)]",
-                )}
-              >
-                <span className="block font-mono text-[0.6875rem] tracking-[0.1em] uppercase">
-                  {multiplePrints && printTitleOf(item)
-                    ? printTitleOf(item)
-                    : item.material_key === "diamond"
-                      ? "holographic"
-                      : item.material_key}
-                </span>
-                <span className="mt-0.5 block text-sm font-semibold">
-                  {displayFinish(item.name, item.material_key, item.effect_key)}
-                </span>
-                {multiplePrints && printTitleOf(item) ? (
-                  <span className="mt-0.5 block font-mono text-[0.6875rem] tracking-[0.08em] text-[var(--muted)] uppercase">
-                    {item.material_key === "diamond" ? "holographic" : item.material_key}
-                  </span>
-                ) : null}
-              </button>
-            ))}
+            {variants.map((item, index) => {
+              const finish = displayFinish(item.name, item.material_key, item.effect_key);
+              const title = printTitleOf(item);
+              const kicker = title && title.toLowerCase() !== finish.toLowerCase() ? title : null;
+              return (
+                <button
+                  type="button"
+                  key={item.id}
+                  onClick={() => setSelected(index)}
+                  aria-pressed={index === selected}
+                  className={cn(
+                    "border px-3 py-2 text-left transition-colors",
+                    index === selected
+                      ? "surface-selected border-ink"
+                      : "border-[var(--line)] text-[var(--muted)] hover:border-[var(--brass)] hover:text-[var(--ink)]",
+                  )}
+                >
+                  {kicker ? (
+                    <span className="block font-mono text-[0.6875rem] tracking-[0.1em] uppercase">
+                      {kicker}
+                    </span>
+                  ) : null}
+                  <span className="mt-0.5 block text-sm font-semibold">{finish}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
         <div className="notice mt-8 flex gap-3">
           <Sparkles size={18} className="mt-0.5 shrink-0 text-[var(--brass)]" aria-hidden="true" />
-          <p className="max-w-[58ch] text-sm leading-relaxed">
+          <p className="max-w-[58ch] text-sm leading-relaxed text-pretty">
             The illustration stays the same identity. The material and effect are separate authored
             layers with pinned recipe versions, so a later asset change cannot silently alter an
             owned card.
