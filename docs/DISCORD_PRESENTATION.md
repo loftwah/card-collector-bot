@@ -269,14 +269,12 @@ useful but are no longer the adoption proof.
   `cover_url`, the profile avatar/featured-card contract, and that profile or
   collection views do not change wallet, inventory or ledger rows. `pnpm
   test:workers` passed 361 tests.
-- **Live Discord API read:** the `foilbury` command is registered in the test
-  guild with `profile` and `collection` options present. This is command
-  registration, not a user invocation.
-- **Not claimed:** a live Discord interaction for this slice. No authorised
-  human Discord client/spectator interaction was available in this pass; the
-  historical 2026-11-08 real-client evidence above predates this change. The
-  command path is exercised through the signed interaction handler tests, not a
-  live client.
+- **Live interaction verified 2026-11-10** in the signed-in desktop Discord client, `#card-collector-test`, Loftwah guild:
+  - `/foilbury collection`: private response, Danganronpa banner as the large image, real wordmark as the top-right thumbnail, `Featured collection · Danganronpa — Three Killing Games · 5/9 subjects · Members only`, balance 1680, 13 owned / 12 unique / 1 duplicate.
+  - `/foilbury profile`: private response, chosen Keeper avatar thumbnail, saved Monokuma render as the large image, `Featured copy Monokuma · Plain`, `Featured collection Danganronpa — Three Killing Games · 5/9 subjects · Members only`, 12 earned badges and the existing native actions.
+  - `/foilbury open`: sealed Cabinet Draw at −80, then Reveal card produced `Monika — Gold`, serial `FB-4-DE-341A93`, `New finish`, Doki Doki collection `1/8`, opening debit −80, after debit and settled balance 1600, 0.24% shown chance, with Open again / Collection / Tour / Open album / Share to channel. The image was the same saved 750×1050 render used on the web.
+  - Evidence: `.foilbury/evidence/discord-slice5-20261110/` (`discord-collection.png`, `discord-profile.png`, `discord-pull.png`).
+- **Not claimed:** a mobile Discord client or an independent second-account spectator. The desktop interaction is real; the mobile/spectator layers remain open.
 
 ## Real-client evidence — 2026-11-08
 
