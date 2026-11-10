@@ -1618,7 +1618,7 @@ function CandidatePanel(props: {
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="font-mono text-[0.56rem] tracking-[0.08em] text-[var(--muted)] uppercase">
-            Candidate {candidate.label}
+            {candidate.label}
           </p>
           <p className="mt-1 font-mono text-[0.58rem] tracking-[0.08em] text-[var(--muted)] uppercase">
             {candidate.method_label} · {candidate.status}
