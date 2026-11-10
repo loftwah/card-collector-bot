@@ -74,9 +74,10 @@ export default function PublicVariantViewer({
   const [showBack, setShowBack] = useState(false);
   const [inspect, setInspect] = useState(false);
   const variant = variants[selected] ?? variants[0];
+  const selectedFinish = variant
+    ? displayFinish(variant.name, variant.material_key, variant.effect_key)
+    : null;
   const printTitle = printTitleOf(variant);
-  const multiplePrints =
-    new Set(variants.map((item) => item.edition_name).filter(Boolean)).size > 1;
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-start">
       <div className="min-w-0">
@@ -87,7 +88,7 @@ export default function PublicVariantViewer({
             fallbackUrl={cardBackUrl}
             name={name}
             subtitle={subtitle}
-            finish={displayFinish(variant?.name, variant?.material_key, variant?.effect_key)}
+            finish={selectedFinish ?? ""}
             collection={collection?.name ?? null}
             initialEnabled
             initialFlipped={showBack}
@@ -120,7 +121,10 @@ export default function PublicVariantViewer({
                   ) : null}
                 </div>
               ) : variant?.render_url ? (
-                <img src={variant.render_url} alt={`${name} card in ${variant.name} finish`} />
+                <img
+                  src={variant.render_url}
+                  alt={`${name} card in ${selectedFinish ?? variant.name} finish`}
+                />
               ) : (
                 <div className="card-face-fallback">{name.charAt(0)}</div>
               )}
@@ -132,7 +136,7 @@ export default function PublicVariantViewer({
             <p className="font-mono text-[0.6875rem] tracking-[0.12em] text-[var(--muted)] uppercase">
               {showBack
                 ? `Card back${printTitle ? ` · ${printTitle}` : ""}`
-                : `Published render · ${printTitle ? `${printTitle} · ` : ""}${variant?.name ?? "Awaiting render"}`}
+                : `Published render · ${printTitle ? `${printTitle} · ` : ""}${selectedFinish ?? "Awaiting render"}`}
             </p>
             <div className="flex flex-wrap gap-1">
               <button
