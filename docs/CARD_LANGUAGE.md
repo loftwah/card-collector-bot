@@ -141,9 +141,9 @@ second; the mark is on a paper plate for these wordmark-led collections.
 - The same four livery layouts are reused; no new theme, frame or per-collection
   renderer was added.
 - `markPlate` records whether a series wordmark is light or dark. A light
-  wordmark gets a dark plate (Chainsaw Man, Doki Doki, Project Sekai, South Park,
-  The Simpsons); a dark wordmark keeps the paper plate (Vocaloid, Madoka, Total
-  Drama).
+  wordmark gets a dark plate (Chainsaw Man, Doki Doki, Project Sekai, The
+  Simpsons); a dark wordmark keeps the paper plate (Vocaloid, South Park,
+  Madoka, Total Drama).
 - The binder groups are authored card-name lists, not substring guesses, so a
   roster with a shared word in two roles cannot fall into the wrong shelf.
 - All five collections remain member/private, `origin=sourced`, `official:false`.
