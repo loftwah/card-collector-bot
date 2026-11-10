@@ -1,10 +1,10 @@
-# Pilot card language: Danganronpa and Protocol 11
+# Collection card language: all published collections
 
-Status: implemented and deployed in Slice 2 (2026-11-10) for the two pilot
-collections only. Source `24a1d67b31dd3db20a0523c5707528b18735c925`; Worker
-`302617c7-7fe0-4c2e-9afa-5a08ad8f05d7`. The shared renderer remains the only
-card renderer; the other collections keep their current presentation until
-Slice 3.
+Status: Slice 3 complete and production-verified (2026-11-10). The shared
+language now covers every published collection; the two pilots keep their
+original output. Final source `b9a3c72`; Worker
+`2a57e92b-1fe5-42da-a698-2ea236919db9`. The shared renderer remains the only
+card renderer.
 
 ## Shared contract
 
@@ -189,6 +189,33 @@ second; the mark is on a paper plate for these wordmark-led collections.
   Foilbury projects and remain public.
 - This completes the rollout of the shared language to every published
   collection. The two pilots keep their original output.
+
+## Slice 3 production rollout
+
+The four batches were released separately and each was exercised on the live
+signed-in site before the next began.
+
+| Batch | Collections | Fronts | Backs | Source | Worker |
+| --- | --- | ---: | ---: | --- | --- |
+| 1 | Chainsaw Man, Madoka Magica, Total Drama Island | 96 | 96 | `545a82e` + `e88afb5` | `da5660f6` / `ab37d44d` |
+| 2 | Doki Doki, Project Sekai, Vocaloid, South Park, The Simpsons | 164 | 164 | `08b4184` + `0bb304a` | `aa72257a` / `2633e889` |
+| 3 | NANA, Death Note, Summer Hikaru Died, Scott Pilgrim, Rick and Morty | 160 | 160 | `9526b43` | `3bad1911` |
+| 4 | Alien Stage, NBA, Evangelion, Bubbles, Fighter, Shared Characters | 196 | 196 | `b9a3c72` | `2a57e92b` |
+
+- Pre-change D1 JSON backup:
+  `.foilbury/backups/d1-2026-11-10T00-53-53-721Z.json` (97 tables, 37,016 rows,
+  SHA-256 `9c9aabc505cc4cbf7dc418f2e8610de6696ede61960b389fa5b3866a6aac1c01`).
+- The render pass only added saved front/back render assets. Collection
+  `banner_url`, `logo_url`, `status`, `view_audience` and distribution were not
+  changed.
+- Every one of the 19 remaining published collections was checked at 1440 and
+  390, light and dark: banner-first or real-mark-first hero, loaded mark, grouped
+  binder, exact next-opening state, finish odds, and no horizontal overflow.
+- The three mark-only originals (Bubbles, Fighter, Shared Characters) use their
+  committed original marks; no banner was invented. Their page honestly offers
+  the mixed cabinet draw when the collection is not dropping.
+- The temporary production agent and Cloudflare Access service token used for
+  the render pass were revoked and deleted afterwards.
 
 ## Verification
 

@@ -551,6 +551,7 @@ The D1 JSON backup, old pointers, new pointers and rollback SQL are recorded in 
 The collection identity art did not change in the Slice 3 batches. Each collection keeps the banner and mark recorded above; the card livery is a separate authored frame and information layout. No card render, generated gradient, monogram or card collage is used as collection identity.
 
 - Batch 1 (2026-11-10): Chainsaw Man — Public Safety, Part 1; Puella Magi Madoka Magica — Mitakihara; Total Drama Island — Camp Wawanakwa, 2007. All three keep their sourced 16:9 banner and real series mark, remain member/private and `official:false`.
+- Batches 2–4 (2026-11-10): Doki Doki, Project Sekai, Vocaloid, South Park, The Simpsons, NANA, Death Note, Summer Hikaru Died, Scott Pilgrim, Rick and Morty, Alien Stage, NBA and Evangelion keep the art recorded above. Bubbles, Fighter and Shared Characters keep their committed original marks. No collection identity art was regenerated or replaced by a card render.
 - The livery themes and per-batch shelves are recorded in `docs/CARD_LANGUAGE.md`.
-- No new image generation was run for batch 1. The existing source art was reused; the only new committed art is the authored livery-frame geometry under `brand/masters/frame-<theme>-<material>.svg` and its rasterised layer.
+- No new image generation was run for Slice 3. The existing source art was reused; the only new committed art is the authored livery-frame geometry under `brand/masters/frame-<theme>-<material>.svg` and its rasterised layer.
 
