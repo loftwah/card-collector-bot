@@ -1,10 +1,10 @@
 # Collection card language
 
-Status: **card language v2 is in verification on three proof collections**
+Status: **card language v2 is production-verified on three proof collections**
 (2026-11-10). The Slice 3 rollout below is historical: its frames, flat
-material tints and dark-blur backgrounds are superseded. Do not roll v2 across
-the remaining collections until the three proofs pass the acceptance in this
-document.
+material tints and dark-blur backgrounds are superseded. The remaining
+sixteen published collections still use their old saved renders; do not roll
+v2 across them until this language is accepted at the owner's 9/10 bar.
 
 - Renderer: `art/card-render.mjs` (one shared renderer).
 - Data: `src/data/collection-livery.json` (per-collection palette, motif, era,
@@ -77,6 +77,42 @@ no card render is used as collection identity.
 - Front and back are both designed; the back is not a table.
 - The live signed-in card inspector is checked at 1440 and 390, and the Discord
   `/foilbury open` attachment is checked at its real inline size.
+
+## V2 production verification (2026-11-10)
+
+- Application source `d363dcc50f4c`; Worker
+  `3fc33453-ccfd-4b70-b672-2cd6ef277cc7`. The renderer/tooling follow-up is
+  `bcef8f7` (not a runtime redeploy).
+- Proof collections and variants: Doki Doki Literature Club, Project Sekai and
+  Scott Pilgrim; eight cards each, four finishes (**32 published variants per
+  collection, 96 fronts and 96 designed backs**). Every front and back rendered
+  with no failures.
+- Pre-change D1 JSON backup:
+  `.foilbury/backups/d1-2026-11-10T05-40-31-472Z.json` (97 tables, 46,550 rows,
+  SHA-256 `49ef4db9f2c35624cf0d80d1fd1b2d325f198a90aff1d02e42470b68368a7cae`).
+  The render pass only added render assets and pointers; collection status,
+  `view_audience`, distribution, inventory and serials were not changed.
+- Live signed-in inspector at
+  `/play/card/ins_mwa6uszgdnkctw7h12p5ed0n` was checked at **1440** and
+  **390**, front and back: the saved 750×1050 object loads, no horizontal
+  overflow, the copy serial `FB-4-DE-341A93` is shown outside the object, and
+  the finish comparison shows Plain, Silver, Gold and Gold · Holographic.
+- A real Discord test-channel message attached the saved 750×1050 Gold render.
+  Discord displayed it at **214×300** (the client caps a 5:7 embed image by
+  height), so the metadata row was raised to 30/25/29 px on the 750 master.
+  At that real inline size the name, `CABINET RARE`, `GOLD` and the print code
+  are legible, and the native embed fields show Rarity, Finish, Serial and
+  Collection in Discord's own type. No second Discord composition was made.
+- Contact review at 750, 400, 214 and 128: the four finishes are distinct at
+  128; the name and print code remain legible at the Discord cap.
+- Evidence: `.foilbury/evidence/card-language/` (front/back proofs, contact
+  sheets, live inspector and Discord captures).
+- The temporary production agent and Access service token used for the pass
+  were revoked; `.foilbury/production-agent.json` was removed.
+- Not claimed: the live `/foilbury open` slash invocation itself. The render,
+  attachment and Discord client presentation were exercised through the real
+  test channel; the interaction receipt path is unchanged and still requires a
+  human Discord invocation for its own acceptance.
 
 ## Historical: Slice 3 (superseded)
 

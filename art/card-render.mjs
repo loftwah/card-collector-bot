@@ -335,18 +335,8 @@ async function subjectLayer(subjectPath, targetHeight, { key, shadow = 0.5, rim 
   return { buffer: layer, width: cw, height: ch, pad, artWidth: width, artHeight: height };
 }
 
-const LOCAL_MARK_FALLBACK = {
-  "doki-doki-literature-club": ".foilbury/art-src/ddlc-square.png",
-  "project-sekai": ".foilbury/art-src/sekai-logo.png",
-  "scott-pilgrim": ".foilbury/art-src/scott-logo.png",
-};
-
-async function markData(markPath, markBuffer, markMime, collectionSlug) {
-  let source = markBuffer ?? (markPath && fs.existsSync(markPath) ? markPath : null);
-  if (!source && collectionSlug && LOCAL_MARK_FALLBACK[collectionSlug]) {
-    const fallback = path.join(root, LOCAL_MARK_FALLBACK[collectionSlug]);
-    if (fs.existsSync(fallback)) source = fallback;
-  }
+async function markData(markPath, markBuffer, markMime) {
+  const source = markBuffer ?? (markPath && fs.existsSync(markPath) ? markPath : null);
   if (!source) return { uri: "", aspect: 1 };
   const meta = await sharp(source).metadata();
   return {
