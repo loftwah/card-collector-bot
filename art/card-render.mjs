@@ -637,7 +637,7 @@ function backSvg(theme, material, data) {
   <g transform="translate(468 548)">
     <rect width="238" height="188" fill="none" stroke="${ink}" stroke-opacity=".3" stroke-width="1"/>
     <rect x="6" y="6" width="226" height="176" fill="none" stroke="${theme.accent}" stroke-opacity=".45" stroke-width="1" stroke-dasharray="3 6"/>
-    <text x="18" y="28" font-family=${PM} font-size="8.8" letter-spacing="2.4" fill="${ink}" opacity=".55">SERIAL</text>
+    <text x="18" y="28" font-family=${PM} font-size="8.8" letter-spacing="2.4" fill="${ink}" opacity=".55">PRINT</text>
     <text x="18" y="66" font-family=${PM} font-weight="600" font-size="22" letter-spacing="1" fill="${ink}">${esc(data.serial)}</text>
     <rect x="18" y="80" width="202" height="1" fill="${ink}" opacity=".24"/>
     <text x="18" y="102" font-family=${PM} font-size="8.8" letter-spacing="2.4" fill="${ink}" opacity=".55">FINISH</text>

@@ -25,7 +25,11 @@ document.
   finish.
 - Front hierarchy: scene and subject (about 70% of the object), collection mark,
   name (maximum two lines), role, collection and era, rarity, finish, print
-  serial, one provenance line. No bio wall.
+  code, one provenance line. No bio wall. The saved render is shared by every
+  copy of a variant, so it carries the **print code** (for example
+  `FB-DDLC-003`); the unique **copy serial** (for example `FB-4-DE-341A93`) is
+  shown in the inspector and the Discord embed, never invented on the shared
+  render.
 - Back: a designed record with the real mark, name, role, a concise bio, the
   collection, rarity, edition, provenance, print serial and set symbol. It is
   set as a typographic page with a foil seal and a serial ticket, not a table.
@@ -33,8 +37,10 @@ document.
   cutout matte, un-premultiplies the anti-aliased edge, adds a one-pixel ink
   contour, a contact shadow and a key-light glow. Likeness is not redrawn.
 - The card type is authored at 750 and rendered at 2× so the name, rarity,
-  finish and serial survive Discord's inline size. Name 92/76/64, rarity and
-  serial 18.5, finish label 15.4, collection line 15.2, provenance 9.4.
+  finish and print code survive Discord's inline size. Name 92/76/64, rarity
+  30, print code 29, finish 25, collection line 15.2, provenance 9.4. Discord
+  caps a 5:7 embed image at about 214×300, so the metadata row was raised to
+  survive that cap; the real copy serial is in the embed field.
 
 ## Materials
 
