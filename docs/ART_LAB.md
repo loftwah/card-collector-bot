@@ -444,6 +444,46 @@ release:
   is the named Neon style frame, not a second finish claim; future Neon
   prompts should keep the requested finish material explicit.
 
+## Layered v3 production card and collection display (2026-11-11)
+
+The flat whole-card proof above is now the comparison, not the production
+method. The Tux Plain and Holographic variants were replaced with the layered
+v3 object from `art/card-v3.mjs` and `docs/CARD_LAYER_SYSTEM.md`:
+
+- Front: AI Neon scene, AI Tux cutout with a real alpha edge and feet breaking
+  into the field-record panel, authored ink/foil frame with a true art window,
+  a Neon holographic edge layer on Holographic only, and exact code-set name,
+  role, rarity, finish, print code and provenance.
+- Back: authored record with header, portrait plate, short bio, field record,
+  provenance, credits and the Fighter set mark. It is not a second front.
+- Plain brief `artb_mwayl9respjw3neqe27sba1z`, candidate
+  `artc_mwayo9rar16j9xddf2qmkb35`, assets `rnd_mwaylpf3pkjskb19qpfwp2sh`
+  (front) and `rnd_mwaylpn7b7xhrkkr64aw96at` (back).
+- Holographic brief `artb_mwawjmqmm63pac3yhddd5a83`, candidate
+  `artc_mwaynqqx1pfqyqrvafj87bsa`, assets
+  `rnd_mwaynsqza2kqfxfwbpq2v7c0` (front) and
+  `rnd_mwaynszsdkeh5pvyzef5e2ha` (back).
+- Both were inspected at 750, 400, 214 and 128. The public page opens on the
+  strongest published finish, and the finish chooser names each finish once.
+- Source `98f4ac8`, Worker `82e9e6ba-a38c-4b7b-b3b1-8c27b08a65b1`. Receipt
+  `.foilbury/evidence/card-v3/publish.json`.
+
+The collection display moved with it:
+
+- Binder is a centred page with a ring gutter and pocket shadows. It is 960px
+  wide with three 292px columns at 1440 and two 160px columns at 390; there are
+  no per-slot Inspect buttons.
+- The pinned cabinet card is 403px at 1440 and 260px centred at 390, with a
+  contact shadow and a single-column display.
+- The shared viewer adds a paper mat, removes the image border, raises controls
+  to 44px, and carries `aria-modal` plus a labelled title.
+- The Impeccable detector at 1440 and 390 leaves only the existing Geist Sans
+  advisory: no undersized functional text, no orphaned lines.
+
+Remaining: only Tux Plain and Holographic use v3. Silver, Gold and the rest of
+the catalogue still use their previous renders until each character gets its
+own layered pass.
+
 ## Card experience production verification (2026-11-11)
 
 - `pnpm check` passed (types, unit, workers, script, API inventory).

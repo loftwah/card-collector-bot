@@ -122,6 +122,10 @@ The frame layer is the main "hole" mechanism:
 
 - `art/compose.mjs` — the composer: scene → subject → material → frame →
   effect → exact text. Geometry and layer order live here.
+- `art/card-v3.mjs` — the worked v3 proof: AI scene + cutout, authored frame and
+  type, optional holographic edge, designed back. `V3_FINISH=plain` removes the
+  holo layer and records Plain. Use it as the reference for the v3 anatomy, not
+  as a second shared renderer.
 - `art/card-render.mjs` — reference sheets, publishing metadata and comparison;
   not the mandatory final composition.
 - `art/layers/` — authored and AI layer masters (frames, materials, effects,
