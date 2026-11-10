@@ -75,12 +75,20 @@ const sharePresentation =
           variant_name?: string;
           finish?: string;
           render_url?: string | null;
+          collection_name?: string | null;
+          collection_slug?: string | null;
+          collection_banner_url?: string | null;
+          collection_logo_url?: string | null;
         } | null;
         favourites?: Array<{
           card_name?: string;
           variant_name?: string;
           finish?: string;
           render_url?: string | null;
+          collection_name?: string | null;
+          collection_slug?: string | null;
+          collection_banner_url?: string | null;
+          collection_logo_url?: string | null;
         }>;
         badges?: Array<{
           name?: string;
@@ -102,11 +110,35 @@ const shareBanner =
     ? `/s/${encodeURIComponent(raw)}/media/banner`
     : (sharePresentation?.banner?.image_url ?? null);
 const cardRender = typeof payload.render_url === "string" ? payload.render_url : null;
-const shareImage = publicView
-  ? (cardRender ?? shareBanner ?? sharePortrait ?? "/brand/social-preview.jpg")
-  : "/brand/social-preview.jpg";
-const shareImageWidth = publicView && (cardRender || shareBanner || sharePortrait) ? 750 : 1200;
-const shareImageHeight = publicView && (cardRender || shareBanner || sharePortrait) ? 1050 : 630;
+const featuredShare = sharePresentation?.featured ?? null;
+const featuredCollection = featuredShare?.collection_name
+  ? {
+      name: featuredShare.collection_name,
+      slug: featuredShare.collection_slug ?? null,
+      banner: featuredShare.collection_banner_url ?? null,
+      logo: featuredShare.collection_logo_url ?? null,
+    }
+  : null;
+const publicCollectionBanner = collectionBanner(collection);
+const publicCollectionMark = collectionMark(collection);
+let shareImage = "/brand/social-preview.jpg";
+let shareImageWidth = 1200;
+let shareImageHeight = 630;
+if (publicView) {
+  if ((kind === "card" || kind === "latest") && cardRender) {
+    shareImage = cardRender;
+    shareImageWidth = 750;
+    shareImageHeight = 1050;
+  } else if (kind === "collection" && publicCollectionBanner) {
+    shareImage = publicCollectionBanner;
+    shareImageWidth = 1920;
+    shareImageHeight = 1080;
+  } else if (kind === "collection" && publicCollectionMark) {
+    shareImage = publicCollectionMark;
+    shareImageWidth = 512;
+    shareImageHeight = 512;
+  }
+}
 const shareFavourites = sharePresentation?.favourites?.length
   ? sharePresentation.favourites
   : (Array.isArray(payload.favourite_cards)
@@ -121,6 +153,10 @@ const shareFavourites = sharePresentation?.favourites?.length
       variant_name: card.variant_name,
       finish: String(payload.finish ?? ""),
       render_url: card.render_url,
+      collection_name: null,
+      collection_slug: null,
+      collection_banner_url: null,
+      collection_logo_url: null,
     }));
 const shareBadges = sharePresentation?.badges?.length
   ? sharePresentation.badges
@@ -336,6 +372,37 @@ const shareBadges = sharePresentation?.badges?.length
             data-name-treatment={sharePresentation?.name_treatment ?? "plain"}
             data-profile-effect={sharePresentation?.effect ?? "none"}
           >
+            {featuredCollection?.banner ? (
+              <a
+                class="share-profile__collection"
+                href={
+                  featuredCollection.slug
+                    ? `/play/collection?collection=${featuredCollection.slug}`
+                    : "/play/collections"
+                }
+              >
+                <img
+                  src={featuredCollection.banner}
+                  alt=""
+                  width="1600"
+                  height="900"
+                  loading="eager"
+                />
+                <span class="share-profile__collection-copy">
+                  {featuredCollection.logo ? (
+                    <img
+                      class="share-profile__collection-mark"
+                      src={featuredCollection.logo}
+                      alt=""
+                    />
+                  ) : null}
+                  <span>
+                    <span class="share-profile__collection-kicker">Featured collection</span>
+                    <strong>{featuredCollection.name}</strong>
+                  </span>
+                </span>
+              </a>
+            ) : null}
             <div class="share-profile__hero">
               {shareBanner ? (
                 <img class="profile-hero__banner" src={shareBanner} alt="" aria-hidden="true" />
@@ -399,6 +466,18 @@ const shareBadges = sharePresentation?.badges?.length
                       sharePresentation.featured.finish,
                     )}
                   </p>
+                  {sharePresentation.featured.collection_name ? (
+                    <p class="profile-card__collection">
+                      {sharePresentation.featured.collection_logo_url ? (
+                        <img
+                          src={sharePresentation.featured.collection_logo_url}
+                          alt=""
+                          loading="lazy"
+                        />
+                      ) : null}
+                      <span>{sharePresentation.featured.collection_name}</span>
+                    </p>
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -417,6 +496,14 @@ const shareBadges = sharePresentation?.badges?.length
                     <div class="profile-card__body">
                       <p class="profile-card__name">{card.card_name}</p>
                       <p class="profile-card__meta">{cardMeta(card.variant_name, card.finish)}</p>
+                      {card.collection_name ? (
+                        <p class="profile-card__collection">
+                          {card.collection_logo_url ? (
+                            <img src={card.collection_logo_url} alt="" loading="lazy" />
+                          ) : null}
+                          <span>{card.collection_name}</span>
+                        </p>
+                      ) : null}
                     </div>
                   </article>
                 ))

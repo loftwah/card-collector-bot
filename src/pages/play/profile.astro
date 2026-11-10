@@ -59,6 +59,14 @@ const profile = resolveProfilePresentation(
 );
 const avatar = accountAvatarViewFor(user);
 const featured = profile.featured;
+const featuredCollection = featured?.collectionName
+  ? {
+      name: featured.collectionName,
+      slug: featured.collectionSlug,
+      banner: featured.collectionBannerUrl,
+      logo: featured.collectionLogoUrl,
+    }
+  : null;
 const showcase = profile.favourites.filter((card) => card.id !== featured?.id).slice(0, 4);
 const binderCards = [featured, ...showcase]
   .filter((card): card is NonNullable<typeof card> => Boolean(card))
@@ -177,6 +185,36 @@ const starterLooks = [
 
   <section class="profile-feature">
     {
+      featuredCollection?.banner ? (
+        <a
+          class="profile-feature__banner"
+          href={
+            featuredCollection.slug
+              ? `/play/collection?collection=${featuredCollection.slug}`
+              : "/play/collections"
+          }
+        >
+          <img
+            src={featuredCollection.banner}
+            alt=""
+            width="1600"
+            height="900"
+            loading="eager"
+          />
+          <span class="profile-feature__banner-copy">
+            {featuredCollection.logo ? (
+              <img class="profile-feature__banner-mark" src={featuredCollection.logo} alt="" />
+            ) : null}
+            <span>
+              <span class="profile-feature__banner-kicker">Featured collection</span>
+              <strong>{featuredCollection.name}</strong>
+            </span>
+            <span class="profile-feature__banner-link">Open collection →</span>
+          </span>
+        </a>
+      ) : null
+    }
+    {
       featured ? (
         <>
           <div class="profile-feature__art">
@@ -202,8 +240,8 @@ const starterLooks = [
             <p class="profile-feature__serial">{featured.serial}</p>
             <p class="profile-feature__note">
               {profile.favourites.some((card) => card.id === featured.id)
-                ? "Pinned from your favourites."
-                : "Chosen as the featured copy in your composition."}
+                ? "Pinned from your favourites. "
+                : "Chosen as the featured copy in your composition. "}
               The card object is shown as saved; the controls sit outside it.
             </p>
             <div class="profile-feature__actions">

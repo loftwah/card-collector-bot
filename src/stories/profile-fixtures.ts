@@ -21,6 +21,11 @@ const copies = [
     renderUrl: "/media/showcase/card-4x5-1080.png",
     thumbnailUrl: "/media/showcase/card-4x5-1080.png",
     favourite: true,
+    collectionId: "col_protocol",
+    collectionSlug: "protocol-11",
+    collectionName: "Protocol 11",
+    collectionBannerUrl: "/media/showcase/card-16x9-1920.png",
+    collectionLogoUrl: "/art/collections/protocol-11.svg",
   },
   {
     id: "ins_02",
@@ -32,6 +37,11 @@ const copies = [
     renderUrl: "/media/showcase/card-1x1-1080.png",
     thumbnailUrl: "/media/showcase/card-1x1-1080.png",
     favourite: true,
+    collectionId: "col_neon",
+    collectionSlug: "neon-alley",
+    collectionName: "Neon Alley",
+    collectionBannerUrl: "/media/showcase/finish-mastery-16x9-1920.png",
+    collectionLogoUrl: "/art/collections/shared.svg",
   },
   {
     id: "ins_03",
@@ -43,6 +53,11 @@ const copies = [
     renderUrl: "/media/showcase/card-9x16-1080.png",
     thumbnailUrl: "/media/showcase/card-9x16-1080.png",
     favourite: false,
+    collectionId: "col_neon",
+    collectionSlug: "neon-alley",
+    collectionName: "Neon Alley",
+    collectionBannerUrl: "/media/showcase/finish-mastery-16x9-1920.png",
+    collectionLogoUrl: "/art/collections/shared.svg",
   },
 ];
 

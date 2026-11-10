@@ -22,6 +22,9 @@ export interface InventoryRow {
   collection_name: string | null;
   collection_logo: string | null;
   collection_description: string | null;
+  collection_id: string | null;
+  collection_slug: string | null;
+  collection_banner: string | null;
   variant_name: string;
   material_key: string;
   effect_key: string | null;
@@ -55,6 +58,9 @@ const INVENTORY_SELECT = `SELECT ci.id, ci.card_id, ci.variant_id, cd.name AS ca
   (SELECT c.name FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id WHERE cc.card_id = cd.id ORDER BY CASE c.scope WHEN 'global' THEN 0 ELSE 1 END LIMIT 1) AS collection_name,
   (SELECT c.logo_url FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id WHERE cc.card_id = cd.id ORDER BY CASE c.scope WHEN 'global' THEN 0 ELSE 1 END LIMIT 1) AS collection_logo,
   (SELECT c.description FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id WHERE cc.card_id = cd.id ORDER BY CASE c.scope WHEN 'global' THEN 0 ELSE 1 END LIMIT 1) AS collection_description,
+  (SELECT c.id FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id WHERE cc.card_id = cd.id ORDER BY CASE c.scope WHEN 'global' THEN 0 ELSE 1 END LIMIT 1) AS collection_id,
+  (SELECT c.slug FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id WHERE cc.card_id = cd.id ORDER BY CASE c.scope WHEN 'global' THEN 0 ELSE 1 END LIMIT 1) AS collection_slug,
+  (SELECT c.banner_url FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id WHERE cc.card_id = cd.id ORDER BY CASE c.scope WHEN 'global' THEN 0 ELSE 1 END LIMIT 1) AS collection_banner,
   v.name AS variant_name, m.key AS material_key, fx.key AS effect_key,
   rar.key AS rarity_key, rar.name AS rarity_name, rar.tone AS rarity_tone,
   cls.name AS class_name, cat.name AS category_name, ci.serial, ci.status, ci.favourite, ci.locked,

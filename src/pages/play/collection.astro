@@ -2,6 +2,7 @@
 import PlayerLayout from "../../layouts/PlayerLayout.astro";
 import CollectionBrowser from "../../components/player/CollectionBrowser";
 import SharePanel from "../../components/player/SharePanel";
+import ShareLinkButton from "../../components/player/ShareLinkButton";
 import BinderSlot from "../../components/player/BinderSlot.astro";
 import { pageContext } from "../../server/page";
 import { countInventory, getInventory } from "../../server/modules/collection";
@@ -189,6 +190,13 @@ const bannerStyle = presentation?.bannerPosition
               <a class="btn btn-secondary" href="#my-cards">
                 My cards
               </a>
+              <ShareLinkButton
+                client:load
+                kind="collection"
+                targetId={selected.id}
+                label="Share this collection"
+                size="md"
+              />
             </div>
             <dl class="pilot-album__facts">
               <div>
@@ -251,6 +259,13 @@ const bannerStyle = presentation?.bannerPosition
               <a class="btn btn-secondary" href="#my-cards">
                 My cards
               </a>
+              <ShareLinkButton
+                client:load
+                kind="collection"
+                targetId={selected.id}
+                label="Share this collection"
+                size="md"
+              />
             </div>
             <p class="collection-album__note">
               {selected.source_work ??

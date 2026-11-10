@@ -49,6 +49,11 @@ export interface ProfileCopyView {
   renderUrl: string | null;
   thumbnailUrl: string | null;
   favourite: boolean;
+  collectionId: string | null;
+  collectionSlug: string | null;
+  collectionName: string | null;
+  collectionBannerUrl: string | null;
+  collectionLogoUrl: string | null;
 }
 
 export interface ProfileBadgeView {
@@ -198,6 +203,11 @@ function copyView(row: InventoryRow): ProfileCopyView {
     renderUrl: row.render_url,
     thumbnailUrl: row.thumbnail_url,
     favourite: Boolean(row.favourite),
+    collectionId: row.collection_id,
+    collectionSlug: row.collection_slug,
+    collectionName: row.collection_name,
+    collectionBannerUrl: row.collection_banner,
+    collectionLogoUrl: row.collection_logo,
   };
 }
 
@@ -396,6 +406,18 @@ export function validateProfilePresentation(
   };
 }
 
+export interface ProfileShareCopy {
+  card_name: string;
+  variant_name: string;
+  finish: string;
+  render_url: string | null;
+  collection_id: string | null;
+  collection_name: string | null;
+  collection_slug: string | null;
+  collection_banner_url: string | null;
+  collection_logo_url: string | null;
+}
+
 export interface ProfileSharePresentation {
   avatar: {
     kind: AccountAvatarView["kind"];
@@ -409,19 +431,23 @@ export interface ProfileSharePresentation {
   avatar_decoration: ProfileAvatarDecoration;
   name_treatment: ProfileNameTreatment;
   effect: ProfileEffect;
-  featured: {
-    card_name: string;
-    variant_name: string;
-    finish: string;
-    render_url: string | null;
-  } | null;
-  favourites: Array<{
-    card_name: string;
-    variant_name: string;
-    finish: string;
-    render_url: string | null;
-  }>;
+  featured: ProfileShareCopy | null;
+  favourites: ProfileShareCopy[];
   badges: Array<{ name: string; category: string; art_key: string; collection_logo_url: string | null }>;
+}
+
+function shareCopy(copy: ProfileCopyView): ProfileShareCopy {
+  return {
+    card_name: copy.cardName,
+    variant_name: copy.variantName,
+    finish: copy.finish,
+    render_url: copy.renderUrl,
+    collection_id: copy.collectionId,
+    collection_name: copy.collectionName,
+    collection_slug: copy.collectionSlug,
+    collection_banner_url: copy.collectionBannerUrl,
+    collection_logo_url: copy.collectionLogoUrl,
+  };
 }
 
 export function profileSharePresentation(resolved: ResolvedProfilePresentation): ProfileSharePresentation {
@@ -447,20 +473,8 @@ export function profileSharePresentation(resolved: ResolvedProfilePresentation):
     avatar_decoration: resolved.selection.avatarDecoration,
     name_treatment: resolved.selection.nameTreatment,
     effect: resolved.selection.effect,
-    featured: resolved.featured
-      ? {
-          card_name: resolved.featured.cardName,
-          variant_name: resolved.featured.variantName,
-          finish: resolved.featured.finish,
-          render_url: resolved.featured.renderUrl,
-        }
-      : null,
-    favourites: resolved.favourites.map((copy) => ({
-      card_name: copy.cardName,
-      variant_name: copy.variantName,
-      finish: copy.finish,
-      render_url: copy.renderUrl,
-    })),
+    featured: resolved.featured ? shareCopy(resolved.featured) : null,
+    favourites: resolved.favourites.map(shareCopy),
     badges: resolved.badges.map((badge) => ({
       name: badge.name,
       category: badge.category,
