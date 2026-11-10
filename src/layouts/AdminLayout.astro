@@ -1,5 +1,6 @@
 ---
 import BaseLayout from "./BaseLayout.astro";
+import CardViewer from "../components/cards/CardViewer";
 import { roleLabel } from "../server/context";
 const session = Astro.locals.foilbury;
 const path = Astro.url.pathname;
@@ -51,9 +52,9 @@ const label = roleLabel(user);
             {session?.tenantId ? "The cabinet office." : "Bot administration."}
           </h1>
           <p class="mt-2 max-w-2xl text-sm leading-relaxed text-[#cfc8b9]">
-            This is Bot-scoped authority for this cabinet. It is not platform
-            administration. Global collections are read-only here unless the same person is the
-            explicitly provisioned Super Admin.
+            This is Bot-scoped authority for this cabinet. It is not platform administration. Global
+            collections are read-only here unless the same person is the explicitly provisioned
+            Super Admin.
           </p>
         </div>
         <div class="flex flex-wrap gap-2">
@@ -124,4 +125,8 @@ const label = roleLabel(user);
       <slot />
     </div>
   </section>
+  <CardViewer client:load />
+  <script>
+    import "../scripts/card-viewer";
+  </script>
 </BaseLayout>

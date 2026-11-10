@@ -22,6 +22,7 @@ import { Switch } from "../ui/switch";
 import AdminCollections from "./AdminCollections";
 import AdminTeam from "./AdminTeam";
 import LayeredCard from "../player/LayeredCard";
+import { openCardViewer, type CardViewerItem } from "../cards/CardViewer";
 
 export type AdminSection =
   | "overview"
@@ -263,13 +264,13 @@ function AiArtPreferenceCard() {
           <p className="mt-1 text-sm text-[var(--muted)]">
             Every asset records whether it is a sourced reference, a Foilbury original, a
             deterministic render, or AI-assisted. Off is the default. Turning this off removes
-            AI-assisted editions from future draws, album rosters, inspection and Discord shares;
-            it never deletes owned copies, serials, ledger rows or earned achievements. Sourced and
+            AI-assisted editions from future draws, album rosters, inspection and Discord shares; it
+            never deletes owned copies, serials, ledger rows or earned achievements. Sourced and
             original artwork are unaffected.
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <span className="font-mono text-[0.6rem] uppercase tracking-[0.1em] text-[var(--muted)]">
+          <span className="font-mono text-[0.6rem] tracking-[0.1em] text-[var(--muted)] uppercase">
             {enabled === null ? "Loading…" : enabled ? "Included" : "Excluded"}
           </span>
           <Switch
@@ -357,7 +358,14 @@ function AdminOverview() {
   const providers = (status?.providers ?? {}) as Record<string, boolean>;
   const discordHealth = (status?.discord ?? {}) as {
     status?: string;
-    recent?: { total?: number; completed?: number; failed?: number; delivery_failures?: number; stuck_processing?: number; last_success_at?: string | null };
+    recent?: {
+      total?: number;
+      completed?: number;
+      failed?: number;
+      delivery_failures?: number;
+      stuck_processing?: number;
+      last_success_at?: string | null;
+    };
   };
   return (
     <div>
@@ -436,7 +444,10 @@ function AdminOverview() {
                 <div className="flex justify-between gap-3">
                   <dt>Discord</dt>
                   <dd className="text-[var(--muted)]">
-                    {discordHealth.status ?? (providers.discordApplication ? "configured_unverified" : "disabled")} · {discordHealth.recent?.completed ?? 0} recent delivered · {discordHealth.recent?.delivery_failures ?? 0} delivery failures
+                    {discordHealth.status ??
+                      (providers.discordApplication ? "configured_unverified" : "disabled")}{" "}
+                    · {discordHealth.recent?.completed ?? 0} recent delivered ·{" "}
+                    {discordHealth.recent?.delivery_failures ?? 0} delivery failures
                   </dd>
                 </div>
                 <div className="flex justify-between gap-3">
@@ -518,10 +529,39 @@ function AdminOverview() {
 
 function SavedArtworkReference({ url, name }: { url: string; name: string }) {
   const [failed, setFailed] = useState(false);
-  return failed ? (
-    <p className="mt-2 text-xs text-[var(--muted)]" role="status">Saved render could not be loaded. Check access or render status.</p>
-  ) : (
-    <img className="mt-2 h-auto w-full" src={url} alt={`Saved render of ${name}`} onError={() => setFailed(true)} />
+  if (failed) {
+    return (
+      <p className="mt-2 text-xs text-[var(--muted)]" role="status">
+        Saved render could not be loaded. Check access or render status.
+      </p>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="card-trigger mt-2"
+      onClick={() =>
+        openCardViewer(
+          [
+            {
+              id: url,
+              name,
+              subtitle: "Saved artwork",
+              method: "Saved card render",
+              status: "Saved render",
+              width: 750,
+              height: 1050,
+              front: url,
+              downloadUrl: url,
+            },
+          ],
+          0,
+        )
+      }
+      aria-label={`Open ${name} saved render full size`}
+    >
+      <img src={url} alt={`Saved render of ${name}`} onError={() => setFailed(true)} />
+    </button>
   );
 }
 
@@ -532,7 +572,10 @@ function AdminCatalogue() {
   const [backgrounds, setBackgrounds] = useState<AssetRow[]>([]);
   const [recipes, setRecipes] = useState<RecipeRow[]>([]);
   const [artworkFor, setArtworkFor] = useState<Card | null>(null);
-  const [revising, setRevising] = useState<{ editionId: string; variants: Array<{ material: string; effect: string | null }> } | null>(null);
+  const [revising, setRevising] = useState<{
+    editionId: string;
+    variants: Array<{ material: string; effect: string | null }>;
+  } | null>(null);
   const [artwork, setArtwork] = useState({
     name: "",
     subjectAssetId: "",
@@ -550,9 +593,13 @@ function AdminCatalogue() {
     ? "gold"
     : (artwork.materials[0] ?? "plain");
   const previewEffect = artwork.materials.includes("holographic") ? "holographic" : null;
-  const referenceEdition = artworkFor?.editions.find((edition) => edition.id === revising?.editionId);
-  const referenceVariant = referenceEdition?.variants.find((variant) =>
-    variant.material_key === previewMaterial && (variant.effect_key ?? "none") === (previewEffect ?? "none"),
+  const referenceEdition = artworkFor?.editions.find(
+    (edition) => edition.id === revising?.editionId,
+  );
+  const referenceVariant = referenceEdition?.variants.find(
+    (variant) =>
+      variant.material_key === previewMaterial &&
+      (variant.effect_key ?? "none") === (previewEffect ?? "none"),
   );
   const [uploading, setUploading] = useState("");
   const [uploadKind, setUploadKind] = useState<"subject" | "background">("subject");
@@ -759,7 +806,11 @@ function AdminCatalogue() {
       });
       setComposition({ mode: "contain", zoom: 1, offsetX: 0, offsetY: 0 });
       setRevising(null);
-      setMessage(revising ? "Revised edition created. The original edition and its issued copies are unchanged. Queue renders, then publish." : "Artwork edition created. Queue missing renders, then publish the card.");
+      setMessage(
+        revising
+          ? "Revised edition created. The original edition and its issued copies are unchanged. Queue renders, then publish."
+          : "Artwork edition created. Queue missing renders, then publish the card.",
+      );
       await load();
     } catch (cause) {
       setError(describeError(cause));
@@ -891,14 +942,38 @@ function AdminCatalogue() {
                   <td>
                     <div className="flex items-center gap-2">
                       {variants.find((variant) => variant.render_url)?.render_url ? (
-                        <img
-                          src={variants.find((variant) => variant.render_url)!.render_url!}
-                          alt=""
-                          className="h-14 w-10 border border-[var(--line)] bg-[var(--card-object)] object-contain"
-                          loading="lazy"
-                          width="40"
-                          height="56"
-                        />
+                        <button
+                          type="button"
+                          className="card-trigger"
+                          style={{ width: "auto" }}
+                          onClick={() => {
+                            const rendered = variants.filter((variant) => variant.render_url);
+                            const items: CardViewerItem[] = rendered.map((variant) => ({
+                              id: variant.id,
+                              name: card.name,
+                              subtitle: variant.name,
+                              collection: card.collections[0]?.name ?? null,
+                              finish: titleCase(variant.material_key),
+                              method: "Saved card render",
+                              status: "Saved render",
+                              width: 750,
+                              height: 1050,
+                              front: variant.render_url!,
+                              downloadUrl: variant.render_url,
+                            }));
+                            openCardViewer(items, 0);
+                          }}
+                          aria-label={`Open ${card.name} renders full size`}
+                        >
+                          <img
+                            src={variants.find((variant) => variant.render_url)!.render_url!}
+                            alt=""
+                            className="h-14 w-10 border border-[var(--line)] bg-[var(--card-object)] object-contain"
+                            loading="lazy"
+                            width="40"
+                            height="56"
+                          />
+                        </button>
                       ) : (
                         <span className="grid h-14 w-10 place-items-center border border-dashed border-[var(--line)] font-mono text-[0.5rem] text-[var(--muted)]">
                           NO
@@ -1375,11 +1450,16 @@ function AdminCatalogue() {
       <Dialog
         open={Boolean(artworkFor)}
         onOpenChange={(open) => {
-          if (!open) { setArtworkFor(null); setRevising(null); }
+          if (!open) {
+            setArtworkFor(null);
+            setRevising(null);
+          }
         }}
       >
         <DialogContent>
-          <DialogTitle>{revising ? "Revise artwork for" : "Add artwork to"} {artworkFor?.name}</DialogTitle>
+          <DialogTitle>
+            {revising ? "Revise artwork for" : "Add artwork to"} {artworkFor?.name}
+          </DialogTitle>
           <DialogDescription>
             Choose an uploaded subject and optional background, then create explicit finish
             variants. The render queue composes the saved image for each finish.
@@ -1398,20 +1478,35 @@ function AdminCatalogue() {
               </div>
             ) : null}
             {artworkFor && artworkFor.editions.length ? (
-              <Field label="Start from an existing edition" hint="Optional. Creates a new immutable revision; the source edition and issued copies are untouched.">
+              <Field
+                label="Start from an existing edition"
+                hint="Optional. Creates a new immutable revision; the source edition and issued copies are untouched."
+              >
                 <Select
                   value={revising?.editionId ?? ""}
                   onChange={(event) => {
-                    const edition = artworkFor.editions.find((item) => item.id === event.target.value);
+                    const edition = artworkFor.editions.find(
+                      (item) => item.id === event.target.value,
+                    );
                     if (!edition) {
                       setRevising(null);
                       return;
                     }
-                    let parsedComposition: typeof composition = { mode: "contain", zoom: 1, offsetX: 0, offsetY: 0 };
+                    let parsedComposition: typeof composition = {
+                      mode: "contain",
+                      zoom: 1,
+                      offsetX: 0,
+                      offsetY: 0,
+                    };
                     try {
-                      const value = JSON.parse(edition.composition_json ?? "{}") as Partial<typeof composition>;
+                      const value = JSON.parse(edition.composition_json ?? "{}") as Partial<
+                        typeof composition
+                      >;
                       parsedComposition = {
-                        mode: value.mode === "fill" || value.mode === "medallion" ? value.mode : "contain",
+                        mode:
+                          value.mode === "fill" || value.mode === "medallion"
+                            ? value.mode
+                            : "contain",
                         zoom: Math.min(1.6, Math.max(0.6, Number(value.zoom ?? 1))),
                         offsetX: Math.min(20, Math.max(-20, Number(value.offsetX ?? 0))),
                         offsetY: Math.min(20, Math.max(-20, Number(value.offsetY ?? 0))),
@@ -1425,21 +1520,30 @@ function AdminCatalogue() {
                       subjectAssetId: edition.subject_asset_id ?? "",
                       backgroundAssetId: edition.background_asset_id ?? "",
                       recipeId: edition.recipe_id ?? "",
-                      materials: [...new Set(edition.variants.map((variant) => variant.material_key))],
+                      materials: [
+                        ...new Set(edition.variants.map((variant) => variant.material_key)),
+                      ],
                     });
                     setRevising({
                       editionId: edition.id,
                       variants: edition.variants.map((variant) => ({
                         material: variant.material_key,
-                        effect: variant.effect_key && variant.effect_key !== "none" ? variant.effect_key : null,
+                        effect:
+                          variant.effect_key && variant.effect_key !== "none"
+                            ? variant.effect_key
+                            : null,
                       })),
                     });
                   }}
                 >
                   <option value="">New edition from scratch</option>
-                  {artworkFor.editions.filter((edition) => edition.status !== "archived").map((edition) => (
-                    <option key={edition.id} value={edition.id}>{edition.name} · {edition.status}</option>
-                  ))}
+                  {artworkFor.editions
+                    .filter((edition) => edition.status !== "archived")
+                    .map((edition) => (
+                      <option key={edition.id} value={edition.id}>
+                        {edition.name} · {edition.status}
+                      </option>
+                    ))}
                 </Select>
               </Field>
             ) : null}
@@ -1626,11 +1730,25 @@ function AdminCatalogue() {
                   </p>
                   {referenceEdition ? (
                     <details className="border-t border-[var(--line)] pt-3">
-                      <summary className="cursor-pointer text-sm font-semibold">Compare saved {referenceVariant?.name ?? "finish"}</summary>
-                      <p className="mt-1 text-xs text-[var(--muted)]">Original edition, before these edits.</p>
+                      <summary className="cursor-pointer text-sm font-semibold">
+                        Compare saved {referenceVariant?.name ?? "finish"}
+                      </summary>
+                      <p className="mt-1 text-xs text-[var(--muted)]">
+                        Original edition, before these edits.
+                      </p>
                       {referenceVariant?.render_url ? (
-                        <div className="max-w-[220px]"><SavedArtworkReference key={`${referenceVariant.id}:${referenceVariant.render_url}`} url={referenceVariant.render_url} name={artworkFor?.name ?? "Card"} /></div>
-                      ) : <p className="mt-2 text-xs text-[var(--muted)]">No saved render is available for this finish.</p>}
+                        <div className="max-w-[220px]">
+                          <SavedArtworkReference
+                            key={`${referenceVariant.id}:${referenceVariant.render_url}`}
+                            url={referenceVariant.render_url}
+                            name={artworkFor?.name ?? "Card"}
+                          />
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-xs text-[var(--muted)]">
+                          No saved render is available for this finish.
+                        </p>
+                      )}
                     </details>
                   ) : null}
                 </div>
@@ -1685,9 +1803,19 @@ function AdminCatalogue() {
                   busy === "artwork" || !artwork.subjectAssetId || artwork.materials.length === 0
                 }
               >
-                {busy === "artwork" ? "Saving…" : revising ? "Create revised edition" : "Add artwork edition"}
+                {busy === "artwork"
+                  ? "Saving…"
+                  : revising
+                    ? "Create revised edition"
+                    : "Add artwork edition"}
               </Button>
-              <Button variant="secondary" onClick={() => { setArtworkFor(null); setRevising(null); }}>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setArtworkFor(null);
+                  setRevising(null);
+                }}
+              >
                 Cancel
               </Button>
               <p className="w-full text-xs text-[var(--muted)]">
@@ -2917,7 +3045,14 @@ function AdminIntegrations() {
   const providers = (status?.providers ?? {}) as Record<string, boolean>;
   const discordHealth = (status?.discord ?? {}) as {
     status?: string;
-    recent?: { total?: number; completed?: number; failed?: number; delivery_failures?: number; stuck_processing?: number; last_success_at?: string | null };
+    recent?: {
+      total?: number;
+      completed?: number;
+      failed?: number;
+      delivery_failures?: number;
+      stuck_processing?: number;
+      last_success_at?: string | null;
+    };
   };
   return (
     <div>
@@ -2932,7 +3067,8 @@ function AdminIntegrations() {
           <div className="flex items-center justify-between gap-3">
             <p className="eyebrow">Discord</p>
             <span className="badge">
-              {discordHealth.status ?? (providers.discordApplication ? "configured_unverified" : "disabled")}
+              {discordHealth.status ??
+                (providers.discordApplication ? "configured_unverified" : "disabled")}
             </span>
           </div>
           <p className="mt-2 text-sm text-[var(--muted)]">
@@ -3150,11 +3286,38 @@ function AdminDesign() {
                   <div key={variant.id}>
                     <div className="card-face">
                       {variant.render_url ? (
-                        <img
-                          src={variant.render_url}
-                          alt={`${selected.name} — ${variant.name}`}
-                          loading="lazy"
-                        />
+                        <button
+                          type="button"
+                          className="card-trigger"
+                          onClick={() => {
+                            const rendered = variants.filter((entry) => entry.render_url);
+                            const items: CardViewerItem[] = rendered.map((entry) => ({
+                              id: entry.id,
+                              name: selected.name,
+                              subtitle: entry.name,
+                              collection: selected.collections[0]?.name ?? null,
+                              finish: titleCase(entry.material_key),
+                              method: "Saved card render",
+                              status: "Saved render",
+                              width: 750,
+                              height: 1050,
+                              front: entry.render_url!,
+                              downloadUrl: entry.render_url,
+                            }));
+                            const index = Math.max(
+                              0,
+                              rendered.findIndex((entry) => entry.id === variant.id),
+                            );
+                            openCardViewer(items, index);
+                          }}
+                          aria-label={`Open ${selected.name} in ${variant.name} full size`}
+                        >
+                          <img
+                            src={variant.render_url}
+                            alt={`${selected.name} — ${variant.name}`}
+                            loading="lazy"
+                          />
+                        </button>
                       ) : (
                         <div className="card-face-fallback">{selected.name.charAt(0)}</div>
                       )}

@@ -316,7 +316,8 @@ shelf:
 - `/platform-admin/art` brand files and card-style previews;
 - `/play/cabinet`, `/play/collection`, `/play/collections` and the card binder;
 - `/play/card/[id]` through the inspector's Expand action and variant previews;
-- the artwork-edition picker in the admin composition previews.
+- the catalogue saved-render reference, the catalogue table thumbnails and the
+  Render Studio card faces under `/admin`.
 
 The card object is the trigger. The dialog shows the saved 750×1050 front and
 the saved back where one exists, with a master link, Download as a separate
