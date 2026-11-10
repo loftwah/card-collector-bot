@@ -2,6 +2,7 @@
 import "../styles/global.css";
 import SiteHeader from "../components/SiteHeader.astro";
 import SiteFooter from "../components/SiteFooter.astro";
+import { brandAssetByPath } from "../lib/brand-catalogue";
 interface Props {
   title: string;
   description: string;
@@ -16,16 +17,23 @@ const {
   title,
   description,
   noIndex = false,
-  shareImage = "/brand/social-preview.jpg",
+  shareImage,
   shareImageWidth = 1200,
   shareImageHeight = 630,
   shell = "site",
 } = Astro.props;
 const session = Astro.locals.foilbury;
+const brand = Astro.locals.brand;
 const theme = Astro.locals.theme ?? "system";
+const favicon = brand?.favicon ?? "/brand/mark.svg";
+const faviconIsVector = favicon.endsWith(".svg");
+const faviconAsset = brandAssetByPath(favicon);
+const faviconIsLarge = (faviconAsset?.width ?? 0) >= 180;
+const resolvedShareImage = shareImage ?? brand?.og_image ?? "/brand/social-preview.jpg";
 const canonical = new URL(Astro.url.pathname, Astro.site ?? Astro.url).href;
 const pageTitle = title.includes("Foilbury") ? title : `${title} · Foilbury`;
 ---
+
 <!doctype html>
 <html lang="en-AU" data-theme={theme}>
   <head>
@@ -34,17 +42,33 @@ const pageTitle = title.includes("Foilbury") ? title : `${title} · Foilbury`;
     <title>{pageTitle}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
-    <link rel="preload" href="/fonts/geist/GeistSerifVF.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="/fonts/geist/GeistSansVF.woff2" as="font" type="font/woff2" crossorigin />
+    <link
+      rel="preload"
+      href="/fonts/geist/GeistSerifVF.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/fonts/geist/GeistSansVF.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
     {noIndex ? <meta name="robots" content="noindex" /> : null}
     <meta name="foilbury-csrf" content={session?.csrfToken ?? ""} />
     <meta name="theme-color" content="#fafaf8" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
     <meta name="color-scheme" content="light dark" />
-    <link rel="icon" href="/brand/mark.svg" type="image/svg+xml" />
-    <link rel="icon" href="/brand/favicon-32.png" sizes="32x32" type="image/png" />
-    <link rel="icon" href="/brand/favicon-16.png" sizes="16x16" type="image/png" />
-    <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
+    <link rel="icon" href={favicon} type={faviconIsVector ? "image/svg+xml" : "image/png"} />
+    {favicon === "/brand/mark.svg" ? (
+      <>
+        <link rel="icon" href="/brand/favicon-32.png" sizes="32x32" type="image/png" />
+        <link rel="icon" href="/brand/favicon-16.png" sizes="16x16" type="image/png" />
+      </>
+    ) : null}
+    <link rel="apple-touch-icon" href={faviconIsLarge ? favicon : "/brand/apple-touch-icon.png"} />
     <link rel="manifest" href="/site.webmanifest" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Foilbury" />
@@ -52,18 +76,23 @@ const pageTitle = title.includes("Foilbury") ? title : `${title} · Foilbury`;
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
-    <meta property="og:image" content={new URL(shareImage, Astro.site ?? Astro.url).href} />
+    <meta property="og:image" content={new URL(resolvedShareImage, Astro.site ?? Astro.url).href} />
     <meta property="og:image:width" content={String(shareImageWidth)} />
     <meta property="og:image:height" content={String(shareImageHeight)} />
     <meta property="og:image:alt" content={`${pageTitle} — Foilbury`} />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={pageTitle} />
     <meta name="twitter:description" content={description} />
-    <meta name="twitter:image" content={new URL(shareImage, Astro.site ?? Astro.url).href} />
+    <meta
+      name="twitter:image"
+      content={new URL(resolvedShareImage, Astro.site ?? Astro.url).href}
+    />
     <meta name="twitter:image:alt" content={`${pageTitle} — Foilbury`} />
   </head>
   <body>
-    <a class="skip-link" href="#main">Skip to content</a>
+    <a class="skip-link" href="#main">
+      Skip to content
+    </a>
     {shell === "site" ? <SiteHeader /> : <slot name="shell" />}
     <main id="main">
       <slot />

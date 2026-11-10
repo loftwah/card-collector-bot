@@ -568,6 +568,17 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     if (segments.length === 3 && segments[2] === "agent" && method === "GET") {
       return routeArtLab(request, ctx, segments, url, method);
     }
+    if (segments.length === 3 && segments[2] === "brand" && method === "GET") {
+      return routeArtLab(request, ctx, segments, url, method);
+    }
+    if (
+      segments.length === 4 &&
+      segments[2] === "brand" &&
+      segments[3] === "selection" &&
+      method === "POST"
+    ) {
+      return routeArtLab(request, ctx, segments, url, method);
+    }
     if (segments.length === 3 && segments[2] === "briefs" && method === "POST") {
       return routeArtLab(request, ctx, segments, url, method);
     }

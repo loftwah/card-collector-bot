@@ -2,19 +2,7 @@
 import StudioLayout from "../../layouts/StudioLayout.astro";
 import PrintStudio from "../../components/admin/PrintStudio";
 ---
-<StudioLayout>
-  <div class="studio-rule">
-    <div>
-      <h2 class="display-sm text-4xl uppercase">Print studio.</h2>
-      <p class="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--muted)]">
-        Review genuinely different artwork editions for a subject. A print is a distinct composition; Plain,
-        Silver, Gold and Holographic are finishes of that print. Approval, edition linking and publication stay
-        separate, audited actions.
-      </p>
-    </div>
-    <span class="studio-stamp">Scoped · content</span>
-  </div>
-  <div class="mt-7">
-    <PrintStudio client:load />
-  </div>
+
+<StudioLayout compact>
+  <PrintStudio client:load />
 </StudioLayout>

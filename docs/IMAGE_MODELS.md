@@ -16,9 +16,12 @@ reference sheet from:
 - the exact copy: name, role, collection, rarity, finish, print code and
   provenance.
 
-GPT Image 2.6 Sunburst receives that sheet through `/v1/images/edits`; FAL FLUX
-Pro 1.1 Ultra / Seedream v4 receive it through their image reference field. The
-model generates the finished 5:7 card. `art/card-render.mjs` prepares the
+GPT Image 2.6 Sunburst receives that sheet through `/v1/images/edits`; FAL
+FLUX Pro 1.1 Ultra / Seedream v4 receive it through their image reference field. The
+model generates the finished 5:7 card. The brief and the reference sheet also
+carry one named card direction — Atelier, Cinematic, Editorial, Archive, Manga
+or Minimal — from `src/lib/card-styles.ts`; the style is stored on the job,
+candidate, approval and published render. `art/card-render.mjs` prepares the
 reference sheet and remains a comparison/publishing tool; it is not the default
 final card composition. See `docs/ART_LAB.md`.
 

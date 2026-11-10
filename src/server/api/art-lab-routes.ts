@@ -24,6 +24,7 @@ import {
   rollbackArtPublication,
   uploadCandidateRender,
 } from "../modules/art-lab";
+import { getBrandCatalogue, setBrandSelection } from "../modules/brand";
 
 const briefSchema = z.object({
   category: z.enum(ART_CATEGORIES),
@@ -38,6 +39,7 @@ const briefSchema = z.object({
   provider: z.string().min(1).max(80).optional(),
   model: z.string().min(1).max(120).optional(),
   methods: z.array(z.string().min(1).max(40)).min(1).max(4).optional(),
+  styleKeys: z.array(z.string().min(1).max(40)).min(1).max(4).optional(),
   outputSizes: z.array(z.string().min(1).max(40)).max(10).optional(),
   notes: z.string().max(2000).nullable().optional(),
   costCapCents: z.number().int().min(50).max(2000).optional(),
@@ -118,6 +120,16 @@ export async function routeArtLab(
   }
   if (rest.length === 1 && rest[0] === "options" && method === "GET") {
     return json(await listArtOptions(ctx));
+  }
+  if (rest.length === 1 && rest[0] === "brand" && method === "GET") {
+    return json(await getBrandCatalogue(ctx));
+  }
+  if (rest.length === 2 && rest[0] === "brand" && rest[1] === "selection" && method === "POST") {
+    const body = await readJson(
+      request,
+      z.object({ slot: z.string().min(3).max(40), path: z.string().min(3).max(500) }),
+    );
+    return json(await setBrandSelection(ctx, body));
   }
   if (rest.length === 1 && rest[0] === "count" && method === "GET") {
     return json({ count: await artPendingReviewCount(ctx) });

@@ -32,17 +32,17 @@ Paper, ink, graphite and a hairline rule carry the surface. Foil blue is the one
 signal: links, focus, the mark edge and active state. The holo gradient is a
 material edge, never text and never a fill on a large surface.
 
-| Token      | Light                 | Dark                  | Use                                     |
-| ---------- | --------------------- | --------------------- | --------------------------------------- |
-| Paper      | `#fafaf8`             | `#0a0a0a`             | page ground                             |
-| Panel      | `#ffffff`             | `#111111`             | raised panel                            |
-| Ink        | `#0a0a0a`             | `#f5f5f2`             | type, feature fields, primary button    |
-| Graphite   | `#5b5b57`             | `#a3a39e`             | secondary type                          |
-| Rule       | `#e4e4df`             | `#2a2a2a`             | hairline structure                      |
-| Foil blue  | `#1f5eff`             | `#8fb0ff`             | the one signal edge                     |
-| Holo edge  | `#8be9ff → #1f5eff → #b18cff → #e9ff8a` | same | 2–4px edge only        |
-| Success    | `#0b7a4b`             | `#7ee2b8`             | positive ledger state                   |
-| Alert      | `#c42b1c`             | `#ff9a9a`             | destructive and error state             |
+| Token     | Light                                   | Dark      | Use                                  |
+| --------- | --------------------------------------- | --------- | ------------------------------------ |
+| Paper     | `#fafaf8`                               | `#0a0a0a` | page ground                          |
+| Panel     | `#ffffff`                               | `#111111` | raised panel                         |
+| Ink       | `#0a0a0a`                               | `#f5f5f2` | type, feature fields, primary button |
+| Graphite  | `#5b5b57`                               | `#a3a39e` | secondary type                       |
+| Rule      | `#e4e4df`                               | `#2a2a2a` | hairline structure                   |
+| Foil blue | `#1f5eff`                               | `#8fb0ff` | the one signal edge                  |
+| Holo edge | `#8be9ff → #1f5eff → #b18cff → #e9ff8a` | same      | 2–4px edge only                      |
+| Success   | `#0b7a4b`                               | `#7ee2b8` | positive ledger state                |
+| Alert     | `#c42b1c`                               | `#ff9a9a` | destructive and error state          |
 
 Use colour as a second channel. Rarity, progress and state always carry text,
 shape or a label as well. Foil blue is not a generic success green and not a
@@ -91,6 +91,27 @@ share page and Discord profile card all use the same chosen avatar. See
   other source is contained, not cropped by an aspect-ratio guess. Member
   surfaces display the saved front/back renders; only the admin composition
   preview re-composes private layers.
+
+## Card browsing and inspection
+
+- One shared viewer serves every signed-in card surface. The card image is the
+  trigger; Download, Inspect and Edit stay separate controls. The viewer shows
+  the saved front and back, never a recomposed private layer, and carries the
+  facts needed to identify the object: name, collection, style, finish, method,
+  model, status, dimensions, print code, serial, audience and provenance.
+- Browsing surfaces are proof walls: large card images on a 2/3/4-column
+  masonry or contact sheet, one title line and one metadata line, with status,
+  method and style as small overlays. Creation, intent, job history and long
+  provenance are progressive disclosure.
+- Six named art directions are the shared vocabulary: Atelier, Cinematic,
+  Editorial, Archive, Manga, Minimal. These are directions; Plain, Silver,
+  Gold and Holographic remain finishes. A candidate, its brief, its approval
+  and the published render all carry the same style key.
+- Tool headings use Geist Sans. Display type stays for editorial and hero
+  moments, not panel titles, filters or data.
+- The viewer is a mobile full-screen sheet and a desktop centred viewer. Focus
+  is trapped and visible; Escape closes and returns focus to the card; arrow
+  keys page siblings; reduced motion removes the entrance.
 
 ## Surfaces
 

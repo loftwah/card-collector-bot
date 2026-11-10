@@ -36,7 +36,8 @@ const enriched = collections.map((collection, index) => {
   const finishes = stat?.finishes ?? {};
   const finishStarted = finishKeys.filter((key) => (finishes[key]?.owned ?? 0) > 0).length;
   const finishMastered = finishKeys.filter(
-    (key) => (finishes[key]?.total ?? 0) > 0 && (finishes[key]?.owned ?? 0) >= (finishes[key]?.total ?? 0),
+    (key) =>
+      (finishes[key]?.total ?? 0) > 0 && (finishes[key]?.owned ?? 0) >= (finishes[key]?.total ?? 0),
   ).length;
   return {
     collection,
@@ -72,7 +73,8 @@ const filtered = playable
   .filter(matchesStatus)
   .sort((a, b) => {
     if (sort === "name") return a.collection.name.localeCompare(b.collection.name);
-    if (sort === "least") return a.pct - b.pct || a.collection.name.localeCompare(b.collection.name);
+    if (sort === "least")
+      return a.pct - b.pct || a.collection.name.localeCompare(b.collection.name);
     const order: Record<string, number> = {
       "in-progress": 0,
       unstarted: 1,
@@ -116,20 +118,18 @@ const audienceLabel = (audience: string) =>
     <div class="flex flex-wrap items-end justify-between gap-5">
       <div class="max-w-3xl">
         <h1 class="page-title mt-2">Collections</h1>
-        <p class="mt-3 max-w-2xl text-[var(--muted)]">
-          Every collection you can open in this Bot. Roster progress counts the subjects you own;
-          finish progress is a separate goal.
-        </p>
-        <p class="mt-2 text-sm text-[var(--muted)]">
-          {completeCount} of {playable.length} rosters complete.
+        <p class="mt-2 font-mono text-[0.6rem] uppercase tracking-[0.1em] text-[var(--muted)]">
+          {completeCount} of {playable.length} rosters complete
           {continueItem ? (
-            <span>
-              {" "}
-              <a class="underline underline-offset-4" href={`/play/collection?collection=${continueItem.collection.slug}`}>
-                Continue with {continueItem.collection.name}
+            <>
+              {" · "}
+              <a
+                class="underline underline-offset-4"
+                href={`/play/collection?collection=${continueItem.collection.slug}`}
+              >
+                Continue {continueItem.collection.name}
               </a>
-              .
-            </span>
+            </>
           ) : null}
         </p>
       </div>
@@ -138,43 +138,64 @@ const audienceLabel = (audience: string) =>
       </a>
     </div>
 
-    <form
-      method="get"
-      action="/play/collections"
-      class="collections-toolbar mt-6 border-t border-[var(--line)] pt-5"
-    >
-      <label class="field collections-toolbar__search">
-        <span class="label">Search collections</span>
-        <input
-          class="input"
-          type="search"
-          name="q"
-          value={q}
-          placeholder="Name, description or source"
-        />
-      </label>
-      <label class="field">
-        <span class="label">Status</span>
-        <select class="select" name="status">
-          <option value="all" selected={statusFilter === "all"}>All</option>
-          <option value="in-progress" selected={statusFilter === "in-progress"}>Started</option>
-          <option value="unstarted" selected={statusFilter === "unstarted"}>Not started</option>
-          <option value="complete" selected={statusFilter === "complete"}>Complete</option>
-        </select>
-      </label>
-      <label class="field">
-        <span class="label">Sort</span>
-        <select class="select" name="sort">
-          <option value="progress" selected={sort === "progress"}>Progress first</option>
-          <option value="least" selected={sort === "least"}>Least complete</option>
-          <option value="name" selected={sort === "name"}>Name A–Z</option>
-        </select>
-      </label>
-      <div class="flex items-end gap-2">
-        <button class="btn btn-primary btn-sm" type="submit">Apply</button>
-        <a class="btn btn-ghost btn-sm" href="/play/collections">Reset</a>
-      </div>
-    </form>
+    <details class="collections-filters" open>
+      <summary class="collections-filters__summary">Filter and sort</summary>
+      <form
+        method="get"
+        action="/play/collections"
+        class="collections-toolbar mt-6 border-t border-[var(--line)] pt-5"
+      >
+        <label class="field collections-toolbar__search">
+          <span class="label">Search collections</span>
+          <input
+            class="input"
+            type="search"
+            name="q"
+            value={q}
+            placeholder="Name, description or source"
+          />
+        </label>
+        <label class="field">
+          <span class="label">Status</span>
+          <select class="select" name="status">
+            <option value="all" selected={statusFilter === "all"}>
+              All
+            </option>
+            <option value="in-progress" selected={statusFilter === "in-progress"}>
+              Started
+            </option>
+            <option value="unstarted" selected={statusFilter === "unstarted"}>
+              Not started
+            </option>
+            <option value="complete" selected={statusFilter === "complete"}>
+              Complete
+            </option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="label">Sort</span>
+          <select class="select" name="sort">
+            <option value="progress" selected={sort === "progress"}>
+              Progress first
+            </option>
+            <option value="least" selected={sort === "least"}>
+              Least complete
+            </option>
+            <option value="name" selected={sort === "name"}>
+              Name A–Z
+            </option>
+          </select>
+        </label>
+        <div class="flex items-end gap-2">
+          <button class="btn btn-primary btn-sm" type="submit">
+            Apply
+          </button>
+          <a class="btn btn-ghost btn-sm" href="/play/collections">
+            Reset
+          </a>
+        </div>
+      </form>
+    </details>
   </section>
 
   <section class="mt-7">
@@ -193,14 +214,23 @@ const audienceLabel = (audience: string) =>
 
     <div class="collection-tile-grid mt-4">
       {pageItems.map((item, tileIndex) => {
-        const { collection, owned, total, pct, cardCount, finishStarted, finishMastered, index } = item;
+        const { collection, owned, total, pct, cardCount, finishStarted, finishMastered, index } =
+          item;
         const banner = collectionBanner(collection);
         const mark = collectionMark(collection);
         return (
           <article class="collection-tile" data-tone={index % 4}>
             <div class:list={["collection-tile__art", !banner && "collection-tile__art--mark"]}>
               <span class="collection-tile__fallback" aria-hidden="true">
-                {!banner && mark ? <img src={mark} alt="" width="512" height="512" loading={tileIndex < 3 ? "eager" : "lazy"} /> : null}
+                {!banner && mark ? (
+                  <img
+                    src={mark}
+                    alt=""
+                    width="512"
+                    height="512"
+                    loading={tileIndex < 3 ? "eager" : "lazy"}
+                  />
+                ) : null}
                 <span>{collection.name}</span>
               </span>
               {banner ? (
@@ -211,9 +241,12 @@ const audienceLabel = (audience: string) =>
                   fetchpriority={tileIndex === 0 ? "high" : "auto"}
                   width="1600"
                   height="900"
+                  data-hide-on-error
                 />
               ) : null}
-              <span class="collection-tile__audience">{audienceLabel(collection.view_audience)}</span>
+              <span class="collection-tile__audience">
+                {audienceLabel(collection.view_audience)}
+              </span>
             </div>
 
             <div class="collection-tile__body">
@@ -221,12 +254,10 @@ const audienceLabel = (audience: string) =>
                 <h2 class="collection-tile__name">
                   <a href={`/play/collection?collection=${collection.slug}`}>{collection.name}</a>
                 </h2>
-                <span class="collection-tile__count">{owned}/{total}</span>
+                <span class="collection-tile__count">
+                  {owned}/{total}
+                </span>
               </div>
-              <p class="collection-tile__description">
-                {collection.description || "A curated collection."}
-              </p>
-
               <div class="collection-tile__progress">
                 <div class="flex items-baseline justify-between gap-3">
                   <span class="collection-tile__label">Roster</span>
@@ -247,28 +278,19 @@ const audienceLabel = (audience: string) =>
               <div class="collection-tile__finish">
                 <span class="collection-tile__label">Finishes</span>
                 <span class="collection-tile__value">
-                  {finishStarted} of 4 started{finishMastered ? ` · ${finishMastered} mastered` : ""}
+                  {finishStarted}/4{finishMastered ? ` · ${finishMastered} mastered` : ""}
                 </span>
               </div>
 
               <div class="collection-tile__actions">
-                <a class="btn btn-primary btn-sm" href={`/play/collection?collection=${collection.slug}`}>
-                  Open collection
-                </a>
                 <a
-                  class="btn btn-secondary btn-sm"
-                  href={`/play/collection?collection=${collection.slug}#my-cards`}
+                  class="btn btn-primary btn-sm"
+                  href={`/play/collection?collection=${collection.slug}`}
                 >
-                  My cards
+                  Open binder
                 </a>
+                <span class="collection-tile__meta">{cardWord(cardCount)}</span>
               </div>
-
-              <p class="collection-tile__meta">
-                {collection.source_work ??
-                  (collection.scope === "global" ? "Foilbury original" : "This Bot")}
-                <span aria-hidden="true"> · </span>
-                {cardWord(cardCount)}
-              </p>
             </div>
           </article>
         );
@@ -323,7 +345,9 @@ const audienceLabel = (audience: string) =>
       <div class="empty mt-8">
         <div>
           <p class="display-sm text-2xl">
-            {playable.length === 0 ? "No collections are open yet." : "No collections match those filters."}
+            {playable.length === 0
+              ? "No collections are open yet."
+              : "No collections match those filters."}
           </p>
           <p class="mt-2 text-sm">
             {playable.length === 0
@@ -340,3 +364,9 @@ const audienceLabel = (audience: string) =>
     ) : null}
   </section>
 </PlayerLayout>
+
+<script>
+  if (window.matchMedia("(max-width: 759px)").matches) {
+    document.querySelector<HTMLDetailsElement>(".collections-filters")?.removeAttribute("open");
+  }
+</script>

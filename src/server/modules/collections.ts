@@ -840,6 +840,8 @@ export async function collectionBinder(ctx: Ctx, collectionId: string) {
     status: string;
     render_url: string | null;
     thumbnail_url: string | null;
+    back_render_url: string | null;
+    style_key: string | null;
   }>(
     ctx.db,
     `SELECT cd.id, cd.slug, cd.name, cd.subtitle, cd.status,
@@ -858,7 +860,16 @@ export async function collectionBinder(ctx: Ctx, collectionId: string) {
               WHERE v2.card_id = cd.id AND v2.status = 'published' AND v2.archived_at IS NULL
               ORDER BY CASE m2.key WHEN 'plain' THEN 0 WHEN 'silver' THEN 1 WHEN 'gold' THEN 2 WHEN 'diamond' THEN 3 ELSE 4 END,
                        CASE WHEN fx2.key IS NULL OR fx2.key = 'none' THEN 0 ELSE 1 END, v2.name
-              LIMIT 1) AS thumbnail_url
+              LIMIT 1) AS thumbnail_url,
+            (SELECT vr.style_key FROM fb_variants v2
+               JOIN fb_variant_renders vr ON vr.variant_id = v2.id AND vr.status = 'published'
+              WHERE v2.card_id = cd.id AND v2.status = 'published' AND v2.archived_at IS NULL
+              ORDER BY CASE WHEN vr.style_key IS NULL THEN 1 ELSE 0 END, vr.published_at DESC
+              LIMIT 1) AS style_key,
+            (SELECT ('/media/back/' || b2.asset_id) FROM fb_variants v2
+               JOIN fb_variant_back_renders b2 ON b2.variant_id = v2.id AND b2.status = 'published'
+              WHERE v2.card_id = cd.id AND v2.status = 'published' AND v2.archived_at IS NULL
+              ORDER BY b2.published_at DESC LIMIT 1) AS back_render_url
        FROM fb_collection_cards cc
        JOIN fb_card_definitions cd ON cd.id = cc.card_id AND cd.status = 'published' AND cd.archived_at IS NULL
       WHERE cc.collection_id = ?
@@ -875,9 +886,12 @@ export async function collectionBinder(ctx: Ctx, collectionId: string) {
       status: string;
       render_url: string | null;
       thumbnail_url: string | null;
+      back_render_url: string | null;
+      style_key: string | null;
     }>(
       ctx.db,
-      `SELECT cd.id, cd.slug, cd.name, cd.subtitle, cd.status, NULL AS render_url, NULL AS thumbnail_url
+      `SELECT cd.id, cd.slug, cd.name, cd.subtitle, cd.status, NULL AS render_url, NULL AS thumbnail_url,
+              NULL AS back_render_url, NULL AS style_key
          FROM fb_collection_cards cc
          JOIN fb_card_definitions cd ON cd.id = cc.card_id AND cd.status = 'published' AND cd.archived_at IS NULL
         WHERE cc.collection_id = ? ORDER BY cc.sort, cd.name`,

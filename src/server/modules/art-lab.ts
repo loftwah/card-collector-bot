@@ -34,6 +34,16 @@ import {
 } from "./assets";
 import { listCards, type CardView, type EditionRow, type VariantRow } from "./catalogue";
 import { listCollections, type CollectionSummary } from "./collections";
+import { readBrandSelections } from "./brand";
+import {
+  CARD_STYLE_KEYS,
+  CARD_STYLE_LABEL,
+  CARD_STYLES,
+  DEFAULT_CARD_STYLES,
+  normalizeCardStyleKeys,
+  stylePromptLine,
+  type CardStyleKey,
+} from "../../lib/card-styles";
 
 export const ART_CATEGORIES = [
   "cards",
@@ -223,6 +233,7 @@ export interface ArtBriefRow {
   provider: string;
   model: string;
   methods_json: string;
+  style_keys_json: string;
   output_sizes_json: string;
   notes: string | null;
   cost_cap_cents: number;
@@ -236,6 +247,7 @@ export interface ArtJobRow {
   tenant_id: string;
   brief_id: string;
   method: ArtMethod;
+  style_key: string | null;
   provider: string;
   model: string;
   prompt: string;
@@ -268,6 +280,7 @@ export interface ArtCandidateRow {
   thumb_128_asset_id: string | null;
   label: string;
   method: ArtMethod;
+  style_key: string | null;
   provider: string;
   model: string;
   prompt: string;
@@ -302,6 +315,7 @@ export interface ArtApprovalRow {
   approved_by: string;
   approved_at: string;
   usage: string;
+  style_key: string | null;
   notes: string | null;
   vector_ref: string | null;
   target_kind: string | null;
@@ -333,6 +347,8 @@ export interface ArtCandidateView {
   method: ArtMethod;
   method_label: string;
   method_note: string;
+  style_key: string | null;
+  style_label: string | null;
   provider: string;
   model: string;
   prompt: string;
@@ -389,6 +405,7 @@ export interface ArtBriefSummary {
   status: string;
   candidate_count: number;
   methods: ArtMethod[];
+  styles: string[];
   spend_cents: number;
   cost_cap_cents: number;
   candidate_total: number;
@@ -412,6 +429,7 @@ export interface ArtPin {
   card_name: string | null;
   label: string;
   method: ArtMethod;
+  style_key: string | null;
   status: CandidateStatus;
   width: number;
   height: number;
@@ -427,6 +445,7 @@ export interface ArtBriefDetail {
     notes: string | null;
     provider: string;
     model: string;
+    style_keys: string[];
     created_by: string;
   };
   collection: {
@@ -1074,6 +1093,7 @@ function promptForBrief(
   collection: CollectionRef | null,
   variant: { material_key: string; effect_key: string | null } | null,
   catalogueCode: string | null,
+  styleKey: string | null,
 ): string {
   const references = parseJson<string[]>(brief.references_json, []);
   const referenceLine = references.length
@@ -1085,6 +1105,7 @@ function promptForBrief(
   if (method === "whole_card") {
     return [
       base,
+      stylePromptLine(styleKey ? [styleKey] : []),
       "Create one finished 5:7 collectible card object as a single image. It is a card, not a poster, not a mood board and not a character illustration with a caption.",
       "Use the attached prepared reference sheet as the source for the real subject art, the supplied collection mark and the exact copy. Do not reproduce the reference sheet layout; use its information to make the finished card.",
       `EXACT COPY — use these words exactly and add no other lettering:\n${copy.join("\n")}`,
@@ -1130,6 +1151,17 @@ function splitCount(
   });
 }
 
+function splitAcross<T>(total: number, entries: T[]): Array<{ entry: T; count: number }> {
+  if (!entries.length) return [];
+  const base = Math.floor(total / entries.length);
+  let remainder = total % entries.length;
+  return entries.map((entry) => {
+    const count = base + (remainder > 0 ? 1 : 0);
+    if (remainder > 0) remainder -= 1;
+    return { entry, count };
+  });
+}
+
 export async function createArtBrief(
   ctx: Ctx,
   input: {
@@ -1145,6 +1177,7 @@ export async function createArtBrief(
     provider?: string;
     model?: string;
     methods?: string[];
+    styleKeys?: string[];
     outputSizes?: string[];
     notes?: string | null;
     costCapCents?: number;
@@ -1188,6 +1221,20 @@ export async function createArtBrief(
       422,
       "art_cost_cap_invalid",
       `The per-brief ceiling cannot exceed the US$${(DAILY_CAP_CENTS / 100).toFixed(2)} daily ceiling.`,
+    );
+  }
+  const brandSelections = category === "cards" ? await readBrandSelections(ctx) : null;
+  const styleKeys =
+    category === "cards"
+      ? normalizeCardStyleKeys(
+          input.styleKeys?.length ? input.styleKeys : [brandSelections?.card_style ?? "atelier"],
+        )
+      : [];
+  if (category === "cards" && !styleKeys.length) {
+    throw new ApiError(
+      422,
+      "art_style_required",
+      "Choose at least one named card style for this brief.",
     );
   }
   const references = normalizeReferences(input.references);
@@ -1243,8 +1290,8 @@ export async function createArtBrief(
       `INSERT INTO fb_art_briefs
         (id, tenant_id, category, collection_id, card_id, target_variant_id, title, intent,
          references_json, audience, status, candidate_count, provider, model, methods_json,
-         output_sizes_json, notes, cost_cap_cents, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         style_keys_json, output_sizes_json, notes, cost_cap_cents, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       id,
       ctx.tenant.id,
       category,
@@ -1259,6 +1306,7 @@ export async function createArtBrief(
       price.provider.provider,
       price.model.id,
       JSON.stringify(price.methods),
+      JSON.stringify(styleKeys),
       JSON.stringify(outputSizes),
       optionalText(input.notes, 2000),
       costCapCents,
@@ -1273,6 +1321,7 @@ export async function createArtBrief(
       provider: price.provider.provider,
       model: price.model.id,
       methods: price.methods,
+      style_keys: styleKeys,
       candidate_count: candidateCount,
       cost_cap_cents: costCapCents,
     }),
@@ -1296,6 +1345,7 @@ function summaryFromRow(row: BriefSummaryRow): ArtBriefSummary {
     status: row.status,
     candidate_count: row.candidate_count,
     methods: parseJson<ArtMethod[]>(row.methods_json, ["whole_card"]),
+    styles: parseJson<string[]>(row.style_keys_json, []),
     spend_cents: Number(row.spend_cents ?? 0),
     cost_cap_cents: row.cost_cap_cents,
     candidate_total: Number(row.candidate_total ?? 0),
@@ -1402,6 +1452,7 @@ export async function listArtBriefs(
     card_name: string | null;
     label: string;
     method: ArtMethod;
+    style_key: string | null;
     status: CandidateStatus;
     width: number;
     height: number;
@@ -1410,7 +1461,7 @@ export async function listArtBriefs(
   }>(
     ctx.db,
     `SELECT k.id AS candidate_id, k.brief_id, b.title AS brief_title, b.category,
-            c.name AS collection_name, cd.name AS card_name, k.label, k.method, k.status,
+            c.name AS collection_name, cd.name AS card_name, k.label, k.method, k.style_key, k.status,
             k.width, k.height, k.audience, k.created_at
        FROM fb_art_candidates k
        JOIN fb_art_briefs b ON b.id = k.brief_id
@@ -1530,6 +1581,10 @@ function candidateView(
     method: candidate.method,
     method_label: ART_METHOD_LABELS[candidate.method],
     method_note: ART_METHOD_NOTES[candidate.method],
+    style_key: candidate.style_key,
+    style_label: candidate.style_key
+      ? (CARD_STYLE_LABEL[candidate.style_key] ?? candidate.style_key)
+      : null,
     provider: candidate.provider,
     model: candidate.model,
     prompt: candidate.prompt,
@@ -1735,6 +1790,7 @@ export async function getArtBrief(ctx: Ctx, briefId: string): Promise<ArtBriefDe
     status: brief.status,
     candidate_count: brief.candidate_count,
     methods: parseJson<ArtMethod[]>(brief.methods_json, ["whole_card"]),
+    styles: parseJson<string[]>(brief.style_keys_json, []),
     spend_cents: spend,
     cost_cap_cents: brief.cost_cap_cents,
     candidate_total: candidates.length,
@@ -1758,6 +1814,7 @@ export async function getArtBrief(ctx: Ctx, briefId: string): Promise<ArtBriefDe
       notes: brief.notes,
       provider: brief.provider,
       model: brief.model,
+      style_keys: parseJson<string[]>(brief.style_keys_json, []),
       created_by: brief.created_by,
     },
     collection: collection
@@ -1799,6 +1856,8 @@ export async function listArtOptions(ctx: Ctx): Promise<{
   default_cap_cents: number;
   max_cap_cents: number;
   tags: FeedbackTag[];
+  styles: Array<{ key: CardStyleKey; label: string; note: string; prompt: string; thumb: string }>;
+  default_style: string;
 }> {
   const allowed = allowedArtCategories(ctx);
   if (!allowed.length) throw new ApiError(403, "art_read_forbidden", "Art Lab is operator-only.");
@@ -1817,6 +1876,8 @@ export async function listArtOptions(ctx: Ctx): Promise<{
         })
       ).filter((card) => card.collections.some((collection) => manageableIds.has(collection.id)))
     : [];
+  const brandSelections = await readBrandSelections(ctx);
+  const defaultStyle = normalizeCardStyleKeys([brandSelections.card_style])[0] ?? "atelier";
   return {
     categories: allowed,
     category_labels: ART_CATEGORY_LABELS,
@@ -1830,6 +1891,11 @@ export async function listArtOptions(ctx: Ctx): Promise<{
     default_cap_cents: DEFAULT_BRIEF_CAP_CENTS,
     max_cap_cents: MAX_BRIEF_CAP_CENTS,
     tags: [...FEEDBACK_TAGS],
+    styles: CARD_STYLE_KEYS.map((key) => {
+      const style = CARD_STYLES.find((entry) => entry.key === key)!;
+      return { ...style };
+    }),
+    default_style: defaultStyle,
   };
 }
 
@@ -1862,7 +1928,20 @@ export async function queueArtGeneration(
   if (!Number.isInteger(count) || count < 1 || count > 8) {
     throw new ApiError(422, "art_candidate_count_invalid", "Choose between 1 and 8 candidates.");
   }
-  const distribution = splitCount(count, price.methods).filter((entry) => entry.count > 0);
+  const styleKeys =
+    brief.category === "cards"
+      ? normalizeCardStyleKeys(parseJson<string[]>(brief.style_keys_json, []))
+      : [];
+  const effectiveStyles = styleKeys.length ? styleKeys : [null];
+  const distribution: Array<{ method: ArtMethod; styleKey: string | null; count: number }> = [];
+  for (const entry of splitCount(count, price.methods).filter((item) => item.count > 0)) {
+    const perStyle = splitAcross(entry.count, effectiveStyles);
+    for (const slice of perStyle) {
+      if (slice.count > 0) {
+        distribution.push({ method: entry.method, styleKey: slice.entry, count: slice.count });
+      }
+    }
+  }
   const totalEstimate = distribution.reduce(
     (total, entry) => total + entry.count * price.model.unitCents,
     0,
@@ -1908,18 +1987,20 @@ export async function queueArtGeneration(
       collection,
       targetVariant,
       catalogueCode,
+      entry.styleKey,
     );
     statements.push(
       statement(
         ctx.db,
         `INSERT INTO fb_art_jobs
-          (id, tenant_id, brief_id, method, provider, model, prompt, count, size, status,
+          (id, tenant_id, brief_id, method, style_key, provider, model, prompt, count, size, status,
            cost_estimate_cents, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?)`,
         id,
         ctx.tenant.id,
         brief.id,
         entry.method,
+        entry.styleKey,
         brief.provider,
         brief.model,
         prompt,
@@ -2238,6 +2319,7 @@ export async function addArtCandidate(
     provider: job.provider,
     model: job.model,
     method,
+    style_key: job.style_key,
     label,
     seed,
     prompt,
@@ -2259,9 +2341,10 @@ export async function addArtCandidate(
       ctx.db,
       `INSERT INTO fb_art_candidates
         (id, tenant_id, brief_id, job_id, asset_id, render_asset_id, render_back_asset_id,
-         master_asset_id, preview_400_asset_id, thumb_128_asset_id, label, method, provider, model,
-         prompt, seed, width, height, sha256, audience, official, status, metadata_json, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'generated', ?, ?, ?)`,
+         master_asset_id, preview_400_asset_id, thumb_128_asset_id, label, method, style_key,
+         provider, model, prompt, seed, width, height, sha256, audience, official, status,
+         metadata_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'generated', ?, ?, ?)`,
       id,
       ctx.tenant.id,
       brief.id,
@@ -2274,6 +2357,7 @@ export async function addArtCandidate(
       uploads.thumb128?.id ?? null,
       label,
       method,
+      job.style_key,
       job.provider,
       job.model,
       prompt,
@@ -2290,6 +2374,7 @@ export async function addArtCandidate(
       brief_id: brief.id,
       job_id: job.id,
       method,
+      style_key: job.style_key,
       label,
       width: display.width,
       height: display.height,
@@ -2748,8 +2833,9 @@ export async function approveArtCandidate(
     statement(
       ctx.db,
       `INSERT INTO fb_art_approvals
-        (id, tenant_id, brief_id, candidate_id, approved_by, approved_at, usage, notes, vector_ref, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, tenant_id, brief_id, candidate_id, approved_by, approved_at, usage, style_key,
+         notes, vector_ref, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       approvalId,
       ctx.tenant.id,
       brief.id,
@@ -2757,6 +2843,7 @@ export async function approveArtCandidate(
       ctx.user!.id,
       now,
       usage,
+      candidate.style_key,
       optionalText(input.notes, 2000),
       vectorRef,
       now,
@@ -2779,6 +2866,7 @@ export async function approveArtCandidate(
       brief_id: brief.id,
       approval_id: approvalId,
       usage,
+      style_key: candidate.style_key,
       vector_ref: vectorRef,
       replaced_approval_id: otherApproval?.id ?? null,
     }),
@@ -3007,6 +3095,7 @@ async function publishCardCandidate(
     variantId: variant.id,
     recipeId: variant.recipe_id,
     bytes: frontBytes,
+    styleKey: candidate.style_key,
   });
   let publishedBack: { assetId: string; width: number; height: number; sha256: string } | null =
     null;
@@ -3051,14 +3140,15 @@ async function publishCardCandidate(
         ctx.db,
         `UPDATE fb_art_approvals
             SET published_at = ?, published_by = ?, target_kind = 'variant', target_id = ?,
-                published_asset_id = ?, previous_state_json = ?, notes = COALESCE(?, notes),
-                rollback_at = NULL, rollback_by = NULL
+                published_asset_id = ?, previous_state_json = ?, style_key = COALESCE(style_key, ?),
+                notes = COALESCE(?, notes), rollback_at = NULL, rollback_by = NULL
           WHERE id = ? AND tenant_id = ?`,
         now,
         ctx.user!.id,
         variant.id,
         publishedFront.assetId,
         JSON.stringify(previousState),
+        candidate.style_key,
         optionalText(input.notes, 2000),
         approval.id,
         ctx.tenant.id,
@@ -3070,6 +3160,7 @@ async function publishCardCandidate(
         previous_front_asset_id: previousFront?.asset_id ?? null,
         new_front_asset_id: publishedFront.assetId,
         new_front_sha256: publishedFront.sha256,
+        style_key: candidate.style_key,
         previous_back_asset_id: previousBack?.asset_id ?? null,
         new_back_asset_id: publishedBack?.assetId ?? null,
         audience: brief.audience,
@@ -3454,12 +3545,13 @@ async function restoreRenderRow(
       ctx.db,
       `INSERT INTO fb_variant_renders
         (id, tenant_id, variant_id, recipe_id, asset_id, public_url, width, height, sha256,
-         status, created_at, published_at, source_hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         status, created_at, published_at, source_hash, style_key)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(tenant_id, variant_id, recipe_id) DO UPDATE SET
          asset_id = excluded.asset_id, public_url = excluded.public_url, width = excluded.width,
          height = excluded.height, sha256 = excluded.sha256, status = excluded.status,
-         published_at = excluded.published_at, source_hash = excluded.source_hash`,
+         published_at = excluded.published_at, source_hash = excluded.source_hash,
+         style_key = excluded.style_key`,
       row.id,
       ctx.tenant.id,
       variantId,
@@ -3473,6 +3565,7 @@ async function restoreRenderRow(
       row.created_at,
       row.published_at,
       row.source_hash ?? null,
+      row.style_key ?? null,
     ).run();
     return;
   }

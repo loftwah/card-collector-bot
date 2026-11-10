@@ -270,3 +270,98 @@ candidate-level decision and why GPT Image 2.6 is the default.
   renderer; they are a comparison path, not the default.
 - The Art Lab is not a second CMS and does not own journal media. EmDash remains
   the editorial surface.
+
+## Named card styles (2026-11-11)
+
+Card styles are art directions, not finishes. Plain, Silver, Gold and
+Holographic stay the material finishes of a print. The catalogue is fixed in
+`src/lib/card-styles.ts` and shared by the server, the Art Lab and the brand
+shelf:
+
+| Key         | Direction                                                          |
+| ----------- | ------------------------------------------------------------------ |
+| `atelier`   | Art-led portrait on a deep plinth, cream type, foil edge (default) |
+| `cinematic` | Subject inside a rain-lit scene, anamorphic light, deep shadow     |
+| `editorial` | Bright studio spread, generous paper margin, crisp neutral light   |
+| `archive`   | Catalogue record on aged paper, ink rules, sepia tone              |
+| `manga`     | High-contrast ink, screentone, dynamic diagonal crop               |
+| `minimal`   | Empty warm paper, small figure, one foil-blue rule                 |
+
+- Migration `0034_card_styles_and_brand_selections.sql` adds
+  `fb_art_briefs.style_keys_json`, `fb_art_jobs.style_key`,
+  `fb_art_candidates.style_key`, `fb_art_approvals.style_key` and
+  `fb_variant_renders.style_key`.
+- A brief can select one to four styles. `createArtBrief` stores them; the
+  default comes from the platform brand selection (Atelier unless changed).
+- `queueArtGeneration` splits the candidate count across both methods and
+  styles, so a two-style, two-candidate run creates one job per style with one
+  candidate each. The cap check uses the same split.
+- `addArtCandidate` records the job's style on the candidate and in its
+  provenance metadata. The runner's reference sheet prints the chosen style.
+- Approval records the style on `fb_art_approvals`; publish passes it through
+  `createRenderAsset` to the live `fb_variant_renders` row.
+- The Art Lab index and candidate wall show the style on each pin and filter
+  by style, including an `Unstyled` state for candidates generated before the
+  catalogue existed. The brief header names the selected styles, finish,
+  model, status and spend without a paragraph.
+- Member card queries read `vr.style_key`, so the card detail and shared viewer
+  name the style. Ownership and serials do not change.
+
+## One shared card viewer
+
+`src/components/cards/CardViewer.tsx` is the only card dialog. It is used by:
+
+- `/studio/art` candidate pins and the review wall;
+- `/studio/prints` print proposals and printed editions;
+- `/platform-admin/art` brand files and card-style previews;
+- `/play/cabinet`, `/play/collection`, `/play/collections` and the card binder;
+- `/play/card/[id]` through the inspector's Expand action and variant previews;
+- the artwork-edition picker in the admin composition previews.
+
+The card object is the trigger. The dialog shows the saved 750×1050 front and
+the saved back where one exists, with a master link, Download as a separate
+action, front/back tabs, arrow-key paging, Enter/Space activation, Escape close,
+a focus trap, visible focus and a reduced-motion fallback. On phones it is a
+full-screen sheet; on desktop a centred viewer with a facts rail. It never
+recomposes private source layers.
+
+## Brand asset catalogue and selection
+
+`src/lib/brand-catalogue.ts` is a typed view of the files that actually ship
+under `public/`. `/platform-admin/art` shows the real favicons, wordmarks, Open
+Graph images, banners, shareables, card styles and other brand art; tiles open
+the shared viewer and each slot has one explicit action.
+
+- Slots with live consumers: `favicon` (BaseLayout icon links), `og_image`
+  (BaseLayout default Open Graph and Twitter image) and `card_style` (Art Lab
+  brief default).
+- Banners and shareables are browsable, previewable and downloadable; the
+  selected banner is recorded as the preferred export. The Discord application
+  cover remains a separate Discord endpoint action.
+- Selections live in `fb_brand_selections` and are validated against the
+  catalogue. The write requires the provisioned Super Admin, a signed-in human
+  and recent strong authentication; the read is a normal page dependency.
+- New Foil Standard Open Graph and banner variants are composed by
+  `art/brand-variants.mjs` from the real mark, wordmark, type and palette. The
+  historical Signal Fold shareables are not presented as current identity.
+
+## Card experience verification (2026-11-11, local)
+
+- `pnpm check` passed (types, unit, workers, script, API inventory).
+- The Art Lab was inspected at 1440 and 390: style rail, proof wall, compact
+  brief header, candidate facts, reference sheet link, exact copy and the
+  compare tray. A verification brief stored `atelier + cinematic`; queueing
+  created one job per style and both jobs were cancelled without a provider
+  call or spend.
+- The same viewer opened from an Art Lab pin, a Print Studio proposal and print
+  edition, a platform brand file, the cabinet pinned copy, a binder slot, the
+  collection copy list and the card detail Expand action. Escape closed it and
+  returned focus to the trigger; arrow keys moved between siblings; Tab stayed
+  inside the dialog; reduced motion removed the entrance animation.
+- No horizontal overflow at 1440 or 390 on `/studio/art`, `/studio/prints`,
+  `/platform-admin/art`, `/play/cabinet`, `/play/collection`,
+  `/play/collections` or `/play/card/[id]`.
+- The brand selection write was exercised locally after a simulated recent
+  step-up: selecting `og-ink` changed the layout's Open Graph image; the local
+  selection was then restored to the shipped default.
+- No paid provider call was made for this change.

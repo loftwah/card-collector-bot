@@ -288,7 +288,13 @@ export async function assetUrl(asset: AssetRow): Promise<string> {
 
 export async function createRenderAsset(
   ctx: Ctx,
-  input: { variantId: string; recipeId: string; bytes: Uint8Array; mime?: string },
+  input: {
+    variantId: string;
+    recipeId: string;
+    bytes: Uint8Array;
+    mime?: string;
+    styleKey?: string | null;
+  },
 ) {
   const mime = detectMime(input.bytes);
   if (!mime || !["image/png", "image/webp"].includes(mime)) {
@@ -353,12 +359,12 @@ export async function createRenderAsset(
     ctx.db
       .prepare(
         `INSERT INTO fb_variant_renders
-          (id, tenant_id, variant_id, recipe_id, asset_id, public_url, width, height, sha256, source_hash, status, created_at, published_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', ?, ?)
+          (id, tenant_id, variant_id, recipe_id, asset_id, public_url, width, height, sha256, source_hash, style_key, status, created_at, published_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', ?, ?)
          ON CONFLICT(tenant_id, variant_id, recipe_id) DO UPDATE SET
            asset_id = excluded.asset_id, public_url = excluded.public_url, width = excluded.width,
            height = excluded.height, sha256 = excluded.sha256, source_hash = excluded.source_hash,
-           status = 'published', published_at = excluded.published_at`,
+           style_key = excluded.style_key, status = 'published', published_at = excluded.published_at`,
       )
       .bind(
         newId("vr"),
@@ -371,6 +377,7 @@ export async function createRenderAsset(
         dimensions.height,
         hash,
         sourceHash,
+        input.styleKey ?? null,
         now,
         now,
       ),
@@ -379,6 +386,7 @@ export async function createRenderAsset(
       recipe_id: input.recipeId,
       sha256: hash,
       source_hash: sourceHash,
+      style_key: input.styleKey ?? null,
       access,
     }),
   ];

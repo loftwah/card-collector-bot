@@ -120,6 +120,19 @@ function cardCopy(run) {
   };
 }
 
+const STYLE_LABELS = {
+  atelier: "Atelier",
+  cinematic: "Cinematic",
+  editorial: "Editorial",
+  archive: "Archive",
+  manga: "Manga",
+  minimal: "Minimal",
+};
+
+function styleLabel(key) {
+  return key ? (STYLE_LABELS[key] ?? key) : null;
+}
+
 function escapeXml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -188,6 +201,7 @@ async function buildReferenceSheet(run) {
     ? await sharp(current.bytes).resize(250, 350, { fit: "contain" }).png().toBuffer()
     : null;
   const copy = cardCopy(run);
+  const chosenStyle = styleLabel(run.job.style_key);
   const accent = run.collection?.accent ?? livery[run.collection?.slug]?.accent ?? "#1f5eff";
   const paper = "#fafaf8";
   const ink = "#0a0a0a";
@@ -225,6 +239,12 @@ async function buildReferenceSheet(run) {
   <text x="780" y="878" font-family="Manrope" font-weight="600" font-size="28" fill="${ink}">${escapeXml(`${copy.rarity} · ${copy.finish}`)}</text>
   <text x="780" y="936" font-family="IBM Plex Mono" font-size="15" letter-spacing="2" fill="${graphite}">PRINT CODE</text>
   <text x="780" y="974" font-family="IBM Plex Mono" font-size="22" fill="${ink}">${escapeXml(copy.code)}</text>
+  ${
+    chosenStyle
+      ? `<text x="780" y="790" font-family="IBM Plex Mono" font-size="15" letter-spacing="2" fill="${graphite}">STYLE</text>
+  <text x="780" y="826" font-family="Manrope" font-weight="600" font-size="28" fill="${ink}">${escapeXml(chosenStyle)}</text>`
+      : ""
+  }
   <text x="780" y="1030" font-family="IBM Plex Mono" font-size="15" letter-spacing="2" fill="${graphite}">PROVENANCE</text>
   <text x="780" y="1064" font-family="IBM Plex Mono" font-size="16" fill="${ink}">${escapeXml(copy.provenance)}</text>
   <text x="780" y="1110" font-family="Manrope" font-weight="600" font-size="18" fill="${foil}">USE EXACTLY THESE WORDS. NO OTHER TEXT.</text>

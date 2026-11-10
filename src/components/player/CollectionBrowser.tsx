@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Handshake, Heart, Loader2, Lock, Search } from "lucide-react";
 import { ApiClientError, api, describeError } from "@/lib/client";
-import { cn, printTitle } from "@/lib/utils";
+import { cn, displayFinish, printTitle } from "@/lib/utils";
+import { openCardViewer, type CardViewerItem } from "../cards/CardViewer";
 
 interface Item {
   id: string;
@@ -21,6 +22,9 @@ interface Item {
   duplicate_count: number;
   render_url: string | null;
   thumbnail_url: string | null;
+  back_render_url: string | null;
+  style_key: string | null;
+  collection_name: string | null;
   acquired_at: string;
 }
 
@@ -93,6 +97,24 @@ export default function CollectionBrowser({
   const [failedMode, setFailedMode] = useState<"replace" | "append" | null>(null);
   const requestId = useRef(0);
   const abort = useRef<AbortController | null>(null);
+
+  const viewerItems: CardViewerItem[] = items.map((item) => ({
+    id: item.id,
+    name: item.card_name,
+    subtitle: printTitle(item.edition_name),
+    collection: item.collection_name,
+    styleKey: item.style_key,
+    finish: displayFinish(item.variant_name, item.material_key, item.effect_key),
+    method: "Saved card render",
+    status: item.status,
+    width: 750,
+    height: 1050,
+    serial: item.serial,
+    audience: "Member album",
+    front: item.render_url ?? item.thumbnail_url ?? "",
+    back: item.back_render_url,
+    href: `/play/card/${item.id}`,
+  }));
 
   const hasMore = items.length < total;
   const scopeChanged = scopeInvalidated || initialScope.current !== scopeKey;
@@ -500,18 +522,25 @@ export default function CollectionBrowser({
         </div>
       ) : failedFilter && failedMode === "replace" ? null : items.length ? (
         <>
-          <div ref={gridRef} className="inventory-grid mt-5">
+          <div ref={gridRef} className="inventory-grid mt-5" data-card-grid>
             {items.map((item, index) => (
               <article key={item.id} className="inventory-card">
                 <div className="inventory-card__object">
                   {item.render_url ? (
-                    <img
-                      src={item.thumbnail_url ?? item.render_url}
-                      alt={`${item.card_name} — ${printTitle(item.edition_name) ?? item.variant_name}`}
-                      loading={index < 4 ? "eager" : "lazy"}
-                      width="300"
-                      height="420"
-                    />
+                    <button
+                      type="button"
+                      className="card-trigger"
+                      onClick={() => openCardViewer(viewerItems, index)}
+                      aria-label={`Open ${item.card_name} full size`}
+                    >
+                      <img
+                        src={item.thumbnail_url ?? item.render_url}
+                        alt={`${item.card_name} — ${printTitle(item.edition_name) ?? item.variant_name}`}
+                        loading={index < 4 ? "eager" : "lazy"}
+                        width="300"
+                        height="420"
+                      />
+                    </button>
                   ) : (
                     <div className="card-face-fallback">{item.card_name.charAt(0)}</div>
                   )}

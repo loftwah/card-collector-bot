@@ -1,5 +1,6 @@
 ---
-import { printTitle } from "../../lib/utils";
+import { displayFinish, printTitle } from "../../lib/utils";
+import { CARD_STYLE_LABEL } from "../../lib/card-styles";
 
 interface Props {
   card: {
@@ -9,18 +10,48 @@ interface Props {
     thumbnail_url: string | null;
     edition_name: string | null;
     variant_name: string;
+    material_key?: string | null;
+    effect_key?: string | null;
     serial: string;
+    back_render_url?: string | null;
+    style_key?: string | null;
+    collection_name?: string | null;
+    audience?: string | null;
   };
   eager?: boolean;
 }
 
 const { card, eager = false } = Astro.props;
+const styleLabel = card.style_key ? (CARD_STYLE_LABEL[card.style_key] ?? card.style_key) : null;
+const facts = {
+  id: card.id,
+  name: card.card_name,
+  subtitle: printTitle(card.edition_name),
+  collection: card.collection_name ?? null,
+  styleKey: card.style_key ?? null,
+  finish: displayFinish(card.variant_name, card.material_key ?? "plain", card.effect_key ?? null),
+  method: "Saved card render",
+  status: "Owned",
+  width: 750,
+  height: 1050,
+  serial: card.serial,
+  audience: card.audience ?? null,
+  provenance: styleLabel ? `${styleLabel} direction` : null,
+  front: card.render_url,
+  back: card.back_render_url ?? null,
+  href: `/play/card/${card.id}`,
+};
 ---
 
 <article class="profile-card">
   <div class="profile-card__object">
-    {
-      card.render_url ? (
+    {card.render_url ? (
+      <button
+        type="button"
+        class="card-trigger"
+        data-card-facts={JSON.stringify(facts)}
+        aria-label={`Open ${card.card_name} full size`}
+      >
         <img
           src={card.thumbnail_url ?? card.render_url}
           alt={`${card.card_name} — ${printTitle(card.edition_name) ?? card.variant_name}`}
@@ -28,10 +59,10 @@ const { card, eager = false } = Astro.props;
           height="420"
           loading={eager ? "eager" : "lazy"}
         />
-      ) : (
-        <div class="card-face-fallback">{card.card_name.charAt(0)}</div>
-      )
-    }
+      </button>
+    ) : (
+      <div class="card-face-fallback">{card.card_name.charAt(0)}</div>
+    )}
   </div>
   <div class="profile-card__body">
     <p class="profile-card__name">{card.card_name}</p>
@@ -40,6 +71,8 @@ const { card, eager = false } = Astro.props;
       {card.variant_name}
     </p>
     <p class="profile-card__serial">{card.serial}</p>
-    <a class="btn btn-secondary btn-sm" href={`/play/card/${card.id}`}>Inspect</a>
+    <a class="btn btn-secondary btn-sm" href={`/play/card/${card.id}`}>
+      Inspect
+    </a>
   </div>
 </article>

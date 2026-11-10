@@ -61,7 +61,10 @@ const { compact = false } = Astro.props;
     </section>
   )}
   <section class="container grid gap-8 py-8 lg:grid-cols-[220px_1fr] lg:items-start">
-    <nav class="grid gap-1 lg:sticky lg:top-24" aria-label="Platform administration sections">
+    <nav
+      class:list={["grid gap-1 lg:sticky lg:top-24", compact && "hidden lg:grid"]}
+      aria-label="Platform administration sections"
+    >
       {links.map((link) => (
         <a
           href={link.href}

@@ -66,6 +66,12 @@ declare namespace App {
       accessStatus?: string | null;
       accessIdentity?: import("./server/access").AccessIdentity | null;
     };
+    brand?: {
+      favicon: string;
+      og_image: string;
+      banner: string;
+      card_style: string;
+    };
     requestId: string;
     theme: "light" | "dark" | "system";
   }

@@ -1,6 +1,7 @@
 ---
 import BaseLayout from "./BaseLayout.astro";
 import ThemeToggle from "../components/ThemeToggle";
+import CardViewer from "../components/cards/CardViewer";
 import { accountAvatarViewFor } from "../server/modules/account-avatar";
 
 const session = Astro.locals.foilbury;
@@ -78,7 +79,9 @@ const avatar = user ? accountAvatarViewFor(user) : null;
       <div class="container player-top">
         <a class="player-brand" href="/play">
           <span class="player-wordmark">Foilbury</span>
-          <span class="player-bot">{session?.tenantName ?? session?.tenantSlug ?? "Your library"}</span>
+          <span class="player-bot">
+            {session?.tenantName ?? session?.tenantSlug ?? "Your library"}
+          </span>
         </a>
 
         <div class="player-actions">
@@ -94,7 +97,11 @@ const avatar = user ? accountAvatarViewFor(user) : null;
             </svg>
             <span data-foil-balance>{session?.wallet ?? 0} Foil</span>
           </a>
-          <a class="player-avatar" href="/play/profile" aria-label={`${user?.displayName ?? "Your"} profile`}>
+          <a
+            class="player-avatar"
+            href="/play/profile"
+            aria-label={`${user?.displayName ?? "Your"} profile`}
+          >
             {avatar ? (
               <img
                 src={avatar.src}
@@ -114,17 +121,15 @@ const avatar = user ? accountAvatarViewFor(user) : null;
 
       <div class="container">
         <nav class="player-nav" aria-label="Player">
-          {
-            primary.map((link) => (
-              <a
-                href={link.href}
-                aria-current={primaryActive(link.href) ? "page" : undefined}
-                class:list={["player-link", primaryActive(link.href) && "is-active"]}
-              >
-                {link.label}
-              </a>
-            ))
-          }
+          {primary.map((link) => (
+            <a
+              href={link.href}
+              aria-current={primaryActive(link.href) ? "page" : undefined}
+              class:list={["player-link", primaryActive(link.href) && "is-active"]}
+            >
+              {link.label}
+            </a>
+          ))}
           <details class="player-more">
             <summary
               class:list={["player-more__summary", moreActive && "is-active"]}
@@ -133,20 +138,15 @@ const avatar = user ? accountAvatarViewFor(user) : null;
               More <span aria-hidden="true">▾</span>
             </summary>
             <div class="player-more__menu">
-              {
-                more.map((link) => (
-                  <a
-                    href={link.href}
-                    aria-current={isActive(link.href) ? "page" : undefined}
-                    class:list={[
-                      "player-more__link",
-                      isActive(link.href) && "is-active",
-                    ]}
-                  >
-                    {link.label}
-                  </a>
-                ))
-              }
+              {more.map((link) => (
+                <a
+                  href={link.href}
+                  aria-current={isActive(link.href) ? "page" : undefined}
+                  class:list={["player-more__link", isActive(link.href) && "is-active"]}
+                >
+                  {link.label}
+                </a>
+              ))}
             </div>
           </details>
         </nav>
@@ -157,20 +157,40 @@ const avatar = user ? accountAvatarViewFor(user) : null;
   <section class="player-content container">
     <slot />
   </section>
+  <CardViewer client:load />
 </BaseLayout>
 
 <script>
+  import "../scripts/card-viewer";
+
+  // A missing remote collection banner reveals the designed mark tile instead
+  // of a broken-image glyph. The fallback is authored, not a blank box.
+  document.addEventListener(
+    "error",
+    (event) => {
+      const image = event.target;
+      if (image instanceof HTMLImageElement && image.hasAttribute("data-hide-on-error")) {
+        image.style.visibility = "hidden";
+      }
+    },
+    true,
+  );
+
   document.addEventListener("click", (event) => {
-    document.querySelectorAll<HTMLDetailsElement>("details.player-more[open]").forEach((details) => {
-      if (event.target instanceof Node && !details.contains(event.target)) details.open = false;
-    });
+    document
+      .querySelectorAll<HTMLDetailsElement>("details.player-more[open]")
+      .forEach((details) => {
+        if (event.target instanceof Node && !details.contains(event.target)) details.open = false;
+      });
   });
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
-    document.querySelectorAll<HTMLDetailsElement>("details.player-more[open]").forEach((details) => {
-      const returnFocus = details.contains(document.activeElement);
-      details.open = false;
-      if (returnFocus) details.querySelector<HTMLElement>("summary")?.focus();
-    });
+    document
+      .querySelectorAll<HTMLDetailsElement>("details.player-more[open]")
+      .forEach((details) => {
+        const returnFocus = details.contains(document.activeElement);
+        details.open = false;
+        if (returnFocus) details.querySelector<HTMLElement>("summary")?.focus();
+      });
   });
 </script>

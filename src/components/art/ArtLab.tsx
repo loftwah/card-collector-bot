@@ -10,6 +10,10 @@ import {
 import { api, describeError } from "@/lib/client";
 import { Button } from "../ui/button";
 import { Input, Textarea } from "../ui/input";
+import CardViewer, { openCardViewer, type CardViewerItem } from "../cards/CardViewer";
+import BrandShelf from "./BrandShelf";
+import { CARD_STYLES, CARD_STYLE_LABEL } from "@/lib/card-styles";
+import { BRAND_ASSETS, type BrandKind } from "@/lib/brand-catalogue";
 
 type Surface = "studio" | "platform";
 type ArtCategory = "cards" | "icons" | "logo" | "og_images" | "shareables" | "banners" | "other";
@@ -54,6 +58,7 @@ interface BriefSummary {
   status: string;
   candidate_count: number;
   methods: ArtMethod[];
+  styles: string[];
   spend_cents: number;
   cost_cap_cents: number;
   candidate_total: number;
@@ -77,6 +82,7 @@ interface ArtPin {
   card_name: string | null;
   label: string;
   method: ArtMethod;
+  style_key: string | null;
   status: string;
   width: number;
   height: number;
@@ -106,6 +112,7 @@ interface Job {
   id: string;
   brief_id: string;
   method: ArtMethod;
+  style_key: string | null;
   provider: string;
   model: string;
   prompt: string;
@@ -152,6 +159,8 @@ interface Candidate {
   method: ArtMethod;
   method_label: string;
   method_note: string;
+  style_key: string | null;
+  style_label: string | null;
   provider: string;
   model: string;
   prompt: string;
@@ -195,6 +204,7 @@ interface BriefDetail {
     notes: string | null;
     provider: string;
     model: string;
+    style_keys: string[];
     created_by: string;
   };
   collection: {
@@ -293,7 +303,18 @@ interface OptionsData {
   default_cap_cents: number;
   max_cap_cents: number;
   tags: FeedbackTag[];
+  styles: Array<{ key: string; label: string; note: string; prompt: string; thumb: string }>;
+  default_style: string;
 }
+
+const BRAND_KIND_BY_CATEGORY: Partial<Record<ArtCategory, BrandKind>> = {
+  icons: "icons",
+  logo: "logos",
+  og_images: "og_images",
+  banners: "banners",
+  shareables: "shareables",
+  other: "other",
+};
 
 const CATEGORY_LABELS: Record<ArtCategory, string> = {
   cards: "Cards",
@@ -334,6 +355,13 @@ function statusLabel(value: string): string {
   return value.replaceAll("_", " ");
 }
 
+function finishLabel(material: string | null, effect: string | null): string {
+  if (material === "diamond" || material === "holographic" || effect === "holographic") {
+    return "Holographic";
+  }
+  return (material ?? "plain").charAt(0).toUpperCase() + (material ?? "plain").slice(1);
+}
+
 function methodNote(candidate: Candidate): string {
   if (candidate.method === "whole_card") {
     return "Whole-card AI · reference-guided";
@@ -342,6 +370,11 @@ function methodNote(candidate: Candidate): string {
     return "Composed card · not an AI image";
   }
   return "Raw brand art · type stays in code";
+}
+
+function exactCopyFromPrompt(prompt: string): string | null {
+  const match = prompt.match(/EXACT COPY[^\n]*\n([\s\S]*?)(?:\n\n|$)/);
+  return match?.[1]?.trim() || null;
 }
 
 function candidateImage(candidate: Candidate): string {
@@ -372,6 +405,7 @@ export default function ArtLab({ surface }: { surface: Surface }) {
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [compareSize, setCompareSize] = useState<300 | 750 | 400 | 214 | 128>(750);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [styleFilter, setStyleFilter] = useState("all");
   const [methodFilter, setMethodFilter] = useState("all");
   const [modelFilter, setModelFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState("all");
@@ -401,6 +435,7 @@ export default function ArtLab({ surface }: { surface: Surface }) {
     provider: "openai",
     model: "gpt-image-2.6-sunburst",
     methods: (surface === "studio" ? ["whole_card"] : ["raw_art"]) as ArtMethod[],
+    styleKeys: ["atelier"] as string[],
     notes: "",
     costCapCents: 200,
   });
@@ -411,19 +446,32 @@ export default function ArtLab({ surface }: { surface: Surface }) {
   const filteredCandidates = useMemo(() => {
     return candidates.filter((candidate) => {
       if (statusFilter !== "all" && candidate.status !== statusFilter) return false;
+      if (styleFilter === "unstyled" && candidate.style_key) return false;
+      if (
+        styleFilter !== "all" &&
+        styleFilter !== "unstyled" &&
+        candidate.style_key !== styleFilter
+      )
+        return false;
       if (methodFilter !== "all" && candidate.method !== methodFilter) return false;
       if (modelFilter !== "all" && candidate.model !== modelFilter) return false;
       if (tagFilter !== "all" && !readTags(candidate).includes(tagFilter as FeedbackTag))
         return false;
       return true;
     });
-  }, [candidates, statusFilter, methodFilter, modelFilter, tagFilter]);
+  }, [candidates, statusFilter, styleFilter, methodFilter, modelFilter, tagFilter]);
   const modelOptions = [...new Set(candidates.map((candidate) => candidate.model))];
   const compareCandidates = compareIds
     .map((id) => candidates.find((candidate) => candidate.id === id))
     .filter((candidate): candidate is Candidate => Boolean(candidate));
   const categoryBriefs = (index?.briefs ?? []).filter((brief) => brief.category === category);
-  const categoryPins = (index?.pins ?? []).filter((pin) => pin.category === category);
+  const allCategoryPins = (index?.pins ?? []).filter((pin) => pin.category === category);
+  const categoryPins =
+    styleFilter === "all"
+      ? allCategoryPins
+      : styleFilter === "unstyled"
+        ? allCategoryPins.filter((pin) => !pin.style_key)
+        : allCategoryPins.filter((pin) => pin.style_key === styleFilter);
   const visibleCategories = (index?.categories ?? []).filter((entry) =>
     surface === "studio" ? entry.key === "cards" : entry.key !== "cards",
   );
@@ -484,6 +532,7 @@ export default function ArtLab({ surface }: { surface: Surface }) {
     setApprovalNotes("");
     setVectorRef("");
     setPublishOpen(false);
+    setStyleFilter("all");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBriefId]);
 
@@ -524,6 +573,12 @@ export default function ArtLab({ surface }: { surface: Surface }) {
     try {
       const data = await api<OptionsData>(`${base}/options`);
       setOptions(data);
+      if (data.default_style) {
+        setForm((current) => ({
+          ...current,
+          styleKeys: current.styleKeys.length ? current.styleKeys : [data.default_style],
+        }));
+      }
     } catch {
       // The brief form is not the whole surface; keep the index usable.
     }
@@ -588,6 +643,7 @@ export default function ArtLab({ surface }: { surface: Surface }) {
       provider: form.provider,
       model: form.model,
       methods: form.methods,
+      styleKeys: form.category === "cards" ? form.styleKeys : undefined,
       notes: form.notes || null,
       costCapCents: form.costCapCents,
     });
@@ -699,9 +755,84 @@ export default function ArtLab({ surface }: { surface: Surface }) {
     await refresh();
   }
 
+  function pinViewerItems(pins: ArtPin[]): CardViewerItem[] {
+    return pins.map((pin) => ({
+      id: pin.candidate_id,
+      name: pin.card_name ?? pin.brief_title,
+      subtitle: pin.brief_title,
+      collection: pin.collection_name,
+      styleKey: pin.style_key,
+      finish: detail?.target_variant
+        ? finishLabel(detail.target_variant.material_key, detail.target_variant.effect_key)
+        : null,
+      method: pin.method === "whole_card" ? "Whole-card AI" : "Composed card",
+      status: pin.status,
+      width: pin.width,
+      height: pin.height,
+      audience: pin.audience,
+      provenance: null,
+      front: pin.image_url,
+    }));
+  }
+
+  function candidateViewerItems(list: Candidate[]): CardViewerItem[] {
+    return list.map((candidate) => ({
+      id: candidate.id,
+      name: detail?.card?.name ?? detail?.brief.title ?? candidate.label,
+      subtitle: detail?.card?.subtitle ?? candidate.label,
+      collection: detail?.collection?.name ?? null,
+      styleKey: candidate.style_key,
+      styleLabel: candidate.style_label,
+      finish: detail?.target_variant
+        ? finishLabel(detail.target_variant.material_key, detail.target_variant.effect_key)
+        : null,
+      method: candidate.method_label,
+      model: candidate.model,
+      status: candidate.status,
+      width: candidate.display_width,
+      height: candidate.display_height,
+      masterWidth: candidate.master_asset_id ? candidate.width : null,
+      masterHeight: candidate.master_asset_id ? candidate.height : null,
+      audience: candidate.audience,
+      provenance: (() => {
+        const match = candidate.prompt.match(/PROVENANCE:\s*([^\n]+)/);
+        return match?.[1]?.trim() ?? candidate.method_note;
+      })(),
+      front: candidateImage(candidate),
+      back: candidate.files.back,
+      master: candidate.files.master,
+      downloadUrl: candidate.files.download,
+    }));
+  }
+
+  function openCandidateViewer(candidate: Candidate) {
+    setSelectedCandidateId(candidate.id);
+    const list = filteredCandidates.length ? filteredCandidates : candidates;
+    const index = Math.max(
+      0,
+      list.findIndex((entry) => entry.id === candidate.id),
+    );
+    openCardViewer(candidateViewerItems(list), index);
+  }
+
   function openPin(pin: ArtPin) {
-    setPendingCandidateId(pin.candidate_id);
-    setSelectedBriefId(pin.brief_id);
+    const list = categoryPins.length ? categoryPins : allCategoryPins;
+    const index = Math.max(
+      0,
+      list.findIndex((entry) => entry.candidate_id === pin.candidate_id),
+    );
+    openCardViewer(pinViewerItems(list), index);
+  }
+
+  function toggleStyle(key: string) {
+    setForm((current) => ({
+      ...current,
+      styleKeys: current.styleKeys.includes(key)
+        ? current.styleKeys.length > 1
+          ? current.styleKeys.filter((entry) => entry !== key)
+          : current.styleKeys
+        : [...current.styleKeys, key].slice(0, 4),
+    }));
   }
 
   function updateCategory(next: ArtCategory) {
@@ -711,6 +842,7 @@ export default function ArtLab({ surface }: { surface: Surface }) {
     setSelectedBriefId("");
     setDetail(null);
     setSelectedCandidateId("");
+    setStyleFilter("all");
     const firstProvider = options?.providers[0] ?? null;
     const model = firstProvider?.models[0] ?? null;
     setForm((current) => ({
@@ -720,6 +852,12 @@ export default function ArtLab({ surface }: { surface: Surface }) {
       cardId: next === "cards" ? current.cardId : "",
       targetVariantId: next === "cards" ? current.targetVariantId : "",
       methods: next === "cards" ? ["whole_card"] : ["raw_art"],
+      styleKeys:
+        next === "cards"
+          ? current.styleKeys.length
+            ? current.styleKeys
+            : [options?.default_style ?? "atelier"]
+          : [],
       provider: firstProvider?.provider ?? current.provider,
       model: model?.id ?? current.model,
       audience: next === "cards" ? current.audience : "private",
@@ -728,7 +866,10 @@ export default function ArtLab({ surface }: { surface: Surface }) {
 
   function updateProvider(providerId: string) {
     const next = options?.providers.find((entry) => entry.provider === providerId);
-    const model = next?.models[0];
+    const model =
+      (form.category === "cards"
+        ? next?.models.find((entry) => entry.methods.includes("whole_card"))
+        : next?.models.find((entry) => entry.methods.includes("raw_art"))) ?? next?.models[0];
     setForm((current) => ({
       ...current,
       provider: providerId,
@@ -790,30 +931,42 @@ export default function ArtLab({ surface }: { surface: Surface }) {
   if (loading) {
     return (
       <div className="grid gap-3" aria-busy="true" aria-label="Loading Art Lab">
-        <div className="skeleton h-24 rounded-[3px]" />
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          <div className="skeleton h-52 rounded-[3px]" />
-          <div className="skeleton h-52 rounded-[3px]" />
-          <div className="skeleton h-52 rounded-[3px]" />
+        <div className="skeleton h-16 rounded-[3px]" />
+        <div className="columns-2 gap-3 md:columns-3 xl:columns-4">
+          <div className="skeleton mb-3 h-64 rounded-[3px]" />
+          <div className="skeleton mb-3 h-80 rounded-[3px]" />
+          <div className="skeleton mb-3 h-52 rounded-[3px]" />
+          <div className="skeleton mb-3 h-72 rounded-[3px]" />
         </div>
       </div>
     );
   }
 
+  const showStyleRail = (detail?.brief.category ?? category) === "cards";
+  const brandKind = BRAND_KIND_BY_CATEGORY[category] ?? null;
+  const canWrite = Boolean(index?.permissions.write);
+  const activeStyleLabel =
+    styleFilter === "all"
+      ? "All styles"
+      : styleFilter === "unstyled"
+        ? "Unstyled"
+        : (CARD_STYLE_LABEL[styleFilter] ?? styleFilter);
+
   return (
     <div className="min-w-0">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] pb-3">
-        <div className="flex items-baseline gap-3">
-          <h2 className="text-2xl font-semibold tracking-tight">Art Lab</h2>
-          <span className="font-mono text-[0.58rem] tracking-[0.1em] text-[var(--muted)] uppercase">
-            {surface === "studio" ? "card art" : "brand art"}
-          </span>
-        </div>
-        <div className="flex items-center gap-3">
-          <p className="font-mono text-[0.58rem] tracking-[0.08em] text-[var(--muted)] uppercase">
-            {money(index?.daily.spent_cents)} / {money(index?.daily.cap_cents)} today
+      <CardViewer />
+
+      <header className="artlab-bar">
+        <div className="artlab-bar__title">
+          <h2>Art Lab</h2>
+          <p>
+            {surface === "studio" ? "Card art" : "Brand art"} · {money(index?.daily.spent_cents)} of{" "}
+            {money(index?.daily.cap_cents)} today ·{" "}
+            {index?.permissions.write ? "write" : "read only"}
           </p>
-          {index?.permissions.write ? (
+        </div>
+        <div className="artlab-bar__actions">
+          {canWrite ? (
             <Button size="sm" onClick={() => setShowNew((open) => !open)}>
               {showNew ? "Close" : "New brief"}
             </Button>
@@ -822,7 +975,7 @@ export default function ArtLab({ surface }: { surface: Surface }) {
       </header>
 
       {error ? (
-        <p role="alert" className="error-box mt-4">
+        <p role="alert" className="error-box mt-3">
           {error}{" "}
           <button
             type="button"
@@ -834,40 +987,46 @@ export default function ArtLab({ surface }: { surface: Surface }) {
         </p>
       ) : null}
       {notice ? (
-        <p role="status" className="notice mt-4">
+        <p role="status" className="notice mt-3">
           {notice}
         </p>
       ) : null}
 
-      <nav className="mt-5 flex gap-1 overflow-x-auto pb-1" aria-label="Art Lab categories">
+      <nav className="artlab-categories" aria-label="Art Lab categories">
         {visibleCategories.map((entry) => (
           <button
             key={entry.key}
             type="button"
             onClick={() => updateCategory(entry.key)}
             aria-pressed={category === entry.key}
-            className={`chip shrink-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--signal)] ${
-              category === entry.key
-                ? "border-[var(--signal)] text-[var(--ink)]"
-                : "hover:border-[var(--line-strong)]"
-            }`}
+            className="chip shrink-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--signal)]"
+            data-active={category === entry.key}
           >
             {entry.label}
-            <span className="text-[var(--muted)]">{entry.brief_count}</span>
-            {entry.pending_count ? (
-              <span className="text-[var(--signal)]">{entry.pending_count} pending</span>
+            <span className="text-[var(--muted)]">
+              {surface === "platform"
+                ? BRAND_ASSETS.filter((asset) => asset.kind === BRAND_KIND_BY_CATEGORY[entry.key])
+                    .length
+                : entry.brief_count}
+            </span>
+            {surface === "studio" && entry.pending_count ? (
+              <span className="text-[var(--signal)]">{entry.pending_count}</span>
             ) : null}
           </button>
         ))}
       </nav>
 
+      {surface === "platform" && brandKind ? (
+        <BrandShelf kind={brandKind} onNotice={setNotice} onError={setError} />
+      ) : null}
+
       {showNew ? (
-        <section className="panel mt-4 p-4">
+        <section className="panel artlab-form mt-3 p-4">
           <div className="flex items-center justify-between gap-3">
             <h3 className="text-lg font-semibold">New brief</h3>
             <span className="badge">Cap {money(form.costCapCents)}</span>
           </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <label className="field">
               <span>Category</span>
               <select
@@ -955,157 +1114,185 @@ export default function ArtLab({ surface }: { surface: Surface }) {
                 </label>
               </>
             ) : null}
-            <label className="field sm:col-span-2">
-              <span>Title</span>
-              <Input
-                value={form.title}
-                onChange={(event) => setForm({ ...form, title: event.target.value })}
-                placeholder="Doki Doki · rain on the clubroom window"
-              />
-            </label>
-            <label className="field sm:col-span-2">
-              <span>Intent</span>
-              <Textarea
-                className="min-h-28"
-                value={form.intent}
-                onChange={(event) => setForm({ ...form, intent: event.target.value })}
-                placeholder="What should the direction make the owner feel? Name the composition, mood, palette, subject treatment and what must not appear."
-              />
-            </label>
-            <label className="field sm:col-span-2">
-              <span>References · one HTTPS or local path per line</span>
-              <Textarea
-                className="min-h-20"
-                value={form.references}
-                onChange={(event) => setForm({ ...form, references: event.target.value })}
-                placeholder="/art/backgrounds/doki-doki-literature-club.webp"
-              />
-            </label>
-            <label className="field">
-              <span>Provider</span>
-              <select
-                className="select"
-                value={form.provider}
-                onChange={(event) => updateProvider(event.target.value)}
-              >
-                {(options?.providers ?? []).map((entry) => (
-                  <option key={entry.provider} value={entry.provider}>
-                    {entry.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span>Model</span>
-              <select
-                className="select"
-                value={form.model}
-                onChange={(event) => updateModel(event.target.value)}
-              >
-                {providerModels.map((entry) => (
-                  <option key={entry.id} value={entry.id}>
-                    {entry.label} · {money(entry.unitCents)}/image
-                  </option>
-                ))}
-              </select>
-            </label>
-            <fieldset className="sm:col-span-2">
-              <legend className="eyebrow">Methods</legend>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {(options?.methods ?? [])
-                  .filter((entry) =>
-                    form.category === "cards" ? entry.key !== "raw_art" : entry.key === "raw_art",
-                  )
-                  .filter((entry) =>
-                    providerModels
-                      .find((model) => model.id === form.model)
-                      ?.methods.includes(entry.key),
-                  )
-                  .map((entry) => (
-                    <label
-                      key={entry.key}
-                      className="chip cursor-pointer"
-                      data-active={form.methods.includes(entry.key)}
-                    >
+          </div>
+
+          {form.category === "cards" ? (
+            <fieldset className="mt-4">
+              <legend className="eyebrow">Card styles · choose one or more</legend>
+              <div className="style-picker mt-2">
+                {(options?.styles ?? CARD_STYLES).map((style) => {
+                  const active = form.styleKeys.includes(style.key);
+                  return (
+                    <label key={style.key} className="style-picker__item" data-active={active}>
                       <input
                         type="checkbox"
                         className="sr-only"
-                        checked={form.methods.includes(entry.key)}
-                        onChange={(event) =>
-                          setForm({
-                            ...form,
-                            methods: event.target.checked
-                              ? [...new Set([...form.methods, entry.key])]
-                              : form.methods.filter((method) => method !== entry.key),
-                          })
-                        }
+                        checked={active}
+                        onChange={() => toggleStyle(style.key)}
                       />
-                      {entry.label}
+                      <img src={style.thumb} alt="" width={480} height={480} loading="lazy" />
+                      <span className="style-picker__label">{style.label}</span>
+                      <span className="style-picker__note">{style.note}</span>
                     </label>
-                  ))}
+                  );
+                })}
               </div>
-              <p className="mt-2 text-xs text-[var(--muted)]">
-                {form.category === "cards"
-                  ? "Whole-card is production. Scene and texture are comparison."
-                  : "Raw art. Type and marks stay in code."}
-              </p>
             </fieldset>
-            <label className="field">
-              <span>Candidates</span>
-              <Input
-                type="number"
-                min={form.category === "cards" ? 2 : 1}
-                max={8}
-                value={form.candidateCount}
-                onChange={(event) =>
-                  setForm({ ...form, candidateCount: Number(event.target.value) || 1 })
-                }
-              />
-            </label>
-            <label className="field">
-              <span>Audience</span>
-              <select
-                className="select"
-                value={form.audience}
-                onChange={(event) =>
-                  setForm({
-                    ...form,
-                    audience: event.target.value as "private" | "members" | "public",
-                  })
-                }
-              >
-                <option value="private">Private</option>
-                <option value="members">Members</option>
-                <option value="public">Public · Super Admin approval required</option>
-              </select>
-            </label>
-            <label className="field">
-              <span>Per-brief ceiling · US$</span>
-              <Input
-                type="number"
-                min={0.5}
-                max={(options?.max_cap_cents ?? 2000) / 100}
-                step={0.5}
-                value={form.costCapCents / 100}
-                onChange={(event) =>
-                  setForm({
-                    ...form,
-                    costCapCents: Math.round((Number(event.target.value) || 0) * 100),
-                  })
-                }
-              />
-            </label>
-            <label className="field sm:col-span-2">
-              <span>Notes for the runner</span>
-              <Textarea
-                className="min-h-20"
-                value={form.notes}
-                onChange={(event) => setForm({ ...form, notes: event.target.value })}
-                placeholder="Reference the actual source pack, identity anchors or any exclusion."
-              />
-            </label>
-          </div>
-          <div className="mt-4 flex justify-end border-t border-[var(--line)] pt-3">
+          ) : null}
+
+          <details className="artlab-form__details mt-4" open>
+            <summary className="eyebrow cursor-pointer">Brief</summary>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="field sm:col-span-2">
+                <span>Title</span>
+                <Input
+                  value={form.title}
+                  onChange={(event) => setForm({ ...form, title: event.target.value })}
+                  placeholder="Doki Doki · rain on the clubroom window"
+                />
+              </label>
+              <label className="field sm:col-span-2">
+                <span>Intent</span>
+                <Textarea
+                  className="min-h-24"
+                  value={form.intent}
+                  onChange={(event) => setForm({ ...form, intent: event.target.value })}
+                  placeholder="Composition, mood, palette, subject treatment and what must not appear."
+                />
+              </label>
+              <label className="field">
+                <span>Provider</span>
+                <select
+                  className="select"
+                  value={form.provider}
+                  onChange={(event) => updateProvider(event.target.value)}
+                >
+                  {(options?.providers ?? []).map((entry) => (
+                    <option key={entry.provider} value={entry.provider}>
+                      {entry.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>Model</span>
+                <select
+                  className="select"
+                  value={form.model}
+                  onChange={(event) => updateModel(event.target.value)}
+                >
+                  {providerModels.map((entry) => (
+                    <option key={entry.id} value={entry.id}>
+                      {entry.label} · {money(entry.unitCents)}/image
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <fieldset className="sm:col-span-2">
+                <legend className="eyebrow">Methods</legend>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {(options?.methods ?? [])
+                    .filter((entry) =>
+                      form.category === "cards" ? entry.key !== "raw_art" : entry.key === "raw_art",
+                    )
+                    .filter((entry) =>
+                      providerModels
+                        .find((model) => model.id === form.model)
+                        ?.methods.includes(entry.key),
+                    )
+                    .map((entry) => (
+                      <label
+                        key={entry.key}
+                        className="chip cursor-pointer"
+                        data-active={form.methods.includes(entry.key)}
+                      >
+                        <input
+                          type="checkbox"
+                          className="sr-only"
+                          checked={form.methods.includes(entry.key)}
+                          onChange={(event) =>
+                            setForm({
+                              ...form,
+                              methods: event.target.checked
+                                ? [...new Set([...form.methods, entry.key])]
+                                : form.methods.filter((method) => method !== entry.key),
+                            })
+                          }
+                        />
+                        {entry.label}
+                      </label>
+                    ))}
+                </div>
+              </fieldset>
+              <label className="field">
+                <span>Candidates</span>
+                <Input
+                  type="number"
+                  min={form.category === "cards" ? 2 : 1}
+                  max={8}
+                  value={form.candidateCount}
+                  onChange={(event) =>
+                    setForm({ ...form, candidateCount: Number(event.target.value) || 1 })
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>Audience</span>
+                <select
+                  className="select"
+                  value={form.audience}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      audience: event.target.value as "private" | "members" | "public",
+                    })
+                  }
+                >
+                  <option value="private">Private</option>
+                  <option value="members">Members</option>
+                  <option value="public">Public · Super Admin approval required</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>Per-brief ceiling · US$</span>
+                <Input
+                  type="number"
+                  min={0.5}
+                  max={(options?.max_cap_cents ?? 2000) / 100}
+                  step={0.5}
+                  value={form.costCapCents / 100}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      costCapCents: Math.round((Number(event.target.value) || 0) * 100),
+                    })
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>References · one path per line</span>
+                <Textarea
+                  className="min-h-16"
+                  value={form.references}
+                  onChange={(event) => setForm({ ...form, references: event.target.value })}
+                  placeholder="/art/backgrounds/doki-doki-literature-club.webp"
+                />
+              </label>
+              <label className="field sm:col-span-2">
+                <span>Notes for the runner</span>
+                <Textarea
+                  className="min-h-16"
+                  value={form.notes}
+                  onChange={(event) => setForm({ ...form, notes: event.target.value })}
+                  placeholder="Source pack, identity anchors or an exclusion."
+                />
+              </label>
+            </div>
+          </details>
+          <div className="mt-4 flex items-center justify-between gap-3 border-t border-[var(--line)] pt-3">
+            <p className="hidden text-xs text-[var(--muted)] sm:block">
+              Whole-card AI is production. Scene and texture compare the renderer.
+            </p>
             <Button
               onClick={() => void createBrief()}
               disabled={
@@ -1123,9 +1310,9 @@ export default function ArtLab({ surface }: { surface: Surface }) {
       ) : null}
 
       {!detail ? (
-        <section className="mt-4">
+        <section className="artlab-wall mt-4">
           {categoryBriefs.length ? (
-            <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1" aria-label="Boards">
+            <div className="artlab-boards" aria-label="Briefs">
               {categoryBriefs.map((brief) => (
                 <button
                   key={brief.id}
@@ -1134,7 +1321,8 @@ export default function ArtLab({ surface }: { surface: Surface }) {
                     setPendingCandidateId("");
                     setSelectedBriefId(brief.id);
                   }}
-                  className="chip max-w-[260px] shrink-0 hover:border-[var(--line-strong)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--signal)]"
+                  className="chip max-w-[260px] shrink-0"
+                  data-active={selectedBriefId === brief.id}
                 >
                   <span className="truncate">{brief.title}</span>
                   <span className="text-[var(--muted)]">{brief.candidate_total}</span>
@@ -1149,41 +1337,59 @@ export default function ArtLab({ surface }: { surface: Surface }) {
             </div>
           ) : null}
 
+          {showStyleRail ? <StyleRail value={styleFilter} onChange={setStyleFilter} /> : null}
+
           {categoryPins.length ? (
-            <div className="columns-2 gap-3 md:columns-3 xl:columns-4">
+            <div className="proof-grid">
               {categoryPins.map((pin) => (
                 <button
                   key={pin.candidate_id}
                   type="button"
                   onClick={() => openPin(pin)}
-                  className="group mb-3 block w-full break-inside-avoid text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--signal)]"
+                  className="proof-pin"
                 >
-                  <div className="relative overflow-hidden bg-[var(--paper-2)]">
+                  <span className="proof-pin__object">
                     <img
                       src={pin.image_url}
-                      alt={`${pin.brief_title} · ${pin.label}`}
-                      className="h-auto w-full transition-transform duration-200 group-hover:scale-[1.02] motion-reduce:transition-none"
+                      alt={`${pin.card_name ?? pin.brief_title} · ${pin.label}`}
+                      width={pin.width}
+                      height={pin.height}
                       loading="lazy"
                     />
-                    <span className="absolute top-2 left-2 bg-[var(--paper)]/90 px-1.5 py-0.5 font-mono text-[0.48rem] tracking-[0.08em] text-[var(--ink)] uppercase backdrop-blur-sm">
-                      {statusLabel(pin.status)}
-                    </span>
-                    <span className="absolute right-2 bottom-2 bg-[var(--ink)]/85 px-1.5 py-0.5 font-mono text-[0.48rem] tracking-[0.08em] text-[var(--paper)] uppercase">
+                    <span className="proof-pin__status">{statusLabel(pin.status)}</span>
+                    <span className="proof-pin__method">
                       {pin.method === "whole_card" ? "AI" : "CMP"}
                     </span>
-                  </div>
-                  <p className="mt-1 line-clamp-1 text-xs font-medium">{pin.brief_title}</p>
-                  <p className="font-mono text-[0.5rem] tracking-[0.06em] text-[var(--muted)] uppercase">
-                    {pin.card_name ?? pin.collection_name ?? "Brand"} · {pin.label}
-                  </p>
+                  </span>
+                  <span className="proof-pin__caption">
+                    <span className="proof-pin__name">{pin.card_name ?? pin.brief_title}</span>
+                    <span className="proof-pin__meta">
+                      {[
+                        pin.collection_name ?? "Brand",
+                        pin.style_key
+                          ? (CARD_STYLE_LABEL[pin.style_key] ?? pin.style_key)
+                          : "Unstyled",
+                        pin.label,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </span>
+                  </span>
                 </button>
               ))}
             </div>
           ) : (
             <div className="empty">
               <div>
-                <p className="font-mono text-[0.62rem] tracking-[0.12em] uppercase">No cards yet</p>
-                {index?.permissions.write ? (
+                <p className="font-mono text-[0.62rem] tracking-[0.12em] uppercase">
+                  {activeStyleLabel} · no cards yet
+                </p>
+                <p className="mt-2 text-sm text-[var(--muted)]">
+                  {allCategoryPins.length
+                    ? "No card in this style yet."
+                    : "Create a brief, then queue the first generation run."}
+                </p>
+                {canWrite ? (
                   <Button className="mt-3" size="sm" onClick={() => setShowNew(true)}>
                     Create a brief
                   </Button>
@@ -1193,31 +1399,42 @@ export default function ArtLab({ surface }: { surface: Surface }) {
           )}
         </section>
       ) : (
-        <div className="mt-6 min-w-0">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <button
-              type="button"
-              className="font-mono text-[0.62rem] tracking-[0.1em] text-[var(--muted)] uppercase underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--signal)]"
-              onClick={() => {
-                setSelectedBriefId("");
-                setDetail(null);
-              }}
-            >
-              ← All briefs
-            </button>
-          </div>
+        <div className="artlab-detail mt-4 min-w-0">
+          <button
+            type="button"
+            className="font-mono text-[0.6rem] tracking-[0.1em] text-[var(--muted)] uppercase underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--signal)]"
+            onClick={() => {
+              setSelectedBriefId("");
+              setDetail(null);
+            }}
+          >
+            ← All briefs
+          </button>
 
-          <header className="mt-2 flex flex-wrap items-start justify-between gap-3 border-b border-[var(--line)] pb-3">
-            <div className="min-w-0">
-              <h3 className="truncate text-xl font-semibold tracking-tight">
-                {detail.brief.title}
-              </h3>
-              <p className="mt-0.5 truncate font-mono text-[0.56rem] tracking-[0.06em] text-[var(--muted)] uppercase">
-                {CATEGORY_LABELS[detail.brief.category]}
-                {detail.collection ? ` · ${detail.collection.name}` : ""}
-                {detail.card ? ` · ${detail.card.name}` : ""}
-                {detail.target_variant ? ` · ${detail.target_variant.material_key}` : ""}
-                {` · ${money(detail.brief.spend_cents)} / ${money(detail.brief.cost_cap_cents)}`}
+          <header className="brief-head">
+            <div className="brief-head__copy">
+              <h3>{detail.brief.title}</h3>
+              <p className="brief-head__meta">
+                {[
+                  detail.brief.styles.length
+                    ? detail.brief.styles
+                        .map((style) => CARD_STYLE_LABEL[style] ?? style)
+                        .join(" + ")
+                    : null,
+                  detail.target_variant
+                    ? finishLabel(
+                        detail.target_variant.material_key,
+                        detail.target_variant.effect_key,
+                      )
+                    : detail.brief.category === "cards"
+                      ? "First finish"
+                      : CATEGORY_LABELS[detail.brief.category],
+                  detail.brief.model,
+                  statusLabel(detail.brief.status),
+                  `${money(detail.brief.spend_cents)} / ${money(detail.brief.cost_cap_cents)}`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               </p>
             </div>
             <Button
@@ -1232,63 +1449,61 @@ export default function ArtLab({ surface }: { surface: Surface }) {
               {busy === "generate" ? "Queueing…" : "Generate"}
             </Button>
           </header>
-          <details className="mt-2 text-xs text-[var(--muted)]">
-            <summary className="cursor-pointer font-mono text-[0.56rem] tracking-[0.08em] uppercase">
+
+          <details className="brief-intent">
+            <summary>
               Brief · {detail.brief.provider} / {detail.brief.model} · {detail.brief.audience}
             </summary>
-            <p className="mt-2 max-w-3xl leading-relaxed">{detail.brief.intent}</p>
-            <p className="mt-1 max-w-3xl leading-relaxed">
-              Whole-card is the production method. The runner prepares the real-source reference
-              sheet and exact copy. Scene and texture methods compare the shared renderer.
-            </p>
+            <p>{detail.brief.intent}</p>
+            <div className="brief-intent__jobs">
+              {detail.jobs.length ? (
+                detail.jobs.map((job) => (
+                  <span key={job.id} className="brief-intent__job">
+                    <span className={STATUS_TONE[job.status] ?? ""}>{job.status}</span>
+                    <span>
+                      {job.method.replaceAll("_", " ")}
+                      {job.style_key
+                        ? ` · ${CARD_STYLE_LABEL[job.style_key] ?? job.style_key}`
+                        : ""}{" "}
+                      · {job.count} · {money(job.cost_actual_cents ?? job.cost_estimate_cents)}
+                    </span>
+                    {["queued", "running"].includes(job.status) && detail.permissions.write ? (
+                      <button
+                        type="button"
+                        className="text-[var(--muted)] hover:text-[var(--oxblood)]"
+                        onClick={() => void cancelJob(job)}
+                        aria-label="Cancel job"
+                      >
+                        ×
+                      </button>
+                    ) : null}
+                  </span>
+                ))
+              ) : (
+                <span className="text-[var(--muted)]">No generation queued</span>
+              )}
+            </div>
+            {detail.jobs.some((job) => job.error) ? (
+              <div className="brief-intent__errors">
+                {detail.jobs
+                  .filter((job) => job.error)
+                  .map((job) => (
+                    <p key={job.id}>
+                      {job.method.replaceAll("_", " ")}: {job.error}
+                    </p>
+                  ))}
+              </div>
+            ) : null}
           </details>
 
-          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-[var(--line)] py-2 font-mono text-[0.55rem] tracking-[0.06em] uppercase">
-            {detail.jobs.length ? (
-              detail.jobs.map((job) => (
-                <span key={job.id} className="inline-flex items-center gap-1.5">
-                  <span className={STATUS_TONE[job.status] ?? ""}>{job.status}</span>
-                  <span className="text-[var(--muted)]">
-                    {job.method.replaceAll("_", " ")} · {job.count} ·{" "}
-                    {money(job.cost_actual_cents ?? job.cost_estimate_cents)}
-                  </span>
-                  {["queued", "running"].includes(job.status) && detail.permissions.write ? (
-                    <button
-                      type="button"
-                      className="text-[var(--muted)] hover:text-[var(--oxblood)]"
-                      onClick={() => void cancelJob(job)}
-                      aria-label="Cancel job"
-                    >
-                      ×
-                    </button>
-                  ) : null}
-                </span>
-              ))
-            ) : (
-              <span className="text-[var(--muted)]">No generation queued</span>
-            )}
-            {detail.jobs.some((job) => job.error) ? (
-              <details className="w-full">
-                <summary className="cursor-pointer text-[var(--oxblood)]">Jobs</summary>
-                <div className="mt-1 grid gap-1">
-                  {detail.jobs
-                    .filter((job) => job.error)
-                    .map((job) => (
-                      <p key={job.id} className="text-[var(--oxblood)] normal-case">
-                        {job.method.replaceAll("_", " ")}: {job.error}
-                      </p>
-                    ))}
-                </div>
-              </details>
-            ) : null}
-          </div>
+          {showStyleRail ? <StyleRail value={styleFilter} onChange={setStyleFilter} /> : null}
 
-          <div className="mt-3 flex items-center gap-2 overflow-x-auto border-y border-[var(--line)] py-2">
+          <div className="artlab-filters">
             <select
               className="select h-8 text-xs"
-              style={{ width: "auto", minWidth: "9rem" }}
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value)}
+              aria-label="Filter by status"
             >
               <option value="all">All statuses</option>
               {[
@@ -1306,9 +1521,9 @@ export default function ArtLab({ surface }: { surface: Surface }) {
             </select>
             <select
               className="select h-8 text-xs"
-              style={{ width: "auto", minWidth: "9rem" }}
               value={methodFilter}
               onChange={(event) => setMethodFilter(event.target.value)}
+              aria-label="Filter by method"
             >
               <option value="all">All methods</option>
               {detail.brief.methods.map((method) => (
@@ -1319,9 +1534,9 @@ export default function ArtLab({ surface }: { surface: Surface }) {
             </select>
             <select
               className="select h-8 text-xs"
-              style={{ width: "auto", minWidth: "9rem" }}
               value={modelFilter}
               onChange={(event) => setModelFilter(event.target.value)}
+              aria-label="Filter by model"
             >
               <option value="all">All models</option>
               {modelOptions.map((model) => (
@@ -1332,19 +1547,19 @@ export default function ArtLab({ surface }: { surface: Surface }) {
             </select>
             <select
               className="select h-8 text-xs"
-              style={{ width: "auto", minWidth: "9rem" }}
               value={tagFilter}
               onChange={(event) => setTagFilter(event.target.value)}
+              aria-label="Filter by feedback"
             >
-              <option value="all">All feedback tags</option>
+              <option value="all">All feedback</option>
               {(options?.tags ?? []).map((tag) => (
                 <option key={tag} value={tag}>
                   {tag}
                 </option>
               ))}
             </select>
-            <span className="ml-auto hidden shrink-0 font-mono text-[0.58rem] tracking-[0.08em] text-[var(--muted)] uppercase sm:inline">
-              {filteredCandidates.length} shown · {compareIds.length} selected
+            <span className="artlab-filters__count">
+              {filteredCandidates.length} shown · {compareIds.length} compare
             </span>
           </div>
 
@@ -1398,7 +1613,7 @@ export default function ArtLab({ surface }: { surface: Surface }) {
             </section>
           ) : null}
 
-          <div className="mt-4 grid gap-5 lg:grid-cols-[1fr_360px] lg:items-start">
+          <div className="artlab-review">
             <div className="min-w-0">
               {detailLoading ? (
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -1409,65 +1624,60 @@ export default function ArtLab({ surface }: { surface: Surface }) {
               ) : filteredCandidates.length ? (
                 <div
                   ref={gridRef}
-                  className="grid gap-4 sm:grid-cols-2"
+                  className="candidate-grid"
                   onKeyDown={onGridKeyDown}
                   aria-label="Candidate contact sheet"
+                  data-card-grid
                 >
-                  {filteredCandidates.map((candidate, indexValue) => (
+                  {filteredCandidates.map((candidate) => (
                     <article
                       key={candidate.id}
-                      className={`min-w-0 border bg-[var(--paper)] p-2 transition-colors ${
-                        selectedCandidateId === candidate.id
-                          ? "border-[var(--signal)]"
-                          : "border-[var(--line)] hover:border-[var(--line-strong)]"
-                      }`}
+                      className="candidate-tile"
+                      data-active={selectedCandidateId === candidate.id}
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <label className="flex items-center gap-2 font-mono text-[0.58rem] tracking-[0.08em] text-[var(--muted)] uppercase">
+                      <div className="candidate-tile__top">
+                        <label>
                           <input
                             type="checkbox"
                             checked={compareIds.includes(candidate.id)}
                             onChange={() => toggleCompare(candidate.id)}
                             aria-label={`Select ${candidate.label} for comparison`}
                           />
-                          {candidate.label}
+                          <span>{candidate.label}</span>
                         </label>
-                        <span
-                          className={`font-mono text-[0.55rem] tracking-[0.08em] uppercase ${STATUS_TONE[candidate.status] ?? ""}`}
-                        >
+                        <span className={STATUS_TONE[candidate.status] ?? ""}>
                           {statusLabel(candidate.status)}
                         </span>
                       </div>
                       <button
                         type="button"
                         data-candidate-card
-                        data-candidate-index={indexValue}
-                        onClick={() => setSelectedCandidateId(candidate.id)}
-                        className="mt-2 block w-full text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--signal)]"
-                        aria-pressed={selectedCandidateId === candidate.id}
+                        onClick={() => openCandidateViewer(candidate)}
+                        className="candidate-tile__view"
+                        aria-label={`Open ${candidate.label} full size`}
                       >
                         <img
                           src={candidateImage(candidate)}
                           alt={`${candidate.label} · ${candidate.method_label}`}
-                          className="mx-auto block bg-[var(--paper-2)] object-contain"
-                          style={{ width: 300, maxWidth: "100%" }}
+                          width={candidate.display_width}
+                          height={candidate.display_height}
                           loading="lazy"
                         />
-                        <p className="mt-2 font-mono text-[0.55rem] tracking-[0.08em] text-[var(--muted)] uppercase">
-                          {methodNote(candidate)}
-                        </p>
-                        <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 font-mono text-[0.55rem] tracking-[0.08em] text-[var(--muted)] uppercase">
-                          <span>{candidate.model}</span>
-                          <span>
-                            {candidate.width}×{candidate.height}
-                          </span>
-                          {readTags(candidate).length ? (
-                            <span className="text-[var(--signal)]">
-                              {readTags(candidate).join(" · ")}
-                            </span>
-                          ) : null}
-                        </div>
                       </button>
+                      <div className="candidate-tile__meta">
+                        <span>
+                          {candidate.style_label ??
+                            (candidate.style_key
+                              ? (CARD_STYLE_LABEL[candidate.style_key] ?? candidate.style_key)
+                              : "No style")}
+                        </span>
+                        <span>
+                          {candidate.method === "whole_card" ? "Whole-card AI" : "Composed"}
+                        </span>
+                        <span>
+                          {candidate.display_width}×{candidate.display_height}
+                        </span>
+                      </div>
                     </article>
                   ))}
                 </div>
@@ -1487,7 +1697,7 @@ export default function ArtLab({ surface }: { surface: Surface }) {
               )}
             </div>
 
-            <aside className="min-w-0 lg:sticky lg:top-24">
+            <aside className="artlab-panel">
               {selectedCandidate ? (
                 <CandidatePanel
                   candidate={selectedCandidate}
@@ -1525,8 +1735,8 @@ export default function ArtLab({ surface }: { surface: Surface }) {
                 <div className="panel p-4">
                   <p className="eyebrow">Candidate</p>
                   <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
-                    Select a candidate to inspect its metadata, leave durable feedback, shortlist
-                    it, approve a direction or publish it.
+                    Open a card to inspect it full size. Select one to leave feedback, approve a
+                    direction or publish it.
                   </p>
                 </div>
               )}
@@ -1534,6 +1744,46 @@ export default function ArtLab({ surface }: { surface: Surface }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function StyleRail({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return (
+    <div className="style-rail" role="group" aria-label="Filter by card style">
+      <button
+        type="button"
+        className="style-rail__all"
+        data-active={value === "all"}
+        onClick={() => onChange("all")}
+        aria-pressed={value === "all"}
+      >
+        All
+      </button>
+      {CARD_STYLES.map((style) => (
+        <button
+          key={style.key}
+          type="button"
+          className="style-rail__item"
+          data-active={value === style.key}
+          aria-pressed={value === style.key}
+          onClick={() => onChange(value === style.key ? "all" : style.key)}
+          title={style.note}
+        >
+          <img src={style.thumb} alt="" width={480} height={480} loading="lazy" />
+          <span>{style.label}</span>
+        </button>
+      ))}
+      <button
+        type="button"
+        className="style-rail__all style-rail__unstyled"
+        data-active={value === "unstyled"}
+        aria-pressed={value === "unstyled"}
+        onClick={() => onChange(value === "unstyled" ? "all" : "unstyled")}
+        title="Cards generated before the style catalogue"
+      >
+        Unstyled
+      </button>
     </div>
   );
 }
@@ -1617,11 +1867,10 @@ function CandidatePanel(props: {
     <div className="panel p-4">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="font-mono text-[0.56rem] tracking-[0.08em] text-[var(--muted)] uppercase">
-            {candidate.label}
-          </p>
-          <p className="mt-1 font-mono text-[0.58rem] tracking-[0.08em] text-[var(--muted)] uppercase">
-            {candidate.method_label} · {candidate.status}
+          <p className="text-base font-semibold">{candidate.label}</p>
+          <p className="mt-1 font-mono text-[0.56rem] tracking-[0.08em] text-[var(--muted)] uppercase">
+            {candidate.style_label ?? "No style"} · {candidate.method_label} ·{" "}
+            {statusLabel(candidate.status)}
           </p>
         </div>
         <a
@@ -1650,13 +1899,28 @@ function CandidatePanel(props: {
             rel="noreferrer"
             className="underline underline-offset-4"
           >
-            Open the reference sheet used
+            Reference sheet used ↗
           </a>{" "}
-          · real subject, collection mark and exact copy
+          · real subject, supplied mark and exact copy
         </p>
+      ) : null}
+      {exactCopyFromPrompt(candidate.prompt) ? (
+        <details className="candidate-copy mt-2">
+          <summary>Exact copy used</summary>
+          <pre>{exactCopyFromPrompt(candidate.prompt)}</pre>
+        </details>
       ) : null}
 
       <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+        <Fact label="Style" value={candidate.style_label ?? "—"} />
+        <Fact
+          label="Finish"
+          value={
+            detail.target_variant
+              ? finishLabel(detail.target_variant.material_key, detail.target_variant.effect_key)
+              : "—"
+          }
+        />
         <Fact label="Method" value={candidate.method_label} />
         <Fact label="Model" value={candidate.model} />
         <Fact label="Dimensions" value={`${candidate.width} × ${candidate.height}`} />

@@ -2,6 +2,7 @@ import { defineMiddleware } from "astro:middleware";
 import { buildContext, runtimeEnv, ApiError } from "./server/context";
 import { readConfig } from "./server/config";
 import { createSession } from "./server/modules/identity";
+import { readBrandSelections } from "./server/modules/brand";
 import { sessionCookies } from "./server/api/helpers";
 
 const LOCAL_ONLY = new Set(["/api/v1/bootstrap", "/api/v1/status"]);
@@ -47,8 +48,17 @@ export const onRequest = defineMiddleware(async (context, next) => {
     if (context.url.pathname.startsWith("/api/")) {
       if (error instanceof ApiError) {
         return new Response(
-          JSON.stringify({ error: { code: error.code, message: error.message }, request_id: context.locals.requestId }),
-          { status: error.status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } },
+          JSON.stringify({
+            error: { code: error.code, message: error.message },
+            request_id: context.locals.requestId,
+          }),
+          {
+            status: error.status,
+            headers: {
+              "content-type": "application/json; charset=utf-8",
+              "cache-control": "no-store",
+            },
+          },
         );
       }
       throw error;
@@ -59,21 +69,31 @@ export const onRequest = defineMiddleware(async (context, next) => {
     });
   }
 
+  if (!context.url.pathname.startsWith("/api/")) {
+    context.locals.brand = await readBrandSelections(ctx);
+  }
+
   if (isProtectedPage) {
     const access = ctx.accessIdentity;
     const status = ctx.accessStatus;
     if (ctx.config.access.enabled && (!access || status !== "linked" || !ctx.user)) {
-      return new Response(accessGateHtml({ status: status ?? "unlinked", email: access?.email, path }), {
-        status: 403,
-        headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
-      });
+      return new Response(
+        accessGateHtml({ status: status ?? "unlinked", email: access?.email, path }),
+        {
+          status: 403,
+          headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+        },
+      );
     }
     if (isPlatformPage) {
       if (!ctx.user?.platformAdmin) {
-        return new Response(accessGateHtml({ status: "not_super_admin", email: access?.email, path }), {
-          status: 403,
-          headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
-        });
+        return new Response(
+          accessGateHtml({ status: "not_super_admin", email: access?.email, path }),
+          {
+            status: 403,
+            headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+          },
+        );
       }
     }
     if (!ctx.user) {
@@ -100,7 +120,10 @@ export const onRequest = defineMiddleware(async (context, next) => {
       const next = encodeURIComponent(path + context.url.search);
       return context.redirect(`/login?next=${next}`);
     }
-    const hasScope = ctx.user.platformAdmin || Boolean(ctx.user.globalCollectionScope) || ["owner", "editor", "economy_admin"].includes(ctx.user.role);
+    const hasScope =
+      ctx.user.platformAdmin ||
+      Boolean(ctx.user.globalCollectionScope) ||
+      ["owner", "editor", "economy_admin"].includes(ctx.user.role);
     if (!hasScope) {
       return new Response(studioDeniedHtml(), {
         status: 403,
@@ -109,13 +132,24 @@ export const onRequest = defineMiddleware(async (context, next) => {
     }
   }
 
-  if ((isAdminApi || isPlatformApi) && ctx.actor.type !== "agent" && ctx.config.access.enabled && (!ctx.accessIdentity || ctx.accessStatus !== "linked" || !ctx.user)) {
+  if (
+    (isAdminApi || isPlatformApi) &&
+    ctx.actor.type !== "agent" &&
+    ctx.config.access.enabled &&
+    (!ctx.accessIdentity || ctx.accessStatus !== "linked" || !ctx.user)
+  ) {
     return new Response(
       JSON.stringify({
-        error: { code: "access_identity_required", message: "Cloudflare Access identity is not linked to this Foilbury account." },
+        error: {
+          code: "access_identity_required",
+          message: "Cloudflare Access identity is not linked to this Foilbury account.",
+        },
         request_id: context.locals.requestId,
       }),
-      { status: 403, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } },
+      {
+        status: 403,
+        headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+      },
     );
   }
 
@@ -124,7 +158,14 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // Create it before rendering so the CSRF meta tag matches the new cookie on
   // the very first page load, not only after a reload.
   let accessCookies: string[] = [];
-  if (isProtectedPage && ctx.config.access.enabled && ctx.accessIdentity && ctx.accessStatus === "linked" && ctx.user && !ctx.sessionId) {
+  if (
+    isProtectedPage &&
+    ctx.config.access.enabled &&
+    ctx.accessIdentity &&
+    ctx.accessStatus === "linked" &&
+    ctx.user &&
+    !ctx.sessionId
+  ) {
     const session = await createSession(ctx.db, ctx.tenant, ctx.user, {
       authMethod: "cloudflare_access",
       // The cookie carries the linked account and CSRF state. Strong Access
@@ -144,8 +185,12 @@ export const onRequest = defineMiddleware(async (context, next) => {
   response.headers.set("x-content-type-options", "nosniff");
   response.headers.set("referrer-policy", "strict-origin-when-cross-origin");
   response.headers.set("x-frame-options", "DENY");
-  response.headers.set("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=()");
-  if (isProtectedPage || isStudioPage || path === "/play" || path.startsWith("/play/")) response.headers.set("cache-control", "no-store");
+  response.headers.set(
+    "permissions-policy",
+    "camera=(), microphone=(), geolocation=(), payment=()",
+  );
+  if (isProtectedPage || isStudioPage || path === "/play" || path.startsWith("/play/"))
+    response.headers.set("cache-control", "no-store");
   return response;
 });
 
@@ -193,7 +238,11 @@ function accessGateHtml(input: { status: string; email?: string; path: string })
 }
 
 function escapeHtml(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }
 
 function studioDeniedHtml(): string {
@@ -211,4 +260,3 @@ function setupHtml(): string {
   const config = readConfig(runtimeEnv());
   return `<!doctype html><html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Foilbury setup</title><style>body{font-family:ui-sans-serif,system-ui;background:#f4f0e6;color:#141512;margin:0;display:grid;place-items:center;min-height:100vh}.card{max-width:34rem;padding:3rem;border:1px solid #d6cdbc;background:#fffdf8}h1{font-family:Georgia,serif;font-size:2.5rem;margin:0 0 1rem}p{line-height:1.6}code{background:#eae3d5;padding:.15rem .35rem}</style></head><body><main class="card"><h1>Foilbury needs its local setup.</h1><p>This installation has no tenant yet. Run <code>pnpm setup:local</code> in the repository, then reload this page.</p><p>Environment: ${config.environment}. Local URL: <code>${config.publicOrigin}</code>.</p></main></body></html>`;
 }
-

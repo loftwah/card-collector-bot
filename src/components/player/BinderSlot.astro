@@ -1,4 +1,5 @@
 ---
+import { CARD_STYLE_LABEL } from "../../lib/card-styles";
 interface BinderCard {
   id: string;
   name: string;
@@ -8,6 +9,8 @@ interface BinderCard {
   finishes: string[];
   render_url: string | null;
   thumbnail_url: string | null;
+  back_render_url?: string | null;
+  style_key?: string | null;
   instance_id: string | null;
 }
 
@@ -15,11 +18,31 @@ interface Props {
   card: BinderCard;
   finishLabels: Record<string, string>;
   theme?: string | null;
+  collection?: string | null;
+  audience?: string | null;
 }
 
-const { card, finishLabels, theme = null } = Astro.props;
+const { card, finishLabels, theme = null, collection = null, audience = null } = Astro.props;
 const finishLabel = (key: string) => finishLabels[key] ?? key;
 const imageUrl = card.render_url ?? card.thumbnail_url;
+const styleLabel = card.style_key ? (CARD_STYLE_LABEL[card.style_key] ?? card.style_key) : null;
+const facts = {
+  id: card.instance_id ?? card.id,
+  name: card.name,
+  subtitle: card.subtitle,
+  collection,
+  styleKey: card.style_key ?? null,
+  finish: card.finishes.map(finishLabel).join(", ") || null,
+  method: null,
+  status: card.owned ? "Owned" : "Missing",
+  width: 750,
+  height: 1050,
+  audience,
+  provenance: styleLabel ? `${styleLabel} direction` : null,
+  front: imageUrl,
+  back: card.back_render_url ?? null,
+  href: card.instance_id ? `/play/card/${card.instance_id}` : null,
+};
 ---
 
 <article
@@ -29,14 +52,21 @@ const imageUrl = card.render_url ?? card.thumbnail_url;
 >
   <div class="binder-slot__object">
     {card.owned && imageUrl ? (
-      <img
-        src={imageUrl}
-        alt=""
-        width="300"
-        height="420"
-        loading="lazy"
-        class="binder-slot__render"
-      />
+      <button
+        type="button"
+        class="card-trigger binder-slot__trigger"
+        data-card-facts={JSON.stringify(facts)}
+        aria-label={`Open ${card.name} full size`}
+      >
+        <img
+          src={imageUrl}
+          alt=""
+          width="300"
+          height="420"
+          loading="lazy"
+          class="binder-slot__render"
+        />
+      </button>
     ) : (
       <div class="binder-slot__missing">
         <span class="binder-slot__missing-mark" aria-hidden="true">

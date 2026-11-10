@@ -142,6 +142,7 @@ const bannerStyle = presentation?.bannerPosition
               height="900"
               loading="eager"
               style={bannerStyle}
+              data-hide-on-error
             />
           ) : null}
           <div class="pilot-album__veil" aria-hidden="true" />
@@ -155,10 +156,7 @@ const bannerStyle = presentation?.bannerPosition
             <div class="pilot-album__identity">
               {selectedMark ? (
                 <img
-                  class:list={[
-                    "pilot-album__mark",
-                    `pilot-album__mark--${markTreatment}`,
-                  ]}
+                  class:list={["pilot-album__mark", `pilot-album__mark--${markTreatment}`]}
                   src={selectedMark}
                   alt=""
                   width="240"
@@ -233,7 +231,14 @@ const bannerStyle = presentation?.bannerPosition
             ]}
           >
             {selectedBanner ? (
-              <img src={selectedBanner} alt="" width="1600" height="900" loading="eager" />
+              <img
+                src={selectedBanner}
+                alt=""
+                width="1600"
+                height="900"
+                loading="eager"
+                data-hide-on-error
+              />
             ) : selectedMark ? (
               <img src={selectedMark} alt="" width="512" height="512" loading="eager" />
             ) : (
@@ -540,12 +545,14 @@ const bannerStyle = presentation?.bannerPosition
                     {group.cards.filter((card) => card.owned).length}/{group.cards.length} found
                   </p>
                 </div>
-                <div class="binder-grid">
+                <div class="binder-grid" data-card-grid>
                   {group.cards.map((card) => (
                     <BinderSlot
                       card={card}
                       finishLabels={finishLabels}
                       theme={presentation.theme}
+                      collection={selected.name}
+                      audience={audienceLabel(selected.view_audience)}
                     />
                   ))}
                 </div>
@@ -566,12 +573,14 @@ const bannerStyle = presentation?.bannerPosition
                     found
                   </p>
                 </div>
-                <div class="binder-grid">
+                <div class="binder-grid" data-card-grid>
                   {otherBinderCards.map((card) => (
                     <BinderSlot
                       card={card}
                       finishLabels={finishLabels}
                       theme={presentation.theme}
+                      collection={selected.name}
+                      audience={audienceLabel(selected.view_audience)}
                     />
                   ))}
                 </div>
@@ -579,9 +588,14 @@ const bannerStyle = presentation?.bannerPosition
             ) : null}
           </div>
         ) : (
-          <div class="binder-grid">
+          <div class="binder-grid" data-card-grid>
             {binder.cards.map((card) => (
-              <BinderSlot card={card} finishLabels={finishLabels} />
+              <BinderSlot
+                card={card}
+                finishLabels={finishLabels}
+                collection={selected.name}
+                audience={audienceLabel(selected.view_audience)}
+              />
             ))}
           </div>
         )}

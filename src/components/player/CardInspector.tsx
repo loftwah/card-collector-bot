@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Box, RotateCcw, Sparkles } from "lucide-react";
+import { Box, Maximize2, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/client";
+import { openCardViewer, type CardViewerItem } from "../cards/CardViewer";
 
 interface Props {
   inspectionInstanceId?: string;
@@ -18,6 +19,7 @@ interface Props {
   initialEnabled?: boolean;
   initialFlipped?: boolean;
   framed?: boolean;
+  viewerItems?: CardViewerItem[];
 }
 
 /**
@@ -39,6 +41,7 @@ export default function CardInspector({
   initialEnabled = false,
   initialFlipped = false,
   framed = false,
+  viewerItems = [],
   inspectionInstanceId,
 }: Props) {
   const [hydrated, setHydrated] = useState(false);
@@ -53,12 +56,15 @@ export default function CardInspector({
   const modeButton = useRef<HTMLButtonElement>(null);
   const frame = useRef<number | null>(null);
   const dragging = useRef(false);
+  const moved = useRef(0);
   const last = useRef({ x: 0, y: 0 });
 
   const front = frontUrl ?? fallbackUrl;
   const back = backUrl ?? fallbackUrl;
 
-  useEffect(() => { setHydrated(true); }, []);
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   useLayoutEffect(() => {
     if (hydrated && initialEnabled) modeButton.current?.focus({ preventScroll: true });
@@ -129,6 +135,7 @@ export default function CardInspector({
   }
 
   function onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    moved.current = 0;
     if (!canTilt) return;
     dragging.current = true;
     last.current = { x: event.clientX, y: event.clientY };
@@ -140,6 +147,7 @@ export default function CardInspector({
     if (dragging.current) {
       const dx = event.clientX - last.current.x;
       const dy = event.clientY - last.current.y;
+      moved.current += Math.abs(dx) + Math.abs(dy);
       last.current = { x: event.clientX, y: event.clientY };
       setTilt((current) => ({
         x: clamp(current.x - dy * 0.28, -18, 18),
@@ -154,13 +162,26 @@ export default function CardInspector({
     dragging.current = false;
   }
 
+  function expand() {
+    if (!viewerItems.length) return;
+    openCardViewer(viewerItems, 0);
+  }
+
   async function recordInspection() {
     if (!inspectionInstanceId || inspectionInFlight.current) return;
     inspectionInFlight.current = true;
     setInspection("saving");
     try {
-      const result = await api<{ recorded?: boolean; day?: string }>(`/api/v1/missions/inspect/${encodeURIComponent(inspectionInstanceId)}`, { method: "POST", body: {} });
-      if (result?.recorded !== true || typeof result.day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(result.day)) throw new Error("Inspection not confirmed");
+      const result = await api<{ recorded?: boolean; day?: string }>(
+        `/api/v1/missions/inspect/${encodeURIComponent(inspectionInstanceId)}`,
+        { method: "POST", body: {} },
+      );
+      if (
+        result?.recorded !== true ||
+        typeof result.day !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(result.day)
+      )
+        throw new Error("Inspection not confirmed");
       setInspection("saved");
     } catch {
       setInspection("failed");
@@ -191,6 +212,9 @@ export default function CardInspector({
     } else if (event.key.toLowerCase() === "f") {
       event.preventDefault();
       flipCard();
+    } else if (event.key === "Enter" && viewerItems.length) {
+      event.preventDefault();
+      expand();
     } else if (event.key === "Escape") {
       setTilt({ x: 0, y: 0 });
       setFlipped(false);
@@ -210,7 +234,11 @@ export default function CardInspector({
           )}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
+          onPointerUp={() => {
+            const wasDrag = moved.current > 6;
+            onPointerUp();
+            if (!wasDrag) expand();
+          }}
           onPointerLeave={() => {
             onPointerUp();
             if (canTilt) setTilt({ x: 0, y: 0 });
@@ -218,7 +246,7 @@ export default function CardInspector({
           onKeyDown={onKeyDown}
           tabIndex={0}
           role="group"
-          aria-label={`${name} card inspector. Use left and right arrows to tilt, F to flip, Escape to reset.`}
+          aria-label={`${name} card inspector. Click or press Enter to open full size. Use left and right arrows to tilt, F to flip, Escape to reset.`}
           data-active={active ? "true" : "false"}
           data-flipped={flipped ? "true" : "false"}
           data-mode={enabled ? (canTilt ? "interactive" : "static") : "flat"}
@@ -279,6 +307,14 @@ export default function CardInspector({
         >
           <Box size={14} /> {enabled ? "Exit 3D" : "Inspect in 3D"}
         </button>
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={expand}
+          disabled={!viewerItems.length}
+        >
+          <Maximize2 size={14} /> Expand
+        </button>
         {enabled ? (
           <button
             type="button"
@@ -296,12 +332,29 @@ export default function CardInspector({
         {reduced
           ? "Static inspection · reduced motion is on"
           : enabled
-            ? "Drag or use arrow keys · F flips · Escape resets"
-            : `Flat view · ${collection ?? "Cabinet"}${serial ? ` · ${serial}` : ""}`}
+            ? "Click to open full size · drag or arrow keys to tilt · F flips"
+            : `Click to open full size · ${collection ?? "Cabinet"}${serial ? ` · ${serial}` : ""}`}
       </p>
-      {inspectionInstanceId ? <div className="mt-2 min-h-5 text-xs text-[var(--muted)]" role="status" aria-live="polite">
-        {inspection === "saving" ? "Recording inspection…" : inspection === "saved" ? "Inspection recorded for today’s missions." : inspection === "failed" ? <span>Couldn’t record this inspection. <button type="button" className="underline underline-offset-4" onClick={() => void recordInspection()}>Retry</button></span> : null}
-      </div> : null}
+      {inspectionInstanceId ? (
+        <div className="mt-2 min-h-5 text-xs text-[var(--muted)]" role="status" aria-live="polite">
+          {inspection === "saving" ? (
+            "Recording inspection…"
+          ) : inspection === "saved" ? (
+            "Inspection recorded for today’s missions."
+          ) : inspection === "failed" ? (
+            <span>
+              Couldn’t record this inspection.{" "}
+              <button
+                type="button"
+                className="underline underline-offset-4"
+                onClick={() => void recordInspection()}
+              >
+                Retry
+              </button>
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       <p className="sr-only" aria-live="polite">
         {flipped ? "Showing card back" : "Showing card front"}.
         {canTilt

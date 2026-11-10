@@ -9,6 +9,7 @@ import { getInstance } from "../../../server/modules/collection";
 import { getCard, listSets } from "../../../server/modules/catalogue";
 import { getWishlist } from "../../../server/modules/collection";
 import { displayFinish, formatDual, printTitle as editionPrintTitle } from "../../../lib/utils";
+import { CARD_STYLE_LABEL } from "../../../lib/card-styles";
 
 const ctx = await pageContext(Astro.request);
 const instanceId = Astro.params.id ?? "";
@@ -55,12 +56,6 @@ const variantComparisons = cardCatalogue
       )
       .slice(0, 6)
   : [];
-const eventLabel: Record<string, string> = {
-  drawn: "Drawn from a cabinet pool",
-  traded: "Transferred in a trade",
-  gifted: "Received as a gift",
-  recycled: "Recycled into Foil",
-};
 // Multi-print editions are named "Subject — Print title". Keep the subject as
 // the card identity and surface the print title as the human-readable edition.
 const cardPrintTitle = editionPrintTitle(instance.edition_name);
@@ -71,6 +66,50 @@ const artOriginLabel = (origin: string): string => {
   if (origin === "foilbury_original") return "Foilbury original";
   if (origin === "derived") return "Deterministic render of the source layers";
   return "Provenance review outstanding";
+};
+const finishText = displayFinish(instance.variant_name, instance.material_key, instance.effect_key);
+const viewerItems = [
+  {
+    id: instance.id,
+    name: instance.card_name,
+    subtitle: cardPrintTitle ?? instance.subtitle,
+    collection: instance.collection_name,
+    styleKey: instance.style_key,
+    finish: finishText,
+    method: "Saved card render",
+    status: instance.status,
+    width: 750,
+    height: 1050,
+    serial: instance.serial,
+    audience: instance.collection_name ? "Member album" : null,
+    provenance: artOriginLabel(instance.subject_origin),
+    front: instance.render_url ?? "/brand/card-back.webp",
+    back: instance.back_render_url,
+    href: `/play/card/${instance.id}`,
+  },
+  ...variantComparisons.map((variant) => ({
+    id: variant.id,
+    name: instance.card_name,
+    subtitle: cardPrintTitle ?? instance.subtitle,
+    collection: instance.collection_name,
+    styleKey: instance.style_key,
+    finish: displayFinish(variant.name, variant.material, variant.effect),
+    method: "Saved card render",
+    status: variant.owned ? "Your copy" : "Preview only · ownership unchanged",
+    width: 750,
+    height: 1050,
+    audience: "Member album",
+    provenance: artOriginLabel(instance.subject_origin),
+    front: variant.render_url ?? instance.render_url ?? "/brand/card-back.webp",
+    back: null,
+    href: null,
+  })),
+];
+const eventLabel: Record<string, string> = {
+  drawn: "Drawn from a cabinet pool",
+  traded: "Transferred in a trade",
+  gifted: "Received as a gift",
+  recycled: "Recycled into Foil",
 };
 ---
 
@@ -96,29 +135,40 @@ const artOriginLabel = (origin: string): string => {
         finish={displayFinish(instance.variant_name, instance.material_key, instance.effect_key)}
         collection={instance.collection_name}
         serial={instance.serial}
+        viewerItems={viewerItems}
       />
-      {ownedCopy && ctx.csrfToken ? <noscript>
-        <form method="post" action={`/play/card/${encodeURIComponent(instance.id)}/inspect`} class="mt-3">
-          <input type="hidden" name="csrf" value={ctx.csrfToken} />
-          <button type="submit" class="btn btn-secondary btn-sm">Record inspection for daily missions</button>
-          <p class="mt-2 text-xs text-[var(--muted)]">Use the front link below and <a class="underline underline-offset-4" href={instance.back_render_url ?? "/brand/card-back.webp"}>{instance.back_render_url ? "view the card back" : "view the generic card back"}</a>, then record your inspection.</p>
-        </form>
-      </noscript> : null}
+      {ownedCopy && ctx.csrfToken ? (
+        <noscript>
+          <form
+            method="post"
+            action={`/play/card/${encodeURIComponent(instance.id)}/inspect`}
+            class="mt-3"
+          >
+            <input type="hidden" name="csrf" value={ctx.csrfToken} />
+            <button type="submit" class="btn btn-secondary btn-sm">
+              Record inspection for daily missions
+            </button>
+            <p class="mt-2 text-xs text-[var(--muted)]">
+              Use the front link below and{" "}
+              <a
+                class="underline underline-offset-4"
+                href={instance.back_render_url ?? "/brand/card-back.webp"}
+              >
+                {instance.back_render_url ? "view the card back" : "view the generic card back"}
+              </a>
+              , then record your inspection.
+            </p>
+          </form>
+        </noscript>
+      ) : null}
       <div class="mt-4 flex flex-wrap items-center justify-between gap-2">
         <p class="font-mono text-[0.58rem] uppercase tracking-[0.12em] text-[var(--muted)]">
           Your copy ·{" "}
           {displayFinish(instance.variant_name, instance.material_key, instance.effect_key)}
         </p>
-        {instance.render_url ? (
-          <a
-            class="font-mono text-[0.58rem] uppercase tracking-[0.12em] text-[var(--green)]"
-            href={instance.render_url}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Open full-size front ↗
-          </a>
-        ) : null}
+        <span class="font-mono text-[0.58rem] uppercase tracking-[0.12em] text-[var(--muted)]">
+          Click the card or Expand
+        </span>
       </div>
       {variantComparisons.length > 1 ? (
         <div class="mt-5 border border-[var(--line)] bg-[var(--paper-2)]/35 p-3">
@@ -128,7 +178,7 @@ const artOriginLabel = (origin: string): string => {
               Preview only · ownership unchanged
             </p>
           </div>
-          <div class="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+          <div class="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4" data-card-grid>
             {variantComparisons.map((variant) => (
               <div
                 class:list={[
@@ -137,14 +187,36 @@ const artOriginLabel = (origin: string): string => {
                 ]}
               >
                 {variant.render_url ? (
-                  <img
-                    src={variant.render_url}
-                    alt={`${instance.card_name} in ${variant.name}`}
-                    class="aspect-[5/7] w-full object-cover"
-                    loading="lazy"
-                    width="150"
-                    height="210"
-                  />
+                  <button
+                    type="button"
+                    class="card-trigger"
+                    data-card-facts={JSON.stringify({
+                      id: variant.id,
+                      name: instance.card_name,
+                      subtitle: cardPrintTitle ?? instance.subtitle,
+                      collection: instance.collection_name,
+                      styleKey: instance.style_key,
+                      finish: displayFinish(variant.name, variant.material, variant.effect),
+                      method: "Saved card render",
+                      status: variant.owned ? "Your copy" : "Preview only",
+                      width: 750,
+                      height: 1050,
+                      audience: "Member album",
+                      front: variant.render_url,
+                      back: null,
+                      href: null,
+                    })}
+                    aria-label={`Open ${instance.card_name} in ${variant.name} full size`}
+                  >
+                    <img
+                      src={variant.render_url}
+                      alt={`${instance.card_name} in ${variant.name}`}
+                      class="aspect-[5/7] w-full object-cover"
+                      loading="lazy"
+                      width="150"
+                      height="210"
+                    />
+                  </button>
                 ) : null}
                 <p class="mt-1 truncate text-[0.6rem] font-semibold">
                   {displayFinish(variant.name, variant.material, variant.effect)}
@@ -258,6 +330,12 @@ const artOriginLabel = (origin: string): string => {
       </div>
 
       <dl class="card-facts mt-8 grid grid-cols-1 gap-x-6 gap-y-4 border-t border-[var(--line)] pt-5 text-sm sm:grid-cols-2">
+        {instance.style_key ? (
+          <div>
+            <dt class="eyebrow">Style</dt>
+            <dd class="mt-1">{CARD_STYLE_LABEL[instance.style_key] ?? instance.style_key}</dd>
+          </div>
+        ) : null}
         <div>
           <dt class="eyebrow">Serial</dt>
           <dd class="mt-1 font-mono text-xs">{instance.serial}</dd>

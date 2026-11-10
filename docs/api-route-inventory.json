@@ -1,5 +1,5 @@
 {
-  "route_count": 201,
+  "route_count": 203,
   "direct_route_count": 21,
   "routes": [
     {
@@ -44,6 +44,32 @@
     {
       "method": "GET",
       "path": "/api/v1/admin/art/agent",
+      "guards": [],
+      "auth_only": [],
+      "scopes": [],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "routeArtLab"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/art/brand",
+      "guards": [],
+      "auth_only": [],
+      "scopes": [],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "routeArtLab"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/art/brand/selection",
       "guards": [],
       "auth_only": [],
       "scopes": [],
