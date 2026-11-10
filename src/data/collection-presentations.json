@@ -362,5 +362,211 @@
         ]
       }
     ]
+  },
+  "nana-two-nanas": {
+    "theme": "archive",
+    "titleLead": "NANA",
+    "titleTail": "Two Nanas, One Tokyo",
+    "eyebrow": "Tokyo archive",
+    "lede": "Two women named Nana, one train to Tokyo and two bands moving in different directions. Eight records from Ai Yazawa's manga and the 2006 anime.",
+    "cardSetName": "NANA · Two Nanas",
+    "openingCta": "Open a NANA capsule",
+    "rosterLabel": "The two Nanas",
+    "rosterFactLabel": "Records",
+    "markPlate": "paper",
+    "bannerPosition": "center 30%",
+    "groups": [
+      {
+        "key": "blackstones",
+        "label": "Black Stones",
+        "caption": "Nana Osaki's band",
+        "cards": [
+          "Nana Osaki",
+          "Nobuo Terashima",
+          "Shinichi Okazaki",
+          "Yasushi Takagi"
+        ]
+      },
+      {
+        "key": "trapnest",
+        "label": "Trapnest",
+        "caption": "The band on the other side of the city",
+        "cards": [
+          "Reira Serizawa",
+          "Ren Honjo",
+          "Takumi Ichinose"
+        ]
+      },
+      {
+        "key": "tokyo",
+        "label": "Tokyo",
+        "caption": "Hachi's new life",
+        "cards": [
+          "Nana Komatsu"
+        ]
+      }
+    ]
+  },
+  "death-note": {
+    "theme": "archive",
+    "titleLead": "Death Note",
+    "titleTail": "The Kira Case",
+    "eyebrow": "Kira case archive",
+    "lede": "A notebook, a detective and a city that starts disappearing one name at a time. Eight records from the 2003 manga and its anime adaptation.",
+    "cardSetName": "Death Note · The Kira Case",
+    "openingCta": "Open a Kira Case capsule",
+    "rosterLabel": "The case file",
+    "rosterFactLabel": "Records",
+    "markPlate": "dark",
+    "bannerPosition": "center 30%",
+    "groups": [
+      {
+        "key": "investigation",
+        "label": "The investigation",
+        "caption": "Light, L, Near, Mello and Soichiro",
+        "cards": [
+          "Light Yagami",
+          "L",
+          "Near",
+          "Mello",
+          "Soichiro Yagami"
+        ]
+      },
+      {
+        "key": "shinigami",
+        "label": "Shinigami",
+        "caption": "Ryuk and Rem",
+        "cards": [
+          "Ryuk",
+          "Rem"
+        ]
+      },
+      {
+        "key": "notebook",
+        "label": "The notebook",
+        "caption": "Misa and the second Kira",
+        "cards": [
+          "Misa Amane"
+        ]
+      }
+    ]
+  },
+  "summer-hikaru-died": {
+    "theme": "archive",
+    "titleLead": "The Summer Hikaru Died",
+    "titleTail": "The Village and the Voice",
+    "eyebrow": "Village archive",
+    "lede": "A village, a boy who came back wrong and a voice that knows more than it should. Eight records from Mokumokuren's manga.",
+    "cardSetName": "Summer Hikaru Died · The Village",
+    "openingCta": "Open a Village capsule",
+    "rosterLabel": "The village",
+    "rosterFactLabel": "Records",
+    "markPlate": "dark",
+    "bannerPosition": "center 30%",
+    "groups": [
+      {
+        "key": "village",
+        "label": "The village",
+        "caption": "Yoshiki, Hikaru, Asako, Kaoru and Rie",
+        "cards": [
+          "Yoshiki Tsujinaka",
+          "Hikaru Indou",
+          "Asako Yamagishi",
+          "Kaoru Tsujinaka",
+          "Rie Kurebayashi"
+        ]
+      },
+      {
+        "key": "outside",
+        "label": "Outside authority",
+        "caption": "Tanaka and the friends at the edge",
+        "cards": [
+          "Tanaka",
+          "Yūta Maki",
+          "Yuuki Tadokoro"
+        ]
+      }
+    ]
+  },
+  "scott-pilgrim": {
+    "theme": "manga",
+    "titleLead": "Scott Pilgrim",
+    "titleTail": "Six Volumes, One City",
+    "eyebrow": "Panel print",
+    "lede": "Six volumes, one city and a league of exes standing between Scott and a quiet life. Eight records from Bryan Lee O'Malley's graphic novels.",
+    "cardSetName": "Scott Pilgrim · Six Volumes",
+    "openingCta": "Open a Scott Pilgrim capsule",
+    "rosterLabel": "The league",
+    "rosterFactLabel": "Panels",
+    "markPlate": "dark",
+    "bannerPosition": "center 30%",
+    "groups": [
+      {
+        "key": "band",
+        "label": "Sex Bob-omb",
+        "caption": "Scott, Kim and Stephen",
+        "cards": [
+          "Scott Pilgrim",
+          "Kim Pine",
+          "Stephen Stills"
+        ]
+      },
+      {
+        "key": "exes",
+        "label": "The exes",
+        "caption": "Ramona, Knives, Envy and Gideon",
+        "cards": [
+          "Ramona Flowers",
+          "Knives Chau",
+          "Envy Adams",
+          "Gideon Graves"
+        ]
+      },
+      {
+        "key": "friends",
+        "label": "Friends",
+        "caption": "Wallace Wells",
+        "cards": [
+          "Wallace Wells"
+        ]
+      }
+    ]
+  },
+  "rick-and-morty": {
+    "theme": "broadcast",
+    "titleLead": "Rick and Morty",
+    "titleTail": "Portal",
+    "eyebrow": "Portal broadcast",
+    "lede": "A garage, a portal gun and a family that keeps getting dragged through both. Eight records from the main animated-series continuity.",
+    "cardSetName": "Rick and Morty · Portal",
+    "openingCta": "Open a Portal capsule",
+    "rosterLabel": "The household",
+    "rosterFactLabel": "Residents",
+    "markPlate": "dark",
+    "bannerPosition": "center 30%",
+    "groups": [
+      {
+        "key": "smiths",
+        "label": "The Smiths",
+        "caption": "Rick, Morty, Summer, Beth and Jerry",
+        "cards": [
+          "Rick Sanchez",
+          "Morty Smith",
+          "Summer Smith",
+          "Beth Smith",
+          "Jerry Smith"
+        ]
+      },
+      {
+        "key": "wider",
+        "label": "Wider cast",
+        "caption": "Birdperson, Mr. Meeseeks and Evil Morty",
+        "cards": [
+          "Birdperson",
+          "Mr. Meeseeks",
+          "Evil Morty"
+        ]
+      }
+    ]
   }
 }

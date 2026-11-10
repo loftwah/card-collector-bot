@@ -149,6 +149,24 @@ second; the mark is on a paper plate for these wordmark-led collections.
 - All five collections remain member/private, `origin=sourced`, `official:false`.
   No new art was generated and no distribution was widened.
 
+### Batch 3
+
+| Collection | Theme | Identity art | Roster shelves |
+| --- | --- | --- | --- |
+| NANA — Two Nanas, One Tokyo | `archive` | sourced banner + real series mark | Black Stones / Trapnest / Tokyo |
+| Death Note — The Kira Case | `archive` | sourced banner + real series mark | The investigation / Shinigami / The notebook |
+| The Summer Hikaru Died — The Village and the Voice | `archive` | sourced banner + real series mark | The village / Outside authority |
+| Scott Pilgrim — Six Volumes, One City | `manga` | sourced banner + real series mark | Sex Bob-omb / The exes / Friends |
+| Rick and Morty — Portal | `broadcast` | sourced banner + real series mark | The Smiths / Wider cast |
+
+- `manga` is the fourth shared livery: a paper caption panel, an inked
+  gutter, a halftone corner and a black subtitle box. It is not a per-collection
+  frame.
+- Death Note, Summer Hikaru Died, Scott Pilgrim and Rick and Morty use a dark
+  mark plate for their light or mid-tone wordmarks; NANA uses the paper plate.
+- All five remain member/private, `origin=sourced`, `official:false`. No new art
+  was generated and no distribution was widened.
+
 ## Verification
 
 - Actual fronts and backs inspected at 750×1050 in the card inspector.
