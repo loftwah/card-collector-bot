@@ -351,7 +351,7 @@ the shared viewer and each slot has one explicit action.
   `art/brand-variants.mjs` from the real mark, wordmark, type and palette. The
   historical Signal Fold shareables are not presented as current identity.
 
-## Card experience verification (2026-11-11, local)
+## Card experience production verification (2026-11-11)
 
 - `pnpm check` passed (types, unit, workers, script, API inventory).
 - The Art Lab was inspected at 1440 and 390: style rail, proof wall, compact
@@ -370,4 +370,28 @@ the shared viewer and each slot has one explicit action.
 - The brand selection write was exercised locally after a simulated recent
   step-up: selecting `og-ink` changed the layout's Open Graph image; the local
   selection was then restored to the shipped default.
+- Pre-change D1 JSON backup:
+  `.foilbury/backups/d1-2026-11-10T14-25-51-357Z.json` (102 tables, 51,364
+  rows, SHA-256
+  `350109033073f83c84d16d99e0a4f0b188112f8a90f8bf701e33bc424be639b3`).
+  Migration `0034` was applied to production after the backup; it only added
+  the style columns and `fb_brand_selections`.
+- Production source `9b16197c974bc1cc9659ce72af751cb95c974f66`; the uploaded
+  Worker version was `9a008ded-eaab-4aca-9d31-2a36316f59c1`. The deployment
+  propagated one polling window after the release script's 60-second check,
+  so the receipt is marked unverified; the live build header and a fresh
+  `test-deployed.mjs` run both passed for `9b16197` afterwards.
+- Live signed-in `/platform-admin/art`: the real favicon, wordmark, OG,
+  banner, shareable, card-style and other-brand catalogues loaded at 1440 with
+  no alert; a fresh Access session selected the already-live mark as the site
+  icon through the page-aligned transport (200, no visual change).
+- Live signed-in `/studio/art`: the style rail, `Unstyled` state, compact empty
+  wall and New brief form loaded at 1440 and 390; the form exposed all six
+  style thumbnails with Atelier active. Production has no card briefs or
+  candidates, so the live candidate viewer was not exercised with production
+  art.
+- Live signed-in `/studio/prints`: the Tux proof wall showed four approved
+  prints and the shared viewer opened from the wall at 390; `/play/cabinet`,
+  `/play/collection` and `/play/card/[id]` opened the same viewer from owned
+  cards at 1440 and 390, including the saved back and provenance.
 - No paid provider call was made for this change.
