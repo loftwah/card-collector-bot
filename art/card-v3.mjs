@@ -18,8 +18,13 @@ const evidence = path.join(root, ".foilbury/evidence/card-v3");
 const outDir = path.join(root, "public/art/proofs");
 const FINISH = (process.env.V3_FINISH ?? "holographic").toLowerCase();
 const PLAIN = FINISH === "plain";
-const suffix = PLAIN ? "-plain" : "";
-const finishTitle = PLAIN ? "Plain" : "Holographic";
+const HOLO = FINISH === "holographic";
+const METALLIC = FINISH === "silver" || FINISH === "gold";
+const baseName = process.env.V3_OUT ?? `tux-v3${PLAIN ? "-plain" : ""}`;
+const scenePath = process.env.V3_SCENE ?? path.join(evidence, "tux-v3-scene.png");
+const subjectPath = process.env.V3_SUBJECT ?? path.join(evidence, "tux-v3-subject-alpha.png");
+const subjectHeight = Number(process.env.V3_SUBJECT_HEIGHT ?? 720) || 720;
+const finishTitle = FINISH.charAt(0).toUpperCase() + FINISH.slice(1);
 const fonts = [
   path.join(root, "art/fonts/Fraunces.ttf"),
   path.join(root, "art/fonts/Manrope.ttf"),
@@ -32,8 +37,12 @@ const H = 1050;
 const PAPER = "#FAFAF8";
 const INK = "#0A0A0A";
 const GRAPHITE = "#5B5B57";
-const FOIL = "#1F5EFF";
+const FOIL =
+  process.env.V3_ACCENT ??
+  (FINISH === "gold" ? "#C69A58" : FINISH === "silver" ? "#B9B9B2" : PLAIN ? "#8A8A84" : "#1F5EFF");
+const RULE = PLAIN ? "#8A8A84" : METALLIC ? FOIL : "url(#foilLine)";
 const CREAM = "#F4F0E6";
+const CAPSULE_TEXT = PLAIN || METALLIC ? INK : CREAM;
 
 function svgPng(svg, width = W) {
   const resvg = new Resvg(svg, {
@@ -100,7 +109,7 @@ function frontTextSvg() {
 
     <!-- class capsule -->
     <rect x="64" y="60" width="154" height="28" fill="${FOIL}"/>
-    <text x="76" y="79" font-family="IBM Plex Mono" font-size="12" letter-spacing="2" fill="${CREAM}">${esc(copy.classLine)}</text>
+    <text x="76" y="79" font-family="IBM Plex Mono" font-size="12" letter-spacing="2" fill="${CAPSULE_TEXT}">${esc(copy.classLine)}</text>
 
     <!-- nameplate -->
     <text x="64" y="174" font-family="Fraunces" font-weight="600" font-size="94" letter-spacing="-3" fill="${CREAM}">${esc(copy.name)}</text>
@@ -138,7 +147,7 @@ function frontTextSvg() {
 
     <!-- frame -->
     <rect x="8" y="8" width="734" height="1034" fill="none" stroke="${INK}" stroke-width="8"/>
-    <rect x="16" y="16" width="718" height="1018" fill="none" stroke="${PLAIN ? "#8a8a84" : "url(#foilLine)"}" stroke-width="2"/>
+    <rect x="16" y="16" width="718" height="1018" fill="none" stroke="${RULE}" stroke-width="2"/>
     <g stroke="${CREAM}" stroke-width="2" fill="none">
       <path d="M24 58V24h34"/>
       <path d="M726 58V24h-34"/>
@@ -161,7 +170,7 @@ function backSvg() {
     </defs>
     <rect width="${W}" height="${H}" fill="${PAPER}"/>
     <rect x="0" y="0" width="${W}" height="6" fill="${INK}"/>
-    <rect x="0" y="6" width="${W}" height="18" fill="${PLAIN ? "#b9b9b2" : "url(#backHolo)"}" fill-opacity="${PLAIN ? "0.5" : "0.28"}"/>
+    <rect x="0" y="6" width="${W}" height="18" fill="${PLAIN || METALLIC ? "#b9b9b2" : "url(#backHolo)"}" fill-opacity="${PLAIN ? "0.5" : "0.28"}"/>
     <rect x="24" y="54" width="702" height="1" fill="#E4E4DF"/>
 
     <!-- header -->
@@ -206,7 +215,7 @@ function backSvg() {
     <text x="58" y="770" font-family="Manrope" font-size="12" fill="${GRAPHITE}">Original Foilbury character. Card design and type are Foilbury originals.</text>
 
     <!-- credits / footer -->
-    <text x="40" y="838" font-family="IBM Plex Mono" font-size="9" letter-spacing="1" fill="${GRAPHITE}">ART · TUX SIGNAL-KEEPER STUDY · COMPOSED FROM SCENE, SUBJECT, FRAME, ${PLAIN ? "MATERIAL" : "HOLO"} AND TYPE LAYERS</text>
+    <text x="40" y="838" font-family="IBM Plex Mono" font-size="9" letter-spacing="1" fill="${GRAPHITE}">ART · TUX SIGNAL-KEEPER STUDY · COMPOSED FROM SCENE, SUBJECT, FRAME, ${HOLO ? "HOLO" : "MATERIAL"} AND TYPE LAYERS</text>
     <text x="40" y="858" font-family="IBM Plex Mono" font-size="9" letter-spacing="1" fill="${GRAPHITE}">REVIEWED · NOT OFFICIAL THIRD-PARTY ARTWORK · NO INVENTED SERIAL ON A SHARED BACK</text>
     <line x1="40" y1="900" x2="710" y2="900" stroke="#E4E4DF" stroke-width="1"/>
     <text x="40" y="944" font-family="IBM Plex Mono" font-size="10" letter-spacing="2" fill="${INK}">SHARED RENDER · ${esc(copy.printCode)}</text>
@@ -215,7 +224,7 @@ function backSvg() {
 
     <!-- edge -->
     <rect x="8" y="8" width="734" height="1034" fill="none" stroke="${INK}" stroke-width="6"/>
-    <rect x="16" y="16" width="718" height="1018" fill="none" stroke="${PLAIN ? "#8a8a84" : "url(#backHolo)"}" stroke-width="2"/>
+    <rect x="16" y="16" width="718" height="1018" fill="none" stroke="${RULE}" stroke-width="2"/>
     <g stroke="${INK}" stroke-width="2" fill="none">
       <path d="M24 58V24h34"/><path d="M726 58V24h-34"/>
       <path d="M24 992v34h34"/><path d="M726 992v34h-34"/>
@@ -231,16 +240,13 @@ async function holoMask(strong, seal = true) {
 }
 
 async function buildFront() {
-  const scene = await sharp(path.join(evidence, "tux-v3-scene.png"))
+  const scene = await sharp(scenePath)
     .resize(W, H, { fit: "cover", position: "centre" })
     .modulate({ brightness: 0.72, saturation: 0.92 })
     .blur(0.5)
     .png()
     .toBuffer();
-  const subject = await sharp(path.join(evidence, "tux-v3-subject-alpha.png"))
-    .resize({ height: 720 })
-    .png()
-    .toBuffer();
+  const subject = await sharp(subjectPath).resize({ height: subjectHeight }).png().toBuffer();
   const subjectMeta = await sharp(subject).metadata();
   const subjectWidth = subjectMeta.width ?? 420;
   const subjectLeft = W - subjectWidth - 24;
@@ -257,7 +263,7 @@ async function buildFront() {
     .toBuffer();
 
   const parts = [{ input: frontText, left: 0, top: 0 }];
-  if (!PLAIN) {
+  if (HOLO) {
     const mask = await holoMask(true);
     const holo = await sharp(path.join(root, "public/art/layers/ai/neon-holo.png"))
       .resize(W, H)
@@ -272,36 +278,36 @@ async function buildFront() {
 
   await sharp(final)
     .webp({ quality: 92, effort: 5 })
-    .toFile(path.join(outDir, `tux-v3${suffix}-front.webp`));
+    .toFile(path.join(outDir, `${baseName}-front.webp`));
   await sharp(final)
     .resize(1500, 2100)
     .png()
-    .toFile(path.join(outDir, `tux-v3${suffix}-front-master.png`));
+    .toFile(path.join(outDir, `${baseName}-front-master.png`));
   await sharp(final)
     .resize(400, 560)
     .webp({ quality: 90 })
-    .toFile(path.join(evidence, `tux-v3${suffix}-front-400.webp`));
+    .toFile(path.join(evidence, `${baseName}-front-400.webp`));
   await sharp(final)
     .resize(214, 300)
     .png()
-    .toFile(path.join(evidence, `tux-v3${suffix}-front-214.png`));
+    .toFile(path.join(evidence, `${baseName}-front-214.png`));
   await sharp(final)
     .resize(128, 179)
     .png()
-    .toFile(path.join(evidence, `tux-v3${suffix}-front-128.png`));
+    .toFile(path.join(evidence, `${baseName}-front-128.png`));
   await sharp(final)
     .png()
-    .toFile(path.join(evidence, `tux-v3${suffix}-front-full.png`));
+    .toFile(path.join(evidence, `${baseName}-front-full.png`));
 }
 
 async function buildBack() {
-  const subject = await sharp(path.join(evidence, "tux-v3-subject-alpha.png"))
+  const subject = await sharp(subjectPath)
     .resize(204, 254, { fit: "cover", position: "top" })
     .png()
     .toBuffer();
   const mark = await markPng();
   const base = svgPng(backSvg());
-  const plate = await sharp(path.join(evidence, "tux-v3-scene.png"))
+  const plate = await sharp(scenePath)
     .resize(210, 260, { fit: "cover", position: "centre" })
     .modulate({ brightness: 0.86 })
     .png()
@@ -315,7 +321,7 @@ async function buildBack() {
     .png()
     .toBuffer();
   const parts = [];
-  if (!PLAIN) {
+  if (HOLO) {
     const mask = await holoMask(false, false);
     const holo = await sharp(path.join(root, "public/art/layers/ai/neon-holo.png"))
       .resize(W, H)
@@ -330,29 +336,29 @@ async function buildBack() {
     : withImages;
   await sharp(final)
     .webp({ quality: 92, effort: 5 })
-    .toFile(path.join(outDir, `tux-v3${suffix}-back.webp`));
+    .toFile(path.join(outDir, `${baseName}-back.webp`));
   await sharp(final)
     .resize(1500, 2100)
     .png()
-    .toFile(path.join(outDir, `tux-v3${suffix}-back-master.png`));
+    .toFile(path.join(outDir, `${baseName}-back-master.png`));
   await sharp(final)
     .resize(400, 560)
     .webp({ quality: 90 })
-    .toFile(path.join(evidence, `tux-v3${suffix}-back-400.webp`));
+    .toFile(path.join(evidence, `${baseName}-back-400.webp`));
   await sharp(final)
     .resize(214, 300)
     .png()
-    .toFile(path.join(evidence, `tux-v3${suffix}-back-214.png`));
+    .toFile(path.join(evidence, `${baseName}-back-214.png`));
   await sharp(final)
     .resize(128, 179)
     .png()
-    .toFile(path.join(evidence, `tux-v3${suffix}-back-128.png`));
+    .toFile(path.join(evidence, `${baseName}-back-128.png`));
   await sharp(final)
     .png()
-    .toFile(path.join(evidence, `tux-v3${suffix}-back-full.png`));
+    .toFile(path.join(evidence, `${baseName}-back-full.png`));
 }
 
 await mkdir(outDir, { recursive: true });
 await buildFront();
 await buildBack();
-console.log(`wrote tux-v3${suffix} front/back proofs`);
+console.log(`wrote ${baseName} front/back proofs`);

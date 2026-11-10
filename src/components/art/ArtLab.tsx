@@ -440,7 +440,11 @@ export default function ArtLab({ surface }: { surface: Surface }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [category, setCategory] = useState<ArtCategory>(surface === "studio" ? "cards" : "icons");
-  const [selectedBriefId, setSelectedBriefId] = useState("");
+  const [selectedBriefId, setSelectedBriefId] = useState(() =>
+    typeof window === "undefined"
+      ? ""
+      : (new URLSearchParams(window.location.search).get("brief") ?? ""),
+  );
   const [detail, setDetail] = useState<BriefDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [selectedCandidateId, setSelectedCandidateId] = useState("");
@@ -465,6 +469,14 @@ export default function ArtLab({ surface }: { surface: Surface }) {
   const [publishNotes, setPublishNotes] = useState("");
   const [publishBack, setPublishBack] = useState(true);
   const gridRef = useRef<HTMLDivElement | null>(null);
+
+  // A shared review link opens the exact brief instead of the whole wall.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (selectedBriefId) url.searchParams.set("brief", selectedBriefId);
+    else url.searchParams.delete("brief");
+    window.history.replaceState({}, "", url);
+  }, [selectedBriefId]);
   const [form, setForm] = useState({
     category: surface === "studio" ? ("cards" as ArtCategory) : ("icons" as ArtCategory),
     collectionId: "",
