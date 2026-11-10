@@ -40,6 +40,10 @@ export interface CollectionPresentation {
   rosterFactLabel?: string;
   /** Optional plate tone for a light or dark series wordmark. */
   markPlate?: "dark" | "paper";
+  /** Optional override for a square original badge instead of a wordmark. */
+  markTreatment?: "invert" | "plate" | "wordmark" | "plain";
+  /** Optional override when the card renderer should not invert the mark. */
+  markInvert?: boolean;
   /** Optional object-position for the real banner at wide widths. */
   bannerPosition?: string;
   groups: CollectionGroup[];

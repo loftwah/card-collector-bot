@@ -568,5 +568,212 @@
         ]
       }
     ]
+  },
+  "alien-stage": {
+    "theme": "stage",
+    "titleLead": "Alien Stage",
+    "titleTail": "Stage Lights",
+    "eyebrow": "Stage lights",
+    "lede": "A televised competition, a garden of human contestants and a stage where the audience decides who keeps singing. Eight records from the 2022–2025 animated music series.",
+    "cardSetName": "Alien Stage · Stage Lights",
+    "openingCta": "Open a Stage Lights capsule",
+    "rosterLabel": "The stage",
+    "rosterFactLabel": "Performers",
+    "markPlate": "paper",
+    "bannerPosition": "center 28%",
+    "groups": [
+      {
+        "key": "contestants",
+        "label": "Contestants",
+        "caption": "Mizi, Sua, Till, Ivan and Luka",
+        "cards": [
+          "Mizi",
+          "Sua",
+          "Till",
+          "Ivan",
+          "Luka"
+        ]
+      },
+      {
+        "key": "garden",
+        "label": "The garden",
+        "caption": "Hyuna and Anakt Garden",
+        "cards": [
+          "Hyuna",
+          "Anakt Garden"
+        ]
+      },
+      {
+        "key": "stage",
+        "label": "The stage",
+        "caption": "The competition itself",
+        "cards": [
+          "Alien Stage"
+        ]
+      }
+    ]
+  },
+  "nba-opening-night": {
+    "theme": "broadcast",
+    "titleLead": "NBA",
+    "titleTail": "Opening Night",
+    "eyebrow": "Opening night broadcast",
+    "lede": "Twelve players, one from each club, opening the 2025/26 season. A curated starter album, not a complete league roster.",
+    "cardSetName": "NBA · Opening Night",
+    "openingCta": "Open an Opening Night capsule",
+    "rosterLabel": "The opening dozen",
+    "rosterFactLabel": "Players",
+    "markPlate": "paper",
+    "bannerPosition": "center 30%",
+    "groups": [
+      {
+        "key": "backcourt",
+        "label": "Backcourt",
+        "caption": "Shai, Luka, Jalen, Cade and Anthony",
+        "cards": [
+          "Shai Gilgeous-Alexander",
+          "Luka Dončić",
+          "Jalen Brunson",
+          "Cade Cunningham",
+          "Anthony Edwards"
+        ]
+      },
+      {
+        "key": "wings",
+        "label": "Wings",
+        "caption": "Giannis, Kevin, Paolo and Jaylen",
+        "cards": [
+          "Giannis Antetokounmpo",
+          "Kevin Durant",
+          "Paolo Banchero",
+          "Jaylen Brown"
+        ]
+      },
+      {
+        "key": "bigs",
+        "label": "Bigs",
+        "caption": "Nikola, Victor and Bam",
+        "cards": [
+          "Nikola Jokić",
+          "Victor Wembanyama",
+          "Bam Adebayo"
+        ]
+      }
+    ]
+  },
+  "neon-genesis-evangelion": {
+    "theme": "archive",
+    "titleLead": "Neon Genesis Evangelion",
+    "titleTail": "Episodes 1–26",
+    "eyebrow": "NERV archive",
+    "lede": "A city under siege, a boy in a machine and a command structure that explains almost nothing. Eight records from the original 1995–96 TV series.",
+    "cardSetName": "Evangelion · Episodes 1–26",
+    "openingCta": "Open an Evangelion capsule",
+    "rosterLabel": "The episodes",
+    "rosterFactLabel": "Records",
+    "markPlate": "dark",
+    "bannerPosition": "center 30%",
+    "groups": [
+      {
+        "key": "nerv",
+        "label": "NERV",
+        "caption": "Shinji, Rei, Asuka, Misato, Gendo and Ritsuko",
+        "cards": [
+          "Shinji Ikari",
+          "Rei Ayanami",
+          "Asuka Langley Soryu",
+          "Misato Katsuragi",
+          "Gendo Ikari",
+          "Ritsuko Akagi"
+        ]
+      },
+      {
+        "key": "outside",
+        "label": "Outside the command",
+        "caption": "Kaji and Kaworu",
+        "cards": [
+          "Ryoji Kaji",
+          "Kaworu Nagisa"
+        ]
+      }
+    ]
+  },
+  "bubbles": {
+    "theme": "stage",
+    "titleLead": "Bubbles",
+    "titleTail": "Cabinet Originals",
+    "eyebrow": "Original Foilbury project",
+    "lede": "A small original cast from the Foilbury cabinet: a signal bloom, a lantern grove keeper and an orbit warden. No franchise, no licence, just the house characters.",
+    "cardSetName": "Bubbles",
+    "openingCta": "Open a Bubbles capsule",
+    "rosterLabel": "The cast",
+    "rosterFactLabel": "Characters",
+    "markTreatment": "plate",
+    "markPlate": "paper",
+    "groups": [
+      {
+        "key": "cast",
+        "label": "The cast",
+        "caption": "Three original Foilbury characters",
+        "cards": [
+          "Miku",
+          "Moss",
+          "Pressure Orbit"
+        ]
+      }
+    ]
+  },
+  "fighter": {
+    "theme": "manga",
+    "titleLead": "Fighter",
+    "titleTail": "Original Roster",
+    "eyebrow": "Original Foilbury project",
+    "lede": "Five original fighters built for the cabinet: a drop bear, a reaper, an egg, an iron outlaw and a penguin with root access. A house roster, drawn as a fight card.",
+    "cardSetName": "Fighter",
+    "openingCta": "Open a Fighter capsule",
+    "rosterLabel": "The roster",
+    "rosterFactLabel": "Fighters",
+    "markTreatment": "plate",
+    "markInvert": false,
+    "markPlate": "paper",
+    "groups": [
+      {
+        "key": "roster",
+        "label": "The roster",
+        "caption": "Five original Foilbury fighters",
+        "cards": [
+          "Drop Bear",
+          "Grim Reaper",
+          "Humpty",
+          "Ned Kelly",
+          "Tux"
+        ]
+      }
+    ]
+  },
+  "shared": {
+    "theme": "archive",
+    "titleLead": "Shared Characters",
+    "titleTail": "Loftwah Originals",
+    "eyebrow": "Original Foilbury project",
+    "lede": "The shared cast that moves between Loftwah projects: a signal keeper, a green-room regular and a hallway comet. Original characters, kept together.",
+    "cardSetName": "Shared Characters",
+    "openingCta": "Open a Shared Characters capsule",
+    "rosterLabel": "The shared cast",
+    "rosterFactLabel": "Characters",
+    "markTreatment": "plate",
+    "markPlate": "paper",
+    "groups": [
+      {
+        "key": "cast",
+        "label": "The shared cast",
+        "caption": "Three original Foilbury characters",
+        "cards": [
+          "Loftwah",
+          "Pepe",
+          "Pippa"
+        ]
+      }
+    ]
   }
 }

@@ -138,7 +138,10 @@ while (true) {
       composition,
       collectionTheme,
       markPlate: collectionPresentation?.markPlate,
-      markInvert: liveryTheme(collectionTheme)?.markInvert ?? false,
+      markInvert:
+        collectionPresentation?.markInvert ??
+        liveryTheme(collectionTheme)?.markInvert ??
+        false,
       markBuffer,
       markMime,
       returnBytes: true,

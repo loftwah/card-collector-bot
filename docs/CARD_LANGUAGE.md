@@ -167,6 +167,29 @@ second; the mark is on a paper plate for these wordmark-led collections.
 - All five remain member/private, `origin=sourced`, `official:false`. No new art
   was generated and no distribution was widened.
 
+### Batch 4 — the remaining six
+
+| Collection | Theme | Identity art | Roster shelves |
+| --- | --- | --- | --- |
+| Alien Stage — Stage Lights | `stage` | sourced banner + real series mark | Contestants / The garden / The stage |
+| NBA — Opening Night | `broadcast` | sourced banner + real series mark | Backcourt / Wings / Bigs |
+| Neon Genesis Evangelion — Episodes 1–26 | `archive` | sourced banner + real series mark | NERV / Outside the command |
+| Bubbles | `stage` | original committed mark | The cast |
+| Fighter | `manga` | original committed mark | The roster |
+| Shared Characters | `archive` | original committed mark | The shared cast |
+
+- The three Foilbury-owned collections are mark-led because they have no
+  banner. The hero uses the real committed mark on a paper plate over the
+  theme's authored ground; no invented logo or card render is used.
+- `markTreatment` and `markInvert` can be overridden per collection for a
+  square original badge. The shared theme still supplies the frame and text
+  layout.
+- Alien Stage, NBA and Evangelion remain member/private, `origin=sourced`,
+  `official:false`. Bubbles, Fighter and Shared Characters are original
+  Foilbury projects and remain public.
+- This completes the rollout of the shared language to every published
+  collection. The two pilots keep their original output.
+
 ## Verification
 
 - Actual fronts and backs inspected at 750×1050 in the card inspector.
