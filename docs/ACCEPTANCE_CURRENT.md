@@ -255,7 +255,45 @@ production acceptance.
   the #40 viewport matrix. The Stitch state variants remain outstanding for
   #92.
 
-## 2026-11-08 — retained Discord extension and profile fixes
+## 2026-11-10 — Slice 4 curated display and share
+
+- **Production:** source `11e3014483ddbcf7ae21799cecb42c97993b3f7f`, Worker
+  `18e77423-159f-4c29-900f-472671277bc2`. Receipt:
+  `.foilbury/evidence/release-receipt-11e3014483dd-2937bb82-bb70-4b59-a677-302d322c45a4.json`.
+- **Profile display case:** the profile feature now leads with the featured
+  copy's collection banner and real mark, then the featured exact owned copy and
+  finish, then the pinned shelf. Favourite cards carry their collection mark and
+  name. The cabinet's existing "Share my cabinet" action still creates the
+  existing profile share.
+- **Share page:** a profile share is a curated shelf (featured collection,
+  portrait, featured exact copy, ordered favourites, badges), not a count table.
+  A collection share uses the real collection banner and mark. A public card
+  share uses the saved front/back renders. A member-only profile/card share
+  keeps the generic brand unfurl; no private render is used as the public image.
+- **Share actions:** "Share my cabinet" on the cabinet, "Share latest pull" on
+  the draw receipt, "Share this collection" in both collection hero variants,
+  and "Share profile" on the profile. Audience labels remain Public-safe /
+  Members-only and the page states it is a snapshot.
+- **Live verification:** signed-in owner at 1440 and 390, light and dark. A
+  temporary featured copy (Nagisa Momoe, Madoka Magica) and two favourites were
+  used to exercise the real display case, then the owner's original presentation
+  was restored and the favourite flags cleared. Profile, profile share,
+  collection share and public card share had no horizontal overflow or failed
+  requests. Public collection OG image: real banner 1920×1080. Public card OG
+  image: saved render 750×1050. Member-only profile OG image: generic brand
+  1200×630.
+- **Checks:** `pnpm check` 7/7; `pnpm test:ui` passed; `pnpm test:product`
+  57/57; `pnpm build` production artifact.
+- **Cleanup:** all temporary shares were revoked, sharing was returned to
+  disabled, the temporary session was deleted, and no private render was made
+  public.
+- **Release note:** one deploy attempt hit a transient production 503 setup
+  response before deployment; the tenant row and D1 were intact and the retry
+  deployed normally. No bypass was used.
+- **Not claimed:** a live Discord unfurl of the share page. That belongs to
+  Slice 5.
+
+
 
 - **Production:** source `5e375e09f26abb4c8cc1b45481cdc6665e0f5f21`, Worker
   `7f1a64b8-14a4-401a-bcba-53d05f88a388`, schema `0029`. Receipt:
