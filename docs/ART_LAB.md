@@ -377,11 +377,12 @@ the shared viewer and each slot has one explicit action.
   `350109033073f83c84d16d99e0a4f0b188112f8a90f8bf701e33bc424be639b3`).
   Migration `0034` was applied to production after the backup; it only added
   the style columns and `fb_brand_selections`.
-- Production source `9b16197c974bc1cc9659ce72af751cb95c974f66`; the uploaded
-  Worker version was `9a008ded-eaab-4aca-9d31-2a36316f59c1`. The deployment
-  propagated one polling window after the release script's 60-second check,
-  so the receipt is marked unverified; the live build header and a fresh
-  `test-deployed.mjs` run both passed for `9b16197` afterwards.
+- First production source `9b16197c974bc1cc9659ce72af751cb95c974f66` (Worker
+  `9a008ded-eaab-4aca-9d31-2a36316f59c1`) propagated one polling window after
+  the release script's 60-second check; a fresh `test-deployed.mjs` run passed
+  for that build afterwards. The final admin-preview coverage is source
+  `00bc703d4c422e0d038102f9174119f3901e0945` (Worker
+  `8755e52f-91dc-47d3-883c-4ab317575971`), verified by the release script.
 - Live signed-in `/platform-admin/art`: the real favicon, wordmark, OG,
   banner, shareable, card-style and other-brand catalogues loaded at 1440 with
   no alert; a fresh Access session selected the already-live mark as the site
@@ -395,4 +396,7 @@ the shared viewer and each slot has one explicit action.
   prints and the shared viewer opened from the wall at 390; `/play/cabinet`,
   `/play/collection` and `/play/card/[id]` opened the same viewer from owned
   cards at 1440 and 390, including the saved back and provenance.
+- Live signed-in `/admin/catalogue` and `/admin/design`: the catalogue saved
+  render, table thumbnails and Render Studio card faces opened the shared
+  viewer at 1440 (four variants paged in the same dialog).
 - No paid provider call was made for this change.
