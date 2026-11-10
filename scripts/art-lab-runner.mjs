@@ -616,7 +616,7 @@ async function processJob(run, counters) {
 }
 
 async function main() {
-  await ensureServer();
+  if (/^http:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(BASE_URL)) await ensureServer();
   if (dryRun) {
     const exportData = await apiJson("/api/v1/admin/art/agent?limit=20");
     const queued = [];

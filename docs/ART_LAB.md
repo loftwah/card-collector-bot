@@ -100,8 +100,8 @@ MCP tools: `foilbury_art_briefs`, `foilbury_art_brief` and
 ## Generation runner
 
 The browser never holds provider keys. The worker queues a job; the local runner
-claims it, calls exactly the recorded provider/model, uploads bytes and records
-what it observed.
+claims it, builds the reference sheet, calls exactly the recorded provider/model,
+uploads bytes and records what it observed.
 
 ```sh
 pnpm art:dry            # inspect queued prompts without claiming or spending
@@ -110,11 +110,25 @@ pnpm art:run --limit=2
 node scripts/art-lab-runner.mjs --job=<job-id>
 ```
 
-The runner calls FAL at `https://fal.run/<model>` or OpenAI at
-`/v1/images/generations`. There is no fallback provider. A missing key fails the
-job before a call; a provider error fails the job with the provider reason and
-records the estimated spend already attempted. The runner never tops up a
-balance.
+For whole-card card jobs the runner downloads the real subject asset, the
+supplied collection mark and the current live card, renders a 5:7 reference sheet
+with the exact copy, and sends that sheet to the provider. OpenAI uses
+`/v1/images/edits`; FAL Seedream v4 Edit uses `image_urls`; the sheet is also
+stored privately on the candidate for review.
+
+The runner parses the project `.env` explicitly and prefers it over an inherited
+shell `OPENAI_API_KEY`/`FAL_AI_API_KEY`. A stale shell key must not silently
+override the project configuration.
+
+The runner is not deployed with the Worker. To process production jobs, use the
+existing trusted production-agent and Cloudflare Access service-token workflow
+from `docs/AGENT_GUIDE.md`; point `FOILBURY_URL` at production and supply the
+agent token and Access headers through the private runtime environment. Never
+put those values in the repository, payloads or logs.
+
+There is no fallback provider. A missing key fails the job before a call; a
+provider error fails the job with the provider reason and records the estimated
+spend already attempted. The runner never tops up a balance.
 
 ## Cost
 

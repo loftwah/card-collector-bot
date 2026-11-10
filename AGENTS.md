@@ -120,6 +120,10 @@ when the owner asked for whole-card art.
 - **Record provenance:** model, prompt, references, seed, dimensions, SHA-256,
   audience, `official:false`, status and cost. No silent provider fallback and
   no silent top-up.
+- **Runner boundary:** generation runs in the local/worker agent, never in the
+  public Worker. For production, use the existing trusted production-agent and
+  Cloudflare Access service-token workflow; never commit the token or put it in
+  a payload, screenshot or log.
 - Generate one base character, then edit that exact base for family variants so
   the character, paper, lighting and palette stay coherent. Review identity
   work at 32, 64, 128 and 256 pixels and in a circular Discord crop. For cards,
