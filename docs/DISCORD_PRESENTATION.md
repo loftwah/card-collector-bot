@@ -248,6 +248,30 @@ The handler tests invoke the actual command/component path and assert the
 builder-specific titles, fields and action labels. Builder-only tests remain
 useful but are no longer the adoption proof.
 
+## Slice 5 — collection identity parity
+
+- `/foilbury collection` now leads the cabinet summary with the most recent
+  owned collection's real banner (`image`) and real mark (`thumbnail`). The
+  router resolves `/media/asset/...` through the authenticated R2 asset and
+  committed `/art/collections/...` through the public origin. `cover_url` is
+  never used.
+- `/foilbury profile` keeps the chosen account avatar as the thumbnail and the
+  saved featured card render as the large image, and now names the featured
+  collection with its exact subject progress and audience.
+- Pull receipts still use the saved published render, finish, serial, collection
+  progress and native actions. No Discord-only card renderer was added.
+- The collection summary remains a private response; member/private artwork is
+  only attached inside that authorised ephemeral response. A public channel
+  share still passes the existing audience checks.
+- Presentation and command tests cover banner-first/logo-second, no
+  `cover_url`, the profile avatar/featured-card contract, and that profile or
+  collection views do not change wallet, inventory or ledger rows.
+- **Not claimed:** a live Discord interaction for this slice. No authorised
+  human Discord client/spectator interaction was available in this pass; the
+  historical 2026-11-08 real-client evidence above predates this change. The
+  command path is exercised through the signed interaction handler tests, not a
+  live client.
+
 ## Real-client evidence — 2026-11-08
 
 Source `08ffd7270435db79f4bc31792604159ab67e6bd9`; Worker

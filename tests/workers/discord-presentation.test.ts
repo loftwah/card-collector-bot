@@ -18,6 +18,7 @@ import {
   buildEmbed,
   buildFields,
   buildMessage,
+  cabinetSummaryMessage,
   capsulePickerMessage,
   clipText,
   cardFaceMessage,
@@ -1296,5 +1297,127 @@ describe("audience and template determinism", () => {
     expect(firstHtml).toContain("&lt;script&gt;alert");
     expect(firstHtml).not.toContain(render.r2Key);
     expect(firstHtml).toContain("foilbury-reveal-card.webp");
+  });
+});
+
+describe("collection identity parity", () => {
+  const banner = {
+    attachment: { r2Key: "tenants/ten_mvyy/banner.webp", mime: "image/webp" },
+    width: 1920,
+    height: 1080,
+  };
+  const logo = {
+    attachment: { r2Key: "tenants/ten_mvyy/logo.png", mime: "image/png" },
+    width: 512,
+    height: 512,
+  };
+
+  it("leads the collection summary with the banner and puts the logo second", () => {
+    const callback = cabinetSummaryMessage({
+      scopeName: "Foilbury Cabinet",
+      currencySymbol: "✦",
+      balance: 420,
+      owned: 12,
+      unique: 7,
+      duplicates: 2,
+      items: [
+        {
+          name: "Nagisa Momoe",
+          variant: "Plain",
+          serial: "FB-3-DE-000001",
+        },
+      ],
+      albumUrl: "https://foilbury.test/play/collection",
+      openCustomId: "foilbury:open:cabinet-draw",
+      packsCustomId: "foilbury:packs",
+      featuredCollection: {
+        name: "Puella Magi Madoka Magica — Mitakihara",
+        owned: 3,
+        total: 8,
+        audience: "members",
+        banner,
+        logo,
+      },
+    });
+    const embed = firstEmbed(callback);
+    expect(embed.image).toEqual({
+      url: "attachment://foilbury-collection-banner.webp",
+      width: 1920,
+      height: 1080,
+    });
+    expect(embed.thumbnail).toEqual({ url: "attachment://foilbury-collection-logo.png" });
+    expect(callback.attachments?.map((attachment) => attachment.filename)).toEqual([
+      "foilbury-collection-banner.webp",
+      "foilbury-collection-logo.png",
+    ]);
+    expect(fieldValue(callback, "Featured collection")).toContain("3/8 subjects");
+    expect(fieldValue(callback, "Featured collection")).toContain("Members only");
+    expect(JSON.stringify(callback)).not.toContain("cover_url");
+    expect(privateResponse(callback)).toBe(true);
+  });
+
+  it("keeps the avatar and featured card on the profile while naming the featured collection", () => {
+    const callback = profileMessage({
+      displayName: "Dean",
+      scopeName: "Foilbury Cabinet",
+      currencySymbol: "✦",
+      balance: 420,
+      ownedCards: 12,
+      uniqueCards: 7,
+      dailyAvailable: true,
+      featured: { name: "Nagisa Momoe", variant: "Plain", finish: "Plain" },
+      featuredCollection: {
+        name: "Puella Magi Madoka Magica — Mitakihara",
+        owned: 3,
+        total: 8,
+        audience: "members",
+      },
+      imageAttachment: "foilbury-profile.webp",
+      attachment: {
+        r2Key: "tenants/ten_mvyy/profile.webp",
+        filename: "foilbury-profile.webp",
+        contentType: "image/webp",
+      },
+      avatar: { attachment: "foilbury-avatar.png" },
+      avatarAttachment: {
+        r2Key: "tenants/ten_mvyy/avatar.png",
+        filename: "foilbury-avatar.png",
+        contentType: "image/png",
+      },
+      profileUrl: "https://foilbury.test/play/profile",
+    });
+    const embed = firstEmbed(callback);
+    expect(embed.image?.url).toBe("attachment://foilbury-profile.webp");
+    expect(embed.thumbnail?.url).toBe("attachment://foilbury-avatar.png");
+    expect(fieldValue(callback, "Featured collection")).toContain("3/8 subjects");
+    expect(fieldValue(callback, "Featured copy")).toContain("Nagisa Momoe");
+    expect(privateResponse(callback)).toBe(true);
+  });
+
+  it("never puts a collection cover render in the identity payload", () => {
+    const callback = cabinetSummaryMessage({
+      scopeName: "Foilbury Cabinet",
+      currencySymbol: "✦",
+      balance: 0,
+      owned: 0,
+      unique: 0,
+      duplicates: 0,
+      items: [],
+      albumUrl: "https://foilbury.test/play/collection",
+      openCustomId: "foilbury:open:cabinet-draw",
+      packsCustomId: "foilbury:packs",
+      featuredCollection: {
+        name: "Protocol 11",
+        owned: 0,
+        total: 5,
+        audience: "public",
+        banner: { url: "https://foilbury.test/art/collections/protocol-11-key-art.webp", width: 1920, height: 1080 },
+        logo: { url: "https://foilbury.test/art/collections/protocol-11.svg", width: 512, height: 512 },
+      },
+    });
+    const embed = firstEmbed(callback);
+    expect(embed.image?.url).toBe("https://foilbury.test/art/collections/protocol-11-key-art.webp");
+    expect(embed.thumbnail?.url).toBe("https://foilbury.test/art/collections/protocol-11.svg");
+    expect(JSON.stringify(callback)).not.toContain("cover_url");
   });
 });

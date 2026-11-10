@@ -1489,6 +1489,60 @@ export interface CabinetSummaryInput {
   packsCustomId: string;
   /** Optional truthful note when historical copies are outside this server's current scope. */
   scopeNotice?: string | null;
+  /** The shelf the cabinet summary leads with. Banner first, logo second. */
+  featuredCollection?: {
+    name: string;
+    owned: number;
+    total: number;
+    audience: Audience;
+    banner?: CollectionArtInput | null;
+    logo?: CollectionArtInput | null;
+  } | null;
+}
+
+export interface CollectionArtInput {
+  /** A saved R2 render delivered as an attachment. */
+  attachment?: RenderAssetInput;
+  /** A public committed asset URL. */
+  url?: string;
+  width?: number;
+  height?: number;
+}
+
+function collectionArtAttachment(
+  input: CollectionArtInput | null | undefined,
+  filename: string,
+): DiscordAttachment | null {
+  if (!input?.attachment) return null;
+  return buildAttachment({
+    r2Key: input.attachment.r2Key,
+    contentType: input.attachment.mime ?? "image/webp",
+    filename,
+  });
+}
+
+function collectionArtImage(
+  input: CollectionArtInput | null | undefined,
+  attachment: DiscordAttachment | null,
+): { attachment?: string; url?: string; width?: number; height?: number } | undefined {
+  if (!input) return undefined;
+  if (attachment) {
+    return {
+      attachment: attachment.filename,
+      ...(input.width !== undefined && input.height !== undefined
+        ? { width: input.width, height: input.height }
+        : {}),
+    };
+  }
+  if (input.url) {
+    return {
+      url: input.url,
+      ...(input.width !== undefined && input.height !== undefined
+        ? { width: input.width, height: input.height }
+        : {}),
+    };
+  }
+  return undefined;
 }
 
 export function cabinetSummaryMessage(input: CabinetSummaryInput): DiscordCallback {
@@ -1496,6 +1550,24 @@ export function cabinetSummaryMessage(input: CabinetSummaryInput): DiscordCallba
   const owned = assertNonNegative(input.owned, "owned");
   const unique = assertNonNegative(input.unique, "unique");
   const duplicates = assertNonNegative(input.duplicates, "duplicates");
+  const featured = input.featuredCollection
+    ? {
+        ...input.featuredCollection,
+        name: visibleText(input.featuredCollection.name, "featuredCollection.name"),
+        owned: assertNonNegative(input.featuredCollection.owned, "featuredCollection.owned"),
+        total: assertNonNegative(input.featuredCollection.total, "featuredCollection.total"),
+      }
+    : null;
+  const bannerAttachment = featured
+    ? collectionArtAttachment(featured.banner, "collection-banner")
+    : null;
+  const logoAttachment = featured
+    ? collectionArtAttachment(featured.logo, "collection-logo")
+    : null;
+  const bannerImage = featured
+    ? collectionArtImage(featured.banner, bannerAttachment)
+    : undefined;
+  const logoImage = featured ? collectionArtImage(featured.logo, logoAttachment) : undefined;
   const items = input.items.slice(0, 8).map((item) => ({
     name: visibleText(item.name, "cabinet.item.name"),
     print: item.print ? visibleText(item.print, "cabinet.item.print", { required: false }) : null,
@@ -1507,6 +1579,9 @@ export function cabinetSummaryMessage(input: CabinetSummaryInput): DiscordCallba
   }));
   return buildMessage({
     visibility: "private",
+    attachments: [bannerAttachment, logoAttachment].filter(
+      (attachment): attachment is DiscordAttachment => Boolean(attachment),
+    ),
     embed: {
       title: input.owned === 0 ? "Your cabinet is empty" : "Your cabinet",
       description:
@@ -1531,6 +1606,15 @@ export function cabinetSummaryMessage(input: CabinetSummaryInput): DiscordCallba
           inline: true,
         },
         { name: "Scope", value: visibleText(input.scopeName, "scopeName"), inline: true },
+        ...(featured
+          ? [
+              {
+                name: "Featured collection",
+                value: `**${featured.name}**\n${Math.min(featured.owned, featured.total)}/${featured.total} subjects · ${audienceLabel(featured.audience)}`,
+                inline: false,
+              } as FieldInput,
+            ]
+          : []),
         {
           name: "More",
           value:
@@ -1542,6 +1626,8 @@ export function cabinetSummaryMessage(input: CabinetSummaryInput): DiscordCallba
         input.owned > items.length
           ? `Showing ${items.length} of ${owned} copies · private response`
           : "Private response · viewing never spends Foil",
+      ...(bannerImage ? { image: bannerImage } : {}),
+      ...(logoImage ? { thumbnail: logoImage } : {}),
     },
     rows: [
       [
@@ -2029,6 +2115,12 @@ export interface ProfileInput {
   lookLabel?: string;
   note?: string;
   featured?: { name: string; variant: string; finish: string };
+  featuredCollection?: {
+    name: string;
+    owned?: number;
+    total?: number;
+    audience?: Audience;
+  };
   badgeNames?: string[];
   imageAttachment?: string;
   attachment?: DiscordAttachment;
@@ -2070,6 +2162,20 @@ export function profileMessage(input: ProfileInput): DiscordCallback {
     fields.push({
       name: "Featured copy",
       value: `**${featured.name}**\n${meta}`,
+      inline: false,
+    });
+  }
+  if (input.featuredCollection) {
+    const collection = input.featuredCollection;
+    const progress =
+      collection.owned !== undefined && collection.total !== undefined
+        ? ` · ${Math.min(collection.owned, collection.total)}/${collection.total} subjects`
+        : "";
+    fields.push({
+      name: "Featured collection",
+      value: `**${visibleText(collection.name, "featuredCollection.name")}**${progress}${
+        collection.audience ? ` · ${audienceLabel(collection.audience)}` : ""
+      }`,
       inline: false,
     });
   }

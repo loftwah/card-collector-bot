@@ -5,7 +5,7 @@ import {
 } from "../../src/server/discord/handler";
 import { signDiscordRequest } from "../../src/server/discord/signature";
 import type { DiscordEnv } from "../../src/server/discord/types";
-import { bootstrap, ctxFor, fixturePool, makeInstance, runtime, setBalance } from "./helpers";
+import { bootstrap, ctxFor, fixturePool, makeInstance, runtime, setBalance, walletBalance } from "./helpers";
 import { addCollectionCards, createCollection } from "../../src/server/modules/collections";
 import { assertDiscordMessage } from "../../src/server/discord/presentation";
 import { createNpc } from "../../src/server/modules/npcs";
@@ -312,6 +312,14 @@ describe("Discord HTTP interactions", () => {
     );
     expect(collection.payload.data?.embeds?.[0]?.title).toBe("Your cabinet");
     expect(JSON.stringify(collection.payload.data)).toContain("Open cabinet on the web");
+    expect(collection.payload.data?.embeds?.[0]?.image?.url).toBe(
+      "https://foilbury.test/art/collections/protocol-11-key-art.webp",
+    );
+    expect(collection.payload.data?.embeds?.[0]?.thumbnail?.url).toBe(
+      "https://foilbury.test/art/collections/protocol-11.svg",
+    );
+    expect(JSON.stringify(collection.payload.data)).toContain("Featured collection");
+    expect(JSON.stringify(collection.payload.data)).not.toContain("cover_url");
 
     const achievements = await send(
       interaction(command("achievements"), { id: "presentation-achievements" }),
@@ -330,6 +338,26 @@ describe("Discord HTTP interactions", () => {
     );
     expect(denied.payload.data?.embeds?.[0]?.title).toBe("Administration is private");
     expect(denied.payload.data?.flags).toBe(64);
+  });
+
+  it("does not spend, draw or award on profile and collection views", async () => {
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const beforeBalance = await walletBalance(player, player.user!.id);
+    const count = async (table: string) => {
+      const row = await runtime.DB.prepare(
+        `SELECT COUNT(*) AS n FROM ${table} WHERE tenant_id = ? AND user_id = ?`,
+      )
+        .bind(player.tenant.id, player.user!.id)
+        .first<{ n: number }>();
+      return row?.n ?? 0;
+    };
+    const beforeCopies = await count("fb_card_instances");
+    const beforeLedger = await count("fb_ledger_entries");
+    await send(interaction(command("profile"), { id: "view-profile-noop" }));
+    await send(interaction(command("collection"), { id: "view-collection-noop" }));
+    expect(await walletBalance(player, player.user!.id)).toBe(beforeBalance);
+    expect(await count("fb_card_instances")).toBe(beforeCopies);
+    expect(await count("fb_ledger_entries")).toBe(beforeLedger);
   });
 
   it("shows the same awarded instance in a later collection lookup", async () => {

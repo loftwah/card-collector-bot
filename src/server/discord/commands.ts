@@ -48,6 +48,8 @@ import {
   sealedRevealMessage,
   stateFromError,
   welcomeMessage,
+  type Audience,
+  type CollectionArtInput,
 } from "./presentation";
 import {
   drawIdempotencyKey,
@@ -647,6 +649,41 @@ async function daily(ctx: Ctx, interaction: DiscordInteraction): Promise<Discord
   });
 }
 
+async function collectionArtFor(
+  ctx: Ctx,
+  url: string | null | undefined,
+  kind: "banner" | "logo",
+): Promise<CollectionArtInput | null> {
+  if (!url) return null;
+  if (url.startsWith("/media/asset/")) {
+    const assetId = url.slice("/media/asset/".length);
+    const asset = await first<{
+      r2_key: string;
+      mime: string;
+      width: number | null;
+      height: number | null;
+    }>(
+      ctx.db,
+      "SELECT r2_key, mime, width, height FROM fb_assets WHERE id = ? AND tenant_id = ?",
+      assetId,
+      ctx.tenant.id,
+    );
+    if (!asset) return null;
+    return {
+      attachment: { r2Key: asset.r2_key, mime: asset.mime },
+      width: asset.width ?? undefined,
+      height: asset.height ?? undefined,
+    };
+  }
+  if (/^https?:\/\//i.test(url)) {
+    return { url, width: kind === "banner" ? 1600 : 512, height: kind === "banner" ? 900 : 512 };
+  }
+  const absolute = absoluteUrl(ctx.config.publicOrigin, url);
+  return absolute
+    ? { url: absolute, width: kind === "banner" ? 1600 : 512, height: kind === "banner" ? 900 : 512 }
+    : null;
+}
+
 async function collection(
   ctx: Ctx,
   installation: DiscordInstallation,
@@ -665,6 +702,36 @@ async function collection(
   );
   const hidden = allInventory.length - inventory.length;
   const wallet = await getWalletSummary(ctx.db, ctx.tenant.id, ctx.user!.id, 1);
+  const featuredItem = inventory[0] ?? null;
+  const featuredCollectionRow = featuredItem?.collection_id
+    ? await first<{
+        id: string;
+        name: string;
+        banner_url: string | null;
+        logo_url: string | null;
+        view_audience: string;
+      }>(
+        ctx.db,
+        "SELECT id, name, banner_url, logo_url, view_audience FROM fb_collections WHERE id = ? AND archived_at IS NULL",
+        featuredItem.collection_id,
+      )
+    : null;
+  const featuredProgress = featuredCollectionRow
+    ? await collectionProgress(ctx, featuredCollectionRow.id)
+    : null;
+  const featuredBanner = await collectionArtFor(ctx, featuredCollectionRow?.banner_url, "banner");
+  const featuredLogo = await collectionArtFor(ctx, featuredCollectionRow?.logo_url, "logo");
+  const featuredCollection =
+    featuredCollectionRow && featuredProgress
+      ? {
+          name: featuredCollectionRow.name,
+          owned: featuredProgress.owned_cards,
+          total: featuredProgress.total_cards,
+          audience: featuredCollectionRow.view_audience as Audience,
+          banner: featuredBanner,
+          logo: featuredLogo,
+        }
+      : null;
   const scopeNotice =
     hidden > 0
       ? `${hidden} historical ${hidden === 1 ? "copy is" : "copies are"} outside this server's current collection or AI-artwork scope. They remain owned and are visible in the signed-in website cabinet; they are not available to draw or share here.`
@@ -681,6 +748,7 @@ async function collection(
       albumUrl: absoluteUrl(ctx.config.publicOrigin, "/play/collection")!,
       openCustomId: "foilbury:open:cabinet-draw",
       packsCustomId: "foilbury:packs",
+      ...(featuredCollection ? { featuredCollection } : {}),
       ...(scopeNotice ? { scopeNotice } : {}),
     });
   }
@@ -704,6 +772,7 @@ async function collection(
     albumUrl: absoluteUrl(ctx.config.publicOrigin, "/play/collection")!,
     openCustomId: "foilbury:open:cabinet-draw",
     packsCustomId: "foilbury:packs",
+    ...(featuredCollection ? { featuredCollection } : {}),
     ...(scopeNotice ? { scopeNotice } : {}),
   });
 }
@@ -1084,6 +1153,16 @@ async function profile(
     prefs.profile_presentation_version,
   );
   const featured = presentation.featured;
+  const featuredCollectionRow = featured?.collectionId
+    ? await first<{ view_audience: string }>(
+        ctx.db,
+        "SELECT view_audience FROM fb_collections WHERE id = ? AND archived_at IS NULL",
+        featured.collectionId,
+      )
+    : null;
+  const featuredCollectionProgress = featured?.collectionId
+    ? await collectionProgress(ctx, featured.collectionId)
+    : null;
   const render = featured ? await profileRenderFor(ctx, featured.id) : null;
   const avatar = accountAvatarViewFor(ctx.user);
   let avatarThumb: { attachment?: string; url?: string } | undefined;
@@ -1124,6 +1203,14 @@ async function profile(
           name: featured.cardName,
           variant: featured.variantName,
           finish: featured.finish,
+        }
+      : undefined,
+    featuredCollection: featured?.collectionName
+      ? {
+          name: featured.collectionName,
+          owned: featuredCollectionProgress?.owned_cards,
+          total: featuredCollectionProgress?.total_cards,
+          audience: featuredCollectionRow?.view_audience as Audience | undefined,
         }
       : undefined,
     badgeNames: presentation.badges

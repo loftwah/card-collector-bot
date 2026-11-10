@@ -128,7 +128,7 @@ export async function fixturePool(ctx: Ctx) {
       "INSERT INTO fb_assets (id, tenant_id, kind, name, mime, width, height, bytes, r2_key, sha256, visibility, access_classification, processing_state, review_status, created_at) VALUES (?, ?, 'render', 'Test render', 'image/webp', 750, 1050, 100, 'test/render.webp', ?, 'public_export', 'public', 'ready', 'approved', ?)",
     ).bind(renderAsset, ctx.tenant.id, await sha256Hex("render"), now),
     runtime.DB.prepare(
-      "INSERT INTO fb_collections (id, slug, name, description, scope, owner_tenant_id, accent, status, view_audience, public_approved_at, public_approved_by, created_by, created_at, updated_at) VALUES ('col_test_public', 'test-public', 'Test Public', 'Public fixture collection.', 'global', ?, 'brass', 'published', 'public', ?, 'owner@foilbury.local', 'test', ?, ?)",
+      "INSERT INTO fb_collections (id, slug, name, description, scope, owner_tenant_id, accent, status, view_audience, public_approved_at, public_approved_by, banner_url, logo_url, created_by, created_at, updated_at) VALUES ('col_test_public', 'test-public', 'Test Public', 'Public fixture collection.', 'global', ?, 'brass', 'published', 'public', ?, 'owner@foilbury.local', '/art/collections/protocol-11-key-art.webp', '/art/collections/protocol-11.svg', 'test', ?, ?)",
     ).bind(ctx.tenant.id, now, now, now),
     runtime.DB.prepare(
       "INSERT INTO fb_card_definitions (id, tenant_id, logical_id, slug, name, subtitle, description, status, created_at, updated_at, version) VALUES (?, ?, 'test:one', 'test-one', 'Test One', 'Test subject', 'A card used by the worker integration tests.', 'published', ?, ?, 1)",
