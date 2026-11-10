@@ -545,3 +545,12 @@ Protocol 11 now has original key-art banner `/art/collections/protocol-11-key-ar
 ## Production pointers and rollback
 
 The D1 JSON backup, old pointers, new pointers and rollback SQL are recorded in `docs/BRAND_KIT_RECORD.md`. Release versions were not changed by the art-only pointer update.
+
+## Slice 3 card-language rollout
+
+The collection identity art did not change in the Slice 3 batches. Each collection keeps the banner and mark recorded above; the card livery is a separate authored frame and information layout. No card render, generated gradient, monogram or card collage is used as collection identity.
+
+- Batch 1 (2026-11-10): Chainsaw Man — Public Safety, Part 1; Puella Magi Madoka Magica — Mitakihara; Total Drama Island — Camp Wawanakwa, 2007. All three keep their sourced 16:9 banner and real series mark, remain member/private and `official:false`.
+- The livery themes and per-batch shelves are recorded in `docs/CARD_LANGUAGE.md`.
+- No new image generation was run for batch 1. The existing source art was reused; the only new committed art is the authored livery-frame geometry under `brand/masters/frame-<theme>-<material>.svg` and its rasterised layer.
+

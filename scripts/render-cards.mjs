@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 import { composeCard } from "../art/compose.mjs";
+import { liveryTheme } from "../art/livery.mjs";
 import { requireQueuedBackground } from "./content/render-queued-front.mjs";
 import { readRenderSource } from "./content/render-bytes.mjs";
 import { apiForm, apiJson, ensureServer, BASE_URL, agentToken, accessHeaders } from "./lib/api.mjs";
@@ -114,7 +115,8 @@ while (true) {
       ? { ...(storedComposition ?? {}), mode: "contain" }
       : storedComposition;
     const collectionSlugForCard = entry.card.collections?.[0]?.slug ?? "";
-    const collectionTheme = presentations[collectionSlugForCard]?.theme ?? "";
+    const collectionPresentation = presentations[collectionSlugForCard];
+    const collectionTheme = collectionPresentation?.theme ?? "";
     const { buffer: renderBytes } = await composeCard({
       subjectPath,
       backgroundPath,
@@ -122,7 +124,11 @@ while (true) {
       effect: payload.effect_key ?? "none",
       name: entry.card.name,
       subtitle: printTitle || (entry.card.subtitle ?? ""),
-      setName: entry.card.collections?.[0]?.name ?? entry.card.sets[0]?.name ?? "Cabinet",
+      setName:
+        collectionPresentation?.cardSetName ??
+        entry.card.collections?.[0]?.name ??
+        entry.card.sets[0]?.name ??
+        "Cabinet",
       serial:
         entry.card.collections?.[0]?.view_audience === "public"
           ? "PUBLIC SHOWCASE"
@@ -131,7 +137,7 @@ while (true) {
       rarity: entry.card.rarity?.name ?? "",
       composition,
       collectionTheme,
-      markInvert: collectionTheme === "trial",
+      markInvert: liveryTheme(collectionTheme)?.markInvert ?? false,
       markBuffer,
       markMime,
       returnBytes: true,

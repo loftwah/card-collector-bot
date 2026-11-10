@@ -14,7 +14,7 @@ interface BinderCard {
 interface Props {
   card: BinderCard;
   finishLabels: Record<string, string>;
-  theme?: "trial" | "table" | null;
+  theme?: string | null;
 }
 
 const { card, finishLabels, theme = null } = Astro.props;
@@ -24,6 +24,7 @@ const imageUrl = card.render_url ?? card.thumbnail_url;
 
 <article
   class:list={["binder-slot", theme && `binder-slot--${theme}`]}
+  data-theme={theme ?? undefined}
   data-owned={card.owned ? "true" : "false"}
 >
   <div class="binder-slot__object">

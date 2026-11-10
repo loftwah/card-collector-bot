@@ -8670,14 +8670,18 @@ html[data-motion="reduced"] .layered-card__effect {
    --------------------------------------------------------------------------- */
 
 .pilot-album__hero {
+  --pilot-ground: #08080a;
+  --pilot-paper: #f4f0e6;
+  --pilot-ink: #08080a;
+  --pilot-accent: #ff2e7e;
   position: relative;
   isolation: isolate;
   overflow: hidden;
   min-height: 31rem;
   border: 1px solid var(--line-strong);
   border-radius: 10px;
-  background: #08080a;
-  color: #f4f0e6;
+  background: var(--pilot-ground);
+  color: var(--pilot-paper);
 }
 
 .pilot-album__banner {
@@ -8699,14 +8703,86 @@ html[data-motion="reduced"] .layered-card__effect {
   inset: 0;
   z-index: -1;
   background:
-    linear-gradient(90deg, rgba(8, 8, 10, 0.96) 0%, rgba(8, 8, 10, 0.78) 42%, rgba(8, 8, 10, 0.12) 78%),
-    linear-gradient(0deg, rgba(8, 8, 10, 0.94) 0%, rgba(8, 8, 10, 0.18) 58%, rgba(8, 8, 10, 0.3) 100%);
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--pilot-ground) 96%, transparent) 0%,
+      color-mix(in srgb, var(--pilot-ground) 78%, transparent) 42%,
+      color-mix(in srgb, var(--pilot-ground) 12%, transparent) 78%
+    ),
+    linear-gradient(
+      0deg,
+      color-mix(in srgb, var(--pilot-ground) 94%, transparent) 0%,
+      color-mix(in srgb, var(--pilot-ground) 18%, transparent) 58%,
+      color-mix(in srgb, var(--pilot-ground) 30%, transparent) 100%
+    );
 }
 
 .pilot-album__hero--table .pilot-album__veil {
   background:
-    linear-gradient(90deg, rgba(7, 17, 15, 0.97) 0%, rgba(7, 17, 15, 0.8) 40%, rgba(7, 17, 15, 0.08) 80%),
-    linear-gradient(0deg, rgba(7, 17, 15, 0.96) 0%, rgba(7, 17, 15, 0.16) 60%, rgba(7, 17, 15, 0.34) 100%);
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--pilot-ground) 97%, transparent) 0%,
+      color-mix(in srgb, var(--pilot-ground) 80%, transparent) 40%,
+      color-mix(in srgb, var(--pilot-ground) 8%, transparent) 80%
+    ),
+    linear-gradient(
+      0deg,
+      color-mix(in srgb, var(--pilot-ground) 96%, transparent) 0%,
+      color-mix(in srgb, var(--pilot-ground) 16%, transparent) 60%,
+      color-mix(in srgb, var(--pilot-ground) 34%, transparent) 100%
+    );
+}
+
+/* Each livery has one authored edge, not a new page template. */
+.pilot-album__hero--archive::after {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 6px;
+  background: var(--pilot-accent);
+  content: "";
+}
+
+.pilot-album__hero--broadcast .pilot-album__veil::after {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    color-mix(in srgb, var(--pilot-paper) 7%, transparent) 0,
+    color-mix(in srgb, var(--pilot-paper) 7%, transparent) 1px,
+    transparent 1px,
+    transparent 4px
+  );
+  content: "";
+  opacity: 0.5;
+}
+
+.pilot-album__hero--stage .pilot-album__veil::before {
+  position: absolute;
+  inset: -20% 10% auto auto;
+  width: 34rem;
+  height: 34rem;
+  border-radius: 999px;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--pilot-accent) 32%, transparent),
+    transparent 66%
+  );
+  content: "";
+}
+
+.pilot-album__hero--manga .pilot-album__veil::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18rem;
+  height: 12rem;
+  background-image: radial-gradient(
+    color-mix(in srgb, var(--pilot-paper) 26%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 9px 9px;
+  content: "";
+  opacity: 0.55;
 }
 
 .pilot-album__content {
@@ -8762,30 +8838,45 @@ html[data-motion="reduced"] .layered-card__effect {
   width: 8.6rem;
   max-height: 3.4rem;
   object-fit: contain;
+}
+
+.pilot-album__mark--invert {
   filter: invert(1);
 }
 
-.pilot-album__hero--table .pilot-album__mark {
+.pilot-album__mark--plate {
   width: 4rem;
   height: 4rem;
   max-height: none;
-  border: 1px solid rgba(244, 240, 230, 0.34);
+  border: 1px solid color-mix(in srgb, var(--pilot-paper) 34%, transparent);
   border-radius: 999px;
-  background: #f4f0e6;
+  background: var(--pilot-paper);
   padding: 0.38rem;
   filter: none;
 }
 
+.pilot-album__mark--plain {
+  filter: none;
+}
+
+.pilot-album__mark--wordmark {
+  width: auto;
+  max-width: min(19rem, 62vw);
+  height: 3.2rem;
+  max-height: 3.2rem;
+  border: 1px solid color-mix(in srgb, var(--pilot-ink) 22%, transparent);
+  border-radius: 4px;
+  background: var(--pilot-paper);
+  padding: 0.4rem 0.65rem;
+  filter: none;
+}
+
 .pilot-album__eyebrow {
-  color: #ff5c99;
+  color: var(--pilot-accent);
   font-family: var(--font-mono);
   font-size: 0.62rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-}
-
-.pilot-album__hero--table .pilot-album__eyebrow {
-  color: #d9bf8b;
 }
 
 .pilot-album__identity h1 {
@@ -8797,6 +8888,11 @@ html[data-motion="reduced"] .layered-card__effect {
   letter-spacing: -0.035em;
   line-height: 0.94;
   text-wrap: balance;
+}
+
+.pilot-album__hero--broadcast .pilot-album__identity h1 {
+  font-size: clamp(2rem, 3.8vw, 3.4rem);
+  line-height: 0.98;
 }
 
 .pilot-album__lede {
@@ -8951,14 +9047,9 @@ html[data-motion="reduced"] .layered-card__effect {
   background: var(--signal);
 }
 
-.pilot-summary--trial .pilot-panel__bar > span,
-.pilot-summary--trial .pilot-finish__bar > span {
-  background: #ff2e7e;
-}
-
-.pilot-summary--table .pilot-panel__bar > span,
-.pilot-summary--table .pilot-finish__bar > span {
-  background: #b08a52;
+.pilot-summary .pilot-panel__bar > span,
+.pilot-summary .pilot-finish__bar > span {
+  background: var(--pilot-accent);
 }
 
 .pilot-panel__hint {
@@ -9003,12 +9094,8 @@ html[data-motion="reduced"] .layered-card__effect {
     linear-gradient(180deg, color-mix(in srgb, var(--panel-2) 92%, transparent), var(--panel-2));
 }
 
-.pilot-summary--trial .pilot-opening {
-  border-top: 2px solid #ff2e7e;
-}
-
-.pilot-summary--table .pilot-opening {
-  border-top: 2px solid #b08a52;
+.pilot-summary .pilot-opening {
+  border-top: 2px solid var(--pilot-accent);
 }
 
 .pilot-opening h2 {
@@ -9127,24 +9214,14 @@ html[data-motion="reduced"] .layered-card__effect {
   text-transform: uppercase;
 }
 
-.pilot-shelf--trial .pilot-shelf__head {
-  border-top: 2px solid #ff2e7e;
+.pilot-shelf .pilot-shelf__head {
+  border-top: 2px solid var(--pilot-accent);
 }
 
-.pilot-shelf--table .pilot-shelf__head {
-  border-top: 2px solid #b08a52;
-}
-
-.binder-slot--trial[data-owned="true"] .binder-slot__object {
-  border: 2px solid #08080a;
+.binder-slot[data-theme][data-owned="true"] .binder-slot__object {
+  border: 2px solid var(--pilot-ink);
   border-radius: 3px;
-  box-shadow: inset 0 0 0 2px #f4f0e6;
-}
-
-.binder-slot--table[data-owned="true"] .binder-slot__object {
-  border: 2px solid #14352b;
-  border-radius: 8px;
-  box-shadow: inset 0 0 0 2px #b08a52;
+  box-shadow: inset 0 0 0 2px var(--pilot-paper);
 }
 
 .binder-slot--trial .binder-slot__name {
@@ -9174,13 +9251,33 @@ html[data-motion="reduced"] .layered-card__effect {
   }
   .pilot-album__veil {
     background:
-      linear-gradient(0deg, rgba(8, 8, 10, 0.98) 0%, rgba(8, 8, 10, 0.9) 40%, rgba(8, 8, 10, 0.5) 72%, rgba(8, 8, 10, 0.14) 100%),
-      linear-gradient(90deg, rgba(8, 8, 10, 0.68), rgba(8, 8, 10, 0.04));
+      linear-gradient(
+        0deg,
+        color-mix(in srgb, var(--pilot-ground) 98%, transparent) 0%,
+        color-mix(in srgb, var(--pilot-ground) 90%, transparent) 40%,
+        color-mix(in srgb, var(--pilot-ground) 50%, transparent) 72%,
+        color-mix(in srgb, var(--pilot-ground) 14%, transparent) 100%
+      ),
+      linear-gradient(
+        90deg,
+        color-mix(in srgb, var(--pilot-ground) 68%, transparent),
+        color-mix(in srgb, var(--pilot-ground) 4%, transparent)
+      );
   }
   .pilot-album__hero--table .pilot-album__veil {
     background:
-      linear-gradient(0deg, rgba(7, 17, 15, 0.99) 0%, rgba(7, 17, 15, 0.92) 40%, rgba(7, 17, 15, 0.52) 72%, rgba(7, 17, 15, 0.14) 100%),
-      linear-gradient(90deg, rgba(7, 17, 15, 0.7), rgba(7, 17, 15, 0.04));
+      linear-gradient(
+        0deg,
+        color-mix(in srgb, var(--pilot-ground) 99%, transparent) 0%,
+        color-mix(in srgb, var(--pilot-ground) 92%, transparent) 40%,
+        color-mix(in srgb, var(--pilot-ground) 52%, transparent) 72%,
+        color-mix(in srgb, var(--pilot-ground) 14%, transparent) 100%
+      ),
+      linear-gradient(
+        90deg,
+        color-mix(in srgb, var(--pilot-ground) 70%, transparent),
+        color-mix(in srgb, var(--pilot-ground) 4%, transparent)
+      );
   }
   .pilot-album__banner {
     object-position: center 30%;
@@ -9210,11 +9307,14 @@ html[data-motion="reduced"] .layered-card__effect {
     width: 6.6rem;
     max-height: 2.7rem;
   }
-  .pilot-album__hero--table .pilot-album__mark {
+  .pilot-album__mark--plate {
     width: 3.4rem;
     height: 3.4rem;
   }
-  .pilot-album__actions .btn {
+  .pilot-album__mark--wordmark {
+    max-width: 13rem;
+    height: 2.7rem;
+  }  .pilot-album__actions .btn {
     flex: 1 1 auto;
   }
   .pilot-opening__facts {
@@ -9226,13 +9326,27 @@ html[data-motion="reduced"] .layered-card__effect {
   width: auto;
   height: 2.8rem;
   max-height: 3rem;
-  border-left: 3px solid #ff2e7e;
-  background: rgba(8, 8, 10, 0.82);
+  border-left: 3px solid var(--pilot-accent);
+  background: color-mix(in srgb, var(--pilot-ground) 82%, transparent);
   padding: 0.28rem 0.5rem;
 }
 
 .pilot-title__tail {
   display: inline;
+}
+
+.pilot-album__hero--archive .pilot-title__tail,
+.pilot-album__hero--broadcast .pilot-title__tail,
+.pilot-album__hero--stage .pilot-title__tail,
+.pilot-album__hero--manga .pilot-title__tail {
+  display: block;
+}
+
+.pilot-album__hero--archive .pilot-title__dash,
+.pilot-album__hero--broadcast .pilot-title__dash,
+.pilot-album__hero--stage .pilot-title__dash,
+.pilot-album__hero--manga .pilot-title__dash {
+  display: none;
 }
 
 @media (max-width: 560px) {

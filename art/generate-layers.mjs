@@ -10,6 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 import { Resvg } from "@resvg/resvg-js";
+import { LIVERY_THEMES, liveryFrameSvg } from "./livery.mjs";
 
 const root = process.cwd();
 const layerDir = path.join(root, "public/art/layers");
@@ -61,66 +62,6 @@ function frameSvg(material) {
     ${corner(48, 48, 1, 1)}${corner(W - 48, 48, -1, 1)}${corner(48, H - 48, 1, -1)}${corner(W - 48, H - 48, -1, -1)}
     <path d="M96 ${H - 74} H${W - 96}" stroke="${palette.accent}" stroke-width="1" opacity=".45"/>
     <path d="M${W / 2 - 28} ${H - 62} h56" stroke="${palette.inner}" stroke-width="1" opacity=".5"/>`,
-  );
-}
-
-/**
- * Collection livery frames. These are authored geometry, not a second brand
- * mark: the collection's real banner/mark still carries identity in the shell.
- * The centre stays transparent so the card's own art, finish and material do
- * the work inside the border.
- */
-function liveryFrameSvg(theme, material) {
-  const metal = {
-    plain: { edge: "#F4F0E6", soft: "#B08A52", bright: "#FFFDF6" },
-    silver: { edge: "#DDE7EC", soft: "#8A9399", bright: "#FFFFFF" },
-    gold: { edge: "#F0CE86", soft: "#B08A52", bright: "#FFF1C7" },
-    diamond: { edge: "#C9F2FF", soft: "#8FB7C8", bright: "#FFFFFF" },
-  }[material];
-  if (theme === "trial") {
-    // Class-trial evidence file: black binders, a paper rule, one hot-pink
-    // registration edge and angular corner marks.
-    return svg(
-      W,
-      H,
-      `<rect x="6" y="6" width="${W - 12}" height="${H - 12}" fill="none" stroke="#08080A" stroke-width="28"/>
-      <rect x="26" y="26" width="${W - 52}" height="${H - 52}" fill="none" stroke="${metal.edge}" stroke-width="2.2"/>
-      <rect x="34" y="34" width="${W - 68}" height="${H - 68}" fill="none" stroke="#08080A" stroke-width="1.1" opacity=".8"/>
-      <path d="M20 20 V1030 H300" fill="none" stroke="#FF2E7E" stroke-width="5"/>
-      <path d="M${W - 20} 20 V150" fill="none" stroke="#FF2E7E" stroke-width="5"/>
-      <g fill="none" stroke="${metal.bright}" stroke-width="3">
-        <path d="M48 96 V48 H96"/><path d="M${W - 96} 48 H${W - 48} V96"/>
-        <path d="M48 ${H - 96} V${H - 48} H96"/><path d="M${W - 96} ${H - 48} H${W - 48} V${H - 96}"/>
-      </g>
-      <g fill="#FF2E7E">
-        <path d="M48 108 h20 v5 h-20z"/><path d="M${W - 68} 108 h20 v5 h-20z"/>
-        <path d="M48 ${H - 113} h20 v5 h-20z"/><path d="M${W - 68} ${H - 113} h20 v5 h-20z"/>
-      </g>
-      <path d="M64 970 H${W - 64}" stroke="${metal.soft}" stroke-width="1" opacity=".55"/>`,
-    );
-  }
-  // Table-night place card: deep green baize edge, brass rule, four seat pips.
-  return svg(
-    W,
-    H,
-    `<rect x="7" y="7" width="${W - 14}" height="${H - 14}" rx="22" fill="none" stroke="#14352B" stroke-width="24"/>
-    <rect x="26" y="26" width="${W - 52}" height="${H - 52}" rx="14" fill="none" stroke="${metal.soft}" stroke-width="2.4"/>
-    <rect x="34" y="34" width="${W - 68}" height="${H - 68}" rx="9" fill="none" stroke="${metal.edge}" stroke-width="1" opacity=".85"/>
-    <g fill="${metal.bright}">
-      <circle cx="48" cy="48" r="4"/><circle cx="${W - 48}" cy="48" r="4"/>
-      <circle cx="48" cy="${H - 48}" r="4"/><circle cx="${W - 48}" cy="${H - 48}" r="4"/>
-    </g>
-    <g fill="none" stroke="${metal.soft}" stroke-width="1.2" opacity=".8">
-      <path d="M64 92 H190"/><path d="M${W - 190} 92 H${W - 64}"/>
-      <path d="M64 ${H - 92} H190"/><path d="M${W - 190} ${H - 92} H${W - 64}"/>
-    </g>
-    <g fill="${metal.soft}" opacity=".9">
-      <circle cx="214" cy="92" r="2.2"/><circle cx="226" cy="92" r="2.2"/>
-      <circle cx="${W - 226}" cy="92" r="2.2"/><circle cx="${W - 214}" cy="92" r="2.2"/>
-      <circle cx="214" cy="${H - 92}" r="2.2"/><circle cx="226" cy="${H - 92}" r="2.2"/>
-      <circle cx="${W - 226}" cy="${H - 92}" r="2.2"/><circle cx="${W - 214}" cy="${H - 92}" r="2.2"/>
-    </g>
-    <path d="M64 966 H${W - 64}" stroke="${metal.soft}" stroke-width="1.2" opacity=".6"/>`,
   );
 }
 
@@ -338,7 +279,7 @@ async function writeSvg(file, content, width) {
 for (const material of ["plain", "silver", "gold", "diamond"]) {
   await writeSvg(`material-${material}.svg`, materialSvg(material), W, H);
   await writeSvg(`frame-${material}.svg`, frameSvg(material), W, H);
-  for (const theme of ["trial", "table"]) {
+  for (const theme of Object.keys(LIVERY_THEMES)) {
     await writeSvg(`frame-${theme}-${material}.svg`, liveryFrameSvg(theme, material), W, H);
   }
 }

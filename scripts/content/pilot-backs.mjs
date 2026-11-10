@@ -26,15 +26,20 @@ const root = process.cwd();
 const apply = process.argv.includes("--apply");
 const onlyArg = process.argv.find((arg) => arg.startsWith("--only="));
 const only = onlyArg?.split("=")[1] ?? null;
-const outDir = path.join(root, ".foilbury/generated/pilot-backs");
+const presentations = JSON.parse(
+  fs.readFileSync(path.join(root, "src/data/collection-presentations.json"), "utf8"),
+);
+const themeTokens = JSON.parse(
+  fs.readFileSync(path.join(root, "src/data/collection-themes.json"), "utf8"),
+);
+const outDir = path.join(root, ".foilbury/generated/collection-backs");
 const tmpDir = path.join(root, ".foilbury/tmp");
 fs.mkdirSync(outDir, { recursive: true });
 fs.mkdirSync(tmpDir, { recursive: true });
 
-const themes = {
-  "danganronpa-three-games": "trial",
-  "protocol-11": "table",
-};
+const themes = Object.fromEntries(
+  Object.entries(presentations).map(([slug, presentation]) => [slug, presentation.theme]),
+);
 
 await ensureServer();
 const catalogue = await apiJson("/api/v1/admin/cards?limit=200");
@@ -57,6 +62,11 @@ const esc = (value) =>
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+
+const truncate = (value, max) => {
+  const text = String(value ?? "").trim();
+  return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
+};
 
 async function logoData(card) {
   const logo = card.collections?.[0]?.logo_url;
@@ -174,13 +184,91 @@ function tableHtml(card, logo) {
   </div></div></body></html>`;
 }
 
+function genericBackHtml(card, logo, theme) {
+  const tokens = themeTokens[theme] ?? themeTokens.archive;
+  const paper = tokens.backSurface === "paper";
+  const rarity = card.rarity?.name ?? "Unclassified";
+  const role = card.subtitle ?? card.class?.name ?? "Member card";
+  const description = card.description ?? "A card from the Foilbury archive.";
+  const collectionName = card.collections?.[0]?.name ?? "Foilbury";
+  const shortName = presentations[card.collections?.[0]?.slug]?.cardSetName ?? collectionName;
+  const invertMark = tokens.markInvert === true;
+  const mark = logo
+    ? `<span class="mark-plate${paper || invertMark ? "" : " mark-plate--paper"}"><img class="mark${invertMark ? " mark--invert" : ""}" src="${logo}" alt=""></span>`
+    : "";
+  const record = [
+    ["Collection", shortName],
+    ["Rarity", rarity],
+    ["Edition", card.class?.name ?? "Member archive"],
+    [
+      "Provenance",
+      card.collections?.[0]?.view_audience === "public"
+        ? "Original Foilbury project"
+        : "Third-party art · sourced reference",
+    ],
+  ]
+    .map(
+      ([label, value]) =>
+        `<div><dt>${esc(label)}</dt><dd>${esc(truncate(String(value), 42))}</dd></div>`,
+    )
+    .join("");
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+    @font-face{font-family:Manrope;src:url('data:font/woff2;base64,${manrope}') format('woff2');font-weight:200 800}
+    @font-face{font-family:Fraunces;src:url('data:font/ttf;base64,${fraunces}') format('truetype');font-weight:100 900}
+    *{margin:0;padding:0;box-sizing:border-box}html,body{width:750px;height:1050px;background:${tokens.paper};color:${tokens.ink};font-family:Manrope,sans-serif;overflow:hidden}
+    .back{position:relative;width:750px;height:1050px;padding:78px 66px 74px;background:${paper ? tokens.paper : tokens.ground};color:${paper ? tokens.ink : tokens.paper}}
+    .edge{position:absolute;inset:34px;border:1px solid ${paper ? tokens.ink : tokens.accent};opacity:.55}
+    .edge::before{content:"";position:absolute;inset:9px;border:1px solid ${paper ? tokens.accent : tokens.paper};opacity:.35}
+    .content{position:relative;z-index:1;display:flex;height:100%;flex-direction:column}
+    .top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;border-bottom:1px solid ${paper ? tokens.ink : tokens.paper};border-color:color-mix(in srgb,${paper ? tokens.ink : tokens.paper} 26%,transparent);padding-bottom:20px}
+    .mark-plate{display:inline-flex;align-items:center;justify-content:center;min-width:200px;height:64px;padding:6px 10px;background:${paper ? "transparent" : "rgba(255,255,255,.06)"}}
+    .mark-plate--paper{background:${tokens.paper}}
+    .mark{max-width:190px;max-height:52px;object-fit:contain}
+    .mark--invert{filter:invert(1)}
+    .kicker{font-family:ui-monospace,monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:${paper ? tokens.accent : tokens.paper};text-align:right;line-height:1.8;opacity:.9}
+    .stamp{display:inline-block;border:1px solid ${tokens.accent};color:${tokens.accent};padding:4px 6px;transform:rotate(-1.5deg)}
+    .index{margin-top:48px;font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:${tokens.accent}}
+    h1{margin-top:12px;font-family:Fraunces,serif;font-weight:600;font-size:66px;line-height:.94;letter-spacing:-.03em;max-width:620px;color:${paper ? tokens.ink : tokens.paper}}
+    .role{margin-top:14px;font-size:20px;color:${paper ? tokens.ink : tokens.paper};opacity:.78}
+    .middle{display:grid;flex:1;grid-template-columns:minmax(0,1fr) 190px;gap:28px;padding-block:28px 20px;align-items:start}
+    .bio{font-size:17px;line-height:1.55;color:${paper ? tokens.ink : tokens.paper};opacity:.82;display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden;max-width:430px}
+    .record{position:relative;border:1px solid ${tokens.accent};padding:18px 16px;transform:rotate(-2deg)}
+    .record::before{content:"";position:absolute;inset:6px;border:1px solid ${tokens.accent};opacity:.35}
+    .record span{display:block;font-family:ui-monospace,monospace;font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:${tokens.accent}}
+    .record strong{display:block;margin:6px 0 8px;font-family:Fraunces,serif;font-size:30px;font-weight:600;line-height:1;color:${paper ? tokens.ink : tokens.paper}}
+    .facts{display:grid;grid-template-columns:1fr 1fr;gap:14px 24px;border-top:1px solid ${paper ? tokens.ink : tokens.paper};border-color:color-mix(in srgb,${paper ? tokens.ink : tokens.paper} 22%,transparent);padding-top:18px}
+    dt{font-family:ui-monospace,monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:${paper ? tokens.ink : tokens.paper};opacity:.55}
+    dd{margin-top:3px;font-size:14px;color:${paper ? tokens.ink : tokens.paper}}
+    .foot{display:flex;justify-content:space-between;gap:20px;border-top:1px solid ${paper ? tokens.ink : tokens.paper};border-color:color-mix(in srgb,${paper ? tokens.ink : tokens.paper} 20%,transparent);margin-top:20px;padding-top:12px;font-family:ui-monospace,monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:${paper ? tokens.ink : tokens.paper};opacity:.6}
+    ${theme === "archive" ? `.back::after{content:"";position:absolute;left:0;top:0;bottom:0;width:10px;background:${tokens.accent}}` : ""}
+    ${theme === "broadcast" ? `.back::after{content:"";position:absolute;left:0;right:0;bottom:0;height:12px;background:${tokens.accent}}` : ""}
+    ${theme === "stage" ? `.edge::after{content:"";position:absolute;left:-1px;top:120px;bottom:120px;border-left:1px dashed ${tokens.accent};opacity:.6}` : ""}
+    ${theme === "manga" ? `.back::after{content:"";position:absolute;right:0;bottom:0;width:220px;height:160px;background-image:radial-gradient(${tokens.ink}22 1px,transparent 1px);background-size:9px 9px}` : ""}
+  </style></head><body><div class="back" data-theme="${theme}"><div class="edge"></div><div class="content">
+    <div class="top">${mark}<div class="kicker">${esc(tokens.label)}<br>Member edition<br><span class="stamp">Not official</span></div></div>
+    <p class="index">${esc(collectionName)} · ${esc(tokens.label)}</p>
+    <h1>${esc(card.name)}</h1>
+    <p class="role">${esc(role)}</p>
+    <div class="middle"><p class="bio">${esc(description)}</p><div class="record"><span>Archive record</span><strong>${esc(rarity)}</strong><span>${esc(shortName)}</span></div></div>
+    <dl class="facts">${record}</dl>
+    <div class="foot"><span>Member archive · not official · no affiliation claimed</span><span>Foilbury</span></div>
+  </div></div></body></html>`;
+}
+
+
 const rows = [];
 for (const card of cards) {
   const collection = card.collections?.[0];
   const theme = themes[collection.slug];
   const logo = await logoData(card);
   const file = path.join(outDir, `${card.slug}-${theme}-back.png`);
-  await page.setContent(theme === "trial" ? trialHtml(card, logo) : tableHtml(card, logo), {
+  const html =
+    theme === "trial"
+      ? trialHtml(card, logo)
+      : theme === "table"
+        ? tableHtml(card, logo)
+        : genericBackHtml(card, logo, theme);
+  await page.setContent(html, {
     waitUntil: "load",
   });
   await page.evaluate(() => document.fonts.ready);

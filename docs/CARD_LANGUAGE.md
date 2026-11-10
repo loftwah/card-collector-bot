@@ -72,6 +72,62 @@ slots remain dashed and are never given a finish frame.
 - The livery frame is material-specific (`frame-trial-*`, `frame-table-*`), so a
   finish change is visible in the object edge, not only in a CSS tint.
 
+## Slice 3 batch 1 — the language generalises
+
+Status: implemented 2026-11-10. The pilot was not rebuilt; Danganronpa and
+Protocol 11 keep their existing output.
+
+The rollout is data-driven. A collection names a `theme` in
+`src/data/collection-presentations.json`; the theme tokens live in
+`src/data/collection-themes.json` and the renderer's shared
+`art/livery.mjs` registry. There is no per-collection branch in the page or
+the compositor.
+
+### Batch 1
+
+| Collection | Theme | Identity art | Roster shelves |
+| --- | --- | --- | --- |
+| Chainsaw Man — Public Safety, Part 1 | `archive` | sourced banner + real series mark | Public Safety / Division chief / Devils and partners |
+| Puella Magi Madoka Magica — Mitakihara | `stage` | sourced banner + real series mark | Magical girls / The contract / Mitakihara at home |
+| Total Drama Island — Camp Wawanakwa, 2007 | `broadcast` | sourced banner + real series mark | Campers / Production |
+
+- **Archive** is a cream index-card band with an oxblood registration edge, a
+  catalogue tab, a wide mark plate and typed record lines. The art canvas stops
+  above the band so full-body art is not cut by the information field.
+- **Stage** is a dark plum ticket with a spotlight wash, a cream mark plate, a
+  marquee rule and a `NOW SHOWING` line. The subject stays contained.
+- **Broadcast** is a dark tape with a screen bezel, scanlines, a tally light and
+  an amber lower-third. The title is uppercase Manrope; the collection and
+  finish are typed as broadcast metadata.
+- The front keeps the 5:7 contract and the reserved art window. The back is a
+  designed paper/dark record with the real mark, name, role, short bio, rarity,
+  edition and provenance. Third-party provenance stays explicit:
+  `MEMBER ARCHIVE · NOT OFFICIAL`, `official:false`.
+- `cardSetName` supplies a short printed collection line so the card face does
+  not truncate a long catalogue name.
+- Wide series wordmarks are measured at render time (`markAspect`) and get a
+  wide plate rather than a square sticker.
+
+### Audience and art
+
+No new image generation was run for this batch. The three collections keep
+their existing sourced 16:9 banners and real series marks; all remain
+member/private, `origin=sourced`, `official:false`. No card render is used as
+collection identity. The web hero uses the banner first and the real mark
+second; the mark is on a paper plate for these wordmark-led collections.
+
+### Verification
+
+- Local render pass: 32 Chainsaw Man fronts, 32 Madoka fronts, 32 Total Drama
+  fronts and 96 designed backs; no failures.
+- Contact review at 750×1050 for a plain, silver, gold and holographic front,
+  and at 32/64/128/256 px for silhouette and name recognition.
+- Collection pages reviewed at 1440 and 390, light and dark: no horizontal
+  overflow, banner-led hero, mark second, grouped binder, exact next-opening
+  panel and finish odds.
+- Production data was not widened: `status`, `view_audience` and distribution
+  were not changed by this batch.
+
 ## Verification
 
 - Actual fronts and backs inspected at 750×1050 in the card inspector.

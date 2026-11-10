@@ -9,6 +9,12 @@ import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 import { Resvg } from "@resvg/resvg-js";
+import {
+  archiveTextSvg,
+  broadcastTextSvg,
+  stageTextSvg,
+  mangaTextSvg,
+} from "./livery-text.mjs";
 
 const W = 750;
 const H = 1050;
@@ -64,10 +70,12 @@ export async function composeCard(input) {
   const offsetY = Math.min(20, Math.max(-20, Number(composition.offsetY ?? 0)));
 
   /* The same safe areas as the web card: art is composed inside the upper
-     window, text lives below it. A composition can move within its window but
-     can never paint over the title, meta or serial. */
-  const artWindow = { x: 30, y: 34, width: 690, height: 756 };
-  const canvasHeight = 800;
+     window, text lives below it. The four newer liveries reserve a taller
+     information band, so their art canvas stops above it rather than letting
+     the band cover a full-body subject's feet. */
+  const tallInfoBand = ["archive", "broadcast", "stage", "manga"].includes(collectionTheme);
+  const artWindow = { x: 30, y: 34, width: 690, height: tallInfoBand ? 700 : 756 };
+  const canvasHeight = tallInfoBand ? 744 : 800;
 
   let source = await sharp(subjectPath).png().toBuffer();
   if (isCutout) {
@@ -161,10 +169,11 @@ export async function composeCard(input) {
       .png()
       .toBuffer();
   } else {
+    const artScale = tallInfoBand ? 0.92 : 1;
     layer = await sharp(source)
       .resize({
-        width: Math.round(artWindow.width * zoom),
-        height: Math.round(artWindow.height * zoom),
+        width: Math.round(artWindow.width * zoom * artScale),
+        height: Math.round(artWindow.height * zoom * artScale),
         fit: "inside",
         withoutEnlargement: false,
       })
@@ -315,6 +324,7 @@ export async function composeCard(input) {
         .toBuffer()
     : withFrame;
 
+  const markAspect = await markAspectFor(markPath, input.markBuffer);
   const textSvg = cardTextSvg({
     name,
     subtitle,
@@ -325,6 +335,7 @@ export async function composeCard(input) {
     material,
     effect,
     collectionTheme,
+    markAspect,
     markData: await markDataUri(markPath, input.markBuffer, input.markMime, markInvert),
   });
   const textPng = new Resvg(textSvg, {
@@ -376,8 +387,19 @@ function escapeXml(value) {
     .replaceAll("'", "&apos;");
 }
 
-async function markDataUri(markPath, markBuffer, markMime, invert = false) {
+async function markAspectFor(markPath, markBuffer) {
   try {
+    const source = markBuffer ?? (markPath && fs.existsSync(markPath) ? markPath : null);
+    if (!source) return 1;
+    const meta = await sharp(source).metadata();
+    if (!meta.width || !meta.height) return 1;
+    return Math.max(0.2, Math.min(8, meta.width / meta.height));
+  } catch {
+    return 1;
+  }
+}
+
+async function markDataUri(markPath, markBuffer, markMime, invert = false) {  try {
     if (!markBuffer && (!markPath || !fs.existsSync(markPath))) return "";
     const ext = markBuffer
       ? markMime === "image/svg+xml"
@@ -466,13 +488,20 @@ function cardTextSvg({
   material,
   effect,
   collectionTheme,
+  markAspect,
   markData,
 }) {
-  if (collectionTheme === "trial") {
-    return trialTextSvg({ name, subtitle, setName, serial, rarity, material, effect, markData });
-  }
-  if (collectionTheme === "table") {
-    return tableTextSvg({
+  const renderers = {
+    trial: trialTextSvg,
+    table: tableTextSvg,
+    archive: archiveTextSvg,
+    broadcast: broadcastTextSvg,
+    stage: stageTextSvg,
+    manga: mangaTextSvg,
+  };
+  const renderer = collectionTheme ? renderers[collectionTheme] : null;
+  if (renderer) {
+    return renderer({
       name,
       subtitle,
       setName,
@@ -481,6 +510,7 @@ function cardTextSvg({
       rarity,
       material,
       effect,
+      markAspect,
       markData,
     });
   }

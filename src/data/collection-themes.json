@@ -1,0 +1,62 @@
+{
+  "trial": {
+    "label": "Class trial archive",
+    "ground": "#08080a",
+    "paper": "#f4f0e6",
+    "ink": "#08080a",
+    "accent": "#ff2e7e",
+    "backSurface": "dark",
+    "markTreatment": "invert",
+    "markInvert": true
+  },
+  "table": {
+    "label": "Table night",
+    "ground": "#07110f",
+    "paper": "#f4f0e6",
+    "ink": "#14352b",
+    "accent": "#b08a52",
+    "backSurface": "paper",
+    "markTreatment": "plate",
+    "markInvert": false
+  },
+  "archive": {
+    "label": "Archive record",
+    "ground": "#171310",
+    "paper": "#efe6d2",
+    "ink": "#1a1712",
+    "accent": "#b4462f",
+    "backSurface": "paper",
+    "markTreatment": "wordmark",
+    "markInvert": false
+  },
+  "broadcast": {
+    "label": "Broadcast tape",
+    "ground": "#0a0f16",
+    "paper": "#f7f3e8",
+    "ink": "#0b0f14",
+    "accent": "#f0b429",
+    "backSurface": "dark",
+    "markTreatment": "wordmark",
+    "markInvert": true
+  },
+  "stage": {
+    "label": "Stage lights",
+    "ground": "#100811",
+    "paper": "#f7ecf3",
+    "ink": "#140a13",
+    "accent": "#e2568c",
+    "backSurface": "dark",
+    "markTreatment": "wordmark",
+    "markInvert": false
+  },
+  "manga": {
+    "label": "Panel print",
+    "ground": "#141210",
+    "paper": "#f7f2e7",
+    "ink": "#101010",
+    "accent": "#d9482f",
+    "backSurface": "paper",
+    "markTreatment": "wordmark",
+    "markInvert": true
+  }
+}

@@ -8,6 +8,7 @@
     "openingPool": "danganronpa-three-games-capsule",
     "openingCta": "Open a Danganronpa capsule",
     "rosterLabel": "The case files",
+    "rosterFactLabel": "Case files",
     "groups": [
       {
         "key": "thh",
@@ -36,12 +37,117 @@
     "openingPool": "protocol-draw",
     "openingCta": "Open a Protocol Draw",
     "rosterLabel": "The regulars",
+    "rosterFactLabel": "Seats",
     "groups": [
       {
         "key": "table",
         "label": "The table",
         "caption": "Five seats, one long-running game",
         "match": ""
+      }
+    ]
+  },
+  "chainsaw-man-public-safety": {
+    "theme": "archive",
+    "titleLead": "Chainsaw Man",
+    "titleTail": "Public Safety, Part 1",
+    "eyebrow": "Public Safety archive",
+    "lede": "Part 1, filed by the division that keeps the devils in check. Eight case records from the Public Safety arc, from the boy with the chainsaw heart to the chief who never raises her voice.",
+    "cardSetName": "Chainsaw Man · Public Safety",
+    "openingCta": "Open a Public Safety capsule",
+    "rosterLabel": "The case records",
+    "rosterFactLabel": "Records",
+    "bannerPosition": "center 32%",
+    "groups": [
+      {
+        "key": "division",
+        "label": "Public Safety",
+        "caption": "Division 4 · the ones who go out on the call",
+        "cards": [
+          "Denji",
+          "Aki Hayakawa",
+          "Power",
+          "Himeno",
+          "Kobeni Higashiyama",
+          "Kishibe"
+        ]
+      },
+      {
+        "key": "chief",
+        "label": "Division chief",
+        "caption": "The desk the whole division answers to",
+        "cards": ["Makima"]
+      },
+      {
+        "key": "devils",
+        "label": "Devils and partners",
+        "caption": "The other half of the contract",
+        "cards": ["Pochita"]
+      }
+    ]
+  },
+  "madoka-magica-mitakihara": {
+    "theme": "stage",
+    "titleLead": "Madoka Magica",
+    "titleTail": "Mitakihara",
+    "eyebrow": "Mitakihara stage lights",
+    "lede": "A city under a contract, five girls under a spotlight and one small messenger who never quite answers the question. Eight records from the 2011 series and Rebellion.",
+    "cardSetName": "Madoka Magica · Mitakihara",
+    "openingCta": "Open a Mitakihara capsule",
+    "rosterLabel": "The constellation",
+    "rosterFactLabel": "Records",
+    "bannerPosition": "center 28%",
+    "groups": [
+      {
+        "key": "girls",
+        "label": "The magical girls",
+        "caption": "Wishes made, wishes paid for",
+        "cards": [
+          "Madoka Kaname",
+          "Homura Akemi",
+          "Sayaka Miki",
+          "Mami Tomoe",
+          "Kyoko Sakura",
+          "Nagisa Momoe"
+        ]
+      },
+      {
+        "key": "contract",
+        "label": "The contract",
+        "caption": "The messenger and the system",
+        "cards": ["Kyubey"]
+      },
+      {
+        "key": "home",
+        "label": "Mitakihara at home",
+        "caption": "The life the contract interrupts",
+        "cards": ["Junko Kaname"]
+      }
+    ]
+  },
+  "total-drama-island": {
+    "theme": "broadcast",
+    "titleLead": "Total Drama Island",
+    "titleTail": "Camp Wawanakwa, 2007",
+    "eyebrow": "Camp Wawanakwa broadcast",
+    "lede": "A camp of twenty-two, sampled in eight records, with a host who will absolutely use the confessional. This shelf follows the 2007 first season, one campfire at a time.",
+    "cardSetName": "Total Drama Island · 2007",
+    "openingCta": "Open a Camp Wawanakwa capsule",
+    "rosterLabel": "The campfire",
+    "rosterFactLabel": "Campers",
+    "bannerPosition": "center 30%",
+    "groups": [
+      {
+        "key": "campers",
+        "label": "The campers",
+        "caption": "Screaming Gophers, Killer Bass and the ones who switched",
+        "cards": ["Gwen", "Heather", "Duncan", "Leshawna", "Izzy", "Owen"]
+      },
+      {
+        "key": "production",
+        "label": "Production",
+        "caption": "The host, the cook and the rules nobody reads",
+        "cards": ["Chris McLean", "Chef Hatchet"]
       }
     ]
   }

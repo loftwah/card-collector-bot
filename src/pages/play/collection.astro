@@ -12,7 +12,12 @@ import {
   listCollections,
 } from "../../server/modules/collections";
 import { collectionBanner, collectionMark } from "../../lib/collection-art";
-import { collectionPresentation, groupForCard } from "../../lib/collection-presentation";
+import {
+  collectionPresentation,
+  collectionTheme,
+  groupForCard,
+  presentationPool,
+} from "../../lib/collection-presentation";
 import { getPoolPreview } from "../../server/modules/pools";
 import { getWalletSummary } from "../../server/modules/wallet";
 
@@ -41,13 +46,13 @@ const selected = initialCollection
 const selectedBanner = collectionBanner(selected);
 const selectedMark = collectionMark(selected);
 const presentation = selected ? collectionPresentation(selected.slug) : null;
+const theme = presentation ? collectionTheme(presentation.theme) : null;
+const poolSlug = selected && presentation ? presentationPool(selected.slug, presentation) : null;
 const [progress, binder, openingPool, wallet] = selected
   ? await Promise.all([
       collectionProgress(ctx, selected.id),
       collectionBinder(ctx, selected.id),
-      presentation
-        ? getPoolPreview(ctx, presentation.openingPool).catch(() => null)
-        : Promise.resolve(null),
+      poolSlug ? getPoolPreview(ctx, poolSlug).catch(() => null) : Promise.resolve(null),
       getWalletSummary(ctx.db, ctx.tenant.id, user.id, 1).catch(() => null),
     ])
   : [null, null, null, null];
@@ -98,7 +103,7 @@ const binderGroups =
     ? presentation.groups
         .map((group) => {
           const cards = binder.cards.filter(
-            (card) => groupForCard(card.subtitle, presentation) === group.key,
+            (card) => groupForCard(card, presentation) === group.key,
           );
           return { ...group, cards };
         })
@@ -106,15 +111,24 @@ const binderGroups =
     : null;
 const otherBinderCards =
   presentation && binder
-    ? binder.cards.filter((card) => groupForCard(card.subtitle, presentation) === "other")
+    ? binder.cards.filter((card) => groupForCard(card, presentation) === "other")
     : [];
+const themeStyle = theme
+  ? `--pilot-accent:${theme.accent};--pilot-ground:${theme.ground};--pilot-paper:${theme.paper};--pilot-ink:${theme.ink};`
+  : undefined;
+const bannerStyle = presentation?.bannerPosition
+  ? `object-position:${presentation.bannerPosition}`
+  : undefined;
 ---
 
 <PlayerLayout title={selected ? `${selected.name} · Foilbury` : "All copies · Foilbury"}>
   {selected && progress && binder ? (
     <div class="collection-album">
       {presentation ? (
-        <header class:list={["pilot-album__hero", `pilot-album__hero--${presentation.theme}`]}>
+        <header
+          class:list={["pilot-album__hero", `pilot-album__hero--${presentation.theme}`]}
+          style={themeStyle}
+        >
           {selectedBanner ? (
             <img
               class="pilot-album__banner"
@@ -123,6 +137,7 @@ const otherBinderCards =
               width="1600"
               height="900"
               loading="eager"
+              style={bannerStyle}
             />
           ) : null}
           <div class="pilot-album__veil" aria-hidden="true" />
@@ -136,7 +151,10 @@ const otherBinderCards =
             <div class="pilot-album__identity">
               {selectedMark ? (
                 <img
-                  class="pilot-album__mark"
+                  class:list={[
+                    "pilot-album__mark",
+                    theme && `pilot-album__mark--${theme.markTreatment}`,
+                  ]}
                   src={selectedMark}
                   alt=""
                   width="240"
@@ -161,9 +179,7 @@ const otherBinderCards =
             <div class="pilot-album__actions">
               <a
                 class="btn btn-primary"
-                href={
-                  openingAvailable ? `/play/draw?pool=${presentation.openingPool}` : "/play/draw"
-                }
+                href={openingAvailable && poolSlug ? `/play/draw?pool=${poolSlug}` : "/play/draw"}
               >
                 {openingAvailable ? presentation.openingCta : "Open the cabinet draw"}
               </a>
@@ -173,7 +189,7 @@ const otherBinderCards =
             </div>
             <dl class="pilot-album__facts">
               <div>
-                <dt>{presentation.theme === "table" ? "Seats" : "Case files"}</dt>
+                <dt>{presentation.rosterFactLabel ?? "Subjects"}</dt>
                 <dd>
                   {progress.owned_cards}/{progress.total_cards}
                 </dd>
@@ -264,6 +280,7 @@ const otherBinderCards =
         <section
           class:list={["pilot-summary", `pilot-summary--${presentation.theme}`]}
           aria-label="Collection progress and next opening"
+          style={themeStyle}
         >
           <div class="pilot-panel pilot-panel--roster">
             <p class="pilot-panel__kicker">Roster completion</p>
@@ -376,7 +393,7 @@ const otherBinderCards =
                 </p>
                 <a
                   class="btn btn-primary btn-sm"
-                  href={`/play/draw?pool=${presentation.openingPool}`}
+                  href={poolSlug ? `/play/draw?pool=${poolSlug}` : "/play/draw"}
                 >
                   {presentation.openingCta}
                 </a>
@@ -492,7 +509,10 @@ const otherBinderCards =
         {presentation && binderGroups ? (
           <div class="pilot-binder">
             {binderGroups.map((group) => (
-              <section class:list={["pilot-shelf", `pilot-shelf--${presentation.theme}`]}>
+              <section
+                class:list={["pilot-shelf", `pilot-shelf--${presentation.theme}`]}
+                style={themeStyle}
+              >
                 <div class="pilot-shelf__head">
                   <div>
                     <h3>{group.label}</h3>
@@ -514,7 +534,10 @@ const otherBinderCards =
               </section>
             ))}
             {otherBinderCards.length ? (
-              <section class:list={["pilot-shelf", `pilot-shelf--${presentation.theme}`]}>
+              <section
+                class:list={["pilot-shelf", `pilot-shelf--${presentation.theme}`]}
+                style={themeStyle}
+              >
                 <div class="pilot-shelf__head">
                   <div>
                     <h3>More from the collection</h3>
