@@ -1,0 +1,1959 @@
+"use client";
+
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
+import { api, describeError } from "@/lib/client";
+import { Button } from "../ui/button";
+import { Input, Textarea } from "../ui/input";
+
+type Surface = "studio" | "platform";
+type ArtCategory = "cards" | "icons" | "logo" | "og_images" | "shareables" | "banners" | "other";
+type ArtMethod = "whole_card" | "composed_scene" | "composed_texture" | "raw_art";
+type FeedbackTag =
+  | "too-busy"
+  | "wrong-palette"
+  | "wrong-face"
+  | "too-generic"
+  | "text-unreadable"
+  | "flat-material"
+  | "composition"
+  | "keep";
+
+interface Permissions {
+  read: boolean;
+  write: boolean;
+  approve_public: boolean;
+  publish: boolean;
+  publish_brand: boolean;
+}
+
+interface DailySpend {
+  cap_cents: number;
+  spent_cents: number;
+  remaining_cents: number;
+  day: string;
+}
+
+interface BriefSummary {
+  id: string;
+  category: ArtCategory;
+  title: string;
+  intent: string;
+  collection_id: string | null;
+  collection_name: string | null;
+  collection_slug: string | null;
+  card_id: string | null;
+  card_name: string | null;
+  target_variant_id: string | null;
+  audience: string;
+  status: string;
+  candidate_count: number;
+  methods: ArtMethod[];
+  spend_cents: number;
+  cost_cap_cents: number;
+  candidate_total: number;
+  pending_count: number;
+  approved_count: number;
+  latest_job_status: string | null;
+  latest_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface CategoryCount {
+  key: ArtCategory;
+  label: string;
+  brief_count: number;
+  candidate_count: number;
+  pending_count: number;
+  spend_cents: number;
+}
+
+interface IndexData {
+  briefs: BriefSummary[];
+  categories: CategoryCount[];
+  daily: DailySpend;
+  permissions: Permissions;
+}
+
+interface Job {
+  id: string;
+  brief_id: string;
+  method: ArtMethod;
+  provider: string;
+  model: string;
+  prompt: string;
+  count: number;
+  status: string;
+  cost_estimate_cents: number;
+  cost_actual_cents: number | null;
+  cost_source: string | null;
+  error: string | null;
+  created_at: string;
+  finished_at: string | null;
+}
+
+interface Feedback {
+  id: string;
+  decision: string;
+  author_user_id: string;
+  tags: FeedbackTag[];
+  body: string | null;
+  created_at: string;
+}
+
+interface Approval {
+  id: string;
+  candidate_id: string;
+  approved_by: string;
+  approved_at: string;
+  usage: string;
+  notes: string | null;
+  vector_ref: string | null;
+  target_kind: string | null;
+  target_id: string | null;
+  published_at: string | null;
+  published_by: string | null;
+  rollback_at: string | null;
+  published_asset_id: string | null;
+}
+
+interface Candidate {
+  id: string;
+  brief_id: string;
+  job_id: string;
+  label: string;
+  method: ArtMethod;
+  method_label: string;
+  method_note: string;
+  provider: string;
+  model: string;
+  prompt: string;
+  seed: string | null;
+  width: number;
+  height: number;
+  display_width: number;
+  display_height: number;
+  sha256: string;
+  audience: string;
+  official: boolean;
+  status: string;
+  asset_id: string;
+  render_asset_id: string | null;
+  render_back_asset_id: string | null;
+  master_asset_id: string | null;
+  preview_400_asset_id: string | null;
+  thumb_128_asset_id: string | null;
+  display_side: "render" | "raw";
+  metadata: Record<string, unknown>;
+  files: {
+    display: string;
+    raw: string;
+    back: string | null;
+    master: string | null;
+    preview400: string | null;
+    thumb128: string | null;
+    download: string;
+  };
+  feedback: Feedback[];
+  approval: Approval | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface BriefDetail {
+  brief: BriefSummary & {
+    references: string[];
+    output_sizes: string[];
+    notes: string | null;
+    provider: string;
+    model: string;
+    created_by: string;
+  };
+  collection: {
+    id: string;
+    slug: string;
+    name: string;
+    scope: string;
+    view_audience: string;
+    logo_url: string | null;
+    banner_url: string | null;
+  } | null;
+  card: {
+    id: string;
+    slug: string;
+    name: string;
+    subtitle: string | null;
+    status: string;
+    rarity_name: string | null;
+    collection_name: string | null;
+  } | null;
+  target_variant: {
+    id: string;
+    name: string;
+    material_key: string;
+    effect_key: string | null;
+    edition_id: string;
+  } | null;
+  jobs: Job[];
+  candidates: Candidate[];
+  current_render: {
+    asset_id: string;
+    public_url: string;
+    width: number;
+    height: number;
+    sha256: string;
+    published_at: string | null;
+    back_asset_id: string | null;
+    back_sha256: string | null;
+  } | null;
+  permissions: Permissions;
+  price: { provider: string; model: string; unit_cents: number; note: string } | null;
+}
+
+interface OptionCollection {
+  id: string;
+  slug: string;
+  name: string;
+  scope: string;
+  status: string;
+  view_audience: string;
+  manageable: boolean;
+}
+
+interface OptionCard {
+  id: string;
+  name: string;
+  slug: string;
+  subtitle: string | null;
+  collections: Array<{ id: string; name: string; slug: string }>;
+  editions: Array<{
+    id: string;
+    name: string;
+    variants: Array<{
+      id: string;
+      name: string;
+      material_key: string;
+      effect_key: string | null;
+      status: string;
+    }>;
+  }>;
+}
+
+interface PriceModel {
+  id: string;
+  label: string;
+  unitCents: number;
+  priceNote: string;
+  methods: ArtMethod[];
+}
+
+interface PriceProvider {
+  provider: "fal" | "openai";
+  label: string;
+  keyEnv: string;
+  models: PriceModel[];
+}
+
+interface OptionsData {
+  categories: ArtCategory[];
+  category_labels: Record<string, string>;
+  providers: PriceProvider[];
+  methods: Array<{ key: ArtMethod; label: string; note: string }>;
+  collections: OptionCollection[];
+  cards: OptionCard[];
+  daily_cap_cents: number;
+  default_cap_cents: number;
+  max_cap_cents: number;
+  tags: FeedbackTag[];
+}
+
+const CATEGORY_LABELS: Record<ArtCategory, string> = {
+  cards: "Cards",
+  icons: "Icons",
+  logo: "Logo",
+  og_images: "OG images",
+  shareables: "Shareables",
+  banners: "Banners",
+  other: "Other art",
+};
+
+const STATUS_TONE: Record<string, string> = {
+  draft: "text-[var(--muted)]",
+  generating: "text-[var(--signal)]",
+  review: "text-[var(--ink)]",
+  approved: "text-[var(--green)]",
+  published: "text-[var(--green)]",
+  archived: "text-[var(--muted)]",
+  generated: "text-[var(--signal)]",
+  shortlisted: "text-[var(--ink)]",
+  needs_revision: "text-[var(--oxblood)]",
+  rejected: "text-[var(--oxblood)]",
+  failed: "text-[var(--oxblood)]",
+  running: "text-[var(--signal)]",
+  queued: "text-[var(--muted)]",
+  succeeded: "text-[var(--green)]",
+};
+
+function money(cents: number | null | undefined): string {
+  return `US$${(Number(cents ?? 0) / 100).toFixed(2)}`;
+}
+
+function shortHash(value: string): string {
+  return value.length > 18 ? `${value.slice(0, 10)}…${value.slice(-6)}` : value;
+}
+
+function statusLabel(value: string): string {
+  return value.replaceAll("_", " ");
+}
+
+function methodNote(candidate: Candidate): string {
+  if (candidate.method === "whole_card") {
+    return "Whole-card AI · generated card";
+  }
+  if (candidate.method === "composed_scene" || candidate.method === "composed_texture") {
+    return "Composed card · not an AI image";
+  }
+  return "Raw brand art · type stays in code";
+}
+
+function candidateImage(candidate: Candidate): string {
+  return candidate.display_side === "render" ? candidate.files.display : candidate.files.raw;
+}
+
+function readTags(candidate: Candidate): FeedbackTag[] {
+  return [...new Set(candidate.feedback.flatMap((entry) => entry.tags))];
+}
+
+function fileBaseFor(surface: Surface): string {
+  return surface === "studio" ? "/api/v1/studio/art" : "/api/v1/admin/art";
+}
+
+export default function ArtLab({ surface }: { surface: Surface }) {
+  const base = fileBaseFor(surface);
+  const [index, setIndex] = useState<IndexData | null>(null);
+  const [options, setOptions] = useState<OptionsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [category, setCategory] = useState<ArtCategory>(surface === "studio" ? "cards" : "icons");
+  const [selectedBriefId, setSelectedBriefId] = useState("");
+  const [detail, setDetail] = useState<BriefDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [selectedCandidateId, setSelectedCandidateId] = useState("");
+  const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [compareSize, setCompareSize] = useState<300 | 750 | 400 | 214 | 128>(750);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [methodFilter, setMethodFilter] = useState("all");
+  const [modelFilter, setModelFilter] = useState("all");
+  const [tagFilter, setTagFilter] = useState("all");
+  const [showNew, setShowNew] = useState(false);
+  const [busy, setBusy] = useState("");
+  const [feedbackTags, setFeedbackTags] = useState<FeedbackTag[]>([]);
+  const [feedbackBody, setFeedbackBody] = useState("");
+  const [approvalUsage, setApprovalUsage] = useState("");
+  const [approvalNotes, setApprovalNotes] = useState("");
+  const [vectorRef, setVectorRef] = useState("");
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [publishVariantId, setPublishVariantId] = useState("");
+  const [publishConfirmation, setPublishConfirmation] = useState("");
+  const [publishNotes, setPublishNotes] = useState("");
+  const [publishBack, setPublishBack] = useState(true);
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const [form, setForm] = useState({
+    category: surface === "studio" ? ("cards" as ArtCategory) : ("icons" as ArtCategory),
+    collectionId: "",
+    cardId: "",
+    targetVariantId: "",
+    title: "",
+    intent: "",
+    references: "",
+    audience: "members" as "private" | "members" | "public",
+    candidateCount: 6,
+    provider: "fal",
+    model: "fal-ai/flux-pro/v1.1-ultra",
+    methods: (surface === "studio" ? ["whole_card"] : ["raw_art"]) as ArtMethod[],
+    notes: "",
+    costCapCents: 200,
+  });
+
+  const candidates = detail?.candidates ?? [];
+  const selectedCandidate =
+    candidates.find((candidate) => candidate.id === selectedCandidateId) ?? null;
+  const filteredCandidates = useMemo(() => {
+    return candidates.filter((candidate) => {
+      if (statusFilter !== "all" && candidate.status !== statusFilter) return false;
+      if (methodFilter !== "all" && candidate.method !== methodFilter) return false;
+      if (modelFilter !== "all" && candidate.model !== modelFilter) return false;
+      if (tagFilter !== "all" && !readTags(candidate).includes(tagFilter as FeedbackTag))
+        return false;
+      return true;
+    });
+  }, [candidates, statusFilter, methodFilter, modelFilter, tagFilter]);
+  const modelOptions = [...new Set(candidates.map((candidate) => candidate.model))];
+  const compareCandidates = compareIds
+    .map((id) => candidates.find((candidate) => candidate.id === id))
+    .filter((candidate): candidate is Candidate => Boolean(candidate));
+  const categoryBriefs = (index?.briefs ?? []).filter((brief) => brief.category === category);
+  const visibleCategories = (index?.categories ?? []).filter((entry) =>
+    surface === "studio" ? entry.key === "cards" : entry.key !== "cards",
+  );
+  const activeCategoryLabel = options?.category_labels[category] ?? CATEGORY_LABELS[category];
+  const provider = options?.providers.find((entry) => entry.provider === form.provider) ?? null;
+  const providerModels = provider?.models ?? [];
+  const formCollectionCards = (options?.cards ?? []).filter((card) =>
+    card.collections.some((collection) => collection.id === form.collectionId),
+  );
+  const formCard = formCollectionCards.find((card) => card.id === form.cardId) ?? null;
+  const formVariants =
+    formCard?.editions.flatMap((edition) =>
+      edition.variants
+        .filter((variant) => variant.status === "published" || variant.status === "draft")
+        .map((variant) => ({ ...variant, editionName: edition.name })),
+    ) ?? [];
+  const variantOptions =
+    options?.cards
+      .find((card) => card.id === detail?.brief.card_id)
+      ?.editions.flatMap((edition) =>
+        edition.variants
+          .filter((variant) => variant.status === "published" || variant.status === "draft")
+          .map((variant) => ({ ...variant, editionName: edition.name })),
+      ) ?? [];
+
+  useEffect(() => {
+    void loadIndex();
+    void loadOptions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (surface === "studio") {
+      setCategory("cards");
+      setForm((current) => ({ ...current, category: "cards", methods: ["whole_card"] }));
+    } else {
+      setForm((current) => ({
+        ...current,
+        category: current.category === "cards" ? "icons" : current.category,
+        methods: ["raw_art"],
+        audience: "private",
+      }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [surface]);
+
+  useEffect(() => {
+    if (selectedBriefId) void loadBrief(selectedBriefId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBriefId]);
+
+  useEffect(() => {
+    setSelectedCandidateId("");
+    setCompareIds([]);
+    setFeedbackTags([]);
+    setFeedbackBody("");
+    setApprovalUsage("");
+    setApprovalNotes("");
+    setVectorRef("");
+    setPublishOpen(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBriefId]);
+
+  useEffect(() => {
+    if (!selectedCandidate) return;
+    setFeedbackTags(readTags(selectedCandidate));
+    setFeedbackBody("");
+    setApprovalUsage(
+      detail?.brief.category === "cards"
+        ? `Card front · ${detail.collection?.name ?? selectedCandidate.label}`
+        : `Brand kit · ${detail?.brief.title ?? selectedCandidate.label}`,
+    );
+    setApprovalNotes("");
+    setVectorRef(selectedCandidate.approval?.vector_ref ?? "");
+    setPublishVariantId(detail?.brief.target_variant_id ?? detail?.target_variant?.id ?? "");
+    setPublishConfirmation("");
+    setPublishNotes("");
+    setPublishBack(Boolean(selectedCandidate.render_back_asset_id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCandidateId, detail?.brief.id]);
+
+  async function loadIndex() {
+    try {
+      setError("");
+      const data = await api<IndexData>(base);
+      setIndex(data);
+      if (!data.categories.some((entry) => entry.key === category)) {
+        setCategory(data.categories[0]?.key ?? "cards");
+      }
+    } catch (cause) {
+      setError(describeError(cause));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadOptions() {
+    try {
+      const data = await api<OptionsData>(`${base}/options`);
+      setOptions(data);
+    } catch {
+      // The brief form is not the whole surface; keep the index usable.
+    }
+  }
+
+  async function loadBrief(briefId: string) {
+    setDetailLoading(true);
+    try {
+      const data = await api<BriefDetail>(`${base}/briefs/${briefId}`);
+      setDetail(data);
+      if (!data.candidates.some((candidate) => candidate.id === selectedCandidateId)) {
+        setSelectedCandidateId(data.candidates[0]?.id ?? "");
+      }
+    } catch (cause) {
+      setError(describeError(cause));
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
+  async function refresh(briefId = selectedBriefId) {
+    await Promise.all([loadIndex(), briefId ? loadBrief(briefId) : Promise.resolve()]);
+  }
+
+  async function act<T>(
+    key: string,
+    path: string,
+    body?: unknown,
+    method = "POST",
+  ): Promise<T | null> {
+    setBusy(key);
+    setError("");
+    setNotice("");
+    try {
+      return await api<T>(`${base}${path}`, { method, body });
+    } catch (cause) {
+      setError(describeError(cause));
+      return null;
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function createBrief() {
+    const result = await act<{ brief: BriefDetail }>("create", "/briefs", {
+      category: form.category,
+      collectionId: form.category === "cards" ? form.collectionId : null,
+      cardId: form.category === "cards" ? form.cardId : null,
+      targetVariantId: form.category === "cards" ? form.targetVariantId || null : null,
+      title: form.title,
+      intent: form.intent,
+      references: form.references
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean),
+      audience: form.audience,
+      candidateCount: form.candidateCount,
+      provider: form.provider,
+      model: form.model,
+      methods: form.methods,
+      notes: form.notes || null,
+      costCapCents: form.costCapCents,
+    });
+    if (!result) return;
+    setShowNew(false);
+    setNotice(
+      `Brief “${result.brief.brief.title}” created. Queue generation when the direction is ready.`,
+    );
+    setSelectedBriefId(result.brief.brief.id);
+    setCategory(result.brief.brief.category);
+    await loadIndex();
+  }
+
+  async function generate() {
+    if (!detail) return;
+    const result = await act<{ brief: BriefDetail }>(
+      "generate",
+      `/briefs/${detail.brief.id}/generate`,
+      {},
+    );
+    if (!result) return;
+    setNotice(
+      `Generation queued for ${result.brief.brief.methods.join(" + ")}. Run pnpm art:run locally; the job will fail loudly if a provider is unavailable.`,
+    );
+    await refresh();
+  }
+
+  async function cancelJob(job: Job) {
+    if (!window.confirm("Cancel this queued or running job? The spend is recorded.")) return;
+    const result = await act<{ job: Job }>("cancel-job", `/jobs/${job.id}/cancel`, {});
+    if (!result) return;
+    setNotice("Generation job cancelled. Queue a new direction when ready.");
+    await refresh();
+  }
+
+  async function candidateFeedback(
+    decision: "comment" | "shortlist" | "needs_revision" | "reject",
+  ) {
+    if (!selectedCandidate) return;
+    const result = await act<{ candidate: Candidate }>(
+      "feedback",
+      `/candidates/${selectedCandidate.id}/feedback`,
+      {
+        decision,
+        tags: feedbackTags,
+        body: feedbackBody || null,
+      },
+    );
+    if (!result) return;
+    setNotice(`Feedback recorded on ${selectedCandidate.label}.`);
+    setFeedbackBody("");
+    await refresh();
+  }
+
+  async function approve() {
+    if (!selectedCandidate) return;
+    const result = await act<{ candidate: Candidate }>(
+      "approve",
+      `/candidates/${selectedCandidate.id}/approve`,
+      {
+        usage: approvalUsage,
+        notes: approvalNotes || null,
+        vectorRef: vectorRef || null,
+      },
+    );
+    if (!result) return;
+    setNotice(
+      `${selectedCandidate.label} approved as the direction. Publish is a separate action.`,
+    );
+    await refresh();
+  }
+
+  async function publish() {
+    if (!selectedCandidate) return;
+    const result = await act<{ publication: Record<string, unknown> }>(
+      "publish",
+      `/candidates/${selectedCandidate.id}/publish`,
+      {
+        confirmation: publishConfirmation,
+        variantId: publishVariantId || null,
+        notes: publishNotes || null,
+        publishBack,
+        vectorRef: vectorRef || null,
+      },
+    );
+    if (!result) return;
+    setPublishOpen(false);
+    setPublishConfirmation("");
+    setNotice(`Published. The previous render is recorded for rollback.`);
+    await refresh();
+  }
+
+  async function rollback() {
+    if (!selectedCandidate?.approval) return;
+    if (
+      !window.confirm(
+        "Roll back this publication? The previous render is restored from the recorded snapshot.",
+      )
+    ) {
+      return;
+    }
+    const result = await act<{ approval: Approval }>(
+      "rollback",
+      `/approvals/${selectedCandidate.approval.id}/rollback`,
+      {},
+    );
+    if (!result) return;
+    setNotice("Publication rolled back. The previous render is live again.");
+    await refresh();
+  }
+
+  function updateCategory(next: ArtCategory) {
+    if (surface === "studio" && next !== "cards") return;
+    if (surface === "platform" && next === "cards") return;
+    setCategory(next);
+    setSelectedBriefId("");
+    setDetail(null);
+    setSelectedCandidateId("");
+    const firstProvider = options?.providers[0] ?? null;
+    const model = firstProvider?.models[0] ?? null;
+    setForm((current) => ({
+      ...current,
+      category: next,
+      collectionId: next === "cards" ? current.collectionId : "",
+      cardId: next === "cards" ? current.cardId : "",
+      targetVariantId: next === "cards" ? current.targetVariantId : "",
+      methods: next === "cards" ? ["whole_card"] : ["raw_art"],
+      provider: firstProvider?.provider ?? current.provider,
+      model: model?.id ?? current.model,
+      audience: next === "cards" ? current.audience : "private",
+    }));
+  }
+
+  function updateProvider(providerId: string) {
+    const next = options?.providers.find((entry) => entry.provider === providerId);
+    const model = next?.models[0];
+    setForm((current) => ({
+      ...current,
+      provider: providerId,
+      model: model?.id ?? current.model,
+      methods:
+        model?.methods.filter((method) =>
+          current.category === "cards" ? method !== "raw_art" : method === "raw_art",
+        ) ?? current.methods,
+    }));
+  }
+
+  function updateModel(modelId: string) {
+    const model = providerModels.find((entry) => entry.id === modelId);
+    setForm((current) => ({
+      ...current,
+      model: modelId,
+      methods:
+        model?.methods.filter((method) =>
+          current.category === "cards" ? method !== "raw_art" : method === "raw_art",
+        ) ?? current.methods,
+    }));
+  }
+
+  function toggleCompare(candidateId: string) {
+    setCompareIds((current) =>
+      current.includes(candidateId)
+        ? current.filter((id) => id !== candidateId)
+        : [...current, candidateId].slice(0, 4),
+    );
+  }
+
+  function onGridKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
+      return;
+    }
+    const cards = Array.from(
+      gridRef.current?.querySelectorAll<HTMLButtonElement>("[data-candidate-card]") ?? [],
+    );
+    if (!cards.length) return;
+    const active = cards.findIndex((card) => card === document.activeElement);
+    const columns = window.innerWidth >= 1280 ? 3 : window.innerWidth >= 640 ? 2 : 1;
+    const step =
+      event.key === "ArrowRight"
+        ? 1
+        : event.key === "ArrowLeft"
+          ? -1
+          : event.key === "ArrowDown"
+            ? columns
+            : event.key === "ArrowUp"
+              ? -columns
+              : 0;
+    let next = event.key === "Home" ? 0 : event.key === "End" ? cards.length - 1 : active + step;
+    if (active < 0) next = 0;
+    next = Math.max(0, Math.min(cards.length - 1, next));
+    event.preventDefault();
+    cards[next]?.focus();
+  }
+
+  if (loading) {
+    return (
+      <div className="grid gap-3" aria-busy="true" aria-label="Loading Art Lab">
+        <div className="skeleton h-24 rounded-[3px]" />
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="skeleton h-52 rounded-[3px]" />
+          <div className="skeleton h-52 rounded-[3px]" />
+          <div className="skeleton h-52 rounded-[3px]" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-w-0">
+      <header className="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--line)] pb-4">
+        <div className="max-w-3xl">
+          <p className="eyebrow">
+            Art Lab · {surface === "studio" ? "scoped studio" : "Super Admin"}
+          </p>
+          <h2 className="display-sm mt-1 text-3xl uppercase md:text-4xl">Try the real thing.</h2>
+          <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
+            {surface === "studio"
+              ? "Whole-card AI is the default card method. The shared renderer is a comparison method, not a gate. Every candidate keeps its provider, prompt, seed, dimensions, hash and spend. Approval and publish stay separate."
+              : "Raw brand candidates, with type, layout, serials and official marks staying in code. Every candidate keeps its provider, prompt, seed, dimensions, hash and spend. Only the provisioned Super Admin can publish."}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="border border-[var(--line)] bg-[var(--paper)] p-3">
+            <p className="font-mono text-[0.58rem] tracking-[0.1em] text-[var(--muted)] uppercase">
+              Today · {index?.daily.day ?? "—"}
+            </p>
+            <p className="mt-1 font-mono text-sm">
+              {money(index?.daily.spent_cents)} / {money(index?.daily.cap_cents)}
+            </p>
+            <div className="mt-2 h-1 w-40 overflow-hidden bg-[var(--line)]">
+              <div
+                className="h-full bg-[var(--signal)]"
+                style={{
+                  width: `${Math.min(
+                    100,
+                    ((index?.daily.spent_cents ?? 0) / (index?.daily.cap_cents || 1)) * 100,
+                  )}%`,
+                }}
+              />
+            </div>
+          </div>
+          {index?.permissions.write ? (
+            <Button onClick={() => setShowNew((open) => !open)}>
+              {showNew ? "Close brief" : "New brief"}
+            </Button>
+          ) : null}
+        </div>
+      </header>
+
+      {error ? (
+        <p role="alert" className="error-box mt-4">
+          {error}{" "}
+          <button
+            type="button"
+            className="underline underline-offset-4"
+            onClick={() => void loadIndex()}
+          >
+            Retry
+          </button>
+        </p>
+      ) : null}
+      {notice ? (
+        <p role="status" className="notice mt-4">
+          {notice}
+        </p>
+      ) : null}
+
+      <nav className="mt-5 flex gap-1 overflow-x-auto pb-1" aria-label="Art Lab categories">
+        {visibleCategories.map((entry) => (
+          <button
+            key={entry.key}
+            type="button"
+            onClick={() => updateCategory(entry.key)}
+            aria-pressed={category === entry.key}
+            className={`chip shrink-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--signal)] ${
+              category === entry.key
+                ? "border-[var(--signal)] text-[var(--ink)]"
+                : "hover:border-[var(--line-strong)]"
+            }`}
+          >
+            {entry.label}
+            <span className="text-[var(--muted)]">{entry.brief_count}</span>
+            {entry.pending_count ? (
+              <span className="text-[var(--signal)]">{entry.pending_count} pending</span>
+            ) : null}
+          </button>
+        ))}
+      </nav>
+
+      {showNew ? (
+        <section className="panel mt-4 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="display-sm text-xl uppercase">Create a brief</h3>
+              <p className="mt-1 text-sm text-[var(--muted)]">
+                The brief is the ceiling and the intent. Generation is queued separately, so a
+                failed provider cannot silently change the method or spend.
+              </p>
+            </div>
+            <span className="badge">Per-brief cap {money(form.costCapCents)}</span>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label className="field">
+              <span>Category</span>
+              <select
+                className="select"
+                value={form.category}
+                onChange={(event) => updateCategory(event.target.value as ArtCategory)}
+              >
+                {(options?.categories ?? [form.category])
+                  .filter((entry) => (surface === "studio" ? entry === "cards" : entry !== "cards"))
+                  .map((entry) => (
+                    <option key={entry} value={entry}>
+                      {options?.category_labels[entry] ?? CATEGORY_LABELS[entry]}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            {form.category === "cards" ? (
+              <>
+                <label className="field">
+                  <span>Collection</span>
+                  <select
+                    className="select"
+                    value={form.collectionId}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        collectionId: event.target.value,
+                        cardId: "",
+                        targetVariantId: "",
+                      })
+                    }
+                  >
+                    <option value="">Choose a collection</option>
+                    {(options?.collections ?? []).map((collection) => (
+                      <option key={collection.id} value={collection.id}>
+                        {collection.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Subject</span>
+                  <select
+                    className="select"
+                    value={form.cardId}
+                    disabled={!form.collectionId}
+                    onChange={(event) => {
+                      const card = formCollectionCards.find(
+                        (entry) => entry.id === event.target.value,
+                      );
+                      const firstVariant = card?.editions
+                        .flatMap((edition) => edition.variants)
+                        .find((variant) => variant.status === "published");
+                      setForm({
+                        ...form,
+                        cardId: event.target.value,
+                        targetVariantId: firstVariant?.id ?? "",
+                      });
+                    }}
+                  >
+                    <option value="">Choose a subject</option>
+                    {formCollectionCards.map((card) => (
+                      <option key={card.id} value={card.id}>
+                        {card.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Target finish</span>
+                  <select
+                    className="select"
+                    value={form.targetVariantId}
+                    disabled={!form.cardId}
+                    onChange={(event) => setForm({ ...form, targetVariantId: event.target.value })}
+                  >
+                    <option value="">First published variant</option>
+                    {formVariants.map((variant) => (
+                      <option key={variant.id} value={variant.id}>
+                        {variant.name} · {variant.material_key}
+                        {variant.effect_key ? ` / ${variant.effect_key}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            ) : null}
+            <label className="field sm:col-span-2">
+              <span>Title</span>
+              <Input
+                value={form.title}
+                onChange={(event) => setForm({ ...form, title: event.target.value })}
+                placeholder="Doki Doki · rain on the clubroom window"
+              />
+            </label>
+            <label className="field sm:col-span-2">
+              <span>Intent</span>
+              <Textarea
+                className="min-h-28"
+                value={form.intent}
+                onChange={(event) => setForm({ ...form, intent: event.target.value })}
+                placeholder="What should the direction make the owner feel? Name the composition, mood, palette, subject treatment and what must not appear."
+              />
+            </label>
+            <label className="field sm:col-span-2">
+              <span>References · one HTTPS or local path per line</span>
+              <Textarea
+                className="min-h-20"
+                value={form.references}
+                onChange={(event) => setForm({ ...form, references: event.target.value })}
+                placeholder="/art/backgrounds/doki-doki-literature-club.webp"
+              />
+            </label>
+            <label className="field">
+              <span>Provider</span>
+              <select
+                className="select"
+                value={form.provider}
+                onChange={(event) => updateProvider(event.target.value)}
+              >
+                {(options?.providers ?? []).map((entry) => (
+                  <option key={entry.provider} value={entry.provider}>
+                    {entry.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Model</span>
+              <select
+                className="select"
+                value={form.model}
+                onChange={(event) => updateModel(event.target.value)}
+              >
+                {providerModels.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.label} · {money(entry.unitCents)}/image
+                  </option>
+                ))}
+              </select>
+            </label>
+            <fieldset className="sm:col-span-2">
+              <legend className="eyebrow">Methods</legend>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {(options?.methods ?? [])
+                  .filter((entry) =>
+                    form.category === "cards" ? entry.key !== "raw_art" : entry.key === "raw_art",
+                  )
+                  .filter((entry) =>
+                    providerModels
+                      .find((model) => model.id === form.model)
+                      ?.methods.includes(entry.key),
+                  )
+                  .map((entry) => (
+                    <label
+                      key={entry.key}
+                      className="chip cursor-pointer"
+                      data-active={form.methods.includes(entry.key)}
+                    >
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        checked={form.methods.includes(entry.key)}
+                        onChange={(event) =>
+                          setForm({
+                            ...form,
+                            methods: event.target.checked
+                              ? [...new Set([...form.methods, entry.key])]
+                              : form.methods.filter((method) => method !== entry.key),
+                          })
+                        }
+                      />
+                      {entry.label}
+                    </label>
+                  ))}
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-[var(--muted)]">
+                {form.category === "cards"
+                  ? "Whole-card AI generates the complete card. Scene and texture methods generate an art plate and compose it through the shared renderer. Keep both selected to compare methods in one review."
+                  : "Brand categories use raw art candidates. Type, layout, serials and official marks stay in code; a logo needs a reviewed vector source before approval."}
+              </p>
+            </fieldset>
+            <label className="field">
+              <span>Candidates</span>
+              <Input
+                type="number"
+                min={form.category === "cards" ? 2 : 1}
+                max={8}
+                value={form.candidateCount}
+                onChange={(event) =>
+                  setForm({ ...form, candidateCount: Number(event.target.value) || 1 })
+                }
+              />
+            </label>
+            <label className="field">
+              <span>Audience</span>
+              <select
+                className="select"
+                value={form.audience}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    audience: event.target.value as "private" | "members" | "public",
+                  })
+                }
+              >
+                <option value="private">Private</option>
+                <option value="members">Members</option>
+                <option value="public">Public · Super Admin approval required</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>Per-brief ceiling · US$</span>
+              <Input
+                type="number"
+                min={0.5}
+                max={(options?.max_cap_cents ?? 2000) / 100}
+                step={0.5}
+                value={form.costCapCents / 100}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    costCapCents: Math.round((Number(event.target.value) || 0) * 100),
+                  })
+                }
+              />
+            </label>
+            <label className="field sm:col-span-2">
+              <span>Notes for the runner</span>
+              <Textarea
+                className="min-h-20"
+                value={form.notes}
+                onChange={(event) => setForm({ ...form, notes: event.target.value })}
+                placeholder="Reference the actual source pack, identity anchors or any exclusion."
+              />
+            </label>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-4">
+            <p className="max-w-xl text-xs leading-relaxed text-[var(--muted)]">
+              The queue reads the price table in <code>src/server/modules/art-lab.ts</code>. A
+              failed call records its spend and reason; there is no silent fallback or top-up.
+            </p>
+            <Button
+              onClick={() => void createBrief()}
+              disabled={
+                busy === "create" ||
+                !form.title.trim() ||
+                form.intent.trim().length < 12 ||
+                !form.methods.length ||
+                (form.category === "cards" && (!form.collectionId || !form.cardId))
+              }
+            >
+              {busy === "create" ? "Creating…" : "Create brief"}
+            </Button>
+          </div>
+        </section>
+      ) : null}
+
+      {!detail ? (
+        <section className="mt-6">
+          <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[var(--line)] pb-3">
+            <h3 className="display-sm text-2xl uppercase">{activeCategoryLabel}</h3>
+            <p className="font-mono text-[0.6rem] tracking-[0.1em] text-[var(--muted)] uppercase">
+              {categoryBriefs.length} brief{categoryBriefs.length === 1 ? "" : "s"}
+            </p>
+          </div>
+          {categoryBriefs.length ? (
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {categoryBriefs.map((brief) => (
+                <button
+                  key={brief.id}
+                  type="button"
+                  onClick={() => setSelectedBriefId(brief.id)}
+                  className="panel group min-h-48 p-4 text-left transition-colors hover:border-[var(--ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--signal)] motion-reduce:transition-none"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="eyebrow">
+                      {CATEGORY_LABELS[brief.category]} · {brief.methods.length} method
+                      {brief.methods.length === 1 ? "" : "s"}
+                    </p>
+                    <span
+                      className={`font-mono text-[0.58rem] tracking-[0.08em] uppercase ${STATUS_TONE[brief.status] ?? ""}`}
+                    >
+                      {statusLabel(brief.status)}
+                    </span>
+                  </div>
+                  <h4 className="display-sm mt-2 text-xl">{brief.title}</h4>
+                  <p className="mt-1 text-sm text-[var(--muted)]">
+                    {brief.collection_name ?? "Brand kit"}
+                    {brief.card_name ? ` · ${brief.card_name}` : ""}
+                  </p>
+                  <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-[var(--muted)]">
+                    {brief.intent}
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-2 font-mono text-[0.58rem] tracking-[0.08em] text-[var(--muted)] uppercase">
+                    <span>{brief.candidate_total} candidates</span>
+                    <span className={brief.pending_count ? "text-[var(--signal)]" : ""}>
+                      {brief.pending_count} pending
+                    </span>
+                    <span>
+                      {money(brief.spend_cents)} / {money(brief.cost_cap_cents)}
+                    </span>
+                  </div>
+                  {brief.latest_error ? (
+                    <p className="mt-2 line-clamp-2 text-xs text-[var(--oxblood)]">
+                      {brief.latest_error}
+                    </p>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="empty mt-4">
+              <div>
+                <p className="font-mono text-[0.62rem] tracking-[0.12em] uppercase">
+                  No briefs yet
+                </p>
+                <p className="mt-2 max-w-md text-sm">
+                  {surface === "studio"
+                    ? "Create a brief, queue four to eight candidates and compare whole-card AI against the composed renderer at 750, 400 and 128 pixels."
+                    : "Create a brand brief, queue raw candidates and review them at their real sizes before a Super Admin approval and publish."}
+                </p>
+                {index?.permissions.write ? (
+                  <Button className="mt-4" size="sm" onClick={() => setShowNew(true)}>
+                    Create the first brief
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          )}
+        </section>
+      ) : (
+        <div className="mt-6 min-w-0">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <button
+              type="button"
+              className="font-mono text-[0.62rem] tracking-[0.1em] text-[var(--muted)] uppercase underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--signal)]"
+              onClick={() => {
+                setSelectedBriefId("");
+                setDetail(null);
+              }}
+            >
+              ← All briefs
+            </button>
+            <span
+              className={`font-mono text-[0.6rem] tracking-[0.1em] uppercase ${STATUS_TONE[detail.brief.status] ?? ""}`}
+            >
+              {statusLabel(detail.brief.status)}
+            </span>
+          </div>
+
+          <header className="mt-3 flex flex-wrap items-start justify-between gap-4 border-b border-[var(--line)] pb-4">
+            <div className="max-w-3xl">
+              <p className="eyebrow">
+                {CATEGORY_LABELS[detail.brief.category]}
+                {detail.collection ? ` · ${detail.collection.name}` : ""}
+                {detail.card ? ` · ${detail.card.name}` : ""}
+              </p>
+              <h3 className="display-sm mt-1 text-3xl uppercase">{detail.brief.title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
+                {detail.brief.intent}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {detail.brief.methods.map((method) => (
+                  <span key={method} className="badge">
+                    {method.replaceAll("_", " ")}
+                  </span>
+                ))}
+                <span className="badge">
+                  {detail.brief.provider} / {detail.brief.model}
+                </span>
+                <span className="badge">{detail.brief.audience}</span>
+                {detail.target_variant ? (
+                  <span className="badge">
+                    Finish · {detail.target_variant.material_key}
+                    {detail.target_variant.effect_key
+                      ? ` / ${detail.target_variant.effect_key}`
+                      : ""}
+                  </span>
+                ) : null}
+                <span className="badge">
+                  {money(detail.brief.spend_cents)} / {money(detail.brief.cost_cap_cents)}
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              <Button
+                onClick={() => void generate()}
+                disabled={
+                  busy === "generate" ||
+                  !detail.permissions.write ||
+                  detail.jobs.some((job) => job.status === "queued" || job.status === "running")
+                }
+              >
+                {busy === "generate" ? "Queueing…" : "Generate options"}
+              </Button>
+              <p className="max-w-56 text-right text-xs leading-relaxed text-[var(--muted)]">
+                Run <code>pnpm art:run</code> locally. The job claims one provider, records spend
+                and fails with the provider reason.
+              </p>
+            </div>
+          </header>
+
+          <section className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {detail.jobs.map((job) => (
+              <article key={job.id} className="border border-[var(--line)] bg-[var(--paper)] p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-mono text-[0.58rem] tracking-[0.08em] uppercase">
+                    {job.method.replaceAll("_", " ")} · {job.count} × {job.provider}
+                  </p>
+                  <span
+                    className={`font-mono text-[0.58rem] tracking-[0.08em] uppercase ${STATUS_TONE[job.status] ?? ""}`}
+                  >
+                    {job.status}
+                  </span>
+                </div>
+                <p className="mt-2 font-mono text-[0.6rem] text-[var(--muted)]">
+                  {money(job.cost_actual_cents ?? job.cost_estimate_cents)} recorded
+                  {job.cost_source ? ` · ${job.cost_source.replaceAll("_", " ")}` : ""}
+                </p>
+                {job.error ? (
+                  <p className="mt-2 text-xs leading-relaxed text-[var(--oxblood)]">{job.error}</p>
+                ) : null}
+                {["queued", "running"].includes(job.status) && detail.permissions.write ? (
+                  <button
+                    type="button"
+                    className="mt-2 font-mono text-[0.55rem] tracking-[0.08em] text-[var(--muted)] uppercase underline underline-offset-4 hover:text-[var(--oxblood)]"
+                    onClick={() => void cancelJob(job)}
+                  >
+                    Cancel job
+                  </button>
+                ) : null}
+              </article>
+            ))}
+            {!detail.jobs.length ? (
+              <p className="border border-dashed border-[var(--line-strong)] p-3 text-sm text-[var(--muted)]">
+                No generation queued. The brief is a draft until you generate.
+              </p>
+            ) : null}
+          </section>
+
+          <div className="mt-5 flex flex-wrap items-center gap-3 border-y border-[var(--line)] py-3">
+            <span className="font-mono text-[0.58rem] tracking-[0.1em] text-[var(--muted)] uppercase">
+              Review board
+            </span>
+            <select
+              className="select h-8 text-xs"
+              style={{ width: "auto", minWidth: "9rem" }}
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+            >
+              <option value="all">All statuses</option>
+              {[
+                "generated",
+                "shortlisted",
+                "needs_revision",
+                "rejected",
+                "approved",
+                "published",
+              ].map((status) => (
+                <option key={status} value={status}>
+                  {statusLabel(status)}
+                </option>
+              ))}
+            </select>
+            <select
+              className="select h-8 text-xs"
+              style={{ width: "auto", minWidth: "9rem" }}
+              value={methodFilter}
+              onChange={(event) => setMethodFilter(event.target.value)}
+            >
+              <option value="all">All methods</option>
+              {detail.brief.methods.map((method) => (
+                <option key={method} value={method}>
+                  {method.replaceAll("_", " ")}
+                </option>
+              ))}
+            </select>
+            <select
+              className="select h-8 text-xs"
+              style={{ width: "auto", minWidth: "9rem" }}
+              value={modelFilter}
+              onChange={(event) => setModelFilter(event.target.value)}
+            >
+              <option value="all">All models</option>
+              {modelOptions.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+            <select
+              className="select h-8 text-xs"
+              style={{ width: "auto", minWidth: "9rem" }}
+              value={tagFilter}
+              onChange={(event) => setTagFilter(event.target.value)}
+            >
+              <option value="all">All feedback tags</option>
+              {(options?.tags ?? []).map((tag) => (
+                <option key={tag} value={tag}>
+                  {tag}
+                </option>
+              ))}
+            </select>
+            <span className="ml-auto font-mono text-[0.58rem] tracking-[0.08em] text-[var(--muted)] uppercase">
+              {filteredCandidates.length} shown · {compareIds.length} selected
+            </span>
+          </div>
+
+          {compareCandidates.length ? (
+            <section className="notice mt-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-[0.58rem] tracking-[0.1em] uppercase">Compare</span>
+                {(
+                  [750, 400, ...(detail.brief.category === "cards" ? [214] : []), 128] as const
+                ).map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    className="chip"
+                    data-active={compareSize === size}
+                    onClick={() => setCompareSize(size as 750 | 400 | 214 | 128)}
+                  >
+                    {size}px{size === 214 ? " · Discord cap" : ""}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="ml-auto font-mono text-[0.58rem] tracking-[0.08em] uppercase underline underline-offset-4"
+                  onClick={() => setCompareIds([])}
+                >
+                  Clear
+                </button>
+              </div>
+              <div className="mt-3 flex gap-4 overflow-x-auto pb-2">
+                {compareCandidates.map((candidate) => (
+                  <figure key={candidate.id} className="shrink-0 text-center">
+                    <img
+                      src={candidateImage(candidate)}
+                      alt={`${candidate.label} at ${compareSize} pixels`}
+                      className="mx-auto bg-[var(--paper-2)] object-contain"
+                      style={{
+                        width: compareSize,
+                        maxWidth: "none",
+                        height:
+                          detail.brief.category === "cards"
+                            ? Math.round((compareSize * 7) / 5)
+                            : "auto",
+                      }}
+                    />
+                    <figcaption className="mt-1 font-mono text-[0.55rem] tracking-[0.08em] text-[var(--muted)] uppercase">
+                      {candidate.label} · {candidate.method_label}
+                    </figcaption>
+                  </figure>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          <div className="mt-4 grid gap-5 lg:grid-cols-[1fr_360px] lg:items-start">
+            <div className="min-w-0">
+              {detailLoading ? (
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  <div className="skeleton h-80 rounded-[3px]" />
+                  <div className="skeleton h-80 rounded-[3px]" />
+                  <div className="skeleton h-80 rounded-[3px]" />
+                </div>
+              ) : filteredCandidates.length ? (
+                <div
+                  ref={gridRef}
+                  className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+                  onKeyDown={onGridKeyDown}
+                  aria-label="Candidate contact sheet"
+                >
+                  {filteredCandidates.map((candidate, indexValue) => (
+                    <article
+                      key={candidate.id}
+                      className={`min-w-0 border bg-[var(--paper)] p-2 transition-colors ${
+                        selectedCandidateId === candidate.id
+                          ? "border-[var(--signal)]"
+                          : "border-[var(--line)] hover:border-[var(--line-strong)]"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <label className="flex items-center gap-2 font-mono text-[0.58rem] tracking-[0.08em] text-[var(--muted)] uppercase">
+                          <input
+                            type="checkbox"
+                            checked={compareIds.includes(candidate.id)}
+                            onChange={() => toggleCompare(candidate.id)}
+                            aria-label={`Select ${candidate.label} for comparison`}
+                          />
+                          {candidate.label}
+                        </label>
+                        <span
+                          className={`font-mono text-[0.55rem] tracking-[0.08em] uppercase ${STATUS_TONE[candidate.status] ?? ""}`}
+                        >
+                          {statusLabel(candidate.status)}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        data-candidate-card
+                        data-candidate-index={indexValue}
+                        onClick={() => setSelectedCandidateId(candidate.id)}
+                        className="mt-2 block w-full text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--signal)]"
+                        aria-pressed={selectedCandidateId === candidate.id}
+                      >
+                        <img
+                          src={candidateImage(candidate)}
+                          alt={`${candidate.label} · ${candidate.method_label}`}
+                          className="mx-auto block bg-[var(--paper-2)] object-contain"
+                          style={{ width: 300, maxWidth: "100%" }}
+                          loading="lazy"
+                        />
+                        <p className="mt-2 font-mono text-[0.55rem] tracking-[0.08em] text-[var(--muted)] uppercase">
+                          {methodNote(candidate)}
+                        </p>
+                        <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 font-mono text-[0.55rem] tracking-[0.08em] text-[var(--muted)] uppercase">
+                          <span>{candidate.model}</span>
+                          <span>
+                            {candidate.width}×{candidate.height}
+                          </span>
+                          {readTags(candidate).length ? (
+                            <span className="text-[var(--signal)]">
+                              {readTags(candidate).join(" · ")}
+                            </span>
+                          ) : null}
+                        </div>
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty">
+                  <div>
+                    <p className="font-mono text-[0.62rem] tracking-[0.12em] uppercase">
+                      No candidates to show
+                    </p>
+                    <p className="mt-2 max-w-md text-sm">
+                      {candidates.length
+                        ? "No candidate matches the current filters."
+                        : "Queue generation to fill the review board with real options."}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <aside className="min-w-0 lg:sticky lg:top-24">
+              {selectedCandidate ? (
+                <CandidatePanel
+                  candidate={selectedCandidate}
+                  detail={detail}
+                  options={options}
+                  variantOptions={variantOptions}
+                  permissions={detail.permissions}
+                  busy={busy}
+                  feedbackTags={feedbackTags}
+                  setFeedbackTags={setFeedbackTags}
+                  feedbackBody={feedbackBody}
+                  setFeedbackBody={setFeedbackBody}
+                  approvalUsage={approvalUsage}
+                  setApprovalUsage={setApprovalUsage}
+                  approvalNotes={approvalNotes}
+                  setApprovalNotes={setApprovalNotes}
+                  vectorRef={vectorRef}
+                  setVectorRef={setVectorRef}
+                  onFeedback={candidateFeedback}
+                  onApprove={approve}
+                  onRollback={rollback}
+                  publishOpen={publishOpen}
+                  setPublishOpen={setPublishOpen}
+                  publishVariantId={publishVariantId}
+                  setPublishVariantId={setPublishVariantId}
+                  publishConfirmation={publishConfirmation}
+                  setPublishConfirmation={setPublishConfirmation}
+                  publishNotes={publishNotes}
+                  setPublishNotes={setPublishNotes}
+                  publishBack={publishBack}
+                  setPublishBack={setPublishBack}
+                  onPublish={publish}
+                />
+              ) : (
+                <div className="panel p-4">
+                  <p className="eyebrow">Candidate</p>
+                  <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">
+                    Select a candidate to inspect its metadata, leave durable feedback, shortlist
+                    it, approve a direction or publish it.
+                  </p>
+                </div>
+              )}
+            </aside>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CandidatePanel(props: {
+  candidate: Candidate;
+  detail: BriefDetail;
+  options: OptionsData | null;
+  variantOptions: Array<{
+    id: string;
+    name: string;
+    material_key: string;
+    effect_key: string | null;
+    editionName: string;
+  }>;
+  permissions: Permissions;
+  busy: string;
+  feedbackTags: FeedbackTag[];
+  setFeedbackTags: (tags: FeedbackTag[]) => void;
+  feedbackBody: string;
+  setFeedbackBody: (value: string) => void;
+  approvalUsage: string;
+  setApprovalUsage: (value: string) => void;
+  approvalNotes: string;
+  setApprovalNotes: (value: string) => void;
+  vectorRef: string;
+  setVectorRef: (value: string) => void;
+  onFeedback: (decision: "comment" | "shortlist" | "needs_revision" | "reject") => void;
+  onApprove: () => void;
+  onRollback: () => void;
+  publishOpen: boolean;
+  setPublishOpen: (open: boolean) => void;
+  publishVariantId: string;
+  setPublishVariantId: (value: string) => void;
+  publishConfirmation: string;
+  setPublishConfirmation: (value: string) => void;
+  publishNotes: string;
+  setPublishNotes: (value: string) => void;
+  publishBack: boolean;
+  setPublishBack: (value: boolean) => void;
+  onPublish: () => void;
+}) {
+  const {
+    candidate,
+    detail,
+    permissions,
+    busy,
+    feedbackTags,
+    setFeedbackTags,
+    feedbackBody,
+    setFeedbackBody,
+    approvalUsage,
+    setApprovalUsage,
+    approvalNotes,
+    setApprovalNotes,
+    vectorRef,
+    setVectorRef,
+    publishOpen,
+    setPublishOpen,
+    publishVariantId,
+    setPublishVariantId,
+    publishConfirmation,
+    setPublishConfirmation,
+    publishNotes,
+    setPublishNotes,
+    publishBack,
+    setPublishBack,
+    onFeedback,
+    onApprove,
+    onPublish,
+    onRollback,
+  } = props;
+  const approved = Boolean(candidate.approval);
+  const published = Boolean(candidate.approval?.published_at && !candidate.approval.rollback_at);
+  const isPublic = detail.brief.audience === "public";
+  const canApprove = permissions.write && (!isPublic || permissions.approve_public);
+  const isLogo = detail.brief.category === "logo";
+  const tags = props.options?.tags ?? [];
+
+  return (
+    <div className="panel p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="eyebrow">Candidate {candidate.label}</p>
+          <p className="mt-1 font-mono text-[0.58rem] tracking-[0.08em] text-[var(--muted)] uppercase">
+            {candidate.method_label} · {candidate.status}
+          </p>
+        </div>
+        <a
+          className="font-mono text-[0.58rem] tracking-[0.08em] uppercase underline underline-offset-4"
+          href={candidate.files.download}
+        >
+          Download
+        </a>
+      </div>
+
+      <figure className="mt-3 border border-[var(--line)] bg-[var(--paper-2)] p-2">
+        <img
+          src={candidateImage(candidate)}
+          alt={`${candidate.label} · ${candidate.method_label}`}
+          className="mx-auto block max-h-[560px] w-auto max-w-full object-contain"
+        />
+        <figcaption className="mt-2 text-center font-mono text-[0.55rem] tracking-[0.08em] text-[var(--muted)] uppercase">
+          {methodNote(candidate)}
+        </figcaption>
+      </figure>
+
+      <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+        <Fact label="Method" value={candidate.method_label} />
+        <Fact label="Model" value={candidate.model} />
+        <Fact label="Dimensions" value={`${candidate.width} × ${candidate.height}`} />
+        <Fact label="Seed" value={candidate.seed ?? "—"} />
+        <Fact label="Audience" value={candidate.audience} />
+        <Fact label="Official" value={candidate.official ? "yes" : "no"} />
+        <Fact label="SHA-256" value={shortHash(candidate.sha256)} mono />
+        <Fact
+          label="Cost"
+          value={`${money(Number(candidate.metadata.cost_estimate_cents ?? 0))} estimate`}
+        />
+      </dl>
+      <p className="mt-2 text-xs leading-relaxed text-[var(--muted)]">{candidate.method_note}</p>
+      <details className="mt-3 text-xs">
+        <summary className="cursor-pointer font-mono text-[0.58rem] tracking-[0.08em] text-[var(--muted)] uppercase">
+          Prompt and provenance
+        </summary>
+        <p className="mt-2 font-mono text-[0.65rem] leading-relaxed break-words whitespace-pre-wrap text-[var(--muted)]">
+          {candidate.prompt}
+        </p>
+      </details>
+
+      {candidate.feedback.length ? (
+        <section className="mt-4 border-t border-[var(--line)] pt-3">
+          <p className="eyebrow">Feedback · {candidate.feedback.length}</p>
+          <ol className="mt-2 grid gap-2">
+            {candidate.feedback.map((entry) => (
+              <li key={entry.id} className="border-l-2 border-[var(--line-strong)] pl-2 text-xs">
+                <div className="flex flex-wrap gap-2 font-mono text-[0.55rem] tracking-[0.08em] text-[var(--muted)] uppercase">
+                  <span>{entry.decision.replaceAll("_", " ")}</span>
+                  <span>{new Date(entry.created_at).toLocaleString()}</span>
+                </div>
+                {entry.tags.length ? (
+                  <p className="mt-1 font-mono text-[0.55rem] tracking-[0.08em] text-[var(--signal)] uppercase">
+                    {entry.tags.join(" · ")}
+                  </p>
+                ) : null}
+                {entry.body ? <p className="mt-1 leading-relaxed">{entry.body}</p> : null}
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
+
+      {candidate.status !== "published" ? (
+        <section className="mt-4 border-t border-[var(--line)] pt-3">
+          <p className="eyebrow">Leave feedback</p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {tags.map((tag) => (
+              <button
+                key={tag}
+                type="button"
+                className="chip"
+                data-active={feedbackTags.includes(tag)}
+                onClick={() =>
+                  setFeedbackTags(
+                    feedbackTags.includes(tag)
+                      ? feedbackTags.filter((entry) => entry !== tag)
+                      : [...feedbackTags, tag],
+                  )
+                }
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
+          <Textarea
+            className="mt-2 min-h-20"
+            value={feedbackBody}
+            onChange={(event) => setFeedbackBody(event.target.value)}
+            placeholder="What is wrong, what must stay, and what should the next direction try?"
+          />
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={!permissions.write || busy === "feedback"}
+              onClick={() => onFeedback("comment")}
+            >
+              Add note
+            </Button>
+            {!approved ? (
+              <>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={!permissions.write || busy === "feedback"}
+                  onClick={() => onFeedback("shortlist")}
+                >
+                  Shortlist
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={!permissions.write || busy === "feedback"}
+                  onClick={() => onFeedback("needs_revision")}
+                >
+                  Needs revision
+                </Button>
+              </>
+            ) : null}
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={!permissions.write || busy === "feedback"}
+              onClick={() => onFeedback("reject")}
+            >
+              Reject
+            </Button>
+          </div>
+        </section>
+      ) : null}
+
+      <section className="mt-4 border-t border-[var(--line)] pt-3">
+        <p className="eyebrow">Direction</p>
+        {approved ? (
+          <p className="mt-2 text-xs leading-relaxed text-[var(--green)]">
+            Approved for {candidate.approval?.usage}.{" "}
+            {published ? "Published; rollback is available." : "Publish makes it live."}
+          </p>
+        ) : (
+          <p className="mt-2 text-xs leading-relaxed text-[var(--muted)]">
+            Approve means “this is the direction”. Publish is a separate action with a confirmation
+            and a recorded previous render.
+          </p>
+        )}
+        {!approved && candidate.status !== "rejected" ? (
+          <div className="mt-2 grid gap-2">
+            <label className="field">
+              <span>Usage</span>
+              <Input
+                value={approvalUsage}
+                onChange={(event) => setApprovalUsage(event.target.value)}
+                placeholder="Card front · collection"
+              />
+            </label>
+            <Textarea
+              className="min-h-16"
+              value={approvalNotes}
+              onChange={(event) => setApprovalNotes(event.target.value)}
+              placeholder="Why this direction wins; what is still a limit."
+            />
+            {isLogo ? (
+              <label className="field">
+                <span>Vector source · required for logo approval</span>
+                <Input
+                  value={vectorRef}
+                  onChange={(event) => setVectorRef(event.target.value)}
+                  placeholder="/brand/kit/approved/logo.svg or https://…"
+                />
+              </label>
+            ) : null}
+            {isPublic && !permissions.approve_public ? (
+              <p className="notice text-xs">Only the Super Admin can approve a public direction.</p>
+            ) : null}
+            <Button
+              size="sm"
+              disabled={!canApprove || busy === "approve" || approvalUsage.trim().length < 3}
+              onClick={onApprove}
+            >
+              {busy === "approve" ? "Approving…" : "Approve direction"}
+            </Button>
+          </div>
+        ) : null}
+        {candidate.status === "rejected" ? (
+          <p className="mt-2 text-xs leading-relaxed text-[var(--oxblood)]">
+            This direction is rejected. Generate a new candidate set or revise the brief; there is
+            no silent re-roll.
+          </p>
+        ) : null}
+
+        {approved && !published ? (
+          <div className="mt-3 border-t border-[var(--line)] pt-3">
+            {publishOpen ? (
+              <div className="grid gap-2">
+                <p className="text-xs leading-relaxed text-[var(--muted)]">
+                  Current live render:{" "}
+                  <span className="font-mono">
+                    {detail.current_render ? shortHash(detail.current_render.sha256) : "none"}
+                  </span>
+                  {detail.current_render?.published_at
+                    ? ` · ${new Date(detail.current_render.published_at).toLocaleString()}`
+                    : ""}
+                </p>
+                {detail.current_render ? (
+                  <img
+                    src={detail.current_render.public_url}
+                    alt="Current live card render"
+                    className="max-h-40 w-auto border border-[var(--line)] bg-[var(--paper-2)] object-contain"
+                  />
+                ) : null}
+                {detail.brief.category === "cards" ? (
+                  <label className="field">
+                    <span>Target variant</span>
+                    <select
+                      className="select"
+                      value={publishVariantId}
+                      onChange={(event) => setPublishVariantId(event.target.value)}
+                    >
+                      <option value="">Choose a variant</option>
+                      {props.variantOptions.map((variant) => (
+                        <option key={variant.id} value={variant.id}>
+                          {variant.name} · {variant.material_key}
+                          {variant.effect_key ? ` / ${variant.effect_key}` : ""} ·{" "}
+                          {variant.editionName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                {detail.brief.category === "cards" && candidate.render_back_asset_id ? (
+                  <label className="flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={publishBack}
+                      onChange={(event) => setPublishBack(event.target.checked)}
+                    />
+                    Publish the composed back too
+                  </label>
+                ) : null}
+                <Textarea
+                  className="min-h-16"
+                  value={publishNotes}
+                  onChange={(event) => setPublishNotes(event.target.value)}
+                  placeholder="Publication note for the audit record."
+                />
+                <label className="field">
+                  <span>Type PUBLISH to confirm</span>
+                  <Input
+                    value={publishConfirmation}
+                    onChange={(event) => setPublishConfirmation(event.target.value)}
+                    placeholder="PUBLISH"
+                  />
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    disabled={
+                      publishConfirmation !== "PUBLISH" ||
+                      busy === "publish" ||
+                      (detail.brief.category === "cards" && !publishVariantId)
+                    }
+                    onClick={onPublish}
+                  >
+                    {busy === "publish" ? "Publishing…" : "Publish direction"}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setPublishOpen(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button
+                size="sm"
+                disabled={!permissions.publish}
+                onClick={() => setPublishOpen(true)}
+              >
+                Publish this direction
+              </Button>
+            )}
+          </div>
+        ) : null}
+
+        {published ? (
+          <div className="mt-3 border-t border-[var(--line)] pt-3">
+            <p className="text-xs leading-relaxed text-[var(--muted)]">
+              Published{" "}
+              {candidate.approval?.published_at
+                ? new Date(candidate.approval.published_at).toLocaleString()
+                : ""}
+              . Target: {candidate.approval?.target_kind} · {candidate.approval?.target_id}.
+            </p>
+            <Button size="sm" variant="danger" className="mt-2" onClick={onRollback}>
+              Roll back publication
+            </Button>
+          </div>
+        ) : null}
+      </section>
+    </div>
+  );
+}
+
+function Fact({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div>
+      <dt className="font-mono text-[0.52rem] tracking-[0.08em] text-[var(--muted)] uppercase">
+        {label}
+      </dt>
+      <dd className={`mt-0.5 break-words ${mono ? "font-mono text-[0.6rem]" : ""}`}>{value}</dd>
+    </div>
+  );
+}

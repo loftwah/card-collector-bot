@@ -65,6 +65,12 @@ export async function uploadAsset(
     official?: boolean;
     reviewStatus?: "unreviewed" | "reviewed" | "approved" | "rejected" | "placeholder";
     provenance?: Record<string, unknown>;
+    /**
+     * Import-style callers reuse identical bytes. Art Lab candidates and brand
+     * publications must not mutate an existing live asset's metadata, so they
+     * pass false and receive a new stable asset row.
+     */
+    dedupe?: boolean;
     source?: {
       repo?: string;
       path?: string;
@@ -82,7 +88,7 @@ export async function uploadAsset(
   if (!mime || !ALLOWED.has(mime)) {
     throw new ApiError(422, "asset_type_invalid", "Only PNG, JPEG and WebP images are accepted.");
   }
-  if (input.declaredMime && input.declaredMime !== mime) {
+  if (input.declaredMime && ALLOWED.has(input.declaredMime) && input.declaredMime !== mime) {
     throw new ApiError(
       422,
       "asset_mime_mismatch",
@@ -109,13 +115,16 @@ export async function uploadAsset(
     );
   }
   const hash = await sha256Hex(input.bytes);
-  const existing = await first<AssetRow>(
-    ctx.db,
-    "SELECT * FROM fb_assets WHERE tenant_id = ? AND sha256 = ? AND kind = ? AND archived_at IS NULL",
-    ctx.tenant.id,
-    hash,
-    input.kind,
-  );
+  const existing =
+    input.dedupe === false
+      ? null
+      : await first<AssetRow>(
+          ctx.db,
+          "SELECT * FROM fb_assets WHERE tenant_id = ? AND sha256 = ? AND kind = ? AND archived_at IS NULL",
+          ctx.tenant.id,
+          hash,
+          input.kind,
+        );
   if (existing) {
     // The bytes are unchanged, but provenance, credit, review status and access
     // metadata may have been corrected. Keep the stable asset ID and R2 object,
@@ -163,7 +172,10 @@ export async function uploadAsset(
   // The storage key is kind-scoped. Identical bytes reused as a different
   // asset kind must not overwrite or share an object with the original asset;
   // existing keys are retained so published URLs and references stay valid.
-  const key = `tenants/${ctx.tenant.id}/assets/${input.kind}/${hash}.${ext}`;
+  const key =
+    input.dedupe === false
+      ? `tenants/${ctx.tenant.id}/assets/${input.kind}/${hash}-${newId("art")}.${ext}`
+      : `tenants/${ctx.tenant.id}/assets/${input.kind}/${hash}.${ext}`;
   await ctx.media.put(key, input.bytes, {
     httpMetadata: { contentType: mime, contentDisposition: "inline" },
     customMetadata: { tenant: ctx.tenant.id, sha256: hash, kind: input.kind },

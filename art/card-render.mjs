@@ -706,7 +706,9 @@ function serialiseData(input, theme) {
       ? epithet
         ? `${className} · ${epithet}`
         : className
-      : input.subtitle || className || "Member";
+      : subtitleParts.length > 1 && /\(\d{4}\)/.test(subtitleParts[0])
+        ? subtitleParts.slice(1).join(" · ")
+        : input.subtitle || className || "Member";
   const cardEra =
     input.cardEra ??
     (subtitleParts[0] && /\(\d{4}\)/.test(subtitleParts[0]) ? subtitleParts[0] : theme.era);
@@ -749,17 +751,33 @@ export async function renderFront(input) {
 
   const artBox = { x: 0, y: 0, w: 750, h: 776 };
   const scenePath = path.join(root, "art/backgrounds", `${input.collectionSlug}.webp`);
-  const backgroundPath = fs.existsSync(scenePath) ? scenePath : input.backgroundPath;
+  const backgroundPath =
+    input.backgroundOverride && input.backgroundPath
+      ? input.backgroundPath
+      : fs.existsSync(scenePath)
+        ? scenePath
+        : input.backgroundPath;
   if (!fs.existsSync(backgroundPath)) {
     throw new Error(`Card language needs a real scene background for ${input.collectionSlug}.`);
   }
   const art = await backgroundLayer(backgroundPath, artBox);
-  const sourceSubject = input.cardSlug
-    ? ([
-        path.join(root, ".foilbury/sourced", input.collectionSlug, `${input.cardSlug}-source.png`),
-        path.join(root, ".foilbury/sourced", input.collectionSlug, `${input.cardSlug}-subject.png`),
-      ].find((candidate) => fs.existsSync(candidate)) ?? input.subjectPath)
-    : input.subjectPath;
+  const sourceSubject =
+    input.cardSlug && !input.subjectOverride
+      ? ([
+          path.join(
+            root,
+            ".foilbury/sourced",
+            input.collectionSlug,
+            `${input.cardSlug}-source.png`,
+          ),
+          path.join(
+            root,
+            ".foilbury/sourced",
+            input.collectionSlug,
+            `${input.cardSlug}-subject.png`,
+          ),
+        ].find((candidate) => fs.existsSync(candidate)) ?? input.subjectPath)
+      : input.subjectPath;
   const subjectHeight =
     input.subjectHeight ??
     theme.subjectHeight ??

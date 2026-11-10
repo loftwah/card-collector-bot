@@ -1,7 +1,254 @@
 {
-  "route_count": 182,
+  "route_count": 201,
   "direct_route_count": 21,
   "routes": [
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/art",
+      "guards": [],
+      "auth_only": [],
+      "scopes": [],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "routeArtLab"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/art/options",
+      "guards": [],
+      "auth_only": [],
+      "scopes": [],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "routeArtLab"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/art/count",
+      "guards": [],
+      "auth_only": [],
+      "scopes": [],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "routeArtLab"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/art/agent",
+      "guards": [],
+      "auth_only": [],
+      "scopes": [],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "routeArtLab"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/art/briefs",
+      "guards": [],
+      "auth_only": [],
+      "scopes": [],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "routeArtLab"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/art/briefs/:param",
+      "guards": [],
+      "auth_only": [],
+      "scopes": [],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "routeArtLab"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/art/briefs/:param/generate",
+      "guards": [],
+      "auth_only": [],
+      "scopes": [],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "routeArtLab"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/art/jobs/claim",
+      "guards": [],
+      "auth_only": [],
+      "scopes": [],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "routeArtLab"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/art/jobs/:param/candidates",
+      "guards": [],
+      "auth_only": [],
+      "scopes": [],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "routeArtLab"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/art/jobs/:param/complete",
+      "guards": [],
+      "auth_only": [],
+      "scopes": [],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "routeArtLab"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/art/jobs/:param/fail",
+      "guards": [],
+      "auth_only": [],
+      "scopes": [],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "routeArtLab"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/art/jobs/:param/cancel",
+      "guards": [],
+      "auth_only": [],
+      "scopes": [],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "routeArtLab"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/art/candidates/:param/feedback",
+      "guards": [],
+      "auth_only": [],
+      "scopes": [],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "routeArtLab"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/art/candidates/:param/approve",
+      "guards": [],
+      "auth_only": [],
+      "scopes": [],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "routeArtLab"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/art/candidates/:param/reject",
+      "guards": [],
+      "auth_only": [],
+      "scopes": [],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "routeArtLab"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/art/candidates/:param/publish",
+      "guards": [],
+      "auth_only": [],
+      "scopes": [],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "routeArtLab"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/art/candidates/:param/render",
+      "guards": [],
+      "auth_only": [],
+      "scopes": [],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "routeArtLab"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/art/candidates/:param/file",
+      "guards": [],
+      "auth_only": [],
+      "scopes": [],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "routeArtLab"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/art/approvals/:param/rollback",
+      "guards": [],
+      "auth_only": [],
+      "scopes": [],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "routeArtLab"
+      ],
+      "studio_alias": false
+    },
     {
       "method": "GET",
       "path": "/api/v1/collections",
@@ -1621,7 +1868,7 @@
       "auth_only": [],
       "scopes": [],
       "roles": [],
-      "schema": "{ printNumber:string, role:enum, title:string, creativeDirection:string, sourceAssetId:idSchema, artworkAssetId?:idSchema, backgroundAssetId?:idSchema, rightsNote?:string, sourceRefs?:array, provenance?:record, finishKeys?:array, status?:enum }",
+      "schema": "{ printNumber:string, role:enum, title:string, creativeDirection:string, sourceAssetId:idSchema, artworkAssetId?:idSchema, backgroundAssetId?:idSchema, rightsNote?:string, sourceRefs?:array, provenance?:record, finishKeys?:enum, status?:enum }",
       "calls": [
         "max",
         "min",
@@ -1678,7 +1925,7 @@
       "auth_only": [],
       "scopes": [],
       "roles": [],
-      "schema": "{ role?:z, title?:string, creativeDirection?:string, sourceAssetId?:idSchema, artworkAssetId?:idSchema, backgroundAssetId?:idSchema, rightsNote?:string, sourceRefs?:array, finishKeys?:array, expectedRevision?:number, note?:string }",
+      "schema": "{ role?:z, title?:string, creativeDirection?:string, sourceAssetId?:idSchema, artworkAssetId?:idSchema, backgroundAssetId?:idSchema, rightsNote?:string, sourceRefs?:array, finishKeys?:enum, expectedRevision?:number, note?:string }",
       "calls": [
         "optional",
         "max",

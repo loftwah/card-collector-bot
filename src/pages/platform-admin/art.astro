@@ -1,0 +1,22 @@
+---
+import PlatformAdminLayout from "../../layouts/PlatformAdminLayout.astro";
+import ArtLab from "../../components/art/ArtLab";
+---
+
+<PlatformAdminLayout>
+  <div class="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--line)] pb-4">
+    <div>
+      <p class="eyebrow">Brand art · Super Admin</p>
+      <h2 class="display-sm mt-1 text-3xl uppercase">Art Lab.</h2>
+      <p class="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--muted)]">
+        Icons, logo, OG images, shareables, banners and other brand art. Raw candidates are allowed;
+        type, layout, serials and official marks stay in code. Logo concepts need a reviewed vector
+        source before approval. Nothing becomes public without the provisioned Super Admin.
+      </p>
+    </div>
+    <span class="badge">Cloudflare Access · Super Admin</span>
+  </div>
+  <div class="mt-7">
+    <ArtLab client:load surface="platform" />
+  </div>
+</PlatformAdminLayout>

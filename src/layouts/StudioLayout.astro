@@ -36,6 +36,9 @@ const groups = [
       ...(isBotAdmin || isGlobalCollectionAdmin
         ? [{ href: "/studio/prints", label: "Print studio" }]
         : []),
+      ...(isBotAdmin || isGlobalCollectionAdmin || isPlatform
+        ? [{ href: "/studio/art", label: "Art Lab" }]
+        : []),
       { href: "/brand-kit", label: "Brand kit" },
       ...(isBotAdmin ? [{ href: "/admin/editorial", label: "EmDash editorial" }] : []),
       ...(isPlatform ? [{ href: "/platform-admin", label: "Platform administration" }] : []),
@@ -100,6 +103,15 @@ const label = roleLabel(user);
                 ]}
               >
                 {link.label}
+                {link.href === "/studio/art" ? (
+                  <span
+                    data-art-pending
+                    hidden
+                    class="ml-2 inline-flex min-w-4 items-center justify-center rounded-full bg-[var(--signal)] px-1 py-0.5 text-[0.5rem] font-semibold leading-none text-[var(--signal-ink)]"
+                  >
+                    0
+                  </span>
+                ) : null}
               </a>
             ))}
           </div>
@@ -119,4 +131,19 @@ const label = roleLabel(user);
       <slot />
     </div>
   </section>
+  <script is:inline>
+    (() => {
+      const badge = document.querySelector("[data-art-pending]");
+      if (!badge) return;
+      fetch("/api/v1/studio/art/count", { credentials: "same-origin" })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((data) => {
+          const count = Number(data?.count ?? 0);
+          if (!count) return;
+          badge.textContent = String(count);
+          badge.hidden = false;
+        })
+        .catch(() => undefined);
+    })();
+  </script>
 </BaseLayout>

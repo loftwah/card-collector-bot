@@ -9,14 +9,14 @@ the live APIs on 2026-11-09: OpenAI `gpt-image-2.6-sunburst`, FAL
 
 Available image models include:
 
-| Model | Best for |
-| --- | --- |
-| `gpt-image-2.6-sunburst` | Default. Strong prompt/layout adherence, consistent character edits, expression sets, character sheets, controlled compositions. |
-| `gpt-image-2.5-sunburst` / `-flare` | Previous-generation variants; use when 2.6 is unavailable. |
-| `gpt-image-2` | Strong general image generation and editing. |
-| `gpt-image-1.5` | Faster, cheaper general work. |
-| `gpt-image-1-mini` | Low-cost drafts and thumbnails, not final hero art. |
-| `chatgpt-image-latest` | General fallback. |
+| Model                               | Best for                                                                                                                         |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `gpt-image-2.6-sunburst`            | Default. Strong prompt/layout adherence, consistent character edits, expression sets, character sheets, controlled compositions. |
+| `gpt-image-2.5-sunburst` / `-flare` | Previous-generation variants; use when 2.6 is unavailable.                                                                       |
+| `gpt-image-2`                       | Strong general image generation and editing.                                                                                     |
+| `gpt-image-1.5`                     | Faster, cheaper general work.                                                                                                    |
+| `gpt-image-1-mini`                  | Low-cost drafts and thumbnails, not final hero art.                                                                              |
+| `chatgpt-image-latest`              | General fallback.                                                                                                                |
 
 Use `/v1/images/generations` for a new base image and `/v1/images/edits` for
 consistent variants. For a character family: generate one base mascot, then
@@ -27,13 +27,13 @@ in a circular crop.
 
 Use FAL when aesthetic breadth matters more than exact layout. Typical models:
 
-| Model family | Best for |
-| --- | --- |
-| `fal-ai/flux-pro/v1.1-ultra` | High-aesthetic hero art, wide banners, painterly and photoreal illustration. |
-| `fal-ai/flux/dev` / `fal-ai/flux/schnell` | Fast drafts, exploration, cheap iteration. |
-| `fal-ai/bytedance/seedream/v4` | Character scenes and stylised editorial images. |
-| `fal-ai/recraft/v3/text-to-image` | Flat illustration, icons, brand assets and precise vector-like shapes. |
-| `fal-ai/ideogram/v3` | Text-bearing graphics; never use for card or avatar lettering that code should own. |
+| Model family                              | Best for                                                                            |
+| ----------------------------------------- | ----------------------------------------------------------------------------------- |
+| `fal-ai/flux-pro/v1.1-ultra`              | High-aesthetic hero art, wide banners, painterly and photoreal illustration.        |
+| `fal-ai/flux/dev` / `fal-ai/flux/schnell` | Fast drafts, exploration, cheap iteration.                                          |
+| `fal-ai/bytedance/seedream/v4`            | Character scenes and stylised editorial images.                                     |
+| `fal-ai/recraft/v3/text-to-image`         | Flat illustration, icons, brand assets and precise vector-like shapes.              |
+| `fal-ai/ideogram/v3`                      | Text-bearing graphics; never use for card or avatar lettering that code should own. |
 
 FAL endpoints are `https://fal.run/fal-ai/...` for synchronous calls or
 `https://queue.fal.run/fal-ai/...` for queued work. Always bound the number of
@@ -52,7 +52,11 @@ Flux expects multipart form data with a `prompt` field.
 
 - Do not ship SVG avatars, flat vector portraits or procedural "designed in
   code" character art. The owner rejected that direction.
-- No generated lettering, serials, logos or UI. Real type belongs in code.
+- No invented official logos, serials or UI chrome. Real type belongs in code
+  on brand assets. A whole-card AI experiment may let the model author the
+  card's lettering; it must be inspected at 400 px and at the 214×300 Discord
+  inline size before approval. The current owner decision allows whole-card AI
+  in the Art Lab; see `docs/ART_LAB.md`.
 - Generate one base character, then edit it for the family so the character,
   paper, lighting and palette stay coherent.
 - Inspect the actual output. A clean detector is not acceptance.

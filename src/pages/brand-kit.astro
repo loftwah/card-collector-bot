@@ -1,12 +1,51 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 import manifest from "../../public/brand/kit/manifest.json";
+import { pageContext } from "../server/page";
+import { all, parseJson } from "../server/db";
+
+const ctx = await pageContext(Astro.request);
+const artLabRows = await all<{
+  id: string;
+  name: string;
+  width: number | null;
+  height: number | null;
+  provenance_json: string;
+  created_at: string;
+}>(
+  ctx.db,
+  `SELECT id, name, width, height, provenance_json, created_at
+     FROM fb_assets
+    WHERE tenant_id = ? AND kind = 'brand' AND visibility = 'public_export'
+      AND access_classification = 'public' AND review_status = 'approved'
+      AND archived_at IS NULL
+    ORDER BY created_at DESC LIMIT 12`,
+  ctx.tenant.id,
+);
+const artLabAssets = artLabRows
+  .map((asset) => {
+    const provenance = parseJson<Record<string, unknown>>(asset.provenance_json, {});
+    return provenance.art_lab
+      ? {
+          id: asset.id,
+          name: asset.name,
+          width: asset.width,
+          height: asset.height,
+          category: String(provenance.category ?? "other"),
+          method: String(provenance.method ?? "raw_art"),
+          created_at: asset.created_at,
+        }
+      : null;
+  })
+  .filter((asset): asset is NonNullable<typeof asset> => Boolean(asset));
 
 const identity = manifest.identity;
 const palette = identity?.palette ?? [];
-const asset = (id: string) => identity?.assets?.find((item: { id: string }) => item.id === id)?.path;
+const asset = (id: string) =>
+  identity?.assets?.find((item: { id: string }) => item.id === id)?.path;
 const mark = asset("mark-1024") ?? "/brand/kit/foil-standard/mark-1024.png";
-const markTransparent = asset("mark-transparent-1024") ?? "/brand/kit/foil-standard/mark-transparent-1024.png";
+const markTransparent =
+  asset("mark-transparent-1024") ?? "/brand/kit/foil-standard/mark-transparent-1024.png";
 const wordmark = asset("wordmark-png") ?? "/brand/wordmark.png";
 const wordmarkReverse = asset("wordmark-reverse") ?? "/brand/wordmark-reverse.png";
 const og = asset("social-og-png") ?? "/brand/kit/social/og-1200x630.png";
@@ -25,23 +64,44 @@ const cardBack = asset("card-back") ?? "/brand/card-back.webp";
       <div class="brand-hero__copy">
         <h1 class="brand-hero__title">The Foil Standard.</h1>
         <p class="brand-hero__lede">
-          A monochrome archive with one electric foil edge. Geist Serif gives the cabinet its
-          voice; Geist Sans and Mono keep the odds, serials and controls exact.
+          A monochrome archive with one electric foil edge. Geist Serif gives the cabinet its voice;
+          Geist Sans and Mono keep the odds, serials and controls exact.
         </p>
         <div class="brand-hero__actions">
-          <a class="btn btn-invert" href="#downloads">Download the kit</a>
-          <a class="btn btn-invert-outline" href="/">See it live</a>
+          <a class="btn btn-invert" href="#downloads">
+            Download the kit
+          </a>
+          <a class="btn btn-invert-outline" href="/">
+            See it live
+          </a>
         </div>
         <dl class="brand-hero__facts">
-          <div><dt>Identity</dt><dd>Foil Standard</dd></div>
-          <div><dt>Type</dt><dd>Geist Serif / Sans / Mono</dd></div>
-          <div><dt>Signal</dt><dd>Foil blue #1F5EFF</dd></div>
-          <div><dt>Licence</dt><dd>SIL OFL 1.1</dd></div>
+          <div>
+            <dt>Identity</dt>
+            <dd>Foil Standard</dd>
+          </div>
+          <div>
+            <dt>Type</dt>
+            <dd>Geist Serif / Sans / Mono</dd>
+          </div>
+          <div>
+            <dt>Signal</dt>
+            <dd>Foil blue #1F5EFF</dd>
+          </div>
+          <div>
+            <dt>Licence</dt>
+            <dd>SIL OFL 1.1</dd>
+          </div>
         </dl>
       </div>
       <div class="brand-hero__mark">
         <div class="brand-hero__tile">
-          <img src={mark} width="1024" height="1024" alt="The Foilbury mark: a paper F over a foil-blue card plane" />
+          <img
+            src={mark}
+            width="1024"
+            height="1024"
+            alt="The Foilbury mark: a paper F over a foil-blue card plane"
+          />
           <span class="brand-hero__holo" aria-hidden="true"></span>
         </div>
         <p class="brand-hero__caption">The mark · paper F over foil plane · chamfered fold</p>
@@ -61,39 +121,85 @@ const cardBack = asset("card-back") ?? "/brand/card-back.webp";
       </div>
       <div class="brand-marks">
         <figure class="brand-mark-card brand-mark-card--ink">
-          <img src={mark} width="1024" height="1024" alt="Foilbury app icon on ink" loading="lazy" />
-          <figcaption><span>Primary icon</span><span>Ink ground</span></figcaption>
+          <img
+            src={mark}
+            width="1024"
+            height="1024"
+            alt="Foilbury app icon on ink"
+            loading="lazy"
+          />
+          <figcaption>
+            <span>Primary icon</span>
+            <span>Ink ground</span>
+          </figcaption>
         </figure>
         <figure class="brand-mark-card brand-mark-card--paper">
-          <img src="/brand/kit/systems/foil-standard/icon-light-1024.png" width="1024" height="1024" alt="Foilbury mark on paper" loading="lazy" />
-          <figcaption><span>Light ground</span><span>Paper / ink / foil</span></figcaption>
+          <img
+            src="/brand/kit/systems/foil-standard/icon-light-1024.png"
+            width="1024"
+            height="1024"
+            alt="Foilbury mark on paper"
+            loading="lazy"
+          />
+          <figcaption>
+            <span>Light ground</span>
+            <span>Paper / ink / foil</span>
+          </figcaption>
         </figure>
         <figure class="brand-mark-card brand-mark-card--mono">
-          <img src={markTransparent} width="1024" height="1024" alt="Foilbury mark with a transparent background" loading="lazy" />
-          <figcaption><span>Transparent</span><span>For authored grounds</span></figcaption>
+          <img
+            src={markTransparent}
+            width="1024"
+            height="1024"
+            alt="Foilbury mark with a transparent background"
+            loading="lazy"
+          />
+          <figcaption>
+            <span>Transparent</span>
+            <span>For authored grounds</span>
+          </figcaption>
         </figure>
       </div>
       <div class="brand-mark-meta">
         <div>
           <h3>Small sizes</h3>
           <div class="brand-size-row" aria-label="Mark at shipping sizes">
-            <span><img src="/brand/favicon-16.png" width="16" height="16" alt="" /> 16</span>
-            <span><img src="/brand/favicon-32.png" width="32" height="32" alt="" /> 32</span>
-            <span><img src="/brand/favicon-48.png" width="48" height="48" alt="" /> 48</span>
-            <span><img src="/brand/icon-192.png" width="64" height="64" alt="" /> 192</span>
+            <span>
+              <img src="/brand/favicon-16.png" width="16" height="16" alt="" /> 16
+            </span>
+            <span>
+              <img src="/brand/favicon-32.png" width="32" height="32" alt="" /> 32
+            </span>
+            <span>
+              <img src="/brand/favicon-48.png" width="48" height="48" alt="" /> 48
+            </span>
+            <span>
+              <img src="/brand/icon-192.png" width="64" height="64" alt="" /> 192
+            </span>
           </div>
         </div>
         <div>
           <h3>Clearspace</h3>
-          <p>Keep one third of the F height clear on every side. Never redraw, recolour or add a glow to the mark.</p>
+          <p>
+            Keep one third of the F height clear on every side. Never redraw, recolour or add a glow
+            to the mark.
+          </p>
         </div>
         <div id="downloads">
           <h3>Download</h3>
           <p class="brand-links">
-            <a href={mark} download>PNG</a>
-            <a href="/brand/kit/foil-standard/mark.svg" download>SVG</a>
-            <a href="/brand/kit/foil-standard/glyph.svg" download>Glyph</a>
-            <a href="/brand/kit/manifest.json" download>Manifest</a>
+            <a href={mark} download>
+              PNG
+            </a>
+            <a href="/brand/kit/foil-standard/mark.svg" download>
+              SVG
+            </a>
+            <a href="/brand/kit/foil-standard/glyph.svg" download>
+              Glyph
+            </a>
+            <a href="/brand/kit/manifest.json" download>
+              Manifest
+            </a>
           </p>
         </div>
       </div>
@@ -123,14 +229,28 @@ const cardBack = asset("card-back") ?? "/brand/card-back.webp";
         </div>
         <div class="brand-type__row">
           <span class="brand-type__label">Data · Geist Mono</span>
-          <p class="brand-type__mono">
-            FB-1-DE-513D6B · PLAIN · 0.40% SHOWN CHANCE · 80 FOIL
-          </p>
+          <p class="brand-type__mono">FB-1-DE-513D6B · PLAIN · 0.40% SHOWN CHANCE · 80 FOIL</p>
         </div>
       </div>
       <div class="brand-wordmarks">
-        <figure><img src={wordmark} width="1600" height="400" alt="Foilbury wordmark on paper" loading="lazy" /></figure>
-        <figure><img src={wordmarkReverse} width="1600" height="400" alt="Foilbury wordmark on ink" loading="lazy" /></figure>
+        <figure>
+          <img
+            src={wordmark}
+            width="1600"
+            height="400"
+            alt="Foilbury wordmark on paper"
+            loading="lazy"
+          />
+        </figure>
+        <figure>
+          <img
+            src={wordmarkReverse}
+            width="1600"
+            height="400"
+            alt="Foilbury wordmark on ink"
+            loading="lazy"
+          />
+        </figure>
       </div>
     </div>
   </section>
@@ -148,7 +268,11 @@ const cardBack = asset("card-back") ?? "/brand/card-back.webp";
       <div class="brand-swatches">
         {palette.map((colour: { name: string; hex: string; role: string }) => (
           <div class="brand-swatch">
-            <span class="brand-swatch__chip" style={`background:${colour.hex}`} aria-hidden="true"></span>
+            <span
+              class="brand-swatch__chip"
+              style={`background:${colour.hex}`}
+              aria-hidden="true"
+            ></span>
             <strong>{colour.name}</strong>
             <code>{colour.hex}</code>
             <p>{colour.role}</p>
@@ -174,21 +298,53 @@ const cardBack = asset("card-back") ?? "/brand/card-back.webp";
         </p>
       </div>
       <figure class="brand-social">
-        <img src={og} width="1200" height="630" alt="Foilbury social preview with the serif headline Characters worth keeping" loading="lazy" />
-        <figcaption><span>Open Graph / Twitter · 1200 × 630</span><a href={og} download>Download PNG</a></figcaption>
+        <img
+          src={og}
+          width="1200"
+          height="630"
+          alt="Foilbury social preview with the serif headline Characters worth keeping"
+          loading="lazy"
+        />
+        <figcaption>
+          <span>Open Graph / Twitter · 1200 × 630</span>
+          <a href={og} download>
+            Download PNG
+          </a>
+        </figcaption>
       </figure>
       <div class="brand-surface-grid">
         <figure class="brand-surface">
-          <img src={avatar} width="512" height="512" alt="Foilbury Discord application avatar" loading="lazy" />
-          <figcaption><span>Discord avatar</span><span>512 × 512</span></figcaption>
+          <img
+            src={avatar}
+            width="512"
+            height="512"
+            alt="Foilbury Discord application avatar"
+            loading="lazy"
+          />
+          <figcaption>
+            <span>Discord avatar</span>
+            <span>512 × 512</span>
+          </figcaption>
         </figure>
         <figure class="brand-surface brand-surface--wide">
-          <img src={banner} width="1920" height="1080" alt="Foilbury Discord banner with the wordmark and card edge" loading="lazy" />
-          <figcaption><span>Discord banner</span><span>1920 × 1080 · 960 × 540</span></figcaption>
+          <img
+            src={banner}
+            width="1920"
+            height="1080"
+            alt="Foilbury Discord banner with the wordmark and card edge"
+            loading="lazy"
+          />
+          <figcaption>
+            <span>Discord banner</span>
+            <span>1920 × 1080 · 960 × 540</span>
+          </figcaption>
         </figure>
         <figure class="brand-surface brand-surface--card">
           <img src={cardBack} width="750" height="1050" alt="Foilbury card back" loading="lazy" />
-          <figcaption><span>Card back</span><span>750 × 1050</span></figcaption>
+          <figcaption>
+            <span>Card back</span>
+            <span>750 × 1050</span>
+          </figcaption>
         </figure>
         <figure class="brand-surface brand-surface--downloads">
           <div>
@@ -198,10 +354,18 @@ const cardBack = asset("card-back") ?? "/brand/card-back.webp";
               generation and no stock imagery.
             </p>
             <p class="brand-links">
-              <a href={og} download>Open Graph</a>
-              <a href={banner} download>Banner</a>
-              <a href={avatar} download>Avatar</a>
-              <a href={cardBack} download>Card back</a>
+              <a href={og} download>
+                Open Graph
+              </a>
+              <a href={banner} download>
+                Banner
+              </a>
+              <a href={avatar} download>
+                Avatar
+              </a>
+              <a href={cardBack} download>
+                Card back
+              </a>
             </p>
           </div>
         </figure>
@@ -219,22 +383,65 @@ const cardBack = asset("card-back") ?? "/brand/card-back.webp";
           investment language.
         </p>
       </div>
-      <blockquote>
-        “Free to play. Earned Foil only. The odds are on the label.”
-      </blockquote>
+      <blockquote>“Free to play. Earned Foil only. The odds are on the label.”</blockquote>
     </div>
   </section>
+
+  {artLabAssets.length ? (
+    <section class="brand-section" id="art-lab">
+      <div class="container">
+        <div class="brand-section__head">
+          <h2>Art Lab publications.</h2>
+          <p>
+            Brand directions reviewed and published through the Super Admin Art Lab. Each asset
+            carries its brief, provider, model, prompt, seed and publication approval in D1. These
+            are Foilbury-owned brand assets, not official third-party artwork.
+          </p>
+        </div>
+        <div class="brand-marks">
+          {artLabAssets.map((asset) => (
+            <figure class="brand-mark-card brand-mark-card--paper">
+              <img
+                src={`/media/public/${asset.id}`}
+                width={asset.width ?? undefined}
+                height={asset.height ?? undefined}
+                alt={asset.name}
+                loading="lazy"
+              />
+              <figcaption>
+                <span>{asset.name}</span>
+                <span>
+                  {asset.category} · {asset.method.replaceAll("_", " ")}
+                </span>
+              </figcaption>
+              <a
+                class="mt-2 inline-block font-mono text-[0.58rem] uppercase tracking-[0.1em] underline underline-offset-4"
+                href={`/media/public/${asset.id}`}
+                download
+              >
+                Download
+              </a>
+            </figure>
+          ))}
+        </div>
+      </div>
+    </section>
+  ) : null}
 
   <section class="brand-close">
     <div class="container brand-close__inner">
       <h2>Use it well.</h2>
       <p>
-        The complete manifest records every file, dimension and intended use. The historical
-        systems remain in the kit as reference, not as active identities.
+        The complete manifest records every file, dimension and intended use. The historical systems
+        remain in the kit as reference, not as active identities.
       </p>
       <div class="brand-close__actions">
-        <a class="btn btn-invert" href="/brand/kit/manifest.json" download>Download the manifest</a>
-        <a class="btn btn-invert-outline" href="/brand/kit/selection.json" download>Read the selection record</a>
+        <a class="btn btn-invert" href="/brand/kit/manifest.json" download>
+          Download the manifest
+        </a>
+        <a class="btn btn-invert-outline" href="/brand/kit/selection.json" download>
+          Read the selection record
+        </a>
       </div>
     </div>
   </section>

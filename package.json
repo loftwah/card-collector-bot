@@ -38,6 +38,8 @@
     "sources:import": "node scripts/sources/import.mjs",
     "cards:render": "node scripts/render-cards.mjs",
     "jobs:run": "node scripts/render-cards.mjs",
+    "art:run": "node scripts/art-lab-runner.mjs",
+    "art:dry": "node scripts/art-lab-runner.mjs --dry-run",
     "backup": "node scripts/backup.mjs",
     "restore": "node scripts/restore.mjs",
     "acceptance:local": "node scripts/acceptance-local.mjs",

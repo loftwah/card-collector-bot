@@ -83,7 +83,11 @@ function numericValue(node) {
 function segmentsIndex(node) {
   // segments[2] or (segments[2] ?? "")
   node = unparen(node);
-  if (node && ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) {
+  if (
+    node &&
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
+  ) {
     node = unparen(node.left);
   }
   if (
@@ -162,7 +166,10 @@ function parseCondition(expression, source) {
           }
         }
       }
-      if (op === ts.SyntaxKind.GreaterThanEqualsToken && node.left.getText(source) === "segments.length") {
+      if (
+        op === ts.SyntaxKind.GreaterThanEqualsToken &&
+        node.left.getText(source) === "segments.length"
+      ) {
         const value = numericValue(node.right);
         if (value !== null) out.lengths.push({ atLeast: value });
       }
@@ -309,7 +316,8 @@ function schemaSummary(schemaNode, source) {
       const name = property.name.getText(source).replace(/^["']|["']$/g, "");
       const text = property.initializer.getText(source).replace(/\s+/g, " ");
       const isOptional = /\.optional\(\)/.test(text);
-      const type = text.match(/z\.([a-zA-Z]+)/)?.[1] ?? (text.match(/^[A-Za-z_$][\w$]*/) ?? ["schema"])[0];
+      const type =
+        text.match(/z\.([a-zA-Z]+)/)?.[1] ?? (text.match(/^[A-Za-z_$][\w$]*/) ?? ["schema"])[0];
       fields.push(`${name}${isOptional ? "?" : ""}:${type}`);
     }
     return `{ ${fields.join(", ")} }${optional ? " (optional)" : ""}`;
@@ -326,7 +334,13 @@ function blockTerminates(node) {
 
 function extractRoutes() {
   const sourceText = fs.readFileSync(ROUTER, "utf8");
-  const source = ts.createSourceFile(ROUTER, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const source = ts.createSourceFile(
+    ROUTER,
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
   if (source.parseDiagnostics.length) {
     throw new Error(`router did not parse: ${source.parseDiagnostics.length} diagnostics`);
   }
@@ -510,11 +524,13 @@ function directAstroRoutes() {
         // branches, not as one route that would accept every path.
         if (relative === "api/v1/[...path].ts") continue;
         const text = fs.readFileSync(full, "utf8");
-        const methods = [...text.matchAll(/export\s+(?:async\s+)?(?:function|const)\s+(GET|POST|PUT|PATCH|DELETE|HEAD|ALL)\b/g)].map((match) => match[1]);
+        const methods = [
+          ...text.matchAll(
+            /export\s+(?:async\s+)?(?:function|const)\s+(GET|POST|PUT|PATCH|DELETE|HEAD|ALL)\b/g,
+          ),
+        ].map((match) => match[1]);
         if (!methods.length) continue;
-        const rest = relative
-          .replace(/\.(ts|js)$/, "")
-          .replace(/\[([^\]]+)\]/g, ":param");
+        const rest = relative.replace(/\.(ts|js)$/, "").replace(/\[([^\]]+)\]/g, ":param");
         const wildcard = /\[\s*\.\.\./.test(relative);
         const template = "/" + rest.replace(/\/:param$/, "").replace(/:param$/, "");
         for (const method of methods) {
@@ -625,7 +641,9 @@ function explicitMethod(node) {
 function extractApiCalls(text, isAstro) {
   const out = [];
   if (isAstro) {
-    for (const match of text.matchAll(/fetch\(\s*["'`](\/api\/[^"'`\s]*)["'`]([\s\S]{0,400}?)\)/g)) {
+    for (const match of text.matchAll(
+      /fetch\(\s*["'`](\/api\/[^"'`\s]*)["'`]([\s\S]{0,400}?)\)/g,
+    )) {
       const method = match[2].match(/method:\s*["']([A-Z]+)["']/)?.[1] ?? null;
       out.push({
         path: normalizeConsumerPath(match[1].replace(/\$\{[^}]+\}/g, ":param")),
@@ -634,7 +652,13 @@ function extractApiCalls(text, isAstro) {
     }
     return out;
   }
-  const source = ts.createSourceFile("consumer.tsx", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const source = ts.createSourceFile(
+    "consumer.tsx",
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
   function visit(node) {
     if (ts.isCallExpression(node)) {
       const name = functionName(node);
@@ -676,7 +700,9 @@ function routeExample(route) {
 function consumerRegex(template) {
   const pattern = template
     .split("/")
-    .map((segment) => (segment === ":param" ? "[^/]+" : segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))
+    .map((segment) =>
+      segment === ":param" ? "[^/]+" : segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+    )
     .join("/");
   return new RegExp(`^${pattern}/?$`);
 }
@@ -695,8 +721,7 @@ function exampleOf(template) {
 function consumerMatches(routes, template, method) {
   return routes.filter((route) => {
     if (method && route.method !== "ALL" && !route.method.split(",").includes(method)) return false;
-    if (route.wildcard)
-      return template === route.path || template.startsWith(`${route.path}/`);
+    if (route.wildcard) return template === route.path || template.startsWith(`${route.path}/`);
     // Intersection, not one-way containment: a literal consumer path can
     // target a parameterised route, and a parameterised consumer path can
     // target one of several literal route variants.
@@ -711,7 +736,8 @@ function resolveConsumer(routes, consumer) {
   const candidates = [consumer.path, studioAlias(consumer.path)];
   for (const candidate of candidates) {
     const matches = consumerMatches(routes, candidate, consumer.method);
-    if (matches.length) return { ...consumer, matches: matches.map((route) => `${route.method} ${route.path}`) };
+    if (matches.length)
+      return { ...consumer, matches: matches.map((route) => `${route.method} ${route.path}`) };
   }
   return { ...consumer, matches: [] };
 }
@@ -775,8 +801,14 @@ function renderMarkdown(inventory) {
     "`/api/v1/studio/*` is dispatched as `/api/v1/admin/*` after a live Studio role check; studio-alias branches are listed under the administrator path they execute.",
     "",
   );
+  lines.push(
+    "The `/api/v1/admin/art/*` branches delegate to `src/server/api/art-lab-routes.ts`. That module enforces the live Art Lab role, category and collection scope, CSRF, job claim state and audit events on every request; the table below records the delegation rather than expanding the module's checks.",
+    "",
+  );
   lines.push("## Dispatcher routes", "");
-  lines.push("| # | Method | Path | Guards | Agent scopes | Request schema | Side effects | Line |");
+  lines.push(
+    "| # | Method | Path | Guards | Agent scopes | Request schema | Side effects | Line |",
+  );
   lines.push("|---:|---|---|---|---|---|---|---:|");
   inventory.routes.forEach((route, index) => {
     const writes = route.calls.filter((name) => WRITE_PREFIX.test(name));
@@ -846,4 +878,11 @@ if (inventory.shadowed.length) {
   process.exitCode = 1;
 }
 
-export { build, extractRoutes, normalizedInventory, renderMarkdown, templateToRegex, consumerMatches };
+export {
+  build,
+  extractRoutes,
+  normalizedInventory,
+  renderMarkdown,
+  templateToRegex,
+  consumerMatches,
+};

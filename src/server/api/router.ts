@@ -163,6 +163,7 @@ import {
   submitPrintProposal,
 } from "../modules/prints";
 import { publicCard, publicSet } from "./public";
+import { routeArtLab } from "./art-lab-routes";
 import {
   acceptBotInvitation,
   createBot,
@@ -199,16 +200,8 @@ import {
   processGiftCampaign,
   sendAdminGift,
 } from "../modules/admin-gifts";
-import {
-  getMyMemberships,
-  joinMainAlbum,
-  setMemberStatus,
-} from "../modules/membership";
-import {
-  claimDailyMission,
-  getDailyMissions,
-  recordOwnedInspection,
-} from "../modules/missions";
+import { getMyMemberships, joinMainAlbum, setMemberStatus } from "../modules/membership";
+import { claimDailyMission, getDailyMissions, recordOwnedInspection } from "../modules/missions";
 import {
   compareNpc,
   createNpc,
@@ -535,7 +528,11 @@ async function installationScopeFor(
     );
   }
   if (!installation.game_enabled) {
-    throw new ApiError(403, "discord_game_disabled", "Discord gameplay is paused for that installation.");
+    throw new ApiError(
+      403,
+      "discord_game_disabled",
+      "Discord gameplay is paused for that installation.",
+    );
   }
   return resolveDiscordScope(ctx, installation, channelId);
 }
@@ -554,6 +551,147 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   const url = new URL(request.url);
   const isRead = method === "GET" || method === "HEAD";
   if (!isRead) assertCsrf(ctx, request);
+
+  // Art Lab: briefs, bounded generation jobs, candidates, feedback and the
+  // separate approval/publish path. `/api/v1/studio/art` is the same branch
+  // after the Studio alias; the module still performs the live role checks.
+  if (segments[0] === "admin" && segments[1] === "art") {
+    if (segments.length === 2 && method === "GET") {
+      return routeArtLab(request, ctx, segments, url, method);
+    }
+    if (segments.length === 3 && segments[2] === "options" && method === "GET") {
+      return routeArtLab(request, ctx, segments, url, method);
+    }
+    if (segments.length === 3 && segments[2] === "count" && method === "GET") {
+      return routeArtLab(request, ctx, segments, url, method);
+    }
+    if (segments.length === 3 && segments[2] === "agent" && method === "GET") {
+      return routeArtLab(request, ctx, segments, url, method);
+    }
+    if (segments.length === 3 && segments[2] === "briefs" && method === "POST") {
+      return routeArtLab(request, ctx, segments, url, method);
+    }
+    if (segments.length === 4 && segments[2] === "briefs" && segments[3] && method === "GET") {
+      return routeArtLab(request, ctx, segments, url, method);
+    }
+    if (
+      segments.length === 5 &&
+      segments[2] === "briefs" &&
+      segments[3] &&
+      segments[4] === "generate" &&
+      method === "POST"
+    ) {
+      return routeArtLab(request, ctx, segments, url, method);
+    }
+    if (
+      segments.length === 4 &&
+      segments[2] === "jobs" &&
+      segments[3] === "claim" &&
+      method === "POST"
+    ) {
+      return routeArtLab(request, ctx, segments, url, method);
+    }
+    if (
+      segments.length === 5 &&
+      segments[2] === "jobs" &&
+      segments[3] &&
+      segments[4] === "candidates" &&
+      method === "POST"
+    ) {
+      return routeArtLab(request, ctx, segments, url, method);
+    }
+    if (
+      segments.length === 5 &&
+      segments[2] === "jobs" &&
+      segments[3] &&
+      segments[4] === "complete" &&
+      method === "POST"
+    ) {
+      return routeArtLab(request, ctx, segments, url, method);
+    }
+    if (
+      segments.length === 5 &&
+      segments[2] === "jobs" &&
+      segments[3] &&
+      segments[4] === "fail" &&
+      method === "POST"
+    ) {
+      return routeArtLab(request, ctx, segments, url, method);
+    }
+    if (
+      segments.length === 5 &&
+      segments[2] === "jobs" &&
+      segments[3] &&
+      segments[4] === "cancel" &&
+      method === "POST"
+    ) {
+      return routeArtLab(request, ctx, segments, url, method);
+    }
+    if (
+      segments.length === 5 &&
+      segments[2] === "candidates" &&
+      segments[3] &&
+      segments[4] === "feedback" &&
+      method === "POST"
+    ) {
+      return routeArtLab(request, ctx, segments, url, method);
+    }
+    if (
+      segments.length === 5 &&
+      segments[2] === "candidates" &&
+      segments[3] &&
+      segments[4] === "approve" &&
+      method === "POST"
+    ) {
+      return routeArtLab(request, ctx, segments, url, method);
+    }
+    if (
+      segments.length === 5 &&
+      segments[2] === "candidates" &&
+      segments[3] &&
+      segments[4] === "reject" &&
+      method === "POST"
+    ) {
+      return routeArtLab(request, ctx, segments, url, method);
+    }
+    if (
+      segments.length === 5 &&
+      segments[2] === "candidates" &&
+      segments[3] &&
+      segments[4] === "publish" &&
+      method === "POST"
+    ) {
+      return routeArtLab(request, ctx, segments, url, method);
+    }
+    if (
+      segments.length === 5 &&
+      segments[2] === "candidates" &&
+      segments[3] &&
+      segments[4] === "render" &&
+      method === "POST"
+    ) {
+      return routeArtLab(request, ctx, segments, url, method);
+    }
+    if (
+      segments.length === 5 &&
+      segments[2] === "candidates" &&
+      segments[3] &&
+      segments[4] === "file" &&
+      method === "GET"
+    ) {
+      return routeArtLab(request, ctx, segments, url, method);
+    }
+    if (
+      segments.length === 5 &&
+      segments[2] === "approvals" &&
+      segments[3] &&
+      segments[4] === "rollback" &&
+      method === "POST"
+    ) {
+      return routeArtLab(request, ctx, segments, url, method);
+    }
+    return routeArtLab(request, ctx, segments, url, method);
+  }
 
   // Public showcase and member collections
   if (segments[0] === "collections" && segments.length === 1 && method === "GET") {
@@ -654,12 +792,22 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
 
   // Player and agent-authenticated collection workflows
-  if (segments.length === 2 && segments[0] === "me" && segments[1] === "preferences" && method === "GET") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "me" &&
+    segments[1] === "preferences" &&
+    method === "GET"
+  ) {
     playerWrite(ctx);
     requireScope(ctx, "profile:read");
     return json(await getPreferences(ctx));
   }
-  if (segments.length === 2 && segments[0] === "me" && segments[1] === "preferences" && method === "PATCH") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "me" &&
+    segments[1] === "preferences" &&
+    method === "PATCH"
+  ) {
     playerWrite(ctx);
     requireScope(ctx, "profile:write");
     const body = await readJson(
@@ -690,7 +838,12 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json(await updatePreferences(ctx, body));
   }
-  if (segments.length === 2 && segments[0] === "me" && segments[1] === "avatar" && method === "GET") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "me" &&
+    segments[1] === "avatar" &&
+    method === "GET"
+  ) {
     playerWrite(ctx);
     requireScope(ctx, "profile:read");
     const [avatar, bannerRow, discord] = await Promise.all([
@@ -719,18 +872,36 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       },
     });
   }
-  if (segments.length === 3 && segments[0] === "me" && segments[1] === "avatar" && segments[2] === "default" && method === "POST") {
+  if (
+    segments.length === 3 &&
+    segments[0] === "me" &&
+    segments[1] === "avatar" &&
+    segments[2] === "default" &&
+    method === "POST"
+  ) {
     playerWrite(ctx);
     requireScope(ctx, "profile:write");
     const body = await readJson(request, z.object({ key: z.string().min(1).max(40) }));
     return json({ avatar: await setDefaultAvatar(ctx, body.key) });
   }
-  if (segments.length === 3 && segments[0] === "me" && segments[1] === "avatar" && segments[2] === "discord" && method === "POST") {
+  if (
+    segments.length === 3 &&
+    segments[0] === "me" &&
+    segments[1] === "avatar" &&
+    segments[2] === "discord" &&
+    method === "POST"
+  ) {
     playerWrite(ctx);
     requireScope(ctx, "profile:write");
     return json({ avatar: await setDiscordAvatar(ctx) });
   }
-  if (segments.length === 3 && segments[0] === "me" && segments[1] === "avatar" && segments[2] === "upload" && method === "POST") {
+  if (
+    segments.length === 3 &&
+    segments[0] === "me" &&
+    segments[1] === "avatar" &&
+    segments[2] === "upload" &&
+    method === "POST"
+  ) {
     playerWrite(ctx);
     requireScope(ctx, "profile:write");
     const body = await readJson(
@@ -750,12 +921,23 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json({ avatar: await setUploadedAvatar(ctx, body.renditions) });
   }
-  if (segments.length === 2 && segments[0] === "me" && segments[1] === "avatar" && method === "DELETE") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "me" &&
+    segments[1] === "avatar" &&
+    method === "DELETE"
+  ) {
     playerWrite(ctx);
     requireScope(ctx, "profile:write");
     return json({ avatar: await removeAccountAvatar(ctx) });
   }
-  if (segments.length === 3 && segments[0] === "me" && segments[1] === "banner" && segments[2] === "upload" && method === "POST") {
+  if (
+    segments.length === 3 &&
+    segments[0] === "me" &&
+    segments[1] === "banner" &&
+    segments[2] === "upload" &&
+    method === "POST"
+  ) {
     playerWrite(ctx);
     requireScope(ctx, "profile:write");
     const body = await readJson(
@@ -775,7 +957,12 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json({ banner: await setUploadedBanner(ctx, body.renditions) });
   }
-  if (segments.length === 2 && segments[0] === "me" && segments[1] === "banner" && method === "DELETE") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "me" &&
+    segments[1] === "banner" &&
+    method === "DELETE"
+  ) {
     playerWrite(ctx);
     requireScope(ctx, "profile:write");
     await removeAccountBanner(ctx);
@@ -836,7 +1023,13 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     const body = await readJson(request, z.object({ favourite: z.boolean() }));
     return json(await toggleFavourite(ctx, segments[1], body.favourite));
   }
-  if (segments[0] === "instances" && segments[1] && segments.length === 3 && segments[2] === "lock" && method === "POST") {
+  if (
+    segments[0] === "instances" &&
+    segments[1] &&
+    segments.length === 3 &&
+    segments[2] === "lock" &&
+    method === "POST"
+  ) {
     playerWrite(ctx);
     requireScope(ctx, "inventory:write");
     const body = await readJson(request, z.object({ locked: z.boolean() }));
@@ -884,7 +1077,12 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       }),
     );
   }
-  if (segments.length === 2 && segments[0] === "rewards" && segments[1] === "claim" && method === "POST") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "rewards" &&
+    segments[1] === "claim" &&
+    method === "POST"
+  ) {
     playerWrite(ctx);
     requireScope(ctx, "reward:claim");
     const body = await readJson(request, z.object({}));
@@ -928,7 +1126,12 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       }),
     );
   }
-  if (segments[0] === "recycle" && segments[1] === "preview" && segments.length === 2 && method === "POST") {
+  if (
+    segments[0] === "recycle" &&
+    segments[1] === "preview" &&
+    segments.length === 2 &&
+    method === "POST"
+  ) {
     playerWrite(ctx);
     requireScope(ctx, "inventory:read");
     const body = await readJson(request, z.object({ instanceId: idSchema }));
@@ -950,7 +1153,13 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       }),
     );
   }
-  if (segments[0] === "sets" && segments[1] && segments[2] === "claim" && segments.length === 3 && method === "POST") {
+  if (
+    segments[0] === "sets" &&
+    segments[1] &&
+    segments[2] === "claim" &&
+    segments.length === 3 &&
+    method === "POST"
+  ) {
     playerWrite(ctx);
     requireScope(ctx, "reward:claim");
     const body = await readJson(request, z.object({}));
@@ -997,7 +1206,12 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     if (action === "decline") return json(await declineTrade(ctx, segments[1]));
     return json(await cancelTrade(ctx, segments[1]));
   }
-  if (segments.length === 2 && segments[0] === "trades" && segments[1] === "expire" && method === "POST") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "trades" &&
+    segments[1] === "expire" &&
+    method === "POST"
+  ) {
     ensureOps(ctx);
     return json(await expireTrades(ctx));
   }
@@ -1020,14 +1234,28 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     const idempotency = await idempotencyInput(request, body);
     return json(await createGift(ctx, { ...body, idempotencyKey: idempotency.key }));
   }
-  if (segments[0] === "me" && segments[1] === "memberships" && segments.length === 2 && method === "GET") {
+  if (
+    segments[0] === "me" &&
+    segments[1] === "memberships" &&
+    segments.length === 2 &&
+    method === "GET"
+  ) {
     playerWrite(ctx);
     requireScope(ctx, "profile:read");
     return json({ items: await getMyMemberships(ctx) });
   }
-  if (segments[0] === "me" && segments[1] === "join" && segments.length === 2 && method === "POST") {
+  if (
+    segments[0] === "me" &&
+    segments[1] === "join" &&
+    segments.length === 2 &&
+    method === "POST"
+  ) {
     if (ctx.actor.type === "agent") {
-      throw new ApiError(403, "human_required", "Album admission is a human decision and cannot be made by an agent grant.");
+      throw new ApiError(
+        403,
+        "human_required",
+        "Album admission is a human decision and cannot be made by an agent grant.",
+      );
     }
     return json(await joinMainAlbum(ctx));
   }
@@ -1055,12 +1283,22 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     requireScope(ctx, "profile:read");
     return json({ items: await listAchievements(ctx) });
   }
-  if (segments[0] === "achievements" && segments[1] === "evaluate" && segments.length === 2 && method === "POST") {
+  if (
+    segments[0] === "achievements" &&
+    segments[1] === "evaluate" &&
+    segments.length === 2 &&
+    method === "POST"
+  ) {
     playerWrite(ctx);
     requireScope(ctx, "reward:claim");
     return json(await evaluateAchievements(ctx));
   }
-  if (segments[0] === "gifts" && segments[1] === "received" && segments.length === 2 && method === "GET") {
+  if (
+    segments[0] === "gifts" &&
+    segments[1] === "received" &&
+    segments.length === 2 &&
+    method === "GET"
+  ) {
     playerWrite(ctx);
     requireScope(ctx, "trade:write");
     return json({ items: await listMyGiftReceipts(ctx) });
@@ -1085,40 +1323,80 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json(await createShareLink(ctx, body));
   }
-  if (segments[0] === "shares" && segments[1] && segments[2] === "revoke" && segments.length === 3 && method === "POST") {
+  if (
+    segments[0] === "shares" &&
+    segments[1] &&
+    segments[2] === "revoke" &&
+    segments.length === 3 &&
+    method === "POST"
+  ) {
     playerWrite(ctx);
     requireScope(ctx, "profile:write");
     return json(await revokeShareLink(ctx, segments[1]));
   }
 
   // Daily missions: trusted committed events, one claim per mission per UTC day.
-  if (segments[0] === "missions" && segments[1] === "inspect" && segments.length === 3 && segments[2] && method === "POST") {
+  if (
+    segments[0] === "missions" &&
+    segments[1] === "inspect" &&
+    segments.length === 3 &&
+    segments[2] &&
+    method === "POST"
+  ) {
     playerWrite(ctx);
     return json(await recordOwnedInspection(ctx, segments[2]));
   }
-  if (segments[0] === "missions" && segments[1] === "daily" && segments.length === 2 && method === "GET") {
+  if (
+    segments[0] === "missions" &&
+    segments[1] === "daily" &&
+    segments.length === 2 &&
+    method === "GET"
+  ) {
     playerWrite(ctx);
     requireScope(ctx, "missions:read");
     return json(await getDailyMissions(ctx));
   }
-  if (segments[0] === "missions" && segments[1] === "daily" && segments[2] === "claim" && segments.length === 3 && method === "POST") {
+  if (
+    segments[0] === "missions" &&
+    segments[1] === "daily" &&
+    segments[2] === "claim" &&
+    segments.length === 3 &&
+    method === "POST"
+  ) {
     playerWrite(ctx);
     requireScope(ctx, "missions:claim");
     const body = await readJson(request, z.object({ key: z.string().min(2).max(40) }));
-    return json(await claimDailyMission(ctx, body.key, request.headers.get("idempotency-key") ?? undefined));
+    return json(
+      await claimDailyMission(ctx, body.key, request.headers.get("idempotency-key") ?? undefined),
+    );
   }
 
   // Persistent synthetic NPC collectors. Human-readable lounge views are
   // member-scoped; every mutation is Bot-scoped and capability-checked.
-  if (segments[0] === "npcs" && segments.length === 2 && segments[1] === "lounge" && method === "GET") {
+  if (
+    segments[0] === "npcs" &&
+    segments.length === 2 &&
+    segments[1] === "lounge" &&
+    method === "GET"
+  ) {
     requireNpcRead(ctx);
     return json({ items: await listNpcProfiles(ctx) });
   }
-  if (segments[0] === "npcs" && segments.length === 2 && segments[1] === "presets" && method === "GET") {
+  if (
+    segments[0] === "npcs" &&
+    segments.length === 2 &&
+    segments[1] === "presets" &&
+    method === "GET"
+  ) {
     requireNpcManager(ctx);
     return json({ items: await listNpcPresets() });
   }
-  if (segments[0] === "npcs" && segments.length === 2 && segments[1] === "admin" && method === "GET") {
+  if (
+    segments[0] === "npcs" &&
+    segments.length === 2 &&
+    segments[1] === "admin" &&
+    method === "GET"
+  ) {
     return json(await getNpcAdminOverview(ctx));
   }
   if (segments[0] === "npcs" && segments.length === 1 && method === "GET") {
@@ -1144,7 +1422,12 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json(await createNpc(ctx, body), 201);
   }
-  if (segments[0] === "npcs" && segments.length === 2 && segments[1] === "batch" && method === "POST") {
+  if (
+    segments[0] === "npcs" &&
+    segments.length === 2 &&
+    segments[1] === "batch" &&
+    method === "POST"
+  ) {
     requireNpcManager(ctx);
     const body = await readJson(
       request,
@@ -1156,7 +1439,12 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json({ items: await createNpcBatch(ctx, body) }, 201);
   }
-  if (segments[0] === "npcs" && segments.length === 2 && segments[1] === "limits" && method === "PATCH") {
+  if (
+    segments[0] === "npcs" &&
+    segments.length === 2 &&
+    segments[1] === "limits" &&
+    method === "PATCH"
+  ) {
     requireNpcManager(ctx);
     const body = await readJson(
       request,
@@ -1168,7 +1456,12 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json(await setNpcLimits(ctx, body));
   }
-  if (segments[0] === "npcs" && segments.length === 2 && segments[1] === "run-scheduled" && method === "POST") {
+  if (
+    segments[0] === "npcs" &&
+    segments.length === 2 &&
+    segments[1] === "run-scheduled" &&
+    method === "POST"
+  ) {
     requireNpcManager(ctx);
     return json(await runDueNpcs(ctx.db, ctx));
   }
@@ -1232,7 +1525,8 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
         await createNpcTrade(ctx, {
           npcId,
           ...body,
-          idempotencyKey: body.idempotencyKey ?? request.headers.get("idempotency-key") ?? undefined,
+          idempotencyKey:
+            body.idempotencyKey ?? request.headers.get("idempotency-key") ?? undefined,
         }),
         201,
       );
@@ -1241,15 +1535,31 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       return json(await previewNpcAction(ctx, npcId));
     }
     if (segments.length === 3 && segments[2] === "play" && method === "POST") {
-      const body = await readJson(request, z.object({ idempotencyKey: z.string().min(8).max(200).optional() }).optional());
+      const body = await readJson(
+        request,
+        z.object({ idempotencyKey: z.string().min(8).max(200).optional() }).optional(),
+      );
       return json(await playNpcOnce(ctx, npcId, body?.idempotencyKey));
     }
     if (segments.length === 3 && segments[2] === "run" && method === "POST") {
-      const body = await readJson(request, z.object({ count: z.number().int().min(1).max(10).default(1) }));
+      const body = await readJson(
+        request,
+        z.object({ count: z.number().int().min(1).max(10).default(1) }),
+      );
       return json(await runNpcBatch(ctx, npcId, body.count));
     }
-    if (segments.length === 3 && ["pause", "resume", "retire"].includes(segments[2] ?? "") && method === "POST") {
-      return json(await setNpcStatus(ctx, npcId, segments[2] === "pause" ? "paused" : segments[2] === "retire" ? "retired" : "active"));
+    if (
+      segments.length === 3 &&
+      ["pause", "resume", "retire"].includes(segments[2] ?? "") &&
+      method === "POST"
+    ) {
+      return json(
+        await setNpcStatus(
+          ctx,
+          npcId,
+          segments[2] === "pause" ? "paused" : segments[2] === "retire" ? "retired" : "active",
+        ),
+      );
     }
   }
 
@@ -1265,12 +1575,24 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     if (ctx.actor.type === "agent") requireScope(ctx, "trade:write");
     return json(await getNpcTrade(ctx, segments[1]));
   }
-  if (segments[0] === "npc-trades" && segments[1] && segments[2] === "confirm" && segments.length === 3 && method === "POST") {
+  if (
+    segments[0] === "npc-trades" &&
+    segments[1] &&
+    segments[2] === "confirm" &&
+    segments.length === 3 &&
+    method === "POST"
+  ) {
     playerWrite(ctx);
     if (ctx.actor.type === "agent") requireScope(ctx, "trade:write");
     return json(await confirmNpcTrade(ctx, segments[1]));
   }
-  if (segments[0] === "npc-trades" && segments[1] && segments[2] === "cancel" && segments.length === 3 && method === "POST") {
+  if (
+    segments[0] === "npc-trades" &&
+    segments[1] &&
+    segments[2] === "cancel" &&
+    segments.length === 3 &&
+    method === "POST"
+  ) {
     playerWrite(ctx);
     if (ctx.actor.type === "agent") requireScope(ctx, "trade:write");
     return json(await cancelNpcTrade(ctx, segments[1]));
@@ -1457,7 +1779,10 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
           rightsNote: z.string().max(500).nullable().optional(),
           sourceRefs: z.array(z.string().url().max(500)).max(12).optional(),
           provenance: z.record(z.string(), z.unknown()).optional(),
-          finishKeys: z.array(z.enum(["plain", "silver", "gold", "holographic"])).max(4).optional(),
+          finishKeys: z
+            .array(z.enum(["plain", "silver", "gold", "holographic"]))
+            .max(4)
+            .optional(),
           status: z.enum(["draft", "proposed"]).optional(),
         }),
       );
@@ -1480,12 +1805,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     const body = await readJson(request, z.object({ targetId: idSchema }));
     return json(await mergeCards(ctx, segments[2], body.targetId));
   }
-  if (
-    segments[0] === "admin" &&
-    segments[1] === "prints" &&
-    segments[2] &&
-    segments.length === 3
-  ) {
+  if (segments[0] === "admin" && segments[1] === "prints" && segments[2] && segments.length === 3) {
     if (method === "GET") {
       ensureContentRead(ctx);
       const [proposal, reviews] = await Promise.all([
@@ -1519,7 +1839,10 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
           backgroundAssetId: idSchema.nullable().optional(),
           rightsNote: z.string().max(500).nullable().optional(),
           sourceRefs: z.array(z.string().url().max(500)).max(12).optional(),
-          finishKeys: z.array(z.enum(["plain", "silver", "gold", "holographic"])).max(4).optional(),
+          finishKeys: z
+            .array(z.enum(["plain", "silver", "gold", "holographic"]))
+            .max(4)
+            .optional(),
           expectedRevision: z.number().int().positive().optional(),
           note: z.string().max(500).optional(),
         }),
@@ -1596,7 +1919,12 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       }),
     });
   }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "recipes" && method === "GET") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "admin" &&
+    segments[1] === "recipes" &&
+    method === "GET"
+  ) {
     ensureContentRead(ctx);
     return json({
       items: await all(
@@ -1622,11 +1950,21 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json({ card: await setCardStatus(ctx, segments[2], body.status) });
   }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "tenant" && method === "GET") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "admin" &&
+    segments[1] === "tenant" &&
+    method === "GET"
+  ) {
     ensureContentRead(ctx);
     return json(await getTenantPublication(ctx));
   }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "tenant" && method === "PATCH") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "admin" &&
+    segments[1] === "tenant" &&
+    method === "PATCH"
+  ) {
     ensureContentWrite(ctx);
     const body = await readJson(
       request,
@@ -1637,11 +1975,21 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json(await updateTenantPublication(ctx, body));
   }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "taxonomy" && method === "GET") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "admin" &&
+    segments[1] === "taxonomy" &&
+    method === "GET"
+  ) {
     ensureContentRead(ctx);
     return json(await getTaxonomy(ctx));
   }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "taxonomy" && method === "POST") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "admin" &&
+    segments[1] === "taxonomy" &&
+    method === "POST"
+  ) {
     ensureContentWrite(ctx);
     const body = await readJson(
       request,
@@ -1833,15 +2181,30 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
 
   // Economy and wallet administration
-  if (isStudio && segments.length === 2 && segments[1] === "wallet-recipients" && method === "GET") {
+  if (
+    isStudio &&
+    segments.length === 2 &&
+    segments[1] === "wallet-recipients" &&
+    method === "GET"
+  ) {
     ensureEconomyWrite(ctx);
     return json({ items: await listGrantRecipients(ctx) });
   }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "economy" && method === "GET") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "admin" &&
+    segments[1] === "economy" &&
+    method === "GET"
+  ) {
     ensureEconomyRead(ctx);
     return json(await getEconomy(ctx));
   }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "economy" && method === "PATCH") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "admin" &&
+    segments[1] === "economy" &&
+    method === "PATCH"
+  ) {
     ensureEconomyWrite(ctx);
     requireRecentStrongAuth(ctx, 30);
     const body = await readJson(
@@ -1904,17 +2267,32 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     ensureEconomyRead(ctx);
     return json(await getWalletSummary(ctx.db, ctx.tenant.id, segments[2], 100));
   }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "audit" && method === "GET") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "admin" &&
+    segments[1] === "audit" &&
+    method === "GET"
+  ) {
     ensureEconomyRead(ctx);
     return json({ items: await listAudit(ctx, Number(url.searchParams.get("limit") ?? 100)) });
   }
 
   // Agents and members
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "agents" && method === "GET") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "admin" &&
+    segments[1] === "agents" &&
+    method === "GET"
+  ) {
     ensureOwner(ctx);
     return json({ items: await listAgentGrants(ctx) });
   }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "agents" && method === "POST") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "admin" &&
+    segments[1] === "agents" &&
+    method === "POST"
+  ) {
     ensureOwner(ctx);
     const body = await readJson(
       request,
@@ -1942,15 +2320,30 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   // Operational pickers need a name and role, never contact data. Economy,
   // gift and agent screens use this directory; the contact-bearing member
   // records below stay behind the people-administration capability.
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "people" && method === "GET") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "admin" &&
+    segments[1] === "people" &&
+    method === "GET"
+  ) {
     ensureOps(ctx);
     return json({ items: await listTenantMembers(ctx) });
   }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "members" && method === "GET") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "admin" &&
+    segments[1] === "members" &&
+    method === "GET"
+  ) {
     ensureMemberAdmin(ctx);
     return json({ items: await listMembers(ctx) });
   }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "team" && method === "GET") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "admin" &&
+    segments[1] === "team" &&
+    method === "GET"
+  ) {
     ensureMemberAdmin(ctx);
     const { botForTenant } = await import("../modules/bots");
     const bot = await botForTenant(ctx.db, ctx.tenant.id);
@@ -2192,7 +2585,12 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       }),
     );
   }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "jobs" && method === "GET") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "admin" &&
+    segments[1] === "jobs" &&
+    method === "GET"
+  ) {
     ensureOps(ctx);
     return json({ items: await listRenderJobs(ctx, url.searchParams.get("status") ?? undefined) });
   }
@@ -2337,11 +2735,21 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
 
   // Topics and operations
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "topics" && method === "GET") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "admin" &&
+    segments[1] === "topics" &&
+    method === "GET"
+  ) {
     ensureContentRead(ctx);
     return json({ items: await listTopicPolicies(ctx) });
   }
-  if (segments.length === 2 && segments[0] === "admin" && segments[1] === "topics" && method === "POST") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "admin" &&
+    segments[1] === "topics" &&
+    method === "POST"
+  ) {
     ensureContentWrite(ctx);
     const body = await readJson(
       request,
@@ -2353,7 +2761,13 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json({ policy: await createTopicPolicy(ctx, body) }, 201);
   }
-  if (segments.length === 3 && segments[0] === "admin" && segments[1] === "topics" && segments[2] && method === "PATCH") {
+  if (
+    segments.length === 3 &&
+    segments[0] === "admin" &&
+    segments[1] === "topics" &&
+    segments[2] &&
+    method === "PATCH"
+  ) {
     ensureContentWrite(ctx);
     const body = await readJson(request, z.object({ active: z.boolean() }));
     await setTopicPolicyActive(ctx, segments[2], body.active);
@@ -2407,7 +2821,12 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     const result = await createBot(ctx, body);
     return json(result, result.created ? 201 : 200);
   }
-  if (segments.length === 2 && segments[0] === "invitations" && segments[1] === "accept" && method === "POST") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "invitations" &&
+    segments[1] === "accept" &&
+    method === "POST"
+  ) {
     const body = await readJson(request, z.object({ token: z.string().min(20).max(300) }));
     return json(await acceptBotInvitation(ctx, body.token));
   }
@@ -2445,7 +2864,9 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       throw new ApiError(404, "bot_not_found", "No Bot is attached to this administration area.");
     await ctx.db.batch([
       ctx.db
-        .prepare("UPDATE fb_bots SET ai_art_enabled = ?, updated_at = ? WHERE id = ? AND tenant_id = ?")
+        .prepare(
+          "UPDATE fb_bots SET ai_art_enabled = ?, updated_at = ? WHERE id = ? AND tenant_id = ?",
+        )
         .bind(body.aiArtEnabled ? 1 : 0, nowIso(), bot.id, ctx.tenant.id),
       ctx.db
         .prepare(
@@ -2465,7 +2886,10 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
           nowIso(),
         ),
     ]);
-    return json({ bot: { ...bot, ai_art_enabled: body.aiArtEnabled ? 1 : 0 }, aiArtEnabled: body.aiArtEnabled });
+    return json({
+      bot: { ...bot, ai_art_enabled: body.aiArtEnabled ? 1 : 0 },
+      aiArtEnabled: body.aiArtEnabled,
+    });
   }
   if (
     segments.length === 3 &&
@@ -2506,7 +2930,11 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       throw new ApiError(404, "bot_not_found", "No Bot is attached to this administration area.");
     const targetUserId = segments[3]!;
     if (targetUserId === bot.owner_user_id) {
-      throw new ApiError(422, "owner_capability_fixed", "The Bot Owner's authority is not edited as a Bot Admin grant.");
+      throw new ApiError(
+        422,
+        "owner_capability_fixed",
+        "The Bot Owner's authority is not edited as a Bot Admin grant.",
+      );
     }
     const body = await readJson(
       request,
@@ -2579,7 +3007,11 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
         ),
     ]);
     if ((updated[0]?.meta?.changes ?? 0) !== 1) {
-      throw new ApiError(409, "admin_not_found", "That Bot Admin was not updated; reload the team.");
+      throw new ApiError(
+        409,
+        "admin_not_found",
+        "That Bot Admin was not updated; reload the team.",
+      );
     }
     return json({
       ok: true,
@@ -2865,7 +3297,12 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
   }
 
   // Platform Administration. Access admission is never treated as a role.
-  if (segments.length === 2 && segments[0] === "platform" && segments[1] === "overview" && method === "GET") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "platform" &&
+    segments[1] === "overview" &&
+    method === "GET"
+  ) {
     requireSuperAdmin(ctx);
     const counts = await first<Record<string, number>>(
       ctx.db,
@@ -2912,7 +3349,12 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json({ counts, bots, installations, access, admins, audit, current_user: ctx.user });
   }
-  if (segments.length === 2 && segments[0] === "platform" && segments[1] === "accounts" && method === "GET") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "platform" &&
+    segments[1] === "accounts" &&
+    method === "GET"
+  ) {
     requireSuperAdmin(ctx);
     const accounts = await all<Record<string, unknown>>(
       ctx.db,
@@ -2925,7 +3367,12 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     );
     return json({ items: accounts });
   }
-  if (segments.length === 2 && segments[0] === "platform" && segments[1] === "people" && method === "GET") {
+  if (
+    segments.length === 2 &&
+    segments[0] === "platform" &&
+    segments[1] === "people" &&
+    method === "GET"
+  ) {
     requireSuperAdmin(ctx);
     return json({
       items: await listPlatformPeople(ctx, {
