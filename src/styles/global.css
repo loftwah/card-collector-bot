@@ -4642,6 +4642,37 @@ html[data-motion="reduced"] .layered-card__effect {
   padding-bottom: 1.25rem;
 }
 
+.draw-next {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1.25rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--signal);
+  border-radius: 7px;
+  background: var(--panel-2);
+}
+
+.draw-next__title {
+  margin-top: 0.15rem;
+  font-family: var(--font-display);
+  font-size: clamp(1.25rem, 2.4vw, 1.65rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.draw-next__copy {
+  max-width: 46rem;
+  margin-top: 0.3rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
 .draw-page-footnote {
   max-width: 60rem;
   color: var(--muted);

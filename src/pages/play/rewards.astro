@@ -6,20 +6,85 @@ import { pageContext } from "../../server/page";
 import { listSets } from "../../server/modules/catalogue";
 import { getEconomy, getLedger } from "../../server/modules/economy";
 import { getWalletSummary } from "../../server/modules/wallet";
+import { getCabinet } from "../../server/modules/cabinet";
 import { first } from "../../server/db";
 import { formatDual } from "../../lib/utils";
 
 const ctx = await pageContext(Astro.request);
 const user = ctx.user!;
-const [sets, economy, wallet, ledger, lastClaim] = await Promise.all([
+const [sets, economy, wallet, ledger, lastClaim, cabinet, duplicateRow] = await Promise.all([
   listSets(ctx, user.id),
   getEconomy(ctx),
   getWalletSummary(ctx.db, ctx.tenant.id, user.id, 1),
   getLedger(ctx, user.id, 30),
   first<{ created_at: string }>(ctx.db, "SELECT created_at FROM fb_reward_claims WHERE tenant_id = ? AND user_id = ? AND rule_key = 'daily-allowance' ORDER BY created_at DESC LIMIT 1", ctx.tenant.id, user.id),
+  getCabinet(ctx).catch(() => null),
+  first<{ duplicates: number }>(
+    ctx.db,
+    `SELECT MAX(0, COUNT(*) - COUNT(DISTINCT card_id)) AS duplicates
+       FROM fb_card_instances
+      WHERE tenant_id = ? AND user_id = ? AND status IN ('owned','reserved')`,
+    ctx.tenant.id,
+    user.id,
+  ),
 ]);
 const nextEligible = lastClaim ? new Date(new Date(lastClaim.created_at).getTime() + economy.daily_cooldown_seconds * 1000).toISOString() : null;
 const canClaim = !nextEligible || new Date(nextEligible) <= new Date();
+const closest = cabinet?.close[0] ?? null;
+const cheapest = cabinet?.stats.cheapestCapsule ?? null;
+const duplicates = duplicateRow?.duplicates ?? 0;
+const shortfall = cheapest ? Math.max(0, cheapest.price - wallet.balance) : 0;
+const nextAction = canClaim
+  ? {
+      title: `Claim your ${economy.daily_reward} Foil`,
+      copy: "Your daily allowance is ready. It is the simplest way to earn the next capsule without spending anything.",
+      href: "#daily-allowance",
+      cta: "Claim daily Foil",
+    }
+  : shortfall > 0 && cheapest
+    ? {
+        title: `You need ${shortfall} more Foil`,
+        copy: `The cheapest capsule is ${cheapest.name} at ${cheapest.price} Foil. Missions and achievements are the other earned routes.`,
+        href: "/play/missions",
+        cta: "Open missions",
+      }
+    : closest
+      ? {
+          title: `Finish ${closest.collection.name}`,
+          copy: `${closest.ownedSubjects}/${closest.totalSubjects} subjects found — ${closest.missingSubjects} to go. It is the closest complete shelf in your cabinet.`,
+          href: `/play/collection?collection=${closest.collection.slug}`,
+          cta: "Open the binder",
+        }
+      : duplicates > 0
+        ? {
+            title: "Put duplicates to work",
+            copy: `You hold ${duplicates} duplicate ${duplicates === 1 ? "copy" : "copies"}. Trade them with another collector or keep them for finish mastery.`,
+            href: "/play/trades",
+            cta: "Open trades",
+          }
+        : {
+            title: "Open your first capsule",
+            copy: "Choose a capsule, review its exact contents and odds, and keep the copy.",
+            href: "/play/draw",
+            cta: "Choose a capsule",
+          };
+const ledgerLabel = (entry: { kind: string; reference_type: string | null }) => {
+  const reference = entry.reference_type ?? "";
+  if (reference.includes("draw")) return "Capsule opening";
+  if (reference.includes("achievement")) return "Achievement reward";
+  if (reference.includes("mission")) return "Mission reward";
+  if (reference.includes("gift")) return "Gift";
+  if (reference.includes("trade")) return "Trade";
+  if (reference.includes("recycle")) return "Recycle";
+  if (reference.includes("reward")) return "Daily or set reward";
+  if (entry.kind === "spend") return "Capsule opening";
+  if (entry.kind === "issue") return "Foil earned";
+  if (entry.kind === "transfer_in") return "Trade received";
+  if (entry.kind === "transfer_out") return "Trade sent";
+  if (entry.kind === "burn") return "Recycled";
+  if (entry.kind === "correction") return "Correction";
+  return "Foil history";
+};
 const published = sets.filter((set) => set.status === "published");
 const rewardSets = published.map((set) => ({
   id: set.id,
@@ -37,7 +102,7 @@ const rewardSets = published.map((set) => ({
     <div>
       <p class="eyebrow">Rewards</p>
       <h2 class="display-sm mt-1 text-4xl">Earned, never bought.</h2>
-      <p class="mt-2 max-w-2xl text-sm text-[var(--muted)]">The daily allowance and set completion rewards are the standalone progression. Every credit is a ledger entry; corrections are compensating entries, never edits to history.</p>
+      <p class="mt-2 max-w-2xl text-sm text-[var(--muted)]">Foil is earned through daily allowances, missions and achievements; it is never bought or cashed out. Every credit is a ledger entry; corrections are compensating entries, never edits to history.</p>
     </div>
     <div class="text-right"><p class="eyebrow">Foil</p><p class="display-sm mt-1 text-3xl text-[var(--brass)]">✦ {wallet.balance}</p></div>
   </div>
@@ -48,17 +113,23 @@ const rewardSets = published.map((set) => ({
     </div>
     <aside class="grid gap-5">
       <div class="surface-flat p-5">
+        <p class="eyebrow">What to do next</p>
+        <p class="display-sm mt-1 text-2xl">{nextAction.title}</p>
+        <p class="mt-2 text-xs leading-relaxed text-[var(--muted)]">{nextAction.copy}</p>
+        <a class="btn btn-secondary btn-sm mt-3" href={nextAction.href}>{nextAction.cta}</a>
+      </div>
+      <div class="surface-flat p-5" id="daily-allowance">
         <p class="eyebrow">Daily allowance</p>
         <p class="display-sm mt-1 text-3xl text-[var(--brass)]">✦ {economy.daily_reward}</p>
         <p class="mt-1 text-xs text-[var(--muted)]">{canClaim ? "Ready now" : `Next ${nextEligible ? formatDual(nextEligible) : "later"}`}</p>
         <div class="mt-4"><ClaimButton client:load amount={economy.daily_reward} canClaim={canClaim} nextEligible={nextEligible ? formatDual(nextEligible) : null} /></div>
       </div>
       <div class="surface-flat p-5">
-        <p class="eyebrow">Recent ledger</p>
+        <p class="eyebrow">Your Foil history</p>
         <div class="mt-3 grid gap-2">
           {ledger.ledger.slice(0, 8).map((entry) => (
             <div class="flex items-start justify-between gap-3 border-b border-[var(--line)] pb-2 last:border-0">
-              <div><p class="text-sm">{entry.description}</p><p class="mt-0.5 text-[0.62rem] text-[var(--muted)]">{formatDual(entry.created_at)} · {entry.kind}</p></div>
+              <div><p class="text-sm">{entry.description}</p><p class="mt-0.5 text-[0.62rem] text-[var(--muted)]">{formatDual(entry.created_at)} · {ledgerLabel(entry)} · Balance {entry.balance_after}</p></div>
               <p class:list={["font-mono text-sm", entry.amount > 0 ? "text-[var(--green)]" : "text-[var(--oxblood)]"]}>{entry.amount > 0 ? "+" : ""}{entry.amount}</p>
             </div>
           ))}

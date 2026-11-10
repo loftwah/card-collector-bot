@@ -155,6 +155,7 @@ export async function getCabinet(ctx: Ctx): Promise<CabinetView> {
     : null;
   const dailyReady = !nextDailyAt || new Date(nextDailyAt).getTime() <= Date.now();
   const cheapest = pools
+    .filter((preview) => preview.price > 0)
     .slice()
     .sort((a, b) => a.price - b.price)
     .map((preview) => ({ name: preview.pool.name, price: preview.price }))[0] ?? null;
