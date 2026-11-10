@@ -114,7 +114,9 @@ const otherBinderCards =
     ? binder.cards.filter((card) => groupForCard(card, presentation) === "other")
     : [];
 const themeStyle = theme
-  ? `--pilot-accent:${theme.accent};--pilot-ground:${theme.ground};--pilot-paper:${theme.paper};--pilot-ink:${theme.ink};`
+  ? `--pilot-accent:${theme.accent};--pilot-ground:${theme.ground};--pilot-paper:${theme.paper};--pilot-ink:${theme.ink};--pilot-mark-plate:${
+      presentation?.markPlate === "dark" ? "var(--pilot-ground)" : "var(--pilot-paper)"
+    };`
   : undefined;
 const bannerStyle = presentation?.bannerPosition
   ? `object-position:${presentation.bannerPosition}`

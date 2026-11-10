@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-09T04:49:33.139Z",
-  "base_url": "http://127.0.0.1:5180",
+  "generated_at": "2026-11-10T01:12:41.648Z",
+  "base_url": "http://127.0.0.1:5175",
   "results": [
     {
       "name": "light public home: axe + overflow",
@@ -34,6 +34,11 @@
     },
     {
       "name": "light authenticated player home: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "light cabinet: axe + overflow",
       "status": "PASS",
       "detail": "0 total axe findings, none serious/critical"
     },
@@ -154,6 +159,11 @@
     },
     {
       "name": "dark authenticated player home: axe + overflow",
+      "status": "PASS",
+      "detail": "0 total axe findings, none serious/critical"
+    },
+    {
+      "name": "dark cabinet: axe + overflow",
       "status": "PASS",
       "detail": "0 total axe findings, none serious/critical"
     },

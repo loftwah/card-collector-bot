@@ -65,6 +65,12 @@ function metaLine(values) {
   return [...new Set(values.filter(Boolean).map((value) => String(value).trim()))].join(" · ");
 }
 
+function plateTone(markPlate, fallback) {
+  if (markPlate === "dark") return "#1a1712";
+  if (markPlate === "paper") return "#f7f0e2";
+  return fallback;
+}
+
 function nameMarkup(lines, x, firstBaseline, lineHeight, size) {
   return lines
     .map(
@@ -74,7 +80,7 @@ function nameMarkup(lines, x, firstBaseline, lineHeight, size) {
     .join("");
 }
 
-function markPlate(
+function markPlateSvg(
   markData,
   { x, y, size, plate, aspect = 1, opacity = 1, maxWidth = size * 3 },
 ) {
@@ -100,13 +106,14 @@ export function archiveTextSvg({
   material,
   effect,
   markAspect,
+  markPlate,
   markData,
 }) {
-  const mark = markPlate(markData, {
+  const mark = markPlateSvg(markData, {
     x: 64,
     y: 786,
     size: 56,
-    plate: "#f7f0e2",
+    plate: plateTone(markPlate, "#f7f0e2"),
     aspect: markAspect,
     maxWidth: 240,
   });
@@ -169,13 +176,14 @@ export function broadcastTextSvg({
   material,
   effect,
   markAspect,
+  markPlate,
   markData,
 }) {
-  const mark = markPlate(markData, {
+  const mark = markPlateSvg(markData, {
     x: 64,
     y: 48,
     size: 58,
-    plate: "#0a0f16",
+    plate: plateTone(markPlate, "#0a0f16"),
     aspect: markAspect,
     maxWidth: 170,
     opacity: 0.88,
@@ -232,17 +240,18 @@ export function stageTextSvg({
   material,
   effect,
   markAspect,
+  markPlate,
   markData,
 }) {
   const markWidth = markData
     ? Math.round(Math.min(190, Math.max(64, 64 * (markAspect || 1))))
     : 0;
   const markX = W - 64 - markWidth;
-  const mark = markPlate(markData, {
+  const mark = markPlateSvg(markData, {
     x: markX,
     y: 758,
     size: 64,
-    plate: "#f7ecf3",
+    plate: plateTone(markPlate, "#f7ecf3"),
     aspect: markAspect,
     maxWidth: 190,
   });
@@ -292,13 +301,14 @@ export function mangaTextSvg({
   material,
   effect,
   markAspect,
+  markPlate,
   markData,
 }) {
-  const mark = markPlate(markData, {
+  const mark = markPlateSvg(markData, {
     x: 64,
     y: 784,
     size: 56,
-    plate: "#f7f2e7",
+    plate: plateTone(markPlate, "#f7f2e7"),
     aspect: markAspect,
     maxWidth: 160,
   });

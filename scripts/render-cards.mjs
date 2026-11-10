@@ -137,6 +137,7 @@ while (true) {
       rarity: entry.card.rarity?.name ?? "",
       composition,
       collectionTheme,
+      markPlate: collectionPresentation?.markPlate,
       markInvert: liveryTheme(collectionTheme)?.markInvert ?? false,
       markBuffer,
       markMime,

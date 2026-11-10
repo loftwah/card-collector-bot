@@ -8866,7 +8866,7 @@ html[data-motion="reduced"] .layered-card__effect {
   max-height: 3.2rem;
   border: 1px solid color-mix(in srgb, var(--pilot-ink) 22%, transparent);
   border-radius: 4px;
-  background: var(--pilot-paper);
+  background: var(--pilot-mark-plate, var(--pilot-paper));
   padding: 0.4rem 0.65rem;
   filter: none;
 }

@@ -42,6 +42,7 @@ export async function composeCard(input) {
     markPath = "",
     collectionTheme = "",
     markInvert = false,
+    markPlate = "",
     outputPath,
   } = input;
 
@@ -336,6 +337,7 @@ export async function composeCard(input) {
     effect,
     collectionTheme,
     markAspect,
+    markPlate,
     markData: await markDataUri(markPath, input.markBuffer, input.markMime, markInvert),
   });
   const textPng = new Resvg(textSvg, {
@@ -489,6 +491,7 @@ function cardTextSvg({
   effect,
   collectionTheme,
   markAspect,
+  markPlate,
   markData,
 }) {
   const renderers = {
@@ -511,6 +514,7 @@ function cardTextSvg({
       material,
       effect,
       markAspect,
+      markPlate,
       markData,
     });
   }

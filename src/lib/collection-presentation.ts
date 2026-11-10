@@ -38,6 +38,8 @@ export interface CollectionPresentation {
   rosterLabel: string;
   /** Label for the hero's unique-subject fact. Defaults to "Subjects". */
   rosterFactLabel?: string;
+  /** Optional plate tone for a light or dark series wordmark. */
+  markPlate?: "dark" | "paper";
   /** Optional object-position for the real banner at wide widths. */
   bannerPosition?: string;
   groups: CollectionGroup[];

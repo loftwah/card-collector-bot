@@ -57,6 +57,7 @@
     "openingCta": "Open a Public Safety capsule",
     "rosterLabel": "The case records",
     "rosterFactLabel": "Records",
+    "markPlate": "dark",
     "bannerPosition": "center 32%",
     "groups": [
       {

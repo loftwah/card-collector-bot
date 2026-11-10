@@ -193,8 +193,15 @@ function genericBackHtml(card, logo, theme) {
   const collectionName = card.collections?.[0]?.name ?? "Foilbury";
   const shortName = presentations[card.collections?.[0]?.slug]?.cardSetName ?? collectionName;
   const invertMark = tokens.markInvert === true;
+  const markPlate = presentations[card.collections?.[0]?.slug]?.markPlate;
+  const plateClass =
+    markPlate === "dark"
+      ? " mark-plate--dark"
+      : !paper && !invertMark
+        ? " mark-plate--paper"
+        : "";
   const mark = logo
-    ? `<span class="mark-plate${paper || invertMark ? "" : " mark-plate--paper"}"><img class="mark${invertMark ? " mark--invert" : ""}" src="${logo}" alt=""></span>`
+    ? `<span class="mark-plate${plateClass}"><img class="mark${invertMark ? " mark--invert" : ""}" src="${logo}" alt=""></span>`
     : "";
   const record = [
     ["Collection", shortName],
@@ -223,6 +230,7 @@ function genericBackHtml(card, logo, theme) {
     .top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;border-bottom:1px solid ${paper ? tokens.ink : tokens.paper};border-color:color-mix(in srgb,${paper ? tokens.ink : tokens.paper} 26%,transparent);padding-bottom:20px}
     .mark-plate{display:inline-flex;align-items:center;justify-content:center;min-width:200px;height:64px;padding:6px 10px;background:${paper ? "transparent" : "rgba(255,255,255,.06)"}}
     .mark-plate--paper{background:${tokens.paper}}
+    .mark-plate--dark{background:#1a1712}
     .mark{max-width:190px;max-height:52px;object-fit:contain}
     .mark--invert{filter:invert(1)}
     .kicker{font-family:ui-monospace,monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:${paper ? tokens.accent : tokens.paper};text-align:right;line-height:1.8;opacity:.9}
