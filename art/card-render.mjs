@@ -444,13 +444,14 @@ function embossRule(x1, y, x2, colour) {
   <rect x="${x1}" y="${y + 1}" width="${x2 - x1}" height="1" fill="#fff" opacity=".5"/>`;
 }
 
-function finishLabel(material, theme) {
+function finishLabel(material, theme, size = 15.4) {
   const m = MATERIALS[material];
   const label = material === "diamond" ? "HOLOGRAPHIC" : m.label;
+  const r = size * 0.49;
   return `<g transform="translate(0 0)">
-    <circle cx="7" cy="0" r="7.6" fill="${m.swatch}" stroke="${m.swatch2}" stroke-width="1"/>
-    <circle cx="4.8" cy="-2.4" r="3.4" fill="${m.a}" opacity=".9"/>
-    <text x="21" y="5.4" font-family=${PM} font-size="15.4" font-weight="600" letter-spacing="1.6" fill="${theme.ink}">${esc(label)}</text>
+    <circle cx="${r}" cy="0" r="${r}" fill="${m.swatch}" stroke="${m.swatch2}" stroke-width="1"/>
+    <circle cx="${r * 0.68}" cy="${-r * 0.34}" r="${r * 0.45}" fill="${m.a}" opacity=".9"/>
+    <text x="${r * 2 + 6}" y="${size * 0.35}" font-family=${PM} font-size="${size}" font-weight="600" letter-spacing="1.4" fill="${theme.ink}">${esc(label)}</text>
   </g>`;
 }
 
@@ -570,9 +571,9 @@ function frontSvg(theme, material, art, subject, data) {
   ${roleMarkup}
   <text x="34" y="${provY}" font-family=${PM} font-size="9.4" letter-spacing="1.8" fill="${pt.ink}" opacity=".5">${esc(data.provenance)}</text>
   ${embossRule(32, ruleY, 718, pt.ink)}
-  <text x="32" y="${metaY}" font-family=${MS} font-weight="800" font-size="18.5" letter-spacing=".2" fill="${pt.ink}">${esc(data.rarity.toUpperCase())}</text>
-  <g transform="translate(296 ${metaY - 6})">${finishLabel(material, pt)}</g>
-  <text x="718" y="${metaY}" text-anchor="end" font-family=${PM} font-weight="600" font-size="18.5" letter-spacing="1.3" fill="${pt.ink}">${esc(data.serial)}</text>
+  <text x="32" y="${metaY}" font-family=${MS} font-weight="800" font-size="30" letter-spacing=".2" fill="${pt.ink}">${esc(data.rarity.toUpperCase())}</text>
+  <g transform="translate(286 ${metaY - 8})">${finishLabel(material, pt, 25)}</g>
+  <text x="718" y="${metaY}" text-anchor="end" font-family=${PM} font-weight="600" font-size="29" letter-spacing="1" fill="${pt.ink}">${esc(data.serial)}</text>
   ${footY <= 1032 ? `<text x="32" y="${footY}" font-family=${PM} font-size="8.6" letter-spacing="2.5" fill="${pt.ink}" opacity=".45">FOILBURY · ${esc(data.slug.toUpperCase())}</text><text x="718" y="${footY}" text-anchor="end" font-family=${PM} font-size="8.6" letter-spacing="2.5" fill="${pt.ink}" opacity=".45">${esc(m.label)} EDITION</text>` : ""}
   ${edgeFrame(material, { radius: family === "manga" ? 4 : 14, width: 15 })}
   <rect x="18" y="18" width="714" height="1014" rx="${family === "manga" ? 2 : 6}" fill="none" stroke="${theme.paper}" stroke-opacity=".26" stroke-width="1"/>`;
