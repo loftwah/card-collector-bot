@@ -82,17 +82,17 @@ export const ART_METHODS = ["whole_card", "composed_scene", "composed_texture", 
 export type ArtMethod = (typeof ART_METHODS)[number];
 
 export const ART_METHOD_LABELS: Record<ArtMethod, string> = {
-  whole_card: "Whole-card AI",
-  composed_scene: "Scene + renderer",
-  composed_texture: "Texture + renderer",
+  whole_card: "Flat whole-card AI · comparison",
+  composed_scene: "Layered card · AI scene + layer stack",
+  composed_texture: "Layered card · AI texture + layer stack",
   raw_art: "Raw art",
 };
 
 export const ART_METHOD_NOTES: Record<ArtMethod, string> = {
   whole_card:
-    "The provider generates the complete 5:7 card from the real subject, the supplied collection mark and the exact copy prepared on a reference sheet. Code only scales it and records provenance.",
+    "Comparison method. The provider generates a flat 5:7 card from the reference sheet; this is not the production default because the frame, holographic and special-edition layers are baked into one image.",
   composed_scene:
-    "Comparison method. The provider generates scene/key art; the shared card renderer composes the card, type and back.",
+    "Production default. The provider generates the scene; the shared composer stacks the real subject, material, frame, effect and exact code-set type. The frame has a transparent art window and the effect can be an AI master.",
   composed_texture:
     "Comparison method. The provider generates a texture or background plate; the shared card renderer composes the card, type and back.",
   raw_art: "The provider generates a standalone brand asset. Type, layout and marks stay in code.",
@@ -652,7 +652,7 @@ function assertModelAndMethods(
       throw new ApiError(
         422,
         "art_method_card_raw",
-        "Cards use whole-card AI, scene + renderer or texture + renderer. Raw art is a brand method.",
+        "Cards use the layered AI scene + layer stack, an AI texture + layer stack, or a flat whole-card comparison. Raw art is a brand method.",
       );
     }
     if (category !== "cards" && method !== "raw_art") {
@@ -1195,7 +1195,7 @@ export async function createArtBrief(
   const methods = input.methods?.length
     ? input.methods
     : category === "cards"
-      ? ["whole_card"]
+      ? ["composed_scene"]
       : ["raw_art"];
   const price = assertModelAndMethods(category, provider, model, methods);
   const audience = input.audience ?? (category === "cards" ? "members" : "private");

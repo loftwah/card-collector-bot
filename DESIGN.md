@@ -77,6 +77,11 @@ share page and Discord profile card all use the same chosen avatar. See
   one of its card renders. `cover_url` is a card cover for card contexts only;
   the shell must not present it as the collection's identity. Collections
   without a banner use the designed mark tile.
+- A card is a layer stack, not a flat generated picture: scene → subject →
+  material → frame (with a transparent art window) → effect → exact type →
+  seal. Borders, finishes and special editions are layers or layer sets.
+  Holographic is an alpha/blend overlay, never a CSS tint. See
+  `docs/CARD_LAYER_SYSTEM.md`.
 - Fronts are art-led; backs are designed information objects with a concise bio,
   typed context and credits. No wall of wiki text on the printed face.
 - Finish is material and effect: Plain, Silver, Gold, Holographic. Holographic

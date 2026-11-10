@@ -11434,3 +11434,7 @@ html[data-motion="reduced"] .layered-card__effect {
   min-height: 1rem;
   color: var(--green);
 }
+
+.candidate-tile__variation {
+  color: var(--ink);
+}

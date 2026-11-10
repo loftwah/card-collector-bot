@@ -94,16 +94,23 @@ character artwork. Do not ship SVG avatars, flat geometric portraits or
 procedural stand-ins. When the task calls for character or illustration work,
 use the configured image models, inspect the actual output and iterate.
 
-**Current card-art production decision (2026-11-10): whole-card AI is the
-primary method.** Generate the finished 5:7 card with **OpenAI GPT Image 2.6
-Sunburst** by default, or a top-tier FAL model (FLUX Pro 1.1 Ultra / Seedream
-v4) when its aesthetic is the better fit. Use the real subject art, the
-supplied collection mark, the current live card and the exact copy as an image
-reference sheet. `art/card-render.mjs` is for preparing reference/information
-sheets, publishing metadata and comparison only; it is not the default final
-card composition. Do not restore the old "never generate a whole card" rule.
-Do not present a reference sheet or renderer comparison as the delivered card
-when the owner asked for whole-card art.
+**Current card-art production decision (2026-11-11): cards are layered
+objects.** A card is composed from separate scene, subject, material, frame,
+effect, exact-type, seal and back layers. A flat whole-card AI image is a
+comparison/reference output, not the default production object. Card types
+(borders, Plain/Silver/Gold/Holographic, Wedding/Fairy/Neon and special
+editions) are layers or layer sets, not separate whole cards.
+
+Read `docs/CARD_LAYER_SYSTEM.md` before any card prompt, renderer or card-type
+change. Use **OpenAI GPT Image 2.6 Sunburst** for scene, subject variants,
+frame ornament and effect textures, or a top-tier FAL model when its aesthetic
+is the better fit. Use the real subject art, the supplied collection mark and
+the exact copy; the exact type is always code-set. The frame master has a true
+transparent art window (a hole for the scene/subject); the effect layer uses
+alpha, masks and recorded blend modes. `art/card-render.mjs` prepares
+reference sheets, publishing metadata and comparison; `art/compose.mjs` owns
+the layer order and composition. Do not present a flat whole-card image, a
+reference sheet or a renderer comparison as the delivered layered card.
 
 - **Exact copy:** put the card name, role, collection, rarity, finish, print
   code and provenance in the prompt/reference sheet word for word. Do not

@@ -19,6 +19,7 @@ export interface CardViewerItem {
   id: string;
   name: string;
   subtitle?: string | null;
+  variation?: string | null;
   collection?: string | null;
   styleKey?: string | null;
   styleLabel?: string | null;
@@ -266,7 +267,8 @@ export default function CardViewer() {
           <div className="card-viewer__identity">
             <p className="card-viewer__name">{item.name}</p>
             <p className="card-viewer__meta">
-              {[item.collection, label, item.finish].filter(Boolean).join(" · ") || "Card"}
+              {[item.variation, item.collection, label, item.finish].filter(Boolean).join(" · ") ||
+                "Card"}
             </p>
           </div>
           <div className="card-viewer__bar-actions">

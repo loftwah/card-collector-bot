@@ -133,6 +133,76 @@ function styleLabel(key) {
   return key ? (STYLE_LABELS[key] ?? key) : null;
 }
 
+/**
+ * One provider call with the same prompt produces near-identical cards. Every
+ * candidate in a run gets a distinct composition directive so the contact sheet
+ * is a real choice, not four versions of the same picture. The exact copy, the
+ * subject identity and the card contract never change.
+ */
+const WHOLE_CARD_VARIATIONS = [
+  {
+    label: "Centered hero",
+    direction:
+      "a centered full-figure hero shot at eye level, the environment visible around the subject, an open confident pose, balanced negative space.",
+  },
+  {
+    label: "Low angle",
+    direction:
+      "a dramatic low-angle three-quarter shot, subject offset to one side, strong foreground weather or reflections, bolder negative space.",
+  },
+  {
+    label: "Close crop",
+    direction:
+      "a tighter bust or three-quarter crop, the face and signature prop prominent, shallow depth of field, the information band still fully readable.",
+  },
+  {
+    label: "Wide scene",
+    direction:
+      "a wide environmental shot with the subject smaller in the frame, the place carrying the mood, one clear focal light and a calm composition.",
+  },
+  {
+    label: "Graphic",
+    direction:
+      "a graphic poster-like composition with a strong diagonal, a high-contrast shape behind the subject and minimal background detail.",
+  },
+  {
+    label: "Editorial",
+    direction:
+      "an editorial studio-meets-street portrait, subject turned away from the camera, clean rim light and a restrained palette.",
+  },
+];
+
+function variationFor(index) {
+  return WHOLE_CARD_VARIATIONS[index % WHOLE_CARD_VARIATIONS.length];
+}
+
+const SCENE_VARIATIONS = [
+  {
+    label: "Establishing",
+    direction:
+      "a wide establishing view with deep space, a low horizon and one clear focal light; leave room for the subject cutout and the information band.",
+  },
+  {
+    label: "Low angle",
+    direction:
+      "a low-angle view looking up through the environment, strong foreground weather and a dramatic sky; keep the centre calm for the subject.",
+  },
+  {
+    label: "Environmental detail",
+    direction:
+      "a closer environmental detail with layered foreground/midground/background and strong texture; the subject will sit against the midground.",
+  },
+  {
+    label: "Graphic",
+    direction:
+      "a graphic, high-contrast environmental plate with one bold diagonal shape and restrained detail; the subject will be the only complex silhouette.",
+  },
+];
+
+function sceneVariationFor(index) {
+  return SCENE_VARIATIONS[index % SCENE_VARIATIONS.length];
+}
+
 function escapeXml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -465,6 +535,7 @@ async function compose(run, rawScene) {
     backgroundOverride: true,
     material: run.variant.material_key,
     effect: run.variant.effect_key ?? "none",
+    styleKey: run.brief.styles?.[0] ?? "",
     name: run.card.name,
     subtitle: run.card.subtitle ?? "",
     setName: presentation.cardSetName ?? run.collection.name ?? "Cabinet",
@@ -541,6 +612,7 @@ async function uploadCandidate(run, raw, extra, index) {
     );
   }
   if (extra?.prompt) form.append("prompt", extra.prompt);
+  if (extra?.label) form.append("label", extra.label);
   form.append("seed", String(extra?.seed ?? ""));
   return apiForm(`/api/v1/admin/art/jobs/${run.job.id}/candidates`, form);
 }
@@ -577,14 +649,33 @@ async function processJob(run, counters) {
         );
       }
       attempted = true;
-      const result = await callProvider(run, index, prompt, reference);
+      const variation =
+        run.brief.category === "cards"
+          ? run.job.method === "whole_card"
+            ? variationFor(index)
+            : run.job.method === "composed_scene"
+              ? sceneVariationFor(index)
+              : null
+          : null;
+      const candidatePrompt = variation
+        ? `${prompt}
+
+VARIATION ${index + 1} of ${run.job.count} — ${variation.label}: ${variation.direction} Keep the exact copy, the subject identity, the supplied mark and the card contract unchanged. This composition must be visibly different from the other candidates in this run.`
+        : prompt;
+      const result = await callProvider(run, index, candidatePrompt, reference);
       counters.generated += 1;
       if (run.job.method === "whole_card") {
         const sizes = await cardSizes(result.bytes);
         await uploadCandidate(
           run,
           result.bytes,
-          { ...sizes, seed: result.seed, reference, prompt },
+          {
+            ...sizes,
+            seed: result.seed,
+            reference,
+            prompt: candidatePrompt,
+            label: variation ? `Candidate ${index + 1} · ${variation.label}` : undefined,
+          },
           index,
         );
       } else if (run.job.method === "raw_art") {
@@ -602,7 +693,8 @@ async function processJob(run, counters) {
             preview400: sizes.preview400,
             thumb128: sizes.thumb128,
             seed: result.seed,
-            prompt,
+            prompt: candidatePrompt,
+            label: variation ? `Candidate ${index + 1} · ${variation.label}` : undefined,
           },
           index,
         );

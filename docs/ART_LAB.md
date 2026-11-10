@@ -29,16 +29,20 @@ public-route entry point.
 
 ## Methods
 
-| Method             | What the provider generates                                | How the candidate is shown                                             |
-| ------------------ | ---------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `whole_card`       | The complete 5:7 card from the real-source reference sheet | The generated card, scaled to 750×1050 and reviewed at 750/400/214/128 |
-| `composed_scene`   | Scene or key art only                                      | Comparison: composed card front/back through `art/card-render.mjs`     |
-| `composed_texture` | Background or texture plate only                           | Comparison: composed card front/back through `art/card-render.mjs`     |
-| `raw_art`          | A standalone brand asset                                   | Raw asset; type, layout and marks stay in code                         |
+| Method             | What the provider generates                                                         | How the candidate is shown                                             |
+| ------------------ | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `layered_card`     | Separate scene, subject, frame and effect layers; code composes and sets exact type | The composed card with an inspectable layer stack                      |
+| `whole_card`       | A flat 5:7 card from the reference sheet (comparison only)                          | The generated card, scaled to 750×1050 and reviewed at 750/400/214/128 |
+| `composed_scene`   | Scene or key art only                                                               | Comparison: composed card front/back through `art/card-render.mjs`     |
+| `composed_texture` | Background or texture plate only                                                    | Comparison: composed card front/back through `art/card-render.mjs`     |
+| `raw_art`          | A standalone brand asset                                                            | Raw asset; type, layout and marks stay in code                         |
 
-`whole_card` is the production method and the default for Cards. GPT Image 2.6
-Sunburst is the default model; FAL `fal-ai/bytedance/seedream/v4/edit` is the
-reference-guided FAL alternative. FLUX Pro 1.1 Ultra and Seedream v4 Text are
+`composed_scene` is the production default for Cards: the AI generates the
+scene, the real subject and the supplied mark are layers, `art/compose.mjs`
+stacks the material, frame and effect masters, and exact code-set type sits on
+top. A flat `whole_card` is a comparison method only. `composed_texture` is the
+same stack with an AI texture plate instead of a scene. GPT Image 2.6 Sunburst is the default model; FAL
+`fal-ai/bytedance/seedream/v4/edit` is the reference-guided FAL alternative. FLUX Pro 1.1 Ultra and Seedream v4 Text are
 available for scene/comparison methods. The runner prepares a **reference sheet** from the
 real subject art, the supplied collection mark, the current live card and the
 exact copy (name, role, collection, rarity, finish, print code and provenance).
@@ -477,6 +481,13 @@ release:
 - Art expansion spend: US$0.20 actual for the four Tux whole-card candidates
   and an estimated US$0.20 for the icon, mascot, style and back sheets; total
   about US$0.40 against a declared US$2.00 ceiling. No top-up.
+- A layered `composed_scene` proof (`Tux · Neon layered holographic proof`,
+  Holographic variant) used an AI holo texture at 0.34 screen opacity and exact
+  code type. It is in the Art Lab as a proof, not published: the legacy subject,
+  frame and information band still look weaker than the whole-card comparison,
+  so the layer masters need the same quality bar before layered replaces the
+  flat card in production. The default method and labels are now layered; the
+  next work is premium scene, subject, frame and effect masters.
 - The new production assets are served from `/art/icons/`,
   `/art/mascots/` and `/art/styles/`; the platform catalogue exposes seven
   distinct icon directions and four Keeper mascots, and `/studio/all-art` is

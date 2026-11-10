@@ -36,6 +36,7 @@ async function legacyComposeCard(input) {
     backgroundPath,
     material = "plain",
     effect = "none",
+    styleKey = "",
     name = "Untitled",
     subtitle = "",
     setName = "Cabinet",
@@ -268,8 +269,18 @@ async function legacyComposeCard(input) {
     ? path.join(layerDir, `frame-${collectionTheme}-${material}.png`)
     : null;
   const frameLayer = liveryFrame && fs.existsSync(liveryFrame) ? liveryFrame : genericFrame;
-  const effectLayer =
+  const authoredEffect =
     effect && effect !== "none" ? path.join(layerDir, `effect-${effect}.png`) : null;
+  // A named style can supply an AI-generated effect master. The holographic
+  // finish uses it as the material effect; the flat authored effect remains the
+  // fallback when a style has no AI layer yet.
+  const aiEffect = styleKey ? path.join(layerDir, "ai", `${styleKey}-holo.png`) : null;
+  const effectLayer =
+    material === "diamond" || effect === "holographic"
+      ? aiEffect && fs.existsSync(aiEffect)
+        ? aiEffect
+        : authoredEffect
+      : authoredEffect;
   if (!fs.existsSync(materialLayer) || !fs.existsSync(frameLayer)) {
     throw new Error(`Missing material or frame layer for ${material}`);
   }
@@ -318,7 +329,13 @@ async function legacyComposeCard(input) {
     ? await sharp(withFrame)
         .composite([
           {
-            input: await sharp(effectLayer).resize(W, H).png().toBuffer(),
+            // An AI holo master is a full texture; keep it at a restrained
+            // opacity so the exact type and the subject stay readable.
+            input: await sharp(effectLayer)
+              .resize(W, H)
+              .ensureAlpha(effectLayer === aiEffect ? 0.34 : 1)
+              .png()
+              .toBuffer(),
             blend: "screen",
             left: 0,
             top: 0,

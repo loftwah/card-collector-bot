@@ -441,7 +441,7 @@ export default function ArtLab({ surface }: { surface: Surface }) {
     candidateCount: 6,
     provider: "openai",
     model: "gpt-image-2.6-sunburst",
-    methods: (surface === "studio" ? ["whole_card"] : ["raw_art"]) as ArtMethod[],
+    methods: (surface === "studio" ? ["composed_scene"] : ["raw_art"]) as ArtMethod[],
     styleKeys: ["atelier"] as string[],
     notes: "",
     costCapCents: 200,
@@ -513,7 +513,7 @@ export default function ArtLab({ surface }: { surface: Surface }) {
   useEffect(() => {
     if (surface === "studio") {
       setCategory("cards");
-      setForm((current) => ({ ...current, category: "cards", methods: ["whole_card"] }));
+      setForm((current) => ({ ...current, category: "cards", methods: ["composed_scene"] }));
     } else {
       setForm((current) => ({
         ...current,
@@ -800,6 +800,9 @@ export default function ArtLab({ surface }: { surface: Surface }) {
       id: candidate.id,
       name: detail?.card?.name ?? detail?.brief.title ?? candidate.label,
       subtitle: detail?.card?.subtitle ?? candidate.label,
+      variation: candidate.label.includes(" · ")
+        ? candidate.label.split(" · ").slice(1).join(" · ")
+        : null,
       collection: detail?.collection?.name ?? null,
       styleKey: candidate.style_key,
       styleLabel: candidate.style_label,
@@ -887,7 +890,7 @@ export default function ArtLab({ surface }: { surface: Surface }) {
       collectionId: next === "cards" ? current.collectionId : "",
       cardId: next === "cards" ? current.cardId : "",
       targetVariantId: next === "cards" ? current.targetVariantId : "",
-      methods: next === "cards" ? ["whole_card"] : ["raw_art"],
+      methods: next === "cards" ? ["composed_scene"] : ["raw_art"],
       styleKeys:
         next === "cards"
           ? current.styleKeys.length
@@ -1682,7 +1685,7 @@ export default function ArtLab({ surface }: { surface: Surface }) {
                             onChange={() => toggleCompare(candidate.id)}
                             aria-label={`Select ${candidate.label} for comparison`}
                           />
-                          <span>{candidate.label}</span>
+                          <span>{candidate.label.split(" · ")[0]}</span>
                         </label>
                         <span className={STATUS_TONE[candidate.status] ?? ""}>
                           {statusLabel(candidate.status)}
@@ -1716,6 +1719,11 @@ export default function ArtLab({ surface }: { surface: Surface }) {
                         <span>
                           {candidate.display_width}×{candidate.display_height}
                         </span>
+                        {candidate.label.includes(" · ") ? (
+                          <span className="candidate-tile__variation">
+                            {candidate.label.split(" · ").slice(1).join(" · ")}
+                          </span>
+                        ) : null}
                       </div>
                       <div className="candidate-tile__votes">
                         <button
