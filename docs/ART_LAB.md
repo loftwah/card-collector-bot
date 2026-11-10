@@ -468,6 +468,12 @@ release:
 - Live signed-in `/admin/catalogue` and `/admin/design`: the catalogue saved
   render, table thumbnails and Render Studio card faces opened the shared
   viewer at 1440 (four variants paged in the same dialog).
+- Final live source for the art shelf and thumbs:
+  `1a65fbf782d9dbf731a3d5893b40211b0c593070` (Worker
+  `a7badb01-2ea9-4a51-a5c4-3e46d9713b78`). The live Tux brief showed four
+  candidate tiles with eight thumb controls; the viewer showed **Your read**
+  with Keep/Not this, a comment box and live counts. A real comment and keep
+  were saved and read back from the feedback ledger.
 - Art expansion spend: US$0.20 actual for the four Tux whole-card candidates
   and an estimated US$0.20 for the icon, mascot, style and back sheets; total
   about US$0.40 against a declared US$2.00 ceiling. No top-up.
