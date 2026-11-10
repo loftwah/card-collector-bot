@@ -162,8 +162,28 @@ estimate and the runner records the actual observed spend.
 - **No paid provider call was made in this verification.** A local fixture image
   was uploaded to exercise the review and publication pipeline. The fixture is
   not presented as generated artwork and is not part of the shipped source.
-- Production deployment and a real whole-card provider output remain to be
-  exercised live.
+
+## Production verification (2026-11-10)
+
+- Pre-change D1 JSON backup:
+  `.foilbury/backups/d1-2026-11-10T11-32-27-602Z.json` (97 tables, 51,364 rows,
+  SHA-256 `571036f6a5f03c7f74ea0b32372991a0fde525809542c073d9b53dd0328ef41c`).
+- Migration `0033_art_lab.sql` applied to production D1 after the backup. The
+  new tables are empty; no existing card, asset, collection, audience, serial,
+  inventory or ledger row was changed.
+- Production release source `f6f92eda780b501215057c983f0585d7223c3cae`;
+  deployment `7625b6ba-848b-4689-869d-811ded1a756e`; receipt
+  `.foilbury/evidence/release-receipt-f6f92eda780b-6071e6fc-9920-48d9-9f5b-f7c6cebb62f2.json`.
+- Signed-in `/studio/art` was loaded in the real browser: the page, Art Lab
+  component, empty state, New brief control, category rail and bundled pending
+  count script all loaded. The live API calls to `/api/v1/studio/art`,
+  `/options` and `/count` returned successfully.
+- `/platform-admin/art` is Access-protected. The production browser session was
+  asked to re-authenticate to the platform Access application; the live
+  Access-gated brand journey is therefore **not claimed** here. The shared
+  surface and brand controls were exercised locally.
+- No production brief, candidate or paid generation was created. The live
+  card-publish journey remains to be exercised with a real owner-selected brief.
 
 ## Limits
 
