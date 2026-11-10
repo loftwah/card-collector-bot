@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Download, ThumbsDown, ThumbsUp, X } from "lucide-react";
 import { CARD_STYLE_LABEL } from "@/lib/card-styles";
 import { api, describeError } from "@/lib/client";
@@ -80,6 +80,7 @@ function dimensions(item: CardViewerItem): string | null {
 
 export default function CardViewer() {
   const dialogRef = useRef<HTMLDialogElement | null>(null);
+  const titleId = useId();
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
   const [items, setItems] = useState<CardViewerItem[]>([]);
@@ -226,7 +227,8 @@ export default function CardViewer() {
     <dialog
       ref={dialogRef}
       className="card-viewer"
-      aria-label={`${item.name} card viewer`}
+      aria-modal="true"
+      aria-labelledby={titleId}
       onClose={onDialogClose}
       onCancel={(event) => {
         event.preventDefault();
@@ -265,7 +267,9 @@ export default function CardViewer() {
       <div className="card-viewer__sheet">
         <header className="card-viewer__bar">
           <div className="card-viewer__identity">
-            <p className="card-viewer__name">{item.name}</p>
+            <p className="card-viewer__name" id={titleId}>
+              {item.name}
+            </p>
             <p className="card-viewer__meta">
               {[item.variation, item.collection, label, item.finish].filter(Boolean).join(" · ") ||
                 "Card"}

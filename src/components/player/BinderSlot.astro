@@ -85,14 +85,5 @@ const facts = {
           }`
         : "Not yet collected"}
     </p>
-    {card.owned && card.instance_id ? (
-      <a class="btn btn-secondary btn-sm" href={`/play/card/${card.instance_id}`}>
-        Inspect
-      </a>
-    ) : (
-      <a class="btn btn-secondary btn-sm" href="/play/draw">
-        Find a capsule
-      </a>
-    )}
   </div>
 </article>

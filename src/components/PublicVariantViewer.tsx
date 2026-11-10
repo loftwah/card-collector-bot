@@ -20,6 +20,23 @@ function printTitleOf(variant?: Variant): string | null {
   return editionPrintTitle(variant?.edition_name);
 }
 
+const FINISH_RANK: Record<string, number> = { diamond: 4, gold: 3, silver: 2, plain: 1 };
+
+/** Open on the strongest published object, not whichever row was inserted first. */
+function bestVariantIndex(variants: Variant[]): number {
+  let best = 0;
+  let bestScore = -1;
+  variants.forEach((variant, index) => {
+    if (!variant.render_url) return;
+    const score = (FINISH_RANK[variant.material_key] ?? 1) * 2 + (variant.back_render_url ? 1 : 0);
+    if (score > bestScore) {
+      bestScore = score;
+      best = index;
+    }
+  });
+  return best;
+}
+
 export default function PublicVariantViewer({
   name,
   subtitle,
@@ -53,12 +70,13 @@ export default function PublicVariantViewer({
   sourceRefs?: string[];
   reviewStatus?: string;
 }) {
-  const [selected, setSelected] = useState(0);
+  const [selected, setSelected] = useState(() => bestVariantIndex(variants));
   const [showBack, setShowBack] = useState(false);
   const [inspect, setInspect] = useState(false);
   const variant = variants[selected] ?? variants[0];
   const printTitle = printTitleOf(variant);
-  const multiplePrints = new Set(variants.map((item) => item.edition_name).filter(Boolean)).size > 1;
+  const multiplePrints =
+    new Set(variants.map((item) => item.edition_name).filter(Boolean)).size > 1;
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-start">
       <div className="min-w-0">
@@ -76,32 +94,74 @@ export default function PublicVariantViewer({
             framed
           />
         ) : (
-        <div className="card-rail p-3">
-          <div className="card-face">
-            {showBack ? (
-              <div className="relative h-full w-full bg-[var(--ink)]">
-                <img src={variant?.back_render_url ?? cardBackUrl ?? "/brand/card-back.webp"} alt={`Back of ${name}`} className="h-full w-full object-cover" />
-                {!variant?.back_render_url ? (
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#141512] via-[#141512]/80 to-transparent p-5 text-[#f4f0e6]">
-                    {collection?.logo_url ? <img src={collection.logo_url} alt="" className="mb-2 h-10 w-10 object-contain" /> : null}
-                    <p className="font-mono text-[0.56rem] uppercase tracking-[0.14em] text-[#d9bf8b]">{collection?.name ?? "Foilbury cabinet"}</p>
-                    <p className="mt-1 font-display text-2xl leading-tight">{name}</p>
-                  </div>
-                ) : null}
-              </div>
-            ) : variant?.render_url ? <img src={variant.render_url} alt={`${name} card in ${variant.name} finish`} /> : <div className="card-face-fallback">{name.charAt(0)}</div>}
+          <div className="card-rail p-3">
+            <div className="card-face">
+              {showBack ? (
+                <div className="relative h-full w-full bg-[var(--ink)]">
+                  <img
+                    src={variant?.back_render_url ?? cardBackUrl ?? "/brand/card-back.webp"}
+                    alt={`Back of ${name}`}
+                    className="h-full w-full object-cover"
+                  />
+                  {!variant?.back_render_url ? (
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#141512] via-[#141512]/80 to-transparent p-5 text-[#f4f0e6]">
+                      {collection?.logo_url ? (
+                        <img
+                          src={collection.logo_url}
+                          alt=""
+                          className="mb-2 h-10 w-10 object-contain"
+                        />
+                      ) : null}
+                      <p className="font-mono text-[0.56rem] tracking-[0.14em] text-[#d9bf8b] uppercase">
+                        {collection?.name ?? "Foilbury cabinet"}
+                      </p>
+                      <p className="font-display mt-1 text-2xl leading-tight">{name}</p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : variant?.render_url ? (
+                <img src={variant.render_url} alt={`${name} card in ${variant.name} finish`} />
+              ) : (
+                <div className="card-face-fallback">{name.charAt(0)}</div>
+              )}
+            </div>
           </div>
-        </div>
         )}
         {inspect ? null : (
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><p className="font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[var(--muted)]">{showBack ? `Card back${printTitle ? ` · ${printTitle}` : ""}` : `Published render · ${printTitle ? `${printTitle} · ` : ""}${variant?.name ?? "Awaiting render"}`}</p><div className="flex flex-wrap gap-1"><button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowBack((value) => !value)}><RotateCcw size={13} /> {showBack ? "Show front" : "Show back"}</button><button type="button" className="btn btn-secondary btn-sm" onClick={() => setInspect(true)}><Box size={13} /> Inspect in 3D</button></div></div>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="font-mono text-[0.6rem] tracking-[0.12em] text-[var(--muted)] uppercase">
+              {showBack
+                ? `Card back${printTitle ? ` · ${printTitle}` : ""}`
+                : `Published render · ${printTitle ? `${printTitle} · ` : ""}${variant?.name ?? "Awaiting render"}`}
+            </p>
+            <div className="flex flex-wrap gap-1">
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setShowBack((value) => !value)}
+              >
+                <RotateCcw size={13} /> {showBack ? "Show front" : "Show back"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setInspect(true)}
+              >
+                <Box size={13} /> Inspect in 3D
+              </button>
+            </div>
+          </div>
         )}
       </div>
       <div className="min-w-0 [overflow-wrap:anywhere]">
         <div className="flex flex-wrap items-center gap-2">
           {rarity ? <span className="badge badge-rare">{rarity}</span> : null}
           {setName ? <span className="badge">{setName}</span> : null}
-          {tags.map((tag) => <span key={tag} className="chip">{tag}</span>)}
+          {tags.map((tag) => (
+            <span key={tag} className="chip">
+              {tag}
+            </span>
+          ))}
         </div>
         <h1 className="display mt-5 text-[clamp(2.8rem,7vw,5.5rem)]">{name}</h1>
         {printTitle ? (
@@ -110,23 +170,48 @@ export default function PublicVariantViewer({
           <p className="mt-2 text-lg text-[var(--brass)]">{subtitle}</p>
         ) : null}
         <p className="prose mt-6 text-[var(--muted)]">{bio || description}</p>
-        {quote ? <blockquote className="mt-5 border-l-2 border-[var(--brass)] pl-4 font-display text-2xl leading-snug text-[var(--ink)]">“{quote}”</blockquote> : null}
+        {quote ? (
+          <blockquote className="font-display mt-5 border-l-2 border-[var(--brass)] pl-4 text-2xl leading-snug text-[var(--ink)]">
+            “{quote}”
+          </blockquote>
+        ) : null}
 
         {attributes.length ? (
           <dl className="mt-7 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-[var(--line)] pt-5 text-sm">
             {attributes.slice(0, 6).map((attribute) => (
               <div key={`${attribute.label}-${attribute.value}`}>
-                <dt className="font-mono text-[0.56rem] uppercase tracking-[0.12em] text-[var(--muted)]">{attribute.label}</dt>
-                <dd className="mt-1">{attribute.value}{attribute.unit ? ` ${attribute.unit}` : ""}</dd>
+                <dt className="font-mono text-[0.56rem] tracking-[0.12em] text-[var(--muted)] uppercase">
+                  {attribute.label}
+                </dt>
+                <dd className="mt-1">
+                  {attribute.value}
+                  {attribute.unit ? ` ${attribute.unit}` : ""}
+                </dd>
               </div>
             ))}
           </dl>
         ) : null}
 
         <div className="mt-5 grid gap-2 border-t border-[var(--line)] pt-4 text-sm text-[var(--muted)]">
-          {sourceWork ? <p><span className="font-mono text-[0.56rem] uppercase tracking-[0.12em]">Source</span> · {sourceWork}</p> : null}
-          <p><span className="font-mono text-[0.56rem] uppercase tracking-[0.12em]">Review</span> · {reviewStatus ?? "unreviewed"}</p>
-          {sourceRefs.length ? <p className="break-words"><span className="font-mono text-[0.56rem] uppercase tracking-[0.12em]">References</span> · {sourceRefs.length} retained source {sourceRefs.length === 1 ? "link" : "links"} in the editorial record.</p> : null}
+          {sourceWork ? (
+            <p>
+              <span className="font-mono text-[0.56rem] tracking-[0.12em] uppercase">Source</span> ·{" "}
+              {sourceWork}
+            </p>
+          ) : null}
+          <p>
+            <span className="font-mono text-[0.56rem] tracking-[0.12em] uppercase">Review</span> ·{" "}
+            {reviewStatus ?? "unreviewed"}
+          </p>
+          {sourceRefs.length ? (
+            <p className="break-words">
+              <span className="font-mono text-[0.56rem] tracking-[0.12em] uppercase">
+                References
+              </span>{" "}
+              · {sourceRefs.length} retained source {sourceRefs.length === 1 ? "link" : "links"} in
+              the editorial record.
+            </p>
+          ) : null}
         </div>
 
         <div className="mt-8">
@@ -145,7 +230,7 @@ export default function PublicVariantViewer({
                     : "border-[var(--line)] text-[var(--muted)] hover:border-[var(--brass)] hover:text-[var(--ink)]",
                 )}
               >
-                <span className="block font-mono text-[0.58rem] uppercase tracking-[0.1em]">
+                <span className="block font-mono text-[0.58rem] tracking-[0.1em] uppercase">
                   {multiplePrints && printTitleOf(item)
                     ? printTitleOf(item)
                     : item.material_key === "diamond"
@@ -156,7 +241,7 @@ export default function PublicVariantViewer({
                   {displayFinish(item.name, item.material_key, item.effect_key)}
                 </span>
                 {multiplePrints && printTitleOf(item) ? (
-                  <span className="mt-0.5 block font-mono text-[0.5rem] uppercase tracking-[0.08em] text-[var(--muted)]">
+                  <span className="mt-0.5 block font-mono text-[0.5rem] tracking-[0.08em] text-[var(--muted)] uppercase">
                     {item.material_key === "diamond" ? "holographic" : item.material_key}
                   </span>
                 ) : null}
@@ -169,13 +254,18 @@ export default function PublicVariantViewer({
           <Sparkles size={18} className="mt-0.5 shrink-0 text-[var(--brass)]" aria-hidden="true" />
           <p className="text-sm leading-relaxed">
             The illustration stays the same identity. The material and effect are separate authored
-            layers with pinned recipe versions, so a later asset change cannot silently alter an owned card.
+            layers with pinned recipe versions, so a later asset change cannot silently alter an
+            owned card.
           </p>
         </div>
 
         <div className="mt-8 flex flex-wrap gap-3">
-          <a className="btn btn-primary" href="/login?next=%2Fplay">Sign in to collect</a>
-          <a className="btn btn-secondary" href="/cabinet">Back to the catalogue</a>
+          <a className="btn btn-primary" href="/login?next=%2Fplay">
+            Sign in to collect
+          </a>
+          <a className="btn btn-secondary" href="/cabinet">
+            Back to the catalogue
+          </a>
         </div>
       </div>
     </div>
