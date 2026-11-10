@@ -561,8 +561,8 @@ function frontSvg(theme, material, art, subject, data) {
   ${roleMarkup}
   <text x="34" y="${provY}" font-family=${PM} font-size="9.4" letter-spacing="1.8" fill="${pt.ink}" opacity=".5">${esc(data.provenance)}</text>
   ${embossRule(32, ruleY, 718, pt.ink)}
-  <text x="32" y="${metaY}" font-family=${MS} font-weight="800" font-size="30" letter-spacing=".2" fill="${pt.ink}">${esc(data.rarity.toUpperCase())}</text>
-  <g transform="translate(286 ${metaY - 8})">${finishLabel(material, pt, 25)}</g>
+  <text x="32" y="${metaY}" font-family=${MS} font-weight="800" font-size="29" letter-spacing=".2" fill="${pt.ink}">${esc(data.rarity.toUpperCase())}</text>
+  <g transform="translate(258 ${metaY - 7})">${finishLabel(material, pt, 23)}</g>
   <text x="718" y="${metaY}" text-anchor="end" font-family=${PM} font-weight="600" font-size="29" letter-spacing="1" fill="${pt.ink}">${esc(data.serial)}</text>
   ${footY <= 1032 ? `<text x="32" y="${footY}" font-family=${PM} font-size="8.6" letter-spacing="2.5" fill="${pt.ink}" opacity=".45">FOILBURY · ${esc(data.slug.toUpperCase())}</text><text x="718" y="${footY}" text-anchor="end" font-family=${PM} font-size="8.6" letter-spacing="2.5" fill="${pt.ink}" opacity=".45">${esc(m.label)} EDITION</text>` : ""}
   ${edgeFrame(material, { radius: family === "manga" ? 4 : 14, width: 15 })}
