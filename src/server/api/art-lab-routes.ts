@@ -51,7 +51,9 @@ const generateSchema = z.object({
 });
 
 const feedbackSchema = z.object({
-  decision: z.enum(["comment", "shortlist", "needs_revision", "reject"]).optional(),
+  decision: z
+    .enum(["comment", "like", "dislike", "shortlist", "needs_revision", "reject"])
+    .optional(),
   tags: z.array(z.enum(FEEDBACK_TAGS)).max(8).optional(),
   body: z.string().max(2000).nullable().optional(),
 });

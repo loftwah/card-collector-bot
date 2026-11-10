@@ -11300,3 +11300,137 @@ html[data-motion="reduced"] .layered-card__effect {
     grid-template-columns: repeat(8, minmax(0, 1fr));
   }
 }
+
+/* Thumbs are a durable review signal, not decoration. */
+.candidate-tile__votes {
+  display: flex;
+  gap: 0.3rem;
+  padding-top: 0.3rem;
+}
+
+.candidate-vote {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 32px;
+  padding: 0 0.55rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.55rem;
+  letter-spacing: 0.04em;
+}
+
+.candidate-vote:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.candidate-vote[data-active="true"] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+.candidate-vote:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.candidate-vote:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+.card-viewer__review {
+  margin-top: 0.9rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--line);
+}
+
+.card-viewer__review-title {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.52rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.card-viewer__votes {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+}
+
+.card-viewer__votes button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 38px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.56rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.card-viewer__votes button b {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.card-viewer__votes button[data-active="true"] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+.card-viewer__votes button[data-active="true"] b {
+  color: var(--paper);
+}
+
+.card-viewer__votes button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.card-viewer__votes button:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+.card-viewer__comment {
+  width: 100%;
+  margin-top: 0.45rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line-strong);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.card-viewer__comment:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+.card-viewer__review-hint,
+.card-viewer__review-notice {
+  margin-top: 0.35rem;
+  font-size: 0.62rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.card-viewer__review-notice {
+  min-height: 1rem;
+  color: var(--green);
+}

@@ -2599,11 +2599,11 @@ export async function addArtFeedback(
   const brief = await loadBriefRow(ctx, candidate.brief_id);
   await requireBriefWrite(ctx, brief);
   const decision = input.decision ?? "comment";
-  if (!["comment", "shortlist", "needs_revision", "reject"].includes(decision)) {
+  if (!["comment", "like", "dislike", "shortlist", "needs_revision", "reject"].includes(decision)) {
     throw new ApiError(
       422,
       "art_feedback_decision_invalid",
-      "Use comment, shortlist, needs_revision or reject. Approve and publish have dedicated actions.",
+      "Use a thumb, a comment, shortlist, needs_revision or reject. Approve and publish have dedicated actions.",
     );
   }
   const tags = normalizeFeedbackTags(input.tags);
@@ -2622,7 +2622,10 @@ export async function addArtFeedback(
       "A published candidate cannot be re-reviewed. Roll it back first.",
     );
   }
-  if (candidate.status === "approved" && ["shortlist", "needs_revision"].includes(decision)) {
+  if (
+    candidate.status === "approved" &&
+    ["like", "dislike", "shortlist", "needs_revision"].includes(decision)
+  ) {
     throw new ApiError(
       409,
       "art_candidate_approved",
@@ -2652,9 +2655,9 @@ export async function addArtFeedback(
   const id = newId("artf");
   const now = nowIso();
   const status =
-    decision === "shortlist"
+    decision === "like" || decision === "shortlist"
       ? "shortlisted"
-      : decision === "needs_revision"
+      : decision === "dislike" || decision === "needs_revision"
         ? "needs_revision"
         : decision === "reject"
           ? "rejected"

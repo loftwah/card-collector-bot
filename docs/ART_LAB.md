@@ -328,6 +328,27 @@ a focus trap, visible focus and a reduced-motion fallback. On phones it is a
 full-screen sheet; on desktop a centred viewer with a facts rail. It never
 recomposes private source layers.
 
+## Thumbs and comments
+
+Every card candidate is reviewable with a single thumb:
+
+- **Keep** records a durable `like` feedback row and shortlists the candidate.
+- **Not this** records a durable `dislike` feedback row and moves it to
+  `needs_revision`. A comment is optional; the older `needs_revision` and
+  `reject` decisions still require a note.
+- The same thumbs are on each candidate tile and in the shared card viewer,
+  with a live count and an optional comment box. The viewer saves the comment
+  with the thumb, so the next person can read why the direction was kept or
+  rejected. The candidate panel's feedback thread renders the saved decision,
+  tags, author and comment.
+- Approved and published candidates cannot be re-rated; the existing approval,
+  rejection and rollback actions stay separate. The server enforces the same
+  rule for every surface.
+
+The decision values are `like`, `dislike`, `comment`, `shortlist`,
+`needs_revision` and `reject`; the API and the durable `fb_art_feedback` ledger
+are the source of truth, not the browser state.
+
 ## All art
 
 `/studio/all-art` is the single visual shelf for every art asset the operator

@@ -113,6 +113,10 @@ export default function AllArt({
       height: pin.height,
       audience: pin.audience,
       front: pin.image_url,
+      reviewEndpoint: `/api/v1/studio/art/candidates/${pin.candidate_id}/feedback`,
+      canReview: true,
+      reviewLikes: 0,
+      reviewDislikes: 0,
     }));
     const brandItems: CardViewerItem[] = brandAssets.map((asset) => ({
       id: asset.id,

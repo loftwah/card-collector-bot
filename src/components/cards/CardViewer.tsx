@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Download, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Download, ThumbsDown, ThumbsUp, X } from "lucide-react";
 import { CARD_STYLE_LABEL } from "@/lib/card-styles";
+import { api, describeError } from "@/lib/client";
 
 /**
  * The one card viewer used by the Art Lab, Print Studio, platform brand art,
@@ -38,6 +39,11 @@ export interface CardViewerItem {
   master?: string | null;
   downloadUrl?: string | null;
   href?: string | null;
+  reviewEndpoint?: string | null;
+  canReview?: boolean;
+  reviewLikes?: number;
+  reviewDislikes?: number;
+  reviewDecision?: "like" | "dislike" | null;
 }
 
 export interface CardViewerRequest {
@@ -78,6 +84,9 @@ export default function CardViewer() {
   const [items, setItems] = useState<CardViewerItem[]>([]);
   const [index, setIndex] = useState(0);
   const [side, setSide] = useState<"front" | "back">("front");
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewNotice, setReviewNotice] = useState("");
+  const [reviewBusy, setReviewBusy] = useState(false);
 
   const item = items[index] ?? null;
   const hasBack = Boolean(item?.back);
@@ -110,6 +119,8 @@ export default function CardViewer() {
       setItems(detail.items);
       setIndex(Math.max(0, Math.min(detail.items.length - 1, detail.index ?? 0)));
       setSide("front");
+      setReviewComment("");
+      setReviewNotice("");
       const dialog = dialogRef.current;
       if (dialog && !dialog.open) dialog.showModal();
       requestAnimationFrame(() => closeButtonRef.current?.focus({ preventScroll: true }));
@@ -145,6 +156,40 @@ export default function CardViewer() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [move, hasBack]);
+
+  async function sendReview(decision: "like" | "dislike") {
+    if (!item?.reviewEndpoint || reviewBusy) return;
+    setReviewBusy(true);
+    setReviewNotice("");
+    try {
+      const result = await api<{
+        candidate: { feedback: Array<{ decision: string }> };
+      }>(item.reviewEndpoint, {
+        method: "POST",
+        body: { decision, body: reviewComment.trim() || null },
+      });
+      const feedback = result.candidate.feedback ?? [];
+      const likes = feedback.filter((entry) => entry.decision === "like").length;
+      const dislikes = feedback.filter((entry) => entry.decision === "dislike").length;
+      setItems((current) =>
+        current.map((entry, entryIndex) =>
+          entryIndex === index
+            ? {
+                ...entry,
+                reviewDecision: decision,
+                reviewLikes: likes,
+                reviewDislikes: dislikes,
+              }
+            : entry,
+        ),
+      );
+      setReviewNotice(decision === "like" ? "Saved: keep" : "Saved: not this");
+    } catch (cause) {
+      setReviewNotice(describeError(cause));
+    } finally {
+      setReviewBusy(false);
+    }
+  }
 
   function onDialogClose() {
     const restore = restoreRef.current;
@@ -320,6 +365,51 @@ export default function CardViewer() {
                 </div>
               ))}
             </dl>
+            {item.reviewEndpoint ? (
+              <section className="card-viewer__review" aria-label="Review this card">
+                <p className="card-viewer__review-title">Your read</p>
+                <div className="card-viewer__votes">
+                  <button
+                    type="button"
+                    data-active={item.reviewDecision === "like" ? "true" : "false"}
+                    disabled={!item.canReview || reviewBusy}
+                    onClick={() => void sendReview("like")}
+                    aria-label={`Keep ${item.name}`}
+                  >
+                    <ThumbsUp size={16} aria-hidden="true" />
+                    <span>Keep</span>
+                    <b>{item.reviewLikes ?? 0}</b>
+                  </button>
+                  <button
+                    type="button"
+                    data-active={item.reviewDecision === "dislike" ? "true" : "false"}
+                    disabled={!item.canReview || reviewBusy}
+                    onClick={() => void sendReview("dislike")}
+                    aria-label={`Mark ${item.name} as not this`}
+                  >
+                    <ThumbsDown size={16} aria-hidden="true" />
+                    <span>Not this</span>
+                    <b>{item.reviewDislikes ?? 0}</b>
+                  </button>
+                </div>
+                <textarea
+                  className="card-viewer__comment"
+                  value={reviewComment}
+                  onChange={(event) => setReviewComment(event.target.value)}
+                  placeholder="Optional comment: what works, what is wrong, what to keep."
+                  disabled={!item.canReview || reviewBusy}
+                  rows={2}
+                />
+                <p className="card-viewer__review-hint">
+                  {item.canReview
+                    ? "Add a comment if you want, then pick a thumb. It saves immediately."
+                    : "This direction can no longer be re-reviewed. Roll it back first."}
+                </p>
+                <p className="card-viewer__review-notice" role="status" aria-live="polite">
+                  {reviewNotice}
+                </p>
+              </section>
+            ) : null}
             {item.provenance ? <p className="card-viewer__provenance">{item.provenance}</p> : null}
             {item.href ? (
               <a className="card-viewer__inspect" href={item.href}>

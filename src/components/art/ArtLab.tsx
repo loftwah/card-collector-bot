@@ -7,6 +7,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
+import { ThumbsDown, ThumbsUp } from "lucide-react";
 import { api, describeError } from "@/lib/client";
 import { Button } from "../ui/button";
 import { Input, Textarea } from "../ui/input";
@@ -686,7 +687,7 @@ export default function ArtLab({ surface }: { surface: Surface }) {
   }
 
   async function candidateFeedback(
-    decision: "comment" | "shortlist" | "needs_revision" | "reject",
+    decision: "comment" | "like" | "dislike" | "shortlist" | "needs_revision" | "reject",
   ) {
     if (!selectedCandidate) return;
     const result = await act<{ candidate: Candidate }>(
@@ -701,6 +702,19 @@ export default function ArtLab({ surface }: { surface: Surface }) {
     if (!result) return;
     setNotice(`Feedback recorded on ${selectedCandidate.label}.`);
     setFeedbackBody("");
+    await refresh();
+  }
+
+  async function vote(candidate: Candidate, decision: "like" | "dislike") {
+    const result = await act<{ candidate: Candidate }>(
+      `vote-${candidate.id}-${decision}`,
+      `/candidates/${candidate.id}/feedback`,
+      { decision, body: null },
+    );
+    if (!result) return;
+    setNotice(
+      decision === "like" ? `${candidate.label} kept.` : `${candidate.label} marked not this.`,
+    );
     await refresh();
   }
 
@@ -808,6 +822,22 @@ export default function ArtLab({ surface }: { surface: Surface }) {
       back: candidate.files.back,
       master: candidate.files.master,
       downloadUrl: candidate.files.download,
+      reviewEndpoint: `${base}/candidates/${candidate.id}/feedback`,
+      canReview:
+        Boolean(detail?.permissions.write) && !["approved", "published"].includes(candidate.status),
+      reviewLikes: candidate.feedback.filter((entry) => entry.decision === "like").length,
+      reviewDislikes: candidate.feedback.filter((entry) => entry.decision === "dislike").length,
+      reviewDecision:
+        [...candidate.feedback]
+          .reverse()
+          .find((entry) => ["like", "dislike"].includes(entry.decision))?.decision === "like"
+          ? "like"
+          : [...candidate.feedback]
+                .reverse()
+                .find((entry) => ["like", "dislike"].includes(entry.decision))?.decision ===
+              "dislike"
+            ? "dislike"
+            : null,
     }));
   }
 
@@ -1687,6 +1717,53 @@ export default function ArtLab({ surface }: { surface: Surface }) {
                           {candidate.display_width}×{candidate.display_height}
                         </span>
                       </div>
+                      <div className="candidate-tile__votes">
+                        <button
+                          type="button"
+                          className="candidate-vote"
+                          data-active={
+                            candidate.feedback.some((entry) => entry.decision === "like")
+                              ? "true"
+                              : "false"
+                          }
+                          disabled={
+                            !canWrite ||
+                            ["approved", "published"].includes(candidate.status) ||
+                            busy === `vote-${candidate.id}-like`
+                          }
+                          onClick={() => void vote(candidate, "like")}
+                          aria-label={`Keep ${candidate.label}`}
+                        >
+                          <ThumbsUp size={13} aria-hidden="true" />
+                          <span>
+                            {candidate.feedback.filter((entry) => entry.decision === "like").length}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          className="candidate-vote"
+                          data-active={
+                            candidate.feedback.some((entry) => entry.decision === "dislike")
+                              ? "true"
+                              : "false"
+                          }
+                          disabled={
+                            !canWrite ||
+                            ["approved", "published"].includes(candidate.status) ||
+                            busy === `vote-${candidate.id}-dislike`
+                          }
+                          onClick={() => void vote(candidate, "dislike")}
+                          aria-label={`Mark ${candidate.label} as not this`}
+                        >
+                          <ThumbsDown size={13} aria-hidden="true" />
+                          <span>
+                            {
+                              candidate.feedback.filter((entry) => entry.decision === "dislike")
+                                .length
+                            }
+                          </span>
+                        </button>
+                      </div>
                     </article>
                   ))}
                 </div>
@@ -1820,7 +1897,9 @@ function CandidatePanel(props: {
   setApprovalNotes: (value: string) => void;
   vectorRef: string;
   setVectorRef: (value: string) => void;
-  onFeedback: (decision: "comment" | "shortlist" | "needs_revision" | "reject") => void;
+  onFeedback: (
+    decision: "comment" | "like" | "dislike" | "shortlist" | "needs_revision" | "reject",
+  ) => void;
   onApprove: () => void;
   onRollback: () => void;
   publishOpen: boolean;
@@ -2020,17 +2099,17 @@ function CandidatePanel(props: {
                   size="sm"
                   variant="secondary"
                   disabled={!permissions.write || busy === "feedback"}
-                  onClick={() => onFeedback("shortlist")}
+                  onClick={() => onFeedback("like")}
                 >
-                  Shortlist
+                  <ThumbsUp size={13} aria-hidden="true" /> Keep
                 </Button>
                 <Button
                   size="sm"
                   variant="secondary"
                   disabled={!permissions.write || busy === "feedback"}
-                  onClick={() => onFeedback("needs_revision")}
+                  onClick={() => onFeedback("dislike")}
                 >
-                  Needs revision
+                  <ThumbsDown size={13} aria-hidden="true" /> Not this
                 </Button>
               </>
             ) : null}
