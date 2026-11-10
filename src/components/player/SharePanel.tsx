@@ -41,10 +41,12 @@ export default function SharePanel({
     setBusy(true);
     setError("");
     try {
-      setResult(await api<ShareResponse>("/api/v1/shares", {
-        method: "POST",
-        body: { kind, targetId, expiresInDays: expiryDays },
-      }));
+      setResult(
+        await api<ShareResponse>("/api/v1/shares", {
+          method: "POST",
+          body: { kind, targetId, expiresInDays: expiryDays },
+        }),
+      );
       setConfirming(false);
     } catch (cause) {
       setError(describeError(cause));
@@ -65,11 +67,14 @@ export default function SharePanel({
   }
 
   return (
-    <section className={`share-panel${isCollection ? " share-panel--collection" : ""}`} aria-label={`Share ${title}`}>
+    <section
+      className={`share-panel${isCollection ? "share-panel--collection" : ""}`}
+      aria-label={`Share ${title}`}
+    >
       <div className="share-panel__head">
         <div>
           <p className="studio-kicker text-[var(--teal)]">Share deliberately</p>
-          <h3 className="display-sm mt-1 text-2xl uppercase">{title}</h3>
+          <h2 className="display-sm mt-1 text-2xl uppercase">{title}</h2>
           <p className="mt-1 text-sm text-[var(--muted)]">{description}</p>
         </div>
         <ShieldCheck size={22} className="shrink-0 text-[var(--signal)]" aria-hidden="true" />
@@ -85,19 +90,33 @@ export default function SharePanel({
             height={isCollection ? 360 : 210}
           />
         ) : (
-          <div className="grid h-[210px] w-[150px] place-items-center bg-[var(--ink)] p-3 text-center font-mono text-[0.55rem] uppercase tracking-[0.12em] text-[var(--paper)]">{title}</div>
+          <div className="grid h-[210px] w-[150px] place-items-center bg-[var(--ink)] p-3 text-center font-mono text-[0.55rem] tracking-[0.12em] text-[var(--paper)] uppercase">
+            {title}
+          </div>
         )}
         <div className="min-w-0">
           <p className="font-semibold">{title}</p>
-          <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">Recipients see exactly this object and its published front/back. No wallet, email, account ID, admin data, private source layers or other cards are included. The link is a snapshot; cards you obtain later never appear in it.</p>
+          <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">
+            Recipients see exactly this object and its published front/back. No wallet, email,
+            account ID, admin data, private source layers or other cards are included. The link is a
+            snapshot; cards you obtain later never appear in it.
+          </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {!confirming && !result ? (
               <Button size="sm" onClick={() => setConfirming(true)}>
                 <Link2 size={14} /> Preview &amp; create link
               </Button>
             ) : null}
-            {frontUrl ? <a className="btn btn-secondary btn-sm" href={frontUrl} download><Download size={14} /> Front</a> : null}
-            {backUrl ? <a className="btn btn-secondary btn-sm" href={backUrl} download><Download size={14} /> Back</a> : null}
+            {frontUrl ? (
+              <a className="btn btn-secondary btn-sm" href={frontUrl} download>
+                <Download size={14} /> Front
+              </a>
+            ) : null}
+            {backUrl ? (
+              <a className="btn btn-secondary btn-sm" href={backUrl} download>
+                <Download size={14} /> Back
+              </a>
+            ) : null}
           </div>
         </div>
       </div>
@@ -105,32 +124,93 @@ export default function SharePanel({
       {confirming ? (
         <div className="share-panel__confirm" role="group" aria-label="Confirm share link">
           <p className="text-sm font-semibold">Confirm the exact snapshot</p>
-          <p className="mt-1 text-xs text-[var(--muted)]">A public-safe link can be opened by anyone with the URL while it is active. A members-only link still requires an entitled sign-in on every request. Neither grants membership or access to your account.</p>
+          <p className="mt-1 text-xs text-[var(--muted)]">
+            A public-safe link can be opened by anyone with the URL while it is active. A
+            members-only link still requires an entitled sign-in on every request. Neither grants
+            membership or access to your account.
+          </p>
           <div className="mt-3 flex flex-wrap items-end gap-3">
             <label className="text-xs font-semibold">
               Expires
-              <select className="select mt-1 block" value={expiryDays} onChange={(event) => setExpiryDays(Number(event.target.value))}>
+              <select
+                className="select mt-1 block"
+                value={expiryDays}
+                onChange={(event) => setExpiryDays(Number(event.target.value))}
+              >
                 <option value={1}>In 1 day</option>
                 <option value={7}>In 7 days</option>
                 <option value={30}>In 30 days</option>
               </select>
             </label>
-            <Button size="sm" onClick={create} disabled={busy}>{busy ? <><Loader2 size={14} className="animate-spin" /> Creating…</> : <>Create link</>}</Button>
-            <Button size="sm" variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>Cancel</Button>
+            <Button size="sm" onClick={create} disabled={busy}>
+              {busy ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" /> Creating…
+                </>
+              ) : (
+                <>Create link</>
+              )}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>
+              Cancel
+            </Button>
           </div>
         </div>
       ) : null}
 
-      {error ? <p className="mt-3 text-xs text-[var(--oxblood)]" role="alert">{error}</p> : null}
+      {error ? (
+        <p className="mt-3 text-xs text-[var(--oxblood)]" role="alert">
+          {error}
+        </p>
+      ) : null}
       {result ? (
         <div className="mt-4 border-t border-[var(--line)] pt-3">
-          <p className="text-xs text-[var(--muted)]">Audience: <strong>{result.audience === "public" ? "Public-safe" : result.audience === "private" ? "Owner only" : "Members"}</strong> · expires {new Date(result.expires_at).toLocaleDateString("en-AU")}</p>
+          <p className="text-xs text-[var(--muted)]">
+            Audience:{" "}
+            <strong>
+              {result.audience === "public"
+                ? "Public-safe"
+                : result.audience === "private"
+                  ? "Owner only"
+                  : "Members"}
+            </strong>{" "}
+            · expires {new Date(result.expires_at).toLocaleDateString("en-AU")}
+          </p>
           <div className="mt-2 flex flex-wrap gap-2">
-            <input className="input min-w-0 flex-1 font-mono text-xs" readOnly value={result.url} aria-label="Share link" onFocus={(event) => event.target.select()} />
-            <Button size="sm" variant="secondary" onClick={copy}>{copied ? <><Check size={14} /> Copied</> : <><Copy size={14} /> Copy</>}</Button>
-            <a className="btn btn-secondary btn-sm" href={result.url} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Open as recipient</a>
+            <input
+              className="input min-w-0 flex-1 font-mono text-xs"
+              readOnly
+              value={result.url}
+              aria-label="Share link"
+              onFocus={(event) => event.target.select()}
+            />
+            <Button size="sm" variant="secondary" onClick={copy}>
+              {copied ? (
+                <>
+                  <Check size={14} /> Copied
+                </>
+              ) : (
+                <>
+                  <Copy size={14} /> Copy
+                </>
+              )}
+            </Button>
+            <a
+              className="btn btn-secondary btn-sm"
+              href={result.url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <ExternalLink size={14} /> Open as recipient
+            </a>
           </div>
-          <p className="mt-2 text-[0.65rem] leading-relaxed text-[var(--muted)]">Open the link in a private window to see the recipient view. Manage or revoke it from <a className="underline underline-offset-4" href="/play/profile">your showcase</a>. A later audience change closes it; already-downloaded bytes cannot be recalled.</p>
+          <p className="mt-2 text-[0.65rem] leading-relaxed text-[var(--muted)]">
+            Open the link in a private window to see the recipient view. Manage or revoke it from{" "}
+            <a className="underline underline-offset-4" href="/play/profile">
+              your showcase
+            </a>
+            . A later audience change closes it; already-downloaded bytes cannot be recalled.
+          </p>
         </div>
       ) : null}
     </section>
