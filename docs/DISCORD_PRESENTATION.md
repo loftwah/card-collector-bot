@@ -250,6 +250,8 @@ useful but are no longer the adoption proof.
 
 ## Slice 5 — collection identity parity
 
+- **Production:** source `d389861a04bb540bbbe49a7e09ba35d344d2209c`, Worker
+  `5137ecc7-04b7-47a9-95a8-75879b9df7f8`.
 - `/foilbury collection` now leads the cabinet summary with the most recent
   owned collection's real banner (`image`) and real mark (`thumbnail`). The
   router resolves `/media/asset/...` through the authenticated R2 asset and
@@ -265,7 +267,11 @@ useful but are no longer the adoption proof.
   share still passes the existing audience checks.
 - Presentation and command tests cover banner-first/logo-second, no
   `cover_url`, the profile avatar/featured-card contract, and that profile or
-  collection views do not change wallet, inventory or ledger rows.
+  collection views do not change wallet, inventory or ledger rows. `pnpm
+  test:workers` passed 361 tests.
+- **Live Discord API read:** the `foilbury` command is registered in the test
+  guild with `profile` and `collection` options present. This is command
+  registration, not a user invocation.
 - **Not claimed:** a live Discord interaction for this slice. No authorised
   human Discord client/spectator interaction was available in this pass; the
   historical 2026-11-08 real-client evidence above predates this change. The
