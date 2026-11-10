@@ -8,25 +8,25 @@ All third-party assets are `kind=brand`, `access_classification=member`, `visibi
 
 ## Summary
 
-| Collection | Banner asset | Banner size | Mark asset | Mark size | Access |
-| --- | --- | --- | --- | --- | --- |
-| Alien Stage — Stage Lights | `ast_a893485348864ec3a48baffe` | 1280×720 | `ast_6978c318949aecbe3ef39186` | 1200×1200 | member |
-| Chainsaw Man — Public Safety, Part 1 | `ast_0854d8f8b50074d2c09eaf62` | 1920×1080 | `ast_62cc986c0f86f740025fb2fb` | 1200×203 | member |
-| Danganronpa — Three Killing Games | `ast_be1ceb505beb9688f0101664` | 1920×1080 | `ast_d76930b65ee447ca88f64e48` | 1200×329 | member |
-| Death Note — The Kira Case | mark only | — | `ast_b1b217e42cb301f8d46b0f87` | 1200×350 | member |
-| Doki Doki Literature Club! — The Clubroom | `ast_6ba6bf48901c19e140e953d1` | 1920×1080 | `ast_a20daa2315863afbd7f4d2fd` | 1200×1200 | member |
-| Puella Magi Madoka Magica — Mitakihara | `ast_44415e6b748d361bb3b19397` | 1920×1080 | `ast_d33e8f8ec9eea6b4c9e2d1d0` | 1200×270 | member |
-| NANA — Two Nanas, One Tokyo | `ast_e3471c4b9c47e0b43cf2f1ae` | 1200×675 | `ast_bf03e53054b0fd35a6112395` | 1200×500 | member |
-| NBA — Opening Night | mark only | — | `ast_aaa452963ac8e5cdc19d15bc` | 1200×641 | member |
-| Neon Genesis Evangelion — Episodes 1–26 | mark only | — | `ast_562fae7e22b252f9d919fda8` | 1280×544 | member |
-| Project Sekai — Unit Stage | `ast_4aef0884a4ac2ada50402b6f` | 1920×1080 | `ast_f285a314d49993dafd246672` | 1200×167 | member |
-| Rick and Morty — Portal | mark only | — | `ast_f5f4e62f977a362622ca3e99` | 1447×442 | member |
-| Scott Pilgrim — Six Volumes, One City | mark only | — | `ast_6647dd70999086a8da7611d6` | 1200×686 | member |
-| South Park — Town Album | `ast_1c67c15f2351f1bf4dee907c` | 1920×1080 | `ast_48ae560851d5f4d912ca82b9` | 2400×285 | member |
-| The Summer Hikaru Died — The Village and the Voice | `ast_0f31b035de02bd07c8af9ec8` | 1920×1080 | `ast_c7279774ca85b21ef0716269` | 1200×1090 | member |
-| The Simpsons — Springfield, U.S.A. | mark only | — | `ast_2f22ee5840dc5fb22dc0d369` | 1389×638 | member |
-| Total Drama Island — Camp Wawanakwa, 2007 | `ast_806d710687db1b2b4a98ba1b` | 1920×1080 | `ast_acba0db79ee23faac612f5d0` | 1280×784 | member |
-| Vocaloid — Voicebanks | `ast_f78dcf118656553aaa171f9c` | 1920×1080 | `ast_b5f2ad518f2135ed216977bf` | 1200×132 | member |
+| Collection                                         | Banner asset                   | Banner size | Mark asset                     | Mark size | Access |
+| -------------------------------------------------- | ------------------------------ | ----------- | ------------------------------ | --------- | ------ |
+| Alien Stage — Stage Lights                         | `ast_a893485348864ec3a48baffe` | 1280×720    | `ast_6978c318949aecbe3ef39186` | 1200×1200 | member |
+| Chainsaw Man — Public Safety, Part 1               | `ast_0854d8f8b50074d2c09eaf62` | 1920×1080   | `ast_62cc986c0f86f740025fb2fb` | 1200×203  | member |
+| Danganronpa — Three Killing Games                  | `ast_be1ceb505beb9688f0101664` | 1920×1080   | `ast_d76930b65ee447ca88f64e48` | 1200×329  | member |
+| Death Note — The Kira Case                         | mark only                      | —           | `ast_b1b217e42cb301f8d46b0f87` | 1200×350  | member |
+| Doki Doki Literature Club! — The Clubroom          | `ast_6ba6bf48901c19e140e953d1` | 1920×1080   | `ast_a20daa2315863afbd7f4d2fd` | 1200×1200 | member |
+| Puella Magi Madoka Magica — Mitakihara             | `ast_44415e6b748d361bb3b19397` | 1920×1080   | `ast_d33e8f8ec9eea6b4c9e2d1d0` | 1200×270  | member |
+| NANA — Two Nanas, One Tokyo                        | `ast_e3471c4b9c47e0b43cf2f1ae` | 1200×675    | `ast_bf03e53054b0fd35a6112395` | 1200×500  | member |
+| NBA — Opening Night                                | mark only                      | —           | `ast_aaa452963ac8e5cdc19d15bc` | 1200×641  | member |
+| Neon Genesis Evangelion — Episodes 1–26            | mark only                      | —           | `ast_562fae7e22b252f9d919fda8` | 1280×544  | member |
+| Project Sekai — Unit Stage                         | `ast_4aef0884a4ac2ada50402b6f` | 1920×1080   | `ast_f285a314d49993dafd246672` | 1200×167  | member |
+| Rick and Morty — Portal                            | mark only                      | —           | `ast_f5f4e62f977a362622ca3e99` | 1447×442  | member |
+| Scott Pilgrim — Six Volumes, One City              | mark only                      | —           | `ast_6647dd70999086a8da7611d6` | 1200×686  | member |
+| South Park — Town Album                            | `ast_1c67c15f2351f1bf4dee907c` | 1920×1080   | `ast_48ae560851d5f4d912ca82b9` | 2400×285  | member |
+| The Summer Hikaru Died — The Village and the Voice | `ast_0f31b035de02bd07c8af9ec8` | 1920×1080   | `ast_c7279774ca85b21ef0716269` | 1200×1090 | member |
+| The Simpsons — Springfield, U.S.A.                 | mark only                      | —           | `ast_2f22ee5840dc5fb22dc0d369` | 1389×638  | member |
+| Total Drama Island — Camp Wawanakwa, 2007          | `ast_806d710687db1b2b4a98ba1b` | 1920×1080   | `ast_acba0db79ee23faac612f5d0` | 1280×784  | member |
+| Vocaloid — Voicebanks                              | `ast_f78dcf118656553aaa171f9c` | 1920×1080   | `ast_b5f2ad518f2135ed216977bf` | 1200×132  | member |
 
 ## Source record
 
@@ -535,6 +535,80 @@ Bubbles, Fighter, Protocol 11 and Shared Characters are original Foilbury proper
 
 Protocol 11 now has original key-art banner `/art/collections/protocol-11-key-art.webp` made from its five actual table-night portraits. The geometric Protocol 11 mark remains the secondary identifier; the new key art is the banner first. The model, prompt, references, dimensions and hashes are recorded in `docs/AI_COLLECTION_ART_PROVENANCE.md`. The pilot card language is recorded in `docs/CARD_LANGUAGE.md`.
 
+## Card-language scene backgrounds (2026-11-10)
+
+Card language v2 needs a real scene behind the sourced subject, not a dark
+blur of the subject. Three scene paintings were generated for the proof
+collections only. They contain no characters and no lettering, and they are
+composed under the real sourced character art.
+
+- Model: `fal-ai/flux-pro/v1.1-ultra` (FAL). Prompt-only generation, 4:5.
+- Bounded paid pass: ceiling **US$6.00**; five images generated (three accepted,
+  two discarded iterations), about **US$0.30** at the published per-image
+  price. No top-up, no silent fallback.
+- Stored derivative: `art/backgrounds/<slug>.webp`, 1600×1986, WebP quality 88,
+  outside `public/` so it is never served publicly.
+- Audience: member/private. `origin=ai-derived`, `official:false`,
+  `review_status=reviewed`, no affiliation or licence claimed. The subject
+  character art remains the sourced third-party image recorded above and is
+  not replaced or redrawn.
+
+| Collection                | Asset                                            | SHA-256                                                            |   Bytes |
+| ------------------------- | ------------------------------------------------ | ------------------------------------------------------------------ | ------: |
+| Doki Doki Literature Club | `art/backgrounds/doki-doki-literature-club.webp` | `4779ba634e5c09f7892c85f1d30251a2ade8b4bbb27590d951e0f00b9018f04c` | 184,298 |
+| Project Sekai             | `art/backgrounds/project-sekai.webp`             | `bc1d896fd016f79e2fe223daa6e7f7823e61573113cf3b9be87b6c0943127016` | 351,976 |
+| Scott Pilgrim             | `art/backgrounds/scott-pilgrim.webp`             | `b6ee29a9942e55f21f7a45fe6a6e17e9f16aa53aaedfd3c6b8eec90ef2174e82` | 471,422 |
+
+### Doki Doki Literature Club — clubroom at dusk
+
+- Seed `1110`, 4:5, source PNG 1856×2304.
+- Prompt: “Empty high-school literature clubroom after school, late golden
+  hour, shot from the doorway. A single warm shaft of sunlight from tall
+  windows falls across the floor and the piano; the rest of the room is in cool
+  plum shadow. Desks in rows, cream curtains, pinned paper on a corkboard, a
+  potted plant, a tea set. Cinematic anime background art, painterly,
+  atmospheric haze, strong chiaroscuro, premium visual-novel key art. No
+  people, no characters, no text, no lettering, no logos, no watermark.
+  Vertical 4:5 composition with clear floor space in the centre.”
+- Accepted because the doorway, piano and light shaft match the clubroom and
+  give the subject a warm key from one side. A brighter first pass and a
+  near-black dusk pass were discarded.
+
+### Project Sekai — stage before the show
+
+- Seed `2131`, 4:5, source PNG 1856×2304.
+- Prompt: “An empty concert stage just before the show, seen from the centre
+  aisle. Towering lighting truss, deep cyan and magenta beams cutting through
+  haze, polished black stage floor with long reflections, abstract unlit LED
+  panels behind, confetti suspended in the air, low audience silhouettes in the
+  foreground. Anime rhythm-game key visual background, luminous, high
+  saturation, cinematic contrast. No performers, no people on stage, no text,
+  no lettering, no logos, no watermark. Vertical 4:5 composition with a clear
+  stage centre.”
+
+### Scott Pilgrim — Toronto street at night
+
+- Seed `3318`, 4:5, source PNG 1856×2304.
+- Prompt: “A snow-covered Toronto residential street at night in winter,
+  comic-book background art seen from the middle of the road. Brick low-rise
+  shopfronts with completely blank unmarked awnings and empty signboards, a
+  streetcar pole and overhead wires, bare trees, parked cars under snow,
+  purple-blue night sky, warm amber glow spilling from unmarked shop windows
+  onto the pavement. Bold black ink outlines, flat cel colour, coarse halftone
+  shading, early-2000s indie comic style. Absolutely no text, no lettering, no
+  numbers, no words, no logos, no signage graphics, no watermark, no people, no
+  characters. Vertical 4:5 composition with the street receding to a vanishing
+  point.”
+- A first pass contained invented shop lettering and was discarded rather than
+  shipped. The accepted pass has blank signboards.
+
+### Rejected iterations (recorded, not shipped)
+
+- `ddlc-clubroom-golden`: bright, evenly lit room; too busy behind the subject.
+- `ddlc-clubroom-dusk`: near-black; lost the room.
+- `scott-pilgrim-toronto-night`: invented shop lettering; rejected on the
+  no-generated-lettering rule.
+
 ## Retrieval and verification notes
 
 - Fandom image bytes were fetched through a real Chromium session after the public wiki page, because the `static.wikia.nocookie.net` CDN blocks plain command-line requests. The stored PNG/WebP derivatives were decoded from the fetched source and recorded with their own SHA-256.
@@ -554,4 +628,3 @@ The collection identity art did not change in the Slice 3 batches. Each collecti
 - Batches 2–4 (2026-11-10): Doki Doki, Project Sekai, Vocaloid, South Park, The Simpsons, NANA, Death Note, Summer Hikaru Died, Scott Pilgrim, Rick and Morty, Alien Stage, NBA and Evangelion keep the art recorded above. Bubbles, Fighter and Shared Characters keep their committed original marks. No collection identity art was regenerated or replaced by a card render.
 - The livery themes and per-batch shelves are recorded in `docs/CARD_LANGUAGE.md`.
 - No new image generation was run for Slice 3. The existing source art was reused; the only new committed art is the authored livery-frame geometry under `brand/masters/frame-<theme>-<material>.svg` and its rasterised layer.
-

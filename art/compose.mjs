@@ -9,12 +9,8 @@ import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 import { Resvg } from "@resvg/resvg-js";
-import {
-  archiveTextSvg,
-  broadcastTextSvg,
-  stageTextSvg,
-  mangaTextSvg,
-} from "./livery-text.mjs";
+import { renderFront, renderBack, hasLivery } from "./card-render.mjs";
+import { archiveTextSvg, broadcastTextSvg, stageTextSvg, mangaTextSvg } from "./livery-text.mjs";
 
 const W = 750;
 const H = 1050;
@@ -28,6 +24,13 @@ const fontFiles = [
 ];
 
 export async function composeCard(input) {
+  if (input.collectionSlug && hasLivery(input.collectionSlug)) {
+    return renderFront(input);
+  }
+  return legacyComposeCard(input);
+}
+
+async function legacyComposeCard(input) {
   const {
     subjectPath,
     backgroundPath,
@@ -401,7 +404,8 @@ async function markAspectFor(markPath, markBuffer) {
   }
 }
 
-async function markDataUri(markPath, markBuffer, markMime, invert = false) {  try {
+async function markDataUri(markPath, markBuffer, markMime, invert = false) {
+  try {
     if (!markBuffer && (!markPath || !fs.existsSync(markPath))) return "";
     const ext = markBuffer
       ? markMime === "image/svg+xml"
@@ -737,6 +741,9 @@ if (process.argv[1] && process.argv[1].endsWith("compose.mjs") && process.argv[2
  * collectible material treatment, never a second random outcome.
  */
 export async function composeCardBack(input) {
+  if (input.collectionSlug && hasLivery(input.collectionSlug)) {
+    return renderBack(input);
+  }
   const { backPath, material = "plain", effect = "none", collectionTheme = "", outputPath } = input;
   const materialLayer = path.join(layerDir, `material-${material}.png`);
   const genericFrame = path.join(layerDir, `frame-${material}.png`);

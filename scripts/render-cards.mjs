@@ -36,7 +36,18 @@ if (queueOnly) {
 
 const cards = await apiJson("/api/v1/admin/cards?limit=200");
 const index = new Map();
+const catalogueCodes = new Map();
+const collectionCounts = new Map();
 for (const card of cards.items) {
+  const collectionSlug = card.collections?.[0]?.slug ?? "";
+  const prefix = collectionSlug
+    .split("-")
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+  const count = (collectionCounts.get(collectionSlug) ?? 0) + 1;
+  collectionCounts.set(collectionSlug, count);
+  catalogueCodes.set(card.id, `FB-${prefix}-${String(count).padStart(3, "0")}`);
   for (const edition of card.editions) {
     for (const variant of edition.variants) {
       index.set(variant.id, { card, edition, variant });
@@ -137,11 +148,20 @@ while (true) {
       rarity: entry.card.rarity?.name ?? "",
       composition,
       collectionTheme,
+      collectionSlug: collectionSlugForCard,
+      cardSlug: entry.card.slug,
+      catalogueCode: catalogueCodes.get(entry.card.id),
+      bio: entry.card.bio_safe ?? entry.card.description ?? "",
+      edition: "Member archive · First printing",
+      provenance:
+        entry.card.collections?.[0]?.view_audience === "public"
+          ? "PUBLIC SHOWCASE · ORIGINAL FOILBURY PROJECT"
+          : "MEMBER ARCHIVE · THIRD-PARTY ART · NOT OFFICIAL",
+      provenanceLong:
+        "Third-party character art, sourced and credited. Private, non-commercial member album; not official or licensed.",
       markPlate: collectionPresentation?.markPlate,
       markInvert:
-        collectionPresentation?.markInvert ??
-        liveryTheme(collectionTheme)?.markInvert ??
-        false,
+        collectionPresentation?.markInvert ?? liveryTheme(collectionTheme)?.markInvert ?? false,
       markBuffer,
       markMime,
       returnBytes: true,

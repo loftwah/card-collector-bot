@@ -1,10 +1,82 @@
-# Collection card language: all published collections
+# Collection card language
 
-Status: Slice 3 complete and production-verified (2026-11-10). The shared
-language now covers every published collection; the two pilots keep their
-original output. Final source `b9a3c72`; Worker
-`2a57e92b-1fe5-42da-a698-2ea236919db9`. The shared renderer remains the only
-card renderer.
+Status: **card language v2 is in verification on three proof collections**
+(2026-11-10). The Slice 3 rollout below is historical: its frames, flat
+material tints and dark-blur backgrounds are superseded. Do not roll v2 across
+the remaining collections until the three proofs pass the acceptance in this
+document.
+
+- Renderer: `art/card-render.mjs` (one shared renderer).
+- Data: `src/data/collection-livery.json` (per-collection palette, motif, era,
+  plate treatment) and `src/data/collection-themes.json` (family tokens).
+- Scene backgrounds: `art/backgrounds/<slug>.webp`, generated and recorded in
+  `docs/COLLECTION_ART_PROVENANCE.md`. They are not served from `public/`.
+- Proof collections: Doki Doki Literature Club (archive), Project Sekai
+  (stage), Scott Pilgrim (manga). All four finishes and both faces were
+  rendered; the other 16 published collections still use the old saved renders.
+
+## V2 object contract
+
+- One 5:7 object. The master is **1500×2100**; the web render is **750×1050**
+  and is judged at **400×560** before it is accepted. The same saved object is
+  attached in Discord; there is no second Discord composition.
+- Layers: real scene → composed subject → authored material → family livery
+  frame → exact type. No whole-card generation and no CSS tint presented as a
+  finish.
+- Front hierarchy: scene and subject (about 70% of the object), collection mark,
+  name (maximum two lines), role, collection and era, rarity, finish, print
+  serial, one provenance line. No bio wall.
+- Back: a designed record with the real mark, name, role, a concise bio, the
+  collection, rarity, edition, provenance, print serial and set symbol. It is
+  set as a typographic page with a foil seal and a serial ticket, not a table.
+- The subject is the real sourced art. The renderer only removes the white
+  cutout matte, un-premultiplies the anti-aliased edge, adds a one-pixel ink
+  contour, a contact shadow and a key-light glow. Likeness is not redrawn.
+- The card type is authored at 750 and rendered at 2× so the name, rarity,
+  finish and serial survive Discord's inline size. Name 92/76/64, rarity and
+  serial 18.5, finish label 15.4, collection line 15.2, provenance 9.4.
+
+## Materials
+
+- **Plain** — uncoated paper edge, blind-embossed inner rule, no metal, no
+  specular band.
+- **Silver** — cool brushed metal with a layered bevel and specular sweep.
+- **Gold** — warm foil with a dark outer bevel, saturated mid-band and a bright
+  inner fillet.
+- **Holographic** — prismatic segmented edge, diffraction wash over the scene
+  and a prismatic seal; the printed label is `HOLOGRAPHIC`.
+- Finish is carried by the object edge, the seal, the finish label and the
+  frame fillet. A finish change is visible at 128 px, not only in a tint.
+
+## Family livery
+
+Three strong families share one skeleton; a collection supplies palette, motif,
+era and plate treatment. There is no per-collection code.
+
+| Family    | Geometry                                                                                                              | Proof                     |
+| --------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| `archive` | Rounded frame, stitched inner rule, large round collection badge, plum plate, heart/bolt-style set seal               | Doki Doki Literature Club |
+| `stage`   | Proscenium valance with bulbs, side curtains, wide wordmark plate, navy plate, star seal, cyan/magenta rules          | Project Sekai             |
+| `manga`   | Black gutter inside the finish frame, halftone plate, wide mark on a black plate, condensed uppercase name, bolt seal | Scott Pilgrim             |
+
+The collection identity is the real `logo_url`, the collection's palette and
+era, and a motif derived from the collection. No official logo is invented and
+no card render is used as collection identity.
+
+## Acceptance for v2
+
+- Name, rarity, finish and print serial are readable at 400 px without zooming.
+- The four finishes are distinct at 128 px.
+- The frame and set symbol belong to the collection.
+- Front and back are both designed; the back is not a table.
+- The live signed-in card inspector is checked at 1440 and 390, and the Discord
+  `/foilbury open` attachment is checked at its real inline size.
+
+## Historical: Slice 3 (superseded)
+
+The Slice 3 record below is kept as history. Its 19-collection rollout, flat
+material tints, blurred backgrounds and typographic scale are not current
+acceptance.
 
 ## Shared contract
 
@@ -85,11 +157,11 @@ the compositor.
 
 ### Batch 1
 
-| Collection | Theme | Identity art | Roster shelves |
-| --- | --- | --- | --- |
-| Chainsaw Man — Public Safety, Part 1 | `archive` | sourced banner + real series mark | Public Safety / Division chief / Devils and partners |
-| Puella Magi Madoka Magica — Mitakihara | `stage` | sourced banner + real series mark | Magical girls / The contract / Mitakihara at home |
-| Total Drama Island — Camp Wawanakwa, 2007 | `broadcast` | sourced banner + real series mark | Campers / Production |
+| Collection                                | Theme       | Identity art                      | Roster shelves                                       |
+| ----------------------------------------- | ----------- | --------------------------------- | ---------------------------------------------------- |
+| Chainsaw Man — Public Safety, Part 1      | `archive`   | sourced banner + real series mark | Public Safety / Division chief / Devils and partners |
+| Puella Magi Madoka Magica — Mitakihara    | `stage`     | sourced banner + real series mark | Magical girls / The contract / Mitakihara at home    |
+| Total Drama Island — Camp Wawanakwa, 2007 | `broadcast` | sourced banner + real series mark | Campers / Production                                 |
 
 - **Archive** is a cream index-card band with an oxblood registration edge, a
   catalogue tab, a wide mark plate and typed record lines. The art canvas stops
@@ -130,13 +202,13 @@ second; the mark is on a paper plate for these wordmark-led collections.
 
 ### Batch 2
 
-| Collection | Theme | Identity art | Roster shelves |
-| --- | --- | --- | --- |
-| Doki Doki Literature Club! — The Clubroom | `archive` | sourced banner + real series mark | Club members / The clubroom |
-| Project Sekai — Unit Stage | `stage` | sourced banner + real series mark | Unit stages / Virtual Singer |
-| Vocaloid — Voicebanks | `stage` | sourced banner + real series mark | Crypton / Internet Co. / 1st Place |
-| South Park — Town Album | `broadcast` | sourced banner + real series mark | Main cast / Townsfolk |
-| The Simpsons — Springfield, U.S.A. | `broadcast` | sourced banner + real series mark | The family / Springfield |
+| Collection                                | Theme       | Identity art                      | Roster shelves                     |
+| ----------------------------------------- | ----------- | --------------------------------- | ---------------------------------- |
+| Doki Doki Literature Club! — The Clubroom | `archive`   | sourced banner + real series mark | Club members / The clubroom        |
+| Project Sekai — Unit Stage                | `stage`     | sourced banner + real series mark | Unit stages / Virtual Singer       |
+| Vocaloid — Voicebanks                     | `stage`     | sourced banner + real series mark | Crypton / Internet Co. / 1st Place |
+| South Park — Town Album                   | `broadcast` | sourced banner + real series mark | Main cast / Townsfolk              |
+| The Simpsons — Springfield, U.S.A.        | `broadcast` | sourced banner + real series mark | The family / Springfield           |
 
 - The same four livery layouts are reused; no new theme, frame or per-collection
   renderer was added.
@@ -151,13 +223,13 @@ second; the mark is on a paper plate for these wordmark-led collections.
 
 ### Batch 3
 
-| Collection | Theme | Identity art | Roster shelves |
-| --- | --- | --- | --- |
-| NANA — Two Nanas, One Tokyo | `archive` | sourced banner + real series mark | Black Stones / Trapnest / Tokyo |
-| Death Note — The Kira Case | `archive` | sourced banner + real series mark | The investigation / Shinigami / The notebook |
-| The Summer Hikaru Died — The Village and the Voice | `archive` | sourced banner + real series mark | The village / Outside authority |
-| Scott Pilgrim — Six Volumes, One City | `manga` | sourced banner + real series mark | Sex Bob-omb / The exes / Friends |
-| Rick and Morty — Portal | `broadcast` | sourced banner + real series mark | The Smiths / Wider cast |
+| Collection                                         | Theme       | Identity art                      | Roster shelves                               |
+| -------------------------------------------------- | ----------- | --------------------------------- | -------------------------------------------- |
+| NANA — Two Nanas, One Tokyo                        | `archive`   | sourced banner + real series mark | Black Stones / Trapnest / Tokyo              |
+| Death Note — The Kira Case                         | `archive`   | sourced banner + real series mark | The investigation / Shinigami / The notebook |
+| The Summer Hikaru Died — The Village and the Voice | `archive`   | sourced banner + real series mark | The village / Outside authority              |
+| Scott Pilgrim — Six Volumes, One City              | `manga`     | sourced banner + real series mark | Sex Bob-omb / The exes / Friends             |
+| Rick and Morty — Portal                            | `broadcast` | sourced banner + real series mark | The Smiths / Wider cast                      |
 
 - `manga` is the fourth shared livery: a paper caption panel, an inked
   gutter, a halftone corner and a black subtitle box. It is not a per-collection
@@ -169,14 +241,14 @@ second; the mark is on a paper plate for these wordmark-led collections.
 
 ### Batch 4 — the remaining six
 
-| Collection | Theme | Identity art | Roster shelves |
-| --- | --- | --- | --- |
-| Alien Stage — Stage Lights | `stage` | sourced banner + real series mark | Contestants / The garden / The stage |
-| NBA — Opening Night | `broadcast` | sourced banner + real series mark | Backcourt / Wings / Bigs |
-| Neon Genesis Evangelion — Episodes 1–26 | `archive` | sourced banner + real series mark | NERV / Outside the command |
-| Bubbles | `stage` | original committed mark | The cast |
-| Fighter | `manga` | original committed mark | The roster |
-| Shared Characters | `archive` | original committed mark | The shared cast |
+| Collection                              | Theme       | Identity art                      | Roster shelves                       |
+| --------------------------------------- | ----------- | --------------------------------- | ------------------------------------ |
+| Alien Stage — Stage Lights              | `stage`     | sourced banner + real series mark | Contestants / The garden / The stage |
+| NBA — Opening Night                     | `broadcast` | sourced banner + real series mark | Backcourt / Wings / Bigs             |
+| Neon Genesis Evangelion — Episodes 1–26 | `archive`   | sourced banner + real series mark | NERV / Outside the command           |
+| Bubbles                                 | `stage`     | original committed mark           | The cast                             |
+| Fighter                                 | `manga`     | original committed mark           | The roster                           |
+| Shared Characters                       | `archive`   | original committed mark           | The shared cast                      |
 
 - The three Foilbury-owned collections are mark-led because they have no
   banner. The hero uses the real committed mark on a paper plate over the
@@ -195,12 +267,12 @@ second; the mark is on a paper plate for these wordmark-led collections.
 The four batches were released separately and each was exercised on the live
 signed-in site before the next began.
 
-| Batch | Collections | Fronts | Backs | Source | Worker |
-| --- | --- | ---: | ---: | --- | --- |
-| 1 | Chainsaw Man, Madoka Magica, Total Drama Island | 96 | 96 | `545a82e` + `e88afb5` | `da5660f6` / `ab37d44d` |
-| 2 | Doki Doki, Project Sekai, Vocaloid, South Park, The Simpsons | 164 | 164 | `08b4184` + `0bb304a` | `aa72257a` / `2633e889` |
-| 3 | NANA, Death Note, Summer Hikaru Died, Scott Pilgrim, Rick and Morty | 160 | 160 | `9526b43` | `3bad1911` |
-| 4 | Alien Stage, NBA, Evangelion, Bubbles, Fighter, Shared Characters | 196 | 196 | `b9a3c72` | `2a57e92b` |
+| Batch | Collections                                                         | Fronts | Backs | Source                | Worker                  |
+| ----- | ------------------------------------------------------------------- | -----: | ----: | --------------------- | ----------------------- |
+| 1     | Chainsaw Man, Madoka Magica, Total Drama Island                     |     96 |    96 | `545a82e` + `e88afb5` | `da5660f6` / `ab37d44d` |
+| 2     | Doki Doki, Project Sekai, Vocaloid, South Park, The Simpsons        |    164 |   164 | `08b4184` + `0bb304a` | `aa72257a` / `2633e889` |
+| 3     | NANA, Death Note, Summer Hikaru Died, Scott Pilgrim, Rick and Morty |    160 |   160 | `9526b43`             | `3bad1911`              |
+| 4     | Alien Stage, NBA, Evangelion, Bubbles, Fighter, Shared Characters   |    196 |   196 | `b9a3c72`             | `2a57e92b`              |
 
 - Pre-change D1 JSON backup:
   `.foilbury/backups/d1-2026-11-10T00-53-53-721Z.json` (97 tables, 37,016 rows,
