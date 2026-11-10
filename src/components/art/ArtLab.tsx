@@ -386,7 +386,10 @@ function readTags(candidate: Candidate): FeedbackTag[] {
 }
 
 function fileBaseFor(surface: Surface): string {
-  return surface === "studio" ? "/api/v1/studio/art" : "/api/v1/admin/art";
+  // The platform page and `/api/v1/admin` are separate Cloudflare Access
+  // applications. The page-aligned transport keeps the browser inside the
+  // Access session it already holds; the endpoint still enforces Super Admin.
+  return surface === "studio" ? "/api/v1/studio/art" : "/platform-admin/art-api";
 }
 
 export default function ArtLab({ surface }: { surface: Surface }) {
@@ -1017,7 +1020,7 @@ export default function ArtLab({ surface }: { surface: Surface }) {
       </nav>
 
       {surface === "platform" && brandKind ? (
-        <BrandShelf kind={brandKind} onNotice={setNotice} onError={setError} />
+        <BrandShelf kind={brandKind} base={base} onNotice={setNotice} onError={setError} />
       ) : null}
 
       {showNew ? (

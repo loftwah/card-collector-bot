@@ -46,10 +46,12 @@ function selectionMatches(asset: BrandAsset, selections: BrandSelections): boole
 
 export default function BrandShelf({
   kind,
+  base,
   onNotice,
   onError,
 }: {
   kind: BrandKind;
+  base: string;
   onNotice: (message: string) => void;
   onError: (message: string) => void;
 }) {
@@ -59,7 +61,7 @@ export default function BrandShelf({
 
   useEffect(() => {
     let active = true;
-    api<BrandCatalogue>("/api/v1/admin/art/brand")
+    api<BrandCatalogue>(`${base}/brand`)
       .then((result) => {
         if (active) setData(result);
       })
@@ -69,7 +71,7 @@ export default function BrandShelf({
     return () => {
       active = false;
     };
-  }, []);
+  }, [base]);
 
   const group = data?.groups.find((entry) => entry.kind === kind) ?? null;
   const styleGroup = data?.groups.find((entry) => entry.kind === "card_styles") ?? null;
@@ -101,7 +103,7 @@ export default function BrandShelf({
   async function select(asset: BrandAsset, slot: BrandSlot) {
     setBusy(asset.id);
     try {
-      const result = await api<BrandCatalogue>("/api/v1/admin/art/brand/selection", {
+      const result = await api<BrandCatalogue>(`${base}/brand/selection`, {
         method: "POST",
         body: { slot, path: asset.path },
       });

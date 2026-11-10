@@ -341,6 +341,12 @@ the shared viewer and each slot has one explicit action.
 - Selections live in `fb_brand_selections` and are validated against the
   catalogue. The write requires the provisioned Super Admin, a signed-in human
   and recent strong authentication; the read is a normal page dependency.
+- The platform page and `/api/v1/admin` are separate Cloudflare Access
+  applications. The platform browser therefore uses the page-aligned
+  `/platform-admin/art-api/*` transport, which performs the same CSRF check and
+  calls the one Art Lab module. It is not a second authority surface; the page
+  still requires Access and the module still requires the provisioned Super
+  Admin. The Studio surface keeps `/api/v1/studio/art`.
 - New Foil Standard Open Graph and banner variants are composed by
   `art/brand-variants.mjs` from the real mark, wordmark, type and palette. The
   historical Signal Fold shareables are not presented as current identity.
