@@ -396,6 +396,25 @@ the shared viewer and each slot has one explicit action.
   `art/brand-variants.mjs` from the real mark, wordmark, type and palette. The
   historical Signal Fold shareables are not presented as current identity.
 
+## Candidate variation (2026-11-11)
+
+One provider call with the same prompt produced four near-identical cards. The
+runner now sends a distinct composition directive and label with each candidate
+in a card run: **Centered hero**, **Low angle**, **Close crop**, **Wide scene**,
+**Graphic**, **Editorial** for whole-card; **Establishing**, **Low angle**,
+**Environmental detail**, **Graphic** for layered scenes. The exact copy,
+subject identity, mark and card contract stay unchanged; only composition
+changes. The live `Tux · Neon variation study` shows four visibly different
+cards and retains the per-candidate thumbs.
+
+The first layered `composed_scene` proof now records its ordered stack in
+candidate metadata: AI scene → real subject → material → frame → AI
+holographic effect → exact code type. The Art Lab shows the stack with
+thumbnails and blend/opacity and opens each layer in the shared viewer. The
+proof is intentionally not published yet: the legacy subject cutout, card frame
+and information band are weaker than the whole-card comparison, so the layer
+masters need the same quality bar before a layered card replaces a live render.
+
 ## Production card proof: Tux · Neon signal keeper (2026-11-11)
 
 A real whole-card run was made against production after the twelve-style
@@ -478,9 +497,10 @@ release:
   candidate tiles with eight thumb controls; the viewer showed **Your read**
   with Keep/Not this, a comment box and live counts. A real comment and keep
   were saved and read back from the feedback ledger.
-- Art expansion spend: US$0.20 actual for the four Tux whole-card candidates
-  and an estimated US$0.20 for the icon, mascot, style and back sheets; total
-  about US$0.40 against a declared US$2.00 ceiling. No top-up.
+- Art expansion spend: US$0.60 actual across the first Tux run, the variation
+  study and the layered holographic proof, plus an estimated US$0.20 for the
+  icon, mascot, style and back sheets; total about US$0.80 against a declared
+  US$2.00 ceiling. No top-up.
 - A layered `composed_scene` proof (`Tux · Neon layered holographic proof`,
   Holographic variant) used an AI holo texture at 0.34 screen opacity and exact
   code type. It is in the Art Lab as a proof, not published: the legacy subject,

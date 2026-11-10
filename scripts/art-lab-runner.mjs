@@ -565,7 +565,7 @@ async function compose(run, rawScene) {
   const back = hasLivery(run.collection.slug) ? await composeCardBack(cardInput) : null;
   const material = run.variant.material_key;
   const theme = presentation.theme ?? "";
-  const styleKey = run.brief.styles?.[0] ?? "";
+  const styleKey = run.job.style_key ?? run.brief.styles?.[0] ?? "";
   const frameName = theme ? `frame-${theme}-${material}.png` : `frame-${material}.png`;
   const aiEffect = styleKey ? `ai/${styleKey}-holo.png` : null;
   const layers = [
@@ -739,6 +739,7 @@ VARIATION ${index + 1} of ${run.job.count} — ${variation.label}: ${variation.d
             seed: result.seed,
             prompt: candidatePrompt,
             label: variation ? `Candidate ${index + 1} · ${variation.label}` : undefined,
+            layers: composed.layers,
           },
           index,
         );
