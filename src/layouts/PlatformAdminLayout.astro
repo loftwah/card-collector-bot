@@ -64,6 +64,7 @@ const links = [
           {link.href === "/platform-admin/art" ? (
             <span
               data-art-pending
+              data-endpoint="/api/v1/admin/art/count"
               hidden
               class="ml-2 inline-flex min-w-4 items-center justify-center rounded-full bg-[var(--signal)] px-1 py-0.5 text-[0.5rem] font-semibold leading-none text-[var(--signal-ink)]"
             >
@@ -77,19 +78,7 @@ const links = [
       <slot />
     </div>
   </section>
-  <script is:inline>
-    (() => {
-      const badge = document.querySelector("[data-art-pending]");
-      if (!badge) return;
-      fetch("/api/v1/admin/art/count", { credentials: "same-origin" })
-        .then((response) => (response.ok ? response.json() : null))
-        .then((data) => {
-          const count = Number(data?.count ?? 0);
-          if (!count) return;
-          badge.textContent = String(count);
-          badge.hidden = false;
-        })
-        .catch(() => undefined);
-    })();
+  <script>
+    import "../scripts/art-pending";
   </script>
 </BaseLayout>
