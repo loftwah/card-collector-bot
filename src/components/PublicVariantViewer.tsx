@@ -171,7 +171,7 @@ export default function PublicVariantViewer({
         ) : null}
         <p className="prose mt-6 text-[var(--muted)]">{bio || description}</p>
         {quote ? (
-          <blockquote className="font-display mt-5 border-l-2 border-[var(--brass)] pl-4 text-2xl leading-snug text-[var(--ink)]">
+          <blockquote className="font-display mt-5 border-l-2 border-[var(--brass)] pl-4 text-2xl leading-snug text-balance text-[var(--ink)]">
             “{quote}”
           </blockquote>
         ) : null}
