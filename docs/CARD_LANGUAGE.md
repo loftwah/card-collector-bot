@@ -78,11 +78,47 @@ no card render is used as collection identity.
 - The live signed-in card inspector is checked at 1440 and 390, and the Discord
   `/foilbury open` attachment is checked at its real inline size.
 
+## Direction review (2026-11-10)
+
+Eight directions were rendered as actual cards for Doki Doki Literature Club,
+not mood boards, then judged at 750, 400, 214 and 128. The contact sheet is
+`.foilbury/evidence/card-language/contact-directions.jpg`.
+
+| Direction            |   Score | Blunt critique                                                                                                                                             |
+| -------------------- | ------: | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Atelier** (chosen) | 8.5 → 9 | Art-led portrait, plum plinth, cream type, large real badge, foil edge. The only direction where the object, the collection and the data all read at once. |
+| Foil Minimal         |       7 | Premium restraint and the best first impression, but the plinth is empty and the metadata is too quiet to survive Discord.                                 |
+| Reliquary            |     6.5 | Correct hierarchy, but the cream plinth is flat and the first pass read like a magazine layout, not a collectible.                                         |
+| Cinema               |       6 | Strong scene and name, but no designed object and the metadata is crammed into a gradient.                                                                 |
+| Index card           |       6 | Real collection identity, but it reads as a school notebook rather than a premium card.                                                                    |
+| Panel                |       6 | Bold name bar, but a poster, not a printed collectible with a back.                                                                                        |
+| Ticket               |     5.5 | The arch is good; the empty band and dotted line read arcade, not archive.                                                                                 |
+| Scrapbook            |     5.5 | Charming and on-theme, but fan-scrapbook rather than a card worth posting.                                                                                 |
+| Terminal             |       5 | On-theme for DDLC's meta turn, but hacker cosplay and poor type hierarchy.                                                                                 |
+
+### Iterations of the chosen direction
+
+1. **Cream plinth / Reliquary** — clean, but the material read as flat paper and
+   the subject had a visible white cutout halo. Failed the "gold looks like
+   gold" test.
+2. **Plum plinth, bigger badge** — the card gained drama and a real collection
+   mark; the subject still floated and the metadata was too small for Discord.
+3. **Dusk clubroom + 1000 px portrait** — the subject sat in a lit scene rather
+   than on a blur; the de-fringe and ink contour removed the halo. Frame and
+   seal became the finish carriers.
+4. **30 px metadata row** — a real Discord embed caps a 5:7 image at about
+   214×300, so rarity, finish and print code were raised to 30/23/29 px. The
+   holographic label was moved left to keep the print code clear.
+5. **Back** — the first reverse was a cream facts grid. The final reverse is a
+   designed record: mark, name, role, bio, foil set mark, rarity, collection,
+   edition, provenance, print ticket and set line.
+
 ## V2 production verification (2026-11-10)
 
 - Application source `d363dcc50f4c`; Worker
-  `3fc33453-ccfd-4b70-b672-2cd6ef277cc7`. The renderer/tooling follow-up is
-  `bcef8f7` (not a runtime redeploy).
+  `3fc33453-ccfd-4b70-b672-2cd6ef277cc7`. The final card renders were produced
+  by renderer `08253ec`; the renderer and documentation follow-ups are tooling
+  changes and were not a runtime redeploy.
 - Proof collections and variants: Doki Doki Literature Club, Project Sekai and
   Scott Pilgrim; eight cards each, four finishes (**32 published variants per
   collection, 96 fronts and 96 designed backs**). Every front and back rendered
