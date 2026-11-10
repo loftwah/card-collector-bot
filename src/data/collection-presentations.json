@@ -77,13 +77,17 @@
         "key": "chief",
         "label": "Division chief",
         "caption": "The desk the whole division answers to",
-        "cards": ["Makima"]
+        "cards": [
+          "Makima"
+        ]
       },
       {
         "key": "devils",
         "label": "Devils and partners",
         "caption": "The other half of the contract",
-        "cards": ["Pochita"]
+        "cards": [
+          "Pochita"
+        ]
       }
     ]
   },
@@ -116,13 +120,17 @@
         "key": "contract",
         "label": "The contract",
         "caption": "The messenger and the system",
-        "cards": ["Kyubey"]
+        "cards": [
+          "Kyubey"
+        ]
       },
       {
         "key": "home",
         "label": "Mitakihara at home",
         "caption": "The life the contract interrupts",
-        "cards": ["Junko Kaname"]
+        "cards": [
+          "Junko Kaname"
+        ]
       }
     ]
   },
@@ -142,13 +150,216 @@
         "key": "campers",
         "label": "The campers",
         "caption": "Screaming Gophers, Killer Bass and the ones who switched",
-        "cards": ["Gwen", "Heather", "Duncan", "Leshawna", "Izzy", "Owen"]
+        "cards": [
+          "Gwen",
+          "Heather",
+          "Duncan",
+          "Leshawna",
+          "Izzy",
+          "Owen"
+        ]
       },
       {
         "key": "production",
         "label": "Production",
         "caption": "The host, the cook and the rules nobody reads",
-        "cards": ["Chris McLean", "Chef Hatchet"]
+        "cards": [
+          "Chris McLean",
+          "Chef Hatchet"
+        ]
+      }
+    ]
+  },
+  "doki-doki-literature-club": {
+    "theme": "archive",
+    "titleLead": "Doki Doki",
+    "titleTail": "The Clubroom",
+    "eyebrow": "Clubroom archive",
+    "lede": "Four members, one after-school room and a poem exchange that is not quite what it seems. This shelf follows the 2017 visual novel as the club first presents itself.",
+    "cardSetName": "Doki Doki Literature Club",
+    "openingCta": "Open a Clubroom capsule",
+    "rosterLabel": "The clubroom",
+    "rosterFactLabel": "Records",
+    "markPlate": "dark",
+    "bannerPosition": "center 30%",
+    "groups": [
+      {
+        "key": "members",
+        "label": "Club members",
+        "caption": "Sayori, Natsuki, Yuri and Monika",
+        "cards": [
+          "Sayori",
+          "Natsuki",
+          "Yuri",
+          "Monika"
+        ]
+      },
+      {
+        "key": "clubroom",
+        "label": "The clubroom",
+        "caption": "The room, the ritual and the deadline",
+        "cards": [
+          "The Protagonist",
+          "The Clubroom",
+          "The Poem Exchange",
+          "The School Festival"
+        ]
+      }
+    ]
+  },
+  "project-sekai": {
+    "theme": "stage",
+    "titleLead": "Project Sekai",
+    "titleTail": "Unit Stage",
+    "eyebrow": "Unit stage lights",
+    "lede": "Five units, one virtual singer and a stage that keeps changing hands. Eight records from the rhythm game's unit context, not its in-game card editions.",
+    "cardSetName": "Project Sekai · Unit Stage",
+    "openingCta": "Open a Unit Stage capsule",
+    "rosterLabel": "The units",
+    "rosterFactLabel": "Performers",
+    "markPlate": "dark",
+    "bannerPosition": "center 28%",
+    "groups": [
+      {
+        "key": "units",
+        "label": "Unit stages",
+        "caption": "Leo/need, MORE MORE JUMP!, Vivid BAD SQUAD, Wonderlands x Showtime and Nightcord at 25:00",
+        "cards": [
+          "Ichika Hoshino",
+          "Minori Hanasato",
+          "Kohane Azusawa",
+          "Tsukasa Tenma",
+          "Kanade Yoisaki",
+          "Mafuyu Asahina",
+          "Rui Kamishiro"
+        ]
+      },
+      {
+        "key": "miku",
+        "label": "Virtual Singer",
+        "caption": "Across every SEKAI",
+        "cards": [
+          "Hatsune Miku"
+        ]
+      }
+    ]
+  },
+  "vocaloid": {
+    "theme": "stage",
+    "titleLead": "Vocaloid",
+    "titleTail": "Voicebanks",
+    "eyebrow": "Voicebank stage",
+    "lede": "Nine voicebanks and their official character personas, from the Crypton house to Internet Co. and 1st Place. The voice provider is a real singer; the persona is the card.",
+    "cardSetName": "Vocaloid · Voicebanks",
+    "openingCta": "Open a Voicebank capsule",
+    "rosterLabel": "The voicebanks",
+    "rosterFactLabel": "Voicebanks",
+    "markPlate": "paper",
+    "bannerPosition": "center 30%",
+    "groups": [
+      {
+        "key": "crypton",
+        "label": "Crypton Future Media",
+        "caption": "The CV house and its first voices",
+        "cards": [
+          "Hatsune Miku",
+          "Kagamine Rin",
+          "Kagamine Len",
+          "Megurine Luka",
+          "MEIKO",
+          "KAITO"
+        ]
+      },
+      {
+        "key": "internet",
+        "label": "Internet Co.",
+        "caption": "GUMI and Gackpoid",
+        "cards": [
+          "GUMI",
+          "Kamui Gakupo"
+        ]
+      },
+      {
+        "key": "firstplace",
+        "label": "1st Place",
+        "caption": "Aria on the Planetes",
+        "cards": [
+          "IA"
+        ]
+      }
+    ]
+  },
+  "south-park": {
+    "theme": "broadcast",
+    "titleLead": "South Park",
+    "titleTail": "Town Album",
+    "eyebrow": "Town broadcast",
+    "lede": "A small mountain town, four kids and a supporting cast that never lets a quiet day stay quiet. Eight records from the main animated-series continuity.",
+    "cardSetName": "South Park · Town Album",
+    "openingCta": "Open a Town Album capsule",
+    "rosterLabel": "The town",
+    "rosterFactLabel": "Townsfolk",
+    "markPlate": "dark",
+    "bannerPosition": "center 32%",
+    "groups": [
+      {
+        "key": "main",
+        "label": "Main cast",
+        "caption": "Stan, Kyle, Cartman and Kenny",
+        "cards": [
+          "Stan Marsh",
+          "Kyle Broflovski",
+          "Eric Cartman",
+          "Kenny McCormick"
+        ]
+      },
+      {
+        "key": "townsfolk",
+        "label": "Townsfolk",
+        "caption": "Butters, Wendy, Randy and Chef",
+        "cards": [
+          "Butters Stotch",
+          "Wendy Testaburger",
+          "Randy Marsh",
+          "Chef"
+        ]
+      }
+    ]
+  },
+  "the-simpsons": {
+    "theme": "broadcast",
+    "titleLead": "The Simpsons",
+    "titleTail": "Springfield, U.S.A.",
+    "eyebrow": "Springfield broadcast",
+    "lede": "One family, one town and a floating timeline that has been on the air since 1989. Eight residents from the yellowest corner of the cabinet.",
+    "cardSetName": "The Simpsons · Springfield",
+    "openingCta": "Open a Springfield capsule",
+    "rosterLabel": "Springfield",
+    "rosterFactLabel": "Residents",
+    "markPlate": "dark",
+    "bannerPosition": "center 30%",
+    "groups": [
+      {
+        "key": "family",
+        "label": "The family",
+        "caption": "Homer, Marge, Bart, Lisa and Maggie",
+        "cards": [
+          "Homer Simpson",
+          "Marge Simpson",
+          "Bart Simpson",
+          "Lisa Simpson",
+          "Maggie Simpson"
+        ]
+      },
+      {
+        "key": "springfield",
+        "label": "Springfield",
+        "caption": "Moe, Ned and Mr. Burns",
+        "cards": [
+          "Moe Szyslak",
+          "Ned Flanders",
+          "Mr. Burns"
+        ]
       }
     ]
   }

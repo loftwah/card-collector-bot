@@ -128,6 +128,27 @@ second; the mark is on a paper plate for these wordmark-led collections.
 - Production data was not widened: `status`, `view_audience` and distribution
   were not changed by this batch.
 
+### Batch 2
+
+| Collection | Theme | Identity art | Roster shelves |
+| --- | --- | --- | --- |
+| Doki Doki Literature Club! — The Clubroom | `archive` | sourced banner + real series mark | Club members / The clubroom |
+| Project Sekai — Unit Stage | `stage` | sourced banner + real series mark | Unit stages / Virtual Singer |
+| Vocaloid — Voicebanks | `stage` | sourced banner + real series mark | Crypton / Internet Co. / 1st Place |
+| South Park — Town Album | `broadcast` | sourced banner + real series mark | Main cast / Townsfolk |
+| The Simpsons — Springfield, U.S.A. | `broadcast` | sourced banner + real series mark | The family / Springfield |
+
+- The same four livery layouts are reused; no new theme, frame or per-collection
+  renderer was added.
+- `markPlate` records whether a series wordmark is light or dark. A light
+  wordmark gets a dark plate (Chainsaw Man, Doki Doki, Project Sekai, South Park,
+  The Simpsons); a dark wordmark keeps the paper plate (Vocaloid, Madoka, Total
+  Drama).
+- The binder groups are authored card-name lists, not substring guesses, so a
+  roster with a shared word in two roles cannot fall into the wrong shelf.
+- All five collections remain member/private, `origin=sourced`, `official:false`.
+  No new art was generated and no distribution was widened.
+
 ## Verification
 
 - Actual fronts and backs inspected at 750×1050 in the card inspector.
