@@ -11588,3 +11588,413 @@ html[data-motion="reduced"] .layered-card__effect {
   color: var(--muted);
   overflow-wrap: anywhere;
 }
+
+/* ---------------------------------------------------------------------------
+   Public catalogue wall.
+   The cards are the content, so the wall gets the frame. A full-bleed contact
+   sheet of large 5:7 objects on a 2/3/4 column rhythm, one name line and one
+   metadata line, with a compact filter bar above it. Nothing here spends the
+   first screen on chrome.
+--------------------------------------------------------------------------- */
+
+.gallery-shell {
+  width: min(100% - 2.5rem, 1560px);
+  margin-inline: auto;
+}
+
+.gallery-intro {
+  background: var(--paper);
+}
+
+.gallery-intro__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem 2rem;
+  padding-block: 1.5rem 1rem;
+}
+
+.gallery-intro__copy {
+  flex: 1 1 22rem;
+  min-width: 0;
+}
+
+.gallery-eyebrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.gallery-title {
+  margin-top: 0.45rem;
+  font-family: var(--font-display);
+  font-size: clamp(1.9rem, 3.3vw, 3.25rem);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+
+.gallery-intro__lede {
+  margin-top: 0.5rem;
+  max-width: 52ch;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+.gallery-search {
+  display: flex;
+  flex: 1 1 18rem;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.gallery-search__field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 0 1 22rem;
+  min-width: 0;
+  height: 44px;
+  padding-inline: 0.9rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  transition: border-color 150ms ease;
+}
+
+.gallery-search__field:focus-within {
+  border-color: var(--signal);
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.gallery-search__field svg {
+  flex: none;
+}
+
+.gallery-search__field input {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  outline: none;
+}
+
+.gallery-search__field input::placeholder {
+  color: var(--muted);
+}
+
+.gallery-search .btn {
+  flex: none;
+  min-height: 44px;
+}
+
+.gallery-filters {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding-bottom: 0.9rem;
+}
+
+.gallery-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.gallery-chips .chip {
+  min-height: 32px;
+  padding-inline: 0.7rem;
+}
+
+.gallery-chips .chip:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.gallery-details {
+  margin-left: auto;
+}
+
+.gallery-details > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 32px;
+  padding: 0.15rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  user-select: none;
+}
+
+.gallery-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.gallery-details > summary::after {
+  content: "";
+  width: 0.4rem;
+  height: 0.4rem;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  transform: translateY(-1px) rotate(45deg);
+  transition: transform 150ms ease;
+}
+
+.gallery-details[open] > summary::after {
+  transform: translateY(1px) rotate(-135deg);
+}
+
+.gallery-details > summary:hover,
+.gallery-details[open] > summary {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.gallery-details > summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.gallery-details__body {
+  position: absolute;
+  right: 0;
+  z-index: 20;
+  display: grid;
+  gap: 0.7rem;
+  width: min(22rem, 100%);
+  margin-top: 0.5rem;
+  padding: 0.9rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: 0 24px 48px -28px rgba(10, 10, 10, 0.45);
+}
+
+.gallery-details__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.gallery {
+  padding-block: 1.15rem 3rem;
+}
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.15rem 0.7rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gallery-item {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.gallery-item__frame {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  aspect-ratio: 5 / 7;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 70%, #000);
+  border-radius: 5px;
+  background: var(--card-object);
+  box-shadow: 0 12px 26px -20px rgba(20, 21, 18, 0.55);
+  transition:
+    transform 220ms ease,
+    box-shadow 220ms ease,
+    border-color 220ms ease;
+}
+
+.gallery-item__frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* The authored render is 5:7. Contain a different derivative rather than
+     cropping the subject to force the frame. */
+  object-fit: contain;
+}
+
+.gallery-item__fallback {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  font-family: var(--font-display);
+  font-size: 2rem;
+  color: var(--brass);
+}
+
+.gallery-item:hover .gallery-item__frame {
+  transform: translateY(-4px);
+  border-color: var(--brass);
+  box-shadow: 0 22px 38px -24px rgba(20, 21, 18, 0.6);
+}
+
+.gallery-item:focus-visible {
+  outline: none;
+}
+
+.gallery-item:focus-visible .gallery-item__frame {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.gallery-item__meta {
+  display: block;
+  min-height: 2.6rem;
+  margin-top: 0.55rem;
+}
+
+.gallery-item__name {
+  display: block;
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-size: clamp(0.95rem, 1.15vw, 1.2rem);
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gallery-item:hover .gallery-item__name {
+  text-decoration: underline;
+  text-decoration-color: var(--brass);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.gallery-item__line {
+  display: block;
+  overflow: hidden;
+  margin-top: 0.2rem;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (min-width: 700px) {
+  .gallery-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.6rem 0.95rem;
+  }
+}
+
+@media (min-width: 1120px) {
+  .gallery-intro__row {
+    padding-block: 2rem 1.15rem;
+  }
+
+  .gallery-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 2rem 1.1rem;
+  }
+
+  .gallery {
+    padding-block: 1.5rem 4rem;
+  }
+}
+
+@media (max-width: 699px) {
+  .gallery-shell {
+    width: min(100% - 1.5rem, 1560px);
+  }
+
+  .gallery-search {
+    flex: 1 1 100%;
+    justify-content: stretch;
+  }
+
+  .gallery-search__field {
+    flex: 1 1 auto;
+  }
+
+  /* One scrollable filter row instead of a ragged stack above the art. */
+  .gallery-filters {
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+  }
+
+  .gallery-chips {
+    flex: 1 1 auto;
+    min-width: 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    /* Hint that the row continues past the edge. */
+    mask-image: linear-gradient(to right, #000 calc(100% - 1.75rem), transparent);
+  }
+
+  .gallery-chips::-webkit-scrollbar {
+    display: none;
+  }
+
+  .gallery-chips .chip {
+    flex: none;
+    min-height: 36px;
+    scroll-snap-align: start;
+  }
+
+  .gallery-details {
+    flex: none;
+    margin-left: 0;
+  }
+
+  .gallery-details > summary {
+    min-height: 36px;
+  }
+}
+
+/* Touch devices keep :hover after a tap; hold the card still. */
+@media (hover: none) {
+  .gallery-item:hover .gallery-item__frame {
+    transform: none;
+    border-color: color-mix(in srgb, var(--line-strong) 70%, #000);
+    box-shadow: 0 12px 26px -20px rgba(20, 21, 18, 0.55);
+  }
+
+  .gallery-item:hover .gallery-item__name {
+    text-decoration: none;
+  }
+}

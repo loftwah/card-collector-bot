@@ -10,13 +10,23 @@ const category = Astro.url.searchParams.get("category") ?? "";
 const tag = Astro.url.searchParams.get("tag") ?? "";
 const collectionSlug = Astro.url.searchParams.get("collection") ?? "";
 const [cards, taxonomy, collections] = await Promise.all([
-  listCards(ctx, { publicOnly: true, search: search || undefined, category: category || undefined, tag: tag || undefined, collection: collectionSlug || undefined, limit: 100 }),
+  listCards(ctx, {
+    publicOnly: true,
+    search: search || undefined,
+    category: category || undefined,
+    tag: tag || undefined,
+    collection: collectionSlug || undefined,
+    limit: 100,
+  }),
   getTaxonomy(ctx, { publicOnly: true }),
   listPublicCollections(ctx),
 ]);
-const selectedCollection = collectionSlug ? collections.find((item) => item.slug === collectionSlug) ?? null : null;
+const selectedCollection = collectionSlug
+  ? (collections.find((item) => item.slug === collectionSlug) ?? null)
+  : null;
 const categories = taxonomy.categories as Array<{ slug: string; name: string }>;
 const tags = taxonomy.tags as Array<{ slug: string; name: string }>;
+const filtered = Boolean(search || category || tag || collectionSlug);
 function href(next: { search?: string; category?: string; tag?: string; collection?: string }) {
   const params = new URLSearchParams();
   const s = next.search ?? search;
@@ -30,85 +40,206 @@ function href(next: { search?: string; category?: string; tag?: string; collecti
   const query = params.toString();
   return `/cabinet${query ? `?${query}` : ""}`;
 }
+
+// One card, one lead image: the first saved variant that has a real render.
+const gallery = cards.map((card, index) => {
+  const variant = card.editions
+    .flatMap((edition) => edition.variants)
+    .find((item) => item.render_url);
+  const collection = card.collections[0] ?? null;
+  return {
+    card,
+    index,
+    image: variant?.thumbnail_url ?? variant?.render_url ?? null,
+    meta: [
+      card.rarity?.name ?? null,
+      collection?.name ?? card.subtitle ?? card.category?.name ?? null,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+  };
+});
 ---
-<BaseLayout title={selectedCollection ? `${selectedCollection.name} · Foilbury` : "The public showcase · Foilbury"} description="Explore the approved public showcase of original Foilbury worlds, characters and finishes.">
-  <section class="showcase-intro border-b border-[var(--line)]">
-    <div class="container py-7 md:py-12">
-      <div class="flex flex-wrap items-end justify-between gap-3">
-        <div class="min-w-0">
-          <h1 class="display text-[clamp(2.25rem,5vw,4rem)]">{selectedCollection ? selectedCollection.name : "The public showcase."}</h1>
-          <p class="mt-2 max-w-2xl text-[var(--muted)]">{selectedCollection ? selectedCollection.description : "Discover characters from Bubbles, Fighter, Protocol 11 and more."}</p>
+
+<BaseLayout
+  title={
+    selectedCollection ? `${selectedCollection.name} · Foilbury` : "The public showcase · Foilbury"
+  }
+  description="Explore the approved public showcase of original Foilbury worlds, characters and finishes."
+>
+  <section class="gallery-intro border-b border-[var(--line)]">
+    <div class="gallery-shell">
+      <div class="gallery-intro__row">
+        <div class="gallery-intro__copy">
+          <p class="gallery-eyebrow">
+            <span>Public catalogue</span>
+            <span aria-hidden="true">/</span>
+            <span>
+              {cards.length} {cards.length === 1 ? "card" : "cards"}
+              {filtered ? " found" : ""}
+            </span>
+          </p>
+          <h1 class="gallery-title">
+            {selectedCollection ? selectedCollection.name : "The public showcase."}
+          </h1>
+          <p class="gallery-intro__lede">
+            {selectedCollection
+              ? selectedCollection.description
+              : "Characters from Bubbles, Fighter, Protocol 11 and the shared shelf."}
+          </p>
         </div>
-        <p class="text-sm text-[var(--muted)]">{cards.length} {cards.length === 1 ? "card" : "cards"} shown</p>
+        <form method="get" action="/cabinet" class="gallery-search" role="search">
+          {collectionSlug ? <input type="hidden" name="collection" value={collectionSlug} /> : null}
+          {category ? <input type="hidden" name="category" value={category} /> : null}
+          {tag ? <input type="hidden" name="tag" value={tag} /> : null}
+          <label class="gallery-search__field">
+            <span class="sr-only">Search cards by name or description</span>
+            <svg
+              viewBox="0 0 24 24"
+              width="15"
+              height="15"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="7"></circle>
+              <path d="m20 20-3.6-3.6"></path>
+            </svg>
+            <input
+              type="search"
+              name="search"
+              value={search}
+              placeholder="Search the shelf"
+              autocomplete="off"
+            />
+          </label>
+          <button class="btn btn-primary btn-sm" type="submit">
+            Search
+          </button>
+        </form>
       </div>
-      <div class="mt-4 flex flex-wrap gap-2">
-        <a class="chip" data-active={!collectionSlug} href={href({ collection: "" })}>All public</a>
-        {collections.map((item) => <a class="chip" data-active={collectionSlug === item.slug} href={href({ collection: item.slug })}>{item.name}</a>)}
+
+      <div class="gallery-filters">
+        <nav class="gallery-chips" aria-label="Filter by collection">
+          <a class="chip" data-active={!collectionSlug} href={href({ collection: "" })}>
+            All public
+          </a>
+          {collections.map((item) => (
+            <a
+              class="chip"
+              data-active={collectionSlug === item.slug}
+              href={href({ collection: item.slug })}
+            >
+              {item.name}
+            </a>
+          ))}
+        </nav>
+        <details class="gallery-details" open={Boolean(category || tag)}>
+          <summary>{category || tag ? "Filters active" : "Filters"}</summary>
+          <div class="gallery-details__body">
+            <label class="field">
+              <span class="label">Category</span>
+              <select class="select" name="category" form="gallery-filter-form">
+                <option value="">All categories</option>
+                {category && !categories.some((item) => item.slug === category) ? (
+                  <option value={category} selected>
+                    Unavailable category
+                  </option>
+                ) : null}
+                {categories.map((item) => (
+                  <option value={item.slug} selected={item.slug === category}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label class="field">
+              <span class="label">Tag</span>
+              <select class="select" name="tag" form="gallery-filter-form">
+                <option value="">All tags</option>
+                {tag && !tags.some((item) => item.slug === tag) ? (
+                  <option value={tag} selected>
+                    Unavailable tag
+                  </option>
+                ) : null}
+                {tags.map((item) => (
+                  <option value={item.slug} selected={item.slug === tag}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div class="gallery-details__actions">
+              <button class="btn btn-primary btn-sm" type="submit" form="gallery-filter-form">
+                Apply filters
+              </button>
+              {filtered ? (
+                <a class="btn btn-ghost btn-sm" href="/cabinet">
+                  Reset all
+                </a>
+              ) : null}
+            </div>
+          </div>
+        </details>
+        <form id="gallery-filter-form" method="get" action="/cabinet" hidden>
+          {search ? <input type="hidden" name="search" value={search} /> : null}
+          {collectionSlug ? <input type="hidden" name="collection" value={collectionSlug} /> : null}
+        </form>
       </div>
     </div>
   </section>
 
-  <section class="container py-5">
-    <form method="get" action="/cabinet" class="grid min-w-0 gap-3 border-b border-[var(--line)] pb-5">
-      {collectionSlug ? <input type="hidden" name="collection" value={collectionSlug} /> : null}
-      <label class="field">
-        <span class="label">Search cards</span>
-        <input class="input" type="search" name="search" value={search} placeholder="Name or description" />
-      </label>
-      <details open={Boolean(category || tag)}>
-        <summary class="cursor-pointer text-sm font-semibold underline underline-offset-4">Category and tag filters{category || tag ? " · active" : ""}</summary>
-        <div class="mt-3 grid gap-3 sm:grid-cols-2">
-          <label class="field">
-            <span class="label">Category</span>
-            <select class="select" name="category">
-              <option value="">All categories</option>
-              {category && !categories.some((item) => item.slug === category) ? <option value={category} selected>Unavailable category</option> : null}
-              {categories.map((item) => <option value={item.slug} selected={item.slug === category}>{item.name}</option>)}
-            </select>
-          </label>
-          <label class="field">
-            <span class="label">Tag</span>
-            <select class="select" name="tag">
-              <option value="">All tags</option>
-              {tag && !tags.some((item) => item.slug === tag) ? <option value={tag} selected>Unavailable tag</option> : null}
-              {tags.map((item) => <option value={item.slug} selected={item.slug === tag}>{item.name}</option>)}
-            </select>
-          </label>
+  <section
+    class="gallery"
+    aria-label={selectedCollection ? `${selectedCollection.name} cards` : "Public cards"}
+  >
+    <div class="gallery-shell">
+      {gallery.length ? (
+        <ul class="gallery-grid">
+          {gallery.map(({ card, index, image, meta }) => (
+            <li>
+              <a class="gallery-item" href={`/cabinet/${card.slug}`}>
+                <span class="card-face gallery-item__frame">
+                  {image ? (
+                    <img
+                      src={image}
+                      alt=""
+                      width="750"
+                      height="1050"
+                      loading={index < 4 ? "eager" : "lazy"}
+                      decoding="async"
+                      fetchpriority={index === 0 ? "high" : "auto"}
+                    />
+                  ) : (
+                    <span class="gallery-item__fallback" aria-hidden="true">
+                      {card.name.charAt(0)}
+                    </span>
+                  )}
+                </span>
+                <span class="gallery-item__meta">
+                  <span class="gallery-item__name">{card.name}</span>
+                  <span class="gallery-item__line">{meta || "Cabinet card"}</span>
+                </span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div class="empty mt-8">
+          <div>
+            <p class="display-sm text-2xl">Nothing in this drawer.</p>
+            <p class="mt-2 text-sm">
+              Try another search, or{" "}
+              <a class="underline" href="/cabinet">
+                reset the filters
+              </a>
+              .
+            </p>
+          </div>
         </div>
-      </details>
-      <div class="flex flex-wrap items-center gap-2">
-        <button class="btn btn-primary btn-sm" type="submit">Search and filter</button>
-        <a class="btn btn-ghost btn-sm" href="/cabinet">Reset all</a>
-      </div>
-    </form>
-
-    {cards.length ? (
-      <div class="card-grid mt-6">
-        {cards.map((card) => {
-          const variant = card.editions.flatMap((edition) => edition.variants).find((item) => item.render_url);
-          return (
-            <a href={`/cabinet/${card.slug}`} class="group no-underline">
-              <div class="card-face">
-                {variant?.render_url ? <img src={variant.thumbnail_url ?? variant.render_url} alt={`${card.name} card`} loading="lazy" /> : <div class="card-face-fallback">{card.name.charAt(0)}</div>}
-              </div>
-              <div class="mt-2">
-                <div class="flex items-start justify-between gap-2">
-                  <p class="display-sm text-base leading-tight">{card.name}</p>
-                  {card.rarity ? <span class="badge">{card.rarity.name}</span> : null}
-                </div>
-                <p class="mt-0.5 text-xs text-[var(--muted)]">{card.subtitle ?? card.category?.name ?? "Cabinet card"}</p>
-              </div>
-            </a>
-          );
-        })}
-      </div>
-    ) : (
-      <div class="empty mt-9">
-        <div>
-          <p class="display-sm text-2xl">Nothing in this drawer.</p>
-          <p class="mt-2 text-sm">Try another search, or <a class="underline" href="/cabinet">reset the filters</a>.</p>
-        </div>
-      </div>
-    )}
+      )}
+    </div>
   </section>
 </BaseLayout>
