@@ -3215,6 +3215,7 @@
       "roles": [],
       "schema": null,
       "calls": [
+        "catch",
         "getCollection",
         "listCollectionCards"
       ],

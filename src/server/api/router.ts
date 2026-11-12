@@ -3123,11 +3123,14 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     method === "GET"
   ) {
     ensureCollectionsRead(ctx);
-    const managed = await getCollection(ctx, segments[2], { includeAll: true });
-    const collection = managed.manageable ? managed : await getCollection(ctx, segments[2]);
+    const managed = await getCollection(ctx, segments[2], { includeAll: true }).catch((error: unknown) => {
+      if (error instanceof ApiError && error.code === "collection_not_found") return null;
+      throw error;
+    });
+    const collection = managed?.manageable ? managed : await getCollection(ctx, segments[2]);
     return json({
       collection,
-      cards: await listCollectionCards(ctx, collection.id, { includeDrafts: managed.manageable }),
+      cards: await listCollectionCards(ctx, collection.id, { includeDrafts: managed?.manageable }),
     });
   }
   if (
