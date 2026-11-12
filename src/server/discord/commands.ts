@@ -1268,8 +1268,9 @@ async function npcView(
   ctx: Ctx,
   installation: DiscordInstallation,
   query: string,
+  channelId: string | undefined,
 ): Promise<DiscordCallback> {
-  const scope = await resolveDiscordScope(ctx, installation, installation.channel_key ?? null);
+  const scope = await resolveDiscordScope(ctx, installation, channelId);
   if (scope.emptyReason) return scopeFailureMessage(scope);
   const allowedCardIds = await discordScopeCardIds(ctx, scope);
   const profiles = await listNpcProfiles(ctx);
@@ -1381,7 +1382,7 @@ async function npcView(
               name: "Wants",
               value: offers.wants.missing_subjects.length
                 ? `Missing subjects: ${offers.wants.missing_subjects.slice(0, 6).join(", ")}`
-                : "No missing subjects in its current goal.",
+                : "No missing subjects to show in this channel.",
               inline: false,
             },
             {
@@ -3193,7 +3194,12 @@ export async function runCommand(
     case "profile":
       return profile(ctx, installation, undefined, interaction.channel_id);
     case "npc":
-      return npcView(ctx, installation, typeof values.name === "string" ? values.name : "");
+      return npcView(
+        ctx,
+        installation,
+        typeof values.name === "string" ? values.name : "",
+        interaction.channel_id,
+      );
     case "trade":
       return npcTradeCommand(ctx, interaction, installation, values);
     case "help":

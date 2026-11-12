@@ -1552,7 +1552,33 @@ describe("Discord HTTP interactions", () => {
 
   it("shows a labelled NPC profile and comparison on demand", async () => {
     const owner = await ctxFor("cabinet", "owner@foilbury.local");
-    await fixturePool(owner);
+    const fixture = await fixturePool(owner);
+    const collection = await createCollection(owner, {
+      name: "NPC Members",
+      scope: "global",
+      status: "published",
+      viewAudience: "members",
+    });
+    await addCollectionCards(owner, collection.id, [fixture.cardId]);
+    await runtime.DB.prepare(
+      "DELETE FROM fb_collection_cards WHERE collection_id = 'col_test_public'",
+    ).run();
+    await runtime.DB.prepare(
+      "INSERT OR REPLACE INTO fb_bot_collections (bot_id, collection_id, enabled, updated_at) SELECT id, ?, 1, ? FROM fb_bots WHERE tenant_id = ?",
+    ).bind(collection.id, new Date().toISOString(), owner.tenant.id).run();
+    const publicChannel = "1566700752385081356";
+    await runtime.DB.prepare(
+      "UPDATE fb_discord_installations SET channel_key = 'topic-policy-key', channel_audience_json = ?, channel_allowlist_json = ?, collection_allowlist_json = ? WHERE id = 'dci_test'",
+    ).bind(
+      JSON.stringify({ [CHANNEL_ID]: "members", [publicChannel]: "public" }),
+      JSON.stringify([CHANNEL_ID, publicChannel]),
+      JSON.stringify([collection.id]),
+    ).run();
+    await runtime.DB.prepare(
+      `INSERT INTO fb_card_definitions (id, tenant_id, logical_id, slug, name, description, status, created_at, updated_at)
+       SELECT 'crd_hidden_npc', tenant_id, 'test:hidden', 'hidden-npc', 'Hidden NPC Goal', description, 'published', created_at, updated_at
+       FROM fb_card_definitions WHERE id = ?`,
+    ).bind(fixture.cardId).run();
     const npc = await createNpc(owner, {
       name: "Discord Rival",
       presetKey: "variety_collector",
@@ -1570,7 +1596,14 @@ describe("Discord HTTP interactions", () => {
     expect(detail.payload.data?.embeds?.[0]?.title).toContain("Discord Rival");
     expect(JSON.stringify(detail.payload.data)).toContain("NPC");
     expect(JSON.stringify(detail.payload.data)).toContain("Your album");
+    expect(JSON.stringify(detail.payload.data)).toContain("Missing subjects: Test One");
+    expect(JSON.stringify(detail.payload.data)).not.toContain("Hidden NPC Goal");
     expect(detail.payload.data?.flags).toBe(64);
+    const publicView = await send(
+      interaction(command("npc"), { id: "npc-public-channel", channelId: publicChannel }),
+    );
+    expect(publicView.payload.data?.embeds?.[0]?.title).toBe("This server has no eligible collection");
+    expect(JSON.stringify(publicView.payload.data)).not.toContain("Discord Rival");
   });
 
   it("walks the guided tour from discovery through a genuine opening and private inspection", async () => {

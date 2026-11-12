@@ -334,9 +334,11 @@ export async function npcTradeOffers(
   const inventory = await npcInventory(ctx, npc);
   const goals = safeJson<{ collection_id?: string | null; preset_goal?: string }>(npc.goals_json, {});
   const wishlist = await wishlists(ctx, npc);
+  const inScope = (cardId: string) =>
+    !options?.allowedCardIds || options.allowedCardIds.has(cardId);
   const copies = [];
   for (const copy of inventory) {
-    if (options?.allowedCardIds && !options.allowedCardIds.has(copy.card_id)) continue;
+    if (!inScope(copy.card_id)) continue;
     const collection = await primaryCollection(ctx, copy.card_id);
     if (!collection) continue;
     if (!(await canViewCollection(ctx, collection.id))) continue;
@@ -376,8 +378,10 @@ export async function npcTradeOffers(
     wants: {
       goal_collection: goals.collection_id ?? null,
       preset_goal: goals.preset_goal ?? npc.preset_key,
-      missing_subjects: goalRows.filter((card) => !ownedCards.has(card.id)).map((card) => card.name),
-      wishlist: wishlist.map((item) => item.card_name),
+      missing_subjects: goalRows
+        .filter((card) => inScope(card.id) && !ownedCards.has(card.id))
+        .map((card) => card.name),
+      wishlist: wishlist.filter((item) => inScope(item.card_id)).map((item) => item.card_name),
     },
   };
 }
