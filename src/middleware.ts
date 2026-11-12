@@ -5,7 +5,12 @@ import { createSession } from "./server/modules/identity";
 import { readBrandSelections } from "./server/modules/brand";
 import { sessionCookies } from "./server/api/helpers";
 
-const LOCAL_ONLY = new Set(["/api/v1/bootstrap", "/api/v1/status"]);
+const CONTEXT_FREE_APIS = new Set([
+  "/api/v1/bootstrap",
+  "/api/v1/status",
+  "/api/cabinet-visit",
+  "/api/portfolio-analytics",
+]);
 
 export const onRequest = defineMiddleware(async (context, next) => {
   if (context.url.pathname.startsWith("/_emdash")) return next();
@@ -13,7 +18,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const theme = context.cookies.get("fb_theme")?.value;
   context.locals.theme = theme === "light" || theme === "dark" ? theme : "system";
 
-  if (LOCAL_ONLY.has(context.url.pathname)) return next();
+  if (CONTEXT_FREE_APIS.has(context.url.pathname)) return next();
 
   const path = context.url.pathname;
   const isAdminPage = path === "/admin" || path.startsWith("/admin/");

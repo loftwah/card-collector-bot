@@ -3,7 +3,7 @@
 Generated from `src/server/api/router.ts` and the direct Astro routes under `src/pages/api`. Regenerate with `pnpm api:inventory`. The inventory records the first matching branch, not a second copy of the route table.
 
 - Dispatcher routes: **206**
-- Direct Astro routes: **21**
+- Direct Astro routes: **23**
 - Shadowed or duplicate branches: **0**
 - Consumer paths without a route: **0**
 - OpenAPI operations without a route: **0**
@@ -227,8 +227,10 @@ The `/api/v1/admin/art/*` branches delegate to `src/server/api/art-lab-routes.ts
 
 | Method | Path |
 |---|---|
+| POST | `/api/cabinet-visit` |
 | POST | `/api/discord/interactions` |
 | GET | `/api/discord/interactions` |
+| GET | `/api/portfolio-analytics` |
 | GET | `/api/probe` |
 | GET | `/api/v1/admin/access-session` |
 | POST | `/api/v1/auth/login` |
@@ -255,7 +257,7 @@ No earlier dispatcher branch accepts a later branch's example path.
 
 ## Consumer reconciliation
 
-All 399 browser, CLI and MCP paths resolve to a dispatcher or direct Astro route.
+All 400 browser, CLI and MCP paths resolve to a dispatcher or direct Astro route.
 
 ## OpenAPI reconciliation
 

@@ -1,6 +1,6 @@
 {
   "route_count": 206,
-  "direct_route_count": 21,
+  "direct_route_count": 23,
   "routes": [
     {
       "method": "GET",
@@ -3616,11 +3616,19 @@
   "direct": [
     {
       "method": "POST",
+      "path": "/api/cabinet-visit"
+    },
+    {
+      "method": "POST",
       "path": "/api/discord/interactions"
     },
     {
       "method": "GET",
       "path": "/api/discord/interactions"
+    },
+    {
+      "method": "GET",
+      "path": "/api/portfolio-analytics"
     },
     {
       "method": "GET",
