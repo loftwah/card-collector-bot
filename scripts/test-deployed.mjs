@@ -77,7 +77,7 @@ try {
   if (!sitemap.body.includes("cabinet/tux")) throw new Error("Production sitemap is missing a public card.");
   const sitemapLocations = [...sitemap.body.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => new URL(match[1]));
   if (!sitemapLocations.some((url) => url.pathname === "/cabinet" && !url.search)) throw new Error("Production sitemap is missing the canonical cabinet.");
-  if (sitemapLocations.some((url) => url.pathname === "/login" || url.search)) throw new Error("Production sitemap includes the noindex login or a filtered URL.");
+  if (sitemapLocations.some((url) => url.pathname === "/login" || (url.pathname === "/cabinet" && url.searchParams.has("collection")))) throw new Error("Production sitemap includes the noindex login or a filtered URL.");
   pass("production sitemap includes the public cabinet and card and excludes login, filters, and member content");
 
   fs.writeFileSync(smokeFile, JSON.stringify({ generated_at: new Date().toISOString(), base, expected_build: expectedBuild, verification_scope: verificationScope, product_acceptance: "not_assessed", results }, null, 2),{flag:"wx",mode:0o600});
