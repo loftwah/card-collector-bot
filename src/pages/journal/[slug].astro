@@ -13,7 +13,12 @@ try {
 } catch {
   error = true;
 }
-if (!error && !entry) Astro.response.status = 404;
+if (error) {
+  Astro.response.status = 503;
+  Astro.response.headers.set("Cache-Control", "no-store");
+} else if (!entry) {
+  Astro.response.status = 404;
+}
 const title = error ? "Journal temporarily unavailable" : entry?.data?.title ?? "Journal entry not found";
 const description = error ? "The EmDash journal could not be read. The cabinet remains available." : entry?.data?.excerpt ?? "A note from the Foilbury editorial desk.";
 ---
@@ -32,7 +37,7 @@ const description = error ? "The EmDash journal could not be read. The cabinet r
         <p class="eyebrow">{entry.data?.publishedAt ? formatDual(entry.data.publishedAt) : "Editorial note"}</p>
         <h1 class="display mt-4 text-[clamp(2.8rem,6vw,5.5rem)]">{title}</h1>
         {entry.data?.excerpt ? <p class="mt-4 text-lg text-[var(--muted)]">{entry.data.excerpt}</p> : null}
-        <div class="prose mt-10">
+        <div class="journal-entry-content prose mt-10">
           <PortableText value={entry.data?.content ?? entry.data?.body ?? []} />
         </div>
         <div class="mt-12 flex flex-wrap gap-3 border-t border-[var(--line)] pt-6">
@@ -43,3 +48,23 @@ const description = error ? "The EmDash journal could not be read. The cabinet r
     )}
   </article>
 </BaseLayout>
+
+<style>
+  .journal-entry-content :global(ul),
+  .journal-entry-content :global(ol) {
+    padding-inline-start: 1.5rem;
+  }
+
+  .journal-entry-content :global(ul) {
+    list-style-type: disc;
+  }
+
+  .journal-entry-content :global(ol) {
+    list-style-type: decimal;
+  }
+
+  .journal-entry-content :global(li > ul),
+  .journal-entry-content :global(li > ol) {
+    margin-block: 0.25rem;
+  }
+</style>
