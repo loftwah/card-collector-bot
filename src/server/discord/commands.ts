@@ -795,6 +795,7 @@ async function card(
     if (!(error instanceof ApiError) || error.code !== "card_not_found") throw error;
     const matches = await listCards(ctx, {
       search: query,
+      preferExactName: true,
       limit: 5,
       includeAi: scope.aiArtEnabled,
     });
