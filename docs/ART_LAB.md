@@ -350,16 +350,20 @@ The decision values are `like`, `dislike`, `comment`, `shortlist`,
 `needs_revision` and `reject`; the API and the durable `fb_art_feedback` ledger
 are the source of truth, not the browser state.
 
-## All art
+## Art review wall
 
-`/studio/all-art` is the single visual shelf for every art asset the operator
-can inspect: Art Lab card candidates, published card renders where they are
-already in the Art Lab, the seven distinct icon directions, four Keeper mascot
-concepts, twelve card-style studies, wordmarks, OG, banners, shareables and
-other brand files. It is a dense 2/3/4/8-column grid with one title line and
-one metadata line; icons use a small 8-column shelf rather than a hero tile.
-The same shared viewer opens every item, with arrow-key paging inside the
-current filter.
+Open **Studio → Art review wall** at `/studio/all-art` for an image-first view
+of scoped card candidates, current collection banners and marks, and the
+existing brand and card-style studies. Filter by artwork type, collection or
+grade. **Favourites** shows grade 5. The full-size viewer keeps face switching,
+copying, and paging within the current view.
+
+Each artwork can carry a private grade (1 to 5) and an optional private note.
+The server saves these per account and Bot workspace, separately from shared
+candidate feedback. A grade or note does not change an Art Lab decision,
+collection, issued copy, or publication. Shared thumbs still go through the
+candidate feedback route from the viewer. Use **Open brief** for the full
+discussion and existing approval and publication controls.
 
 The platform Art Lab now exposes **Mascots** as a real category alongside
 Icons, Logo, OG images, Shareables, Banners and Other art. The six new icon

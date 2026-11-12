@@ -1057,7 +1057,7 @@ export default function ArtLab({ surface }: { surface: Surface }) {
             Resources
           </a>
           <a className="btn btn-secondary btn-sm" href="/studio/all-art">
-            All art
+            Review wall
           </a>
           {canWrite ? (
             <Button size="sm" onClick={() => setShowNew((open) => !open)}>
