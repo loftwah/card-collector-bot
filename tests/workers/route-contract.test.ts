@@ -49,15 +49,27 @@ describe("exact API dispatch and least-privilege player scopes", () => {
   it("returns a newly saved Studio draft without exposing it to members", async () => {
     const owner = await ctxFor("cabinet", "owner@foilbury.local");
     const player = await ctxFor("cabinet", "player@foilbury.local");
-    const created = await sendJson(agentFor(owner, ["content:write"]), "/api/v1/studio/collections", "POST", {
+    const editor = agentFor(owner, ["content:read", "content:write"]);
+    const created = await sendJson(editor, "/api/v1/studio/collections", "POST", {
       name: "Lantern Detectives",
       scope: "bot",
     });
     expect(created.response.status).toBe(201);
     expect(created.json.collection).toMatchObject({ status: "draft", view_audience: "members" });
     const collection = created.json.collection as { id: string };
+    const draft = await sendJson(editor, "/api/v1/studio/cards", "POST", {
+      slug: "signal-keeper", name: "Signal Keeper", description: "A draft subject with no edition yet.",
+    });
+    expect(draft.response.status).toBe(201);
+    const card = draft.json.card as { id: string };
+    const studio = "/api/v1/studio/collections/" + collection.id;
+    expect((await sendJson(editor, studio + "/cards", "POST", { cardIds: [card.id] })).response.status).toBe(200);
+    const detail = await sendJson(editor, studio, "GET");
+    expect(detail.json.cards).toMatchObject([{ id: card.id, status: "draft" }]);
     const member = await sendJson(player, "/api/v1/collections/" + collection.id, "GET");
     expect(member.response.status).toBe(404);
+    expect((await sendJson(editor, studio + "/cards/" + card.id, "DELETE")).response.status).toBe(200);
+    expect((await sendJson(editor, studio, "GET")).json.cards).toEqual([]);
   });
 
   it("starts external Art Lab imports with a scoped grant outside the paid queue", async () => {
