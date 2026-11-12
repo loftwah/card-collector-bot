@@ -182,10 +182,22 @@ test(
         await expand.click({ timeout: 2500 });
         const viewer = page.getByRole("dialog", { name: "Fixture subject" });
         await viewer.getByRole("link", { name: "Download Fixture subject back" }).waitFor();
+        if (label === "desktop") {
+          await page.evaluate(async () => {
+            const dialog = document.querySelector("dialog.card-viewer");
+            const inspector = document.querySelector(".card-inspector__stage");
+            dialog.close();
+            inspector.focus();
+            inspector.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+            await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          });
+          assert.equal(await viewer.getByRole("link", { name: "Download Fixture subject back" }).isVisible(), true);
+        }
         await page.keyboard.press("Escape");
-        await viewer.waitFor({ state: "hidden" });
+        await page.locator("dialog.card-viewer .card-viewer__name").waitFor({ state: "detached" });
         assert.equal(await stage.getAttribute("data-flipped"), "true");
-        assert.equal(await expand.evaluate((button) => button === document.activeElement), true);
+        const opener = label === "desktop" ? stage : expand;
+        assert.equal(await opener.evaluate((element) => element === document.activeElement), true);
         await page.screenshot({ path: path.join(dir, `${label}-interactive.png`), fullPage: true });
         await stage.focus();
         await page.keyboard.press("f");
