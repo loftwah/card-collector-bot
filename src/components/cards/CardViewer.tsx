@@ -55,7 +55,25 @@ export interface CardViewerRequest {
 
 const OPEN_EVENT = "foilbury:card-viewer";
 type ReviewDraft = { comment?: string; notice?: string };
-type ReviewResult = { decision: "like" | "dislike"; likes: number; dislikes: number };
+type ReviewResult = { decision: "like" | "dislike" | null; likes: number; dislikes: number };
+type ConfirmedReview = { baseline: ReviewResult; result: ReviewResult };
+
+function reviewSnapshot(item: CardViewerItem): ReviewResult {
+  return {
+    decision: item.reviewDecision ?? null,
+    likes: item.reviewLikes ?? 0,
+    dislikes: item.reviewDislikes ?? 0,
+  };
+}
+
+function matchesReview(item: CardViewerItem, baseline: ReviewResult) {
+  const snapshot = reviewSnapshot(item);
+  return (
+    snapshot.decision === baseline.decision &&
+    snapshot.likes === baseline.likes &&
+    snapshot.dislikes === baseline.dislikes
+  );
+}
 
 export function openCardViewer(
   items: CardViewerItem[],
@@ -94,7 +112,7 @@ export default function CardViewer() {
   const [index, setIndex] = useState(0);
   const [side, setSide] = useState<"front" | "back">("front");
   const [reviews, setReviews] = useState<Record<string, ReviewDraft>>({});
-  const [confirmedReviews, setConfirmedReviews] = useState<Record<string, ReviewResult>>({});
+  const [confirmedReviews, setConfirmedReviews] = useState<Record<string, ConfirmedReview>>({});
   const [pendingReviews, setPendingReviews] = useState<ReadonlySet<string>>(new Set());
   const reviewInFlight = useRef(new Set<string>());
 
@@ -102,7 +120,11 @@ export default function CardViewer() {
   const hasBack = Boolean(item?.back);
   const reviewEndpoint = item?.reviewEndpoint;
   const review = reviewEndpoint ? reviews[reviewEndpoint] : undefined;
-  const confirmedReview = reviewEndpoint ? confirmedReviews[reviewEndpoint] : undefined;
+  const savedReview = reviewEndpoint ? confirmedReviews[reviewEndpoint] : undefined;
+  const confirmedReview =
+    savedReview && item && matchesReview(item, savedReview.baseline)
+      ? savedReview.result
+      : undefined;
   const reviewBusy = Boolean(reviewEndpoint && pendingReviews.has(reviewEndpoint));
 
   const close = useCallback(() => {
@@ -131,6 +153,16 @@ export default function CardViewer() {
       setIndex(index);
       setSide(detail.side === "back" && detail.items[index]?.back ? "back" : "front");
       setReviews({});
+      setConfirmedReviews((current) => {
+        const next = { ...current };
+        for (const entry of detail.items) {
+          const endpoint = entry.reviewEndpoint;
+          if (endpoint && next[endpoint] && !matchesReview(entry, next[endpoint].baseline)) {
+            delete next[endpoint];
+          }
+        }
+        return next;
+      });
       const dialog = dialogRef.current;
       if (dialog && !dialog.open) dialog.showModal();
       requestAnimationFrame(() => closeButtonRef.current?.focus({ preventScroll: true }));
@@ -193,7 +225,10 @@ export default function CardViewer() {
       const feedback = result.candidate.feedback ?? [];
       const likes = feedback.filter((entry) => entry.decision === "like").length;
       const dislikes = feedback.filter((entry) => entry.decision === "dislike").length;
-      setConfirmedReviews((current) => ({ ...current, [endpoint]: { decision, likes, dislikes } }));
+      setConfirmedReviews((current) => ({
+        ...current,
+        [endpoint]: { baseline: reviewSnapshot(item), result: { decision, likes, dislikes } },
+      }));
       updateReview(endpoint, { notice: decision === "like" ? "Saved: keep" : "Saved: not this" });
     } catch (cause) {
       updateReview(endpoint, { notice: describeError(cause) });

@@ -26,7 +26,7 @@ test(
       path.join(dir, "main.tsx"),
       `import React from 'react';import {createRoot} from 'react-dom/client';import PublicVariantViewer from ${JSON.stringify(source)};import CardInspector from ${JSON.stringify(inspector)};import CardViewer, {openCardViewer} from ${JSON.stringify(cardViewer)};import ${JSON.stringify(styles)};
       const candidates = ['First', 'Second'].map(name => ({id:name,name,front:'/brand/card-back.webp',reviewEndpoint:'/api/review/'+name,canReview:true}));
-      createRoot(document.getElementById('root')!).render(location.search === '?review' ? <><button onClick={() => openCardViewer(candidates)}>Review candidates</button><CardViewer /></> : location.search ? <CardInspector name="Fixture subject" finish="Plain" frontUrl="/brand/card-back.webp" backUrl="/brand/card-back.webp" /> : <PublicVariantViewer name="Fixture subject" subtitle="Fixture" description="A synthetic inspector fixture." rarity="Common" setName={null} tags={[]} variants={[{id:'one',name:'Plain',material_key:'plain',effect_key:null,render_url:'/brand/card-back.webp',back_render_url:'/brand/card-back.webp'}]} />);`,
+      createRoot(document.getElementById('root')!).render(location.search === '?review' ? <><button onClick={() => openCardViewer(candidates)}>Review candidates</button><button onClick={() => openCardViewer([candidates[0], {...candidates[1], reviewDecision:'dislike', reviewDislikes:2}], 1)}>Review refreshed candidates</button><CardViewer /></> : location.search ? <CardInspector name="Fixture subject" finish="Plain" frontUrl="/brand/card-back.webp" backUrl="/brand/card-back.webp" /> : <PublicVariantViewer name="Fixture subject" subtitle="Fixture" description="A synthetic inspector fixture." rarity="Common" setName={null} tags={[]} variants={[{id:'one',name:'Plain',material_key:'plain',effect_key:null,render_url:'/brand/card-back.webp',back_render_url:'/brand/card-back.webp'}]} />);`,
     );
     await writeFile(
       path.join(dir, "vite.config.mjs"),
@@ -104,6 +104,11 @@ test(
         await reviewPage.getByRole("button", { name: "Review candidates" }).click();
         await reviewPage.getByRole("button", { name: "Next card" }).click();
         await reviewPage.locator('button[aria-label="Keep Second"][data-active="true"]').waitFor();
+        await reviewPage.getByRole("button", { name: "Close card viewer" }).click();
+        await reviewPage.getByRole("button", { name: "Review refreshed candidates" }).click();
+        const updated = reviewPage.locator('button[aria-label="Mark Second as not this"][data-active="true"]');
+        await updated.waitFor();
+        assert.equal(await updated.locator("b").innerText(), "2");
       } finally {
         finishReview();
         finishClosedReview();
