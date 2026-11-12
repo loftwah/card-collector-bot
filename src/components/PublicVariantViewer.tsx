@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Box, RotateCcw, Sparkles } from "lucide-react";
 import { displayFinish, printTitle as editionPrintTitle } from "@/lib/utils";
 import CardViewer from "./cards/CardViewer";
@@ -71,9 +71,13 @@ export default function PublicVariantViewer({
   sourceRefs?: string[];
   reviewStatus?: string;
 }) {
+  const [ready, setReady] = useState(false);
   const [selected, setSelected] = useState(() => bestVariantIndex(variants));
   const [showBack, setShowBack] = useState(false);
   const [inspect, setInspect] = useState(false);
+  useEffect(() => {
+    setReady(true);
+  }, []);
   const variant = variants[selected] ?? variants[0];
   const selectedFinish = variant
     ? displayFinish(variant.name, variant.material_key, variant.effect_key)
@@ -159,6 +163,7 @@ export default function PublicVariantViewer({
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
+                disabled={!ready}
                 onClick={() => setShowBack((value) => !value)}
               >
                 <RotateCcw size={13} /> {showBack ? "Show front" : "Show back"}
@@ -166,6 +171,7 @@ export default function PublicVariantViewer({
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
+                disabled={!ready}
                 onClick={() => setInspect(true)}
               >
                 <Box size={13} /> Inspect in 3D
@@ -246,13 +252,14 @@ export default function PublicVariantViewer({
                 <button
                   type="button"
                   key={item.id}
+                  disabled={!ready}
                   onClick={() => setSelected(index)}
                   aria-pressed={index === selected}
                   className={cn(
                     "border px-3 py-2 text-left transition-colors",
                     index === selected
                       ? "surface-selected border-ink"
-                      : "border-[var(--line)] text-[var(--muted)] hover:border-[var(--brass)] hover:text-[var(--ink)]",
+                      : "border-[var(--line)] text-[var(--muted)] enabled:hover:border-[var(--brass)] enabled:hover:text-[var(--ink)]",
                   )}
                 >
                   {kicker ? (
