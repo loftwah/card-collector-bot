@@ -2593,9 +2593,12 @@
         "get",
         "isGlobalCollectionAdmin",
         "includes",
+        "safeParse",
+        "optional",
+        "parse",
+        "unknown",
         "uploadAsset",
         "arrayBuffer",
-        "parse",
         "isArray"
       ],
       "studio_alias": false
