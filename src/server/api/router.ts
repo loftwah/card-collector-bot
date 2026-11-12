@@ -30,7 +30,7 @@ import {
   createSet,
   createTaxonomyItem,
   createTopicPolicy,
-  getCard,
+  getCatalogueCard,
   getTaxonomy,
   getTenantPublication,
   listCards,
@@ -724,26 +724,21 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
 
   // Public catalogue and pool previews
   if (segments[0] === "catalogue" && segments.length === 1 && method === "GET") {
+    const limit = Number(url.searchParams.get("limit") ?? 100);
+    if (!Number.isSafeInteger(limit))
+      throw new ApiError(400, "invalid_limit", "Provide a whole number for limit.");
     const cards = await listCards(ctx, {
       publicOnly: !ctx.user,
       search: url.searchParams.get("search") ?? undefined,
       category: url.searchParams.get("category") ?? undefined,
       tag: url.searchParams.get("tag") ?? undefined,
       set: url.searchParams.get("set") ?? undefined,
-      limit: Number(url.searchParams.get("limit") ?? 100),
+      limit,
     });
     return json({ items: cards.map(publicCard), release: await activeRelease(ctx) });
   }
   if (segments.length === 2 && segments[0] === "cards" && segments[1] && method === "GET") {
-    const card = await getCard(ctx, segments[1]);
-    if (card.status !== "published")
-      throw new ApiError(404, "card_not_found", "That card is not published.");
-    const visible = ctx.user
-      ? (await listCards(ctx, { viewerScope: true, id: card.id, limit: 1 }))[0]
-      : (await listCards(ctx, { publicOnly: true, id: card.id, limit: 1 }))[0];
-    if (!visible)
-      throw new ApiError(404, "card_not_found", "That card is not available in this album.");
-    return json({ card: publicCard(visible) });
+    return json({ card: publicCard(await getCatalogueCard(ctx, segments[1])) });
   }
   if (segments[0] === "sets" && segments.length === 1 && method === "GET") {
     const sets = (
