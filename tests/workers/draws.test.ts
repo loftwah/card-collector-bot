@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "../../src/server/context";
 import { getWalletSummary } from "../../src/server/modules/wallet";
 import { getInventory } from "../../src/server/modules/collection";
+import { getCollectorProgress, progressPeriod } from "../../src/server/modules/progress";
 import { claimDailyReward } from "../../src/server/modules/economy";
 import { executeDraw, getPoolPreview } from "../../src/server/modules/pools";
 import { bootstrap, ctxFor, fixturePool, makeInstance, runtime, setBalance, walletBalance } from "./helpers";
@@ -188,12 +189,13 @@ describe("draw transaction", () => {
       "UPDATE fb_achievement_definitions SET reward_json = '{\"foil\":100}' WHERE key = 'first-card'",
     ).run();
     const preview = await getPoolPreview(player, "test-pool");
-    const result = await executeDraw(player, {
+    const input = {
       pool: "test-pool",
       expectedRevision: preview.revision,
       expectedDistribution: preview.distribution_fingerprint,
       idempotency: { key: "draw-economy-500-80-100", digest: "economy-fixture" },
-    });
+    };
+    const result = await executeDraw(player, input);
     expect(result.price).toBe(80);
     expect(result.balance_after_debit).toBe(420);
     expect(result.credits_total).toBe(100);
@@ -214,6 +216,17 @@ describe("draw transaction", () => {
         expect.objectContaining({ kind: "issue", amount: 100, description: "Achievement: The first one is always special" }),
       ]),
     );
+    const period = progressPeriod("7", null);
+    const progress = await getCollectorProgress(player, period);
+    expect(progress.activity).toMatchObject({ balance: 520, buckets: expect.arrayContaining([
+      expect.objectContaining({ day: period.dates.at(-1), openings: 1, debited: 80 }),
+    ]) });
+    expect(progress.activity?.entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: "Achievement reward", amount: 100, balance: 520 }),
+      expect.objectContaining({ label: "Capsule opening", amount: -80, balance: 420 }),
+    ]));
+    expect((await executeDraw(player, input)).replayed).toBe(true);
+    expect(await getCollectorProgress(player, period)).toEqual(progress);
   });
 
   it("does not charge an empty pool and does not charge when eligibility disappears", async () => {

@@ -14,6 +14,7 @@ import { botForTenant, botAllowsAiArt } from "./bots";
 import {
   audienceLabel,
   canViewAudience,
+  cardVisibilitySql,
   collectionVisibilitySql,
   publicCollectionSql,
   viewerAccess,
@@ -739,6 +740,7 @@ export async function listCollectionViewers(ctx: Ctx, collectionId: string) {
 export async function collectionProgress(ctx: Ctx, collectionId: string) {
   const user = ctx.user;
   const collection = await getCollection(ctx, collectionId);
+  const visible = cardVisibilitySql(await viewerAccess(ctx));
   const totals = await first<{ cards: number; variants: number }>(
     ctx.db,
     `SELECT COUNT(DISTINCT cd.id) AS cards,
@@ -746,8 +748,9 @@ export async function collectionProgress(ctx: Ctx, collectionId: string) {
        FROM fb_collection_cards cc
        JOIN fb_card_definitions cd ON cd.id = cc.card_id AND cd.status = 'published' AND cd.archived_at IS NULL
        LEFT JOIN fb_variants v ON v.card_id = cd.id AND v.status = 'published' AND v.archived_at IS NULL
-      WHERE cc.collection_id = ?`,
+      WHERE cc.collection_id = ? AND (${visible.sql})`,
     collection.id,
+    ...visible.params,
   );
   const finishTotals = await all<{
     card_id: string;
@@ -761,8 +764,9 @@ export async function collectionProgress(ctx: Ctx, collectionId: string) {
        JOIN fb_variants v ON v.card_id = cd.id AND v.status = 'published' AND v.archived_at IS NULL
        JOIN fb_materials m ON m.id = v.material_id
        LEFT JOIN fb_effects fx ON fx.id = v.effect_id
-      WHERE cc.collection_id = ?`,
+      WHERE cc.collection_id = ? AND (${visible.sql})`,
     collection.id,
+    ...visible.params,
   );
   if (!user) {
     return {
@@ -785,10 +789,11 @@ export async function collectionProgress(ctx: Ctx, collectionId: string) {
        JOIN fb_card_definitions cd ON cd.id = ci.card_id AND cd.status = 'published' AND cd.archived_at IS NULL
        JOIN fb_collection_cards cc ON cc.card_id = ci.card_id
       WHERE ci.tenant_id = ? AND ci.user_id = ? AND ci.status IN ('owned','reserved')
-        AND cc.collection_id = ?`,
+        AND cc.collection_id = ? AND (${visible.sql})`,
     ctx.tenant.id,
     user.id,
     collection.id,
+    ...visible.params,
   );
   const ownedFinishRows = await all<{
     card_id: string;
@@ -804,10 +809,11 @@ export async function collectionProgress(ctx: Ctx, collectionId: string) {
        JOIN fb_materials m ON m.id = v.material_id
        LEFT JOIN fb_effects fx ON fx.id = v.effect_id
       WHERE ci.tenant_id = ? AND ci.user_id = ? AND ci.status IN ('owned','reserved')
-        AND cc.collection_id = ?`,
+        AND cc.collection_id = ? AND (${visible.sql})`,
     ctx.tenant.id,
     user.id,
     collection.id,
+    ...visible.params,
   );
   const totalCards = totals?.cards ?? 0;
   const ownedCards = owned?.cards ?? 0;
@@ -832,6 +838,7 @@ export async function collectionBinder(ctx: Ctx, collectionId: string) {
   const collection = await getCollection(ctx, collectionId);
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in to open the album.");
+  const visible = cardVisibilitySql(await viewerAccess(ctx));
   const rows = await all<{
     id: string;
     slug: string;
@@ -872,9 +879,10 @@ export async function collectionBinder(ctx: Ctx, collectionId: string) {
               ORDER BY b2.published_at DESC LIMIT 1) AS back_render_url
        FROM fb_collection_cards cc
        JOIN fb_card_definitions cd ON cd.id = cc.card_id AND cd.status = 'published' AND cd.archived_at IS NULL
-      WHERE cc.collection_id = ?
+      WHERE cc.collection_id = ? AND (${visible.sql})
       ORDER BY cc.sort, cd.name`,
     collection.id,
+    ...visible.params,
   ).catch(async () => {
     // Older local schemas may not have the ordered material join; the base
     // fields are still useful and the page stays honest about missing media.
@@ -894,8 +902,9 @@ export async function collectionBinder(ctx: Ctx, collectionId: string) {
               NULL AS back_render_url, NULL AS style_key
          FROM fb_collection_cards cc
          JOIN fb_card_definitions cd ON cd.id = cc.card_id AND cd.status = 'published' AND cd.archived_at IS NULL
-        WHERE cc.collection_id = ? ORDER BY cc.sort, cd.name`,
+        WHERE cc.collection_id = ? AND (${visible.sql}) ORDER BY cc.sort, cd.name`,
       collection.id,
+      ...visible.params,
     );
   });
   const ownedRows = await all<{

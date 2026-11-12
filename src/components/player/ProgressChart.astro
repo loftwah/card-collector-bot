@@ -1,0 +1,195 @@
+---
+interface Bucket {
+  day: string;
+  openings: number;
+  credited: number;
+  debited: number;
+}
+interface Props {
+  buckets: Bucket[];
+  selected: string;
+  kind: "openings" | "foil";
+  range: number;
+}
+const { buckets, selected, kind, range } = Astro.props;
+const foil = kind === "foil";
+const number = new Intl.NumberFormat("en-AU");
+const date = new Intl.DateTimeFormat("en-AU", { day: "numeric", month: "short", timeZone: "UTC" });
+const maximum = Math.max(
+  1,
+  ...buckets.flatMap((day) => (foil ? [day.credited, day.debited] : [day.openings])),
+);
+const height = (value: number) => (value ? `max(2px, ${(100 * value) / maximum}%)` : "0px");
+const target = foil ? "foil-activity" : "openings";
+const label = (day: Bucket) =>
+  foil
+    ? `${date.format(new Date(day.day))}: +${number.format(day.credited)} in, −${number.format(day.debited)} out`
+    : `${date.format(new Date(day.day))}: ${number.format(day.openings)} ${day.openings === 1 ? "opening" : "openings"}`;
+const selectedBucket = buckets.find((day) => day.day === selected)!;
+---
+
+<div class="chart" data-progress-chart>
+  <p class="chart__reading" data-reading data-selected={label(selectedBucket)}>
+    {label(selectedBucket)}
+  </p>
+  {range === 30 && <p class="chart__hint">Scroll for more days</p>}
+  <div class="chart__scroll" data-chart-scroll>
+    <ul
+      class:list={["chart__days", { "chart__days--month": range === 30 }]}
+      aria-label={foil ? "Daily Foil activity" : "Daily capsule openings"}
+    >
+      {buckets.map((day) => (
+        <li>
+          <a
+            class:list={["chart__day", { "chart__day--signed": foil }]}
+            href={`/play/progress?range=${range}&day=${day.day}#${target}`}
+            aria-label={label(day)}
+            aria-current={day.day === selected ? "date" : undefined}
+            data-reading-value={label(day)}
+          >
+            <span class="chart__plot" aria-hidden="true">
+              <span class="chart__up">
+                <span style={{ height: height(foil ? day.credited : day.openings) }}></span>
+              </span>
+              {foil && (
+                <span class="chart__down">
+                  <span style={{ height: height(day.debited) }}></span>
+                </span>
+              )}
+            </span>
+            <time datetime={day.day} aria-hidden="true">
+              {Number(day.day.slice(-2))}
+            </time>
+          </a>
+        </li>
+      ))}
+    </ul>
+  </div>
+</div>
+
+<style>
+  .chart {
+    margin-top: 1rem;
+  }
+  .chart__reading {
+    color: var(--ink);
+    font-size: 0.875rem;
+    font-variant-numeric: tabular-nums;
+    margin: 0 0 0.4rem;
+  }
+  .chart__hint {
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-bottom: 0.3rem;
+  }
+  .chart__scroll {
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+  }
+  .chart__days {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(36px, 1fr);
+    min-width: 100%;
+    width: max-content;
+    margin: 0;
+    padding: 2px;
+    list-style: none;
+  }
+  .chart__days:not(.chart__days--month) {
+    width: 100%;
+  }
+  .chart__day {
+    display: grid;
+    grid-template-rows: 6.5rem 1.7rem;
+    text-decoration: none;
+    color: var(--muted);
+    border-radius: 3px;
+    transition: background-color 150ms ease-out;
+  }
+  .chart__day:hover,
+  .chart__day[aria-current] {
+    background: color-mix(in srgb, var(--signal) 13%, var(--panel));
+    color: var(--ink);
+  }
+  .chart__day:focus-visible {
+    outline: 2px solid var(--signal);
+    outline-offset: -2px;
+    color: var(--ink);
+  }
+  .chart__day time {
+    display: grid;
+    place-items: center;
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .chart__day[aria-current] time {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    font-weight: 700;
+  }
+  .chart__plot {
+    display: grid;
+    padding-block: 0.25rem 0;
+  }
+  .chart__day--signed .chart__plot {
+    grid-template-rows: 1fr 1fr;
+  }
+  .chart__up,
+  .chart__down {
+    position: relative;
+    display: flex;
+    justify-content: center;
+  }
+  .chart__up {
+    align-items: end;
+    border-bottom: 1px solid var(--muted);
+  }
+  .chart__down {
+    align-items: start;
+  }
+  .chart__up > span,
+  .chart__down > span {
+    width: min(66%, 28px);
+  }
+  .chart__up > span {
+    background: var(--signal);
+  }
+  .chart__day--signed .chart__up > span {
+    background: var(--green);
+  }
+  .chart__down > span {
+    background: var(--oxblood);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .chart__day {
+      transition: none;
+    }
+  }
+</style>
+
+<script>
+  for (const chart of document.querySelectorAll<HTMLElement>("[data-progress-chart]")) {
+    const reading = chart.querySelector<HTMLElement>("[data-reading]");
+    const scroll = chart.querySelector<HTMLElement>("[data-chart-scroll]");
+    const selected = chart.querySelector<HTMLElement>("[aria-current='date']");
+    if (!reading || !scroll || !selected) continue;
+    if (scroll.scrollWidth > scroll.clientWidth) {
+      scroll.scrollLeft =
+        selected.getBoundingClientRect().left -
+        scroll.getBoundingClientRect().left -
+        (scroll.clientWidth - selected.offsetWidth) / 2;
+    }
+    const read = (event: Event) => {
+      const link = (event.target as Element).closest<HTMLElement>("[data-reading-value]");
+      if (link) reading.textContent = link.dataset.readingValue ?? "";
+    };
+    const reset = () => {
+      reading.textContent = reading.dataset.selected ?? "";
+    };
+    chart.addEventListener("focusin", read);
+    chart.addEventListener("pointerover", read);
+    chart.addEventListener("focusout", reset);
+    chart.addEventListener("pointerleave", reset);
+  }
+</script>

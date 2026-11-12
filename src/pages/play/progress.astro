@@ -1,0 +1,694 @@
+---
+import ProgressChart from "../../components/player/ProgressChart.astro";
+import PlayerLayout from "../../layouts/PlayerLayout.astro";
+import { ApiError } from "../../server/context";
+import { getCollectorProgress, progressPeriod } from "../../server/modules/progress";
+import { pageContext } from "../../server/page";
+
+Astro.response.headers.set("Cache-Control", "private, no-store");
+Astro.response.headers.set("Vary", "Cookie");
+const period = progressPeriod(
+  Astro.url.searchParams.get("range"),
+  Astro.url.searchParams.get("day"),
+);
+const rangeHref = `/play/progress?range=${period.days}`;
+const retryHref = period.selected ? `${rangeHref}&day=${period.selected}` : rangeHref;
+const ctx = await pageContext(Astro.request);
+if (!ctx.sessionId) {
+  return Astro.redirect(`/login?next=${encodeURIComponent(rangeHref)}`);
+}
+let view: Awaited<ReturnType<typeof getCollectorProgress>>;
+try {
+  view = await getCollectorProgress(ctx, period);
+} catch (error) {
+  if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+    return Astro.redirect(`/login?next=${encodeURIComponent(rangeHref)}`);
+  }
+  view = { activity: null, binders: null };
+}
+const { binders, activity } = view;
+if (!binders || !activity) Astro.response.status = 503;
+const [closest, ...others] = binders ?? [];
+const binderHref = (id: string) => `/play/collection?collection=${encodeURIComponent(id)}`;
+const num = new Intl.NumberFormat("en-AU");
+const shortDate = new Intl.DateTimeFormat("en-AU", {
+  day: "numeric",
+  month: "short",
+  timeZone: "UTC",
+});
+const fullDate = new Intl.DateTimeFormat("en-AU", {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+  timeZone: "UTC",
+});
+const clock = new Intl.DateTimeFormat("en-AU", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+  timeZone: "UTC",
+});
+const total = activity?.buckets.reduce(
+  (sum, d) => ({
+    openings: sum.openings + d.openings,
+    credited: sum.credited + d.credited,
+    debited: sum.debited + d.debited,
+  }),
+  { openings: 0, credited: 0, debited: 0 },
+);
+const selected = activity?.buckets.find((d) => d.day === activity.selected);
+const signed = (value: number) =>
+  value < 0 ? `−${num.format(-value)}` : value > 0 ? `+${num.format(value)}` : "0";
+const subjectCount = (owned: number, total: number) =>
+  `${num.format(owned)} of ${num.format(total)} subjects`;
+---
+
+<PlayerLayout title="Progress · Foilbury">
+  <div class="progress-page">
+    <header class="progress-heading">
+      <h1 class="page-title">Your progress</h1>
+      <a class="text-link" href="/play/cabinet">
+        Back to Cabinet
+      </a>
+    </header>
+
+    <section class="binder-section" aria-labelledby="binder-title">
+      <h2 id="binder-title" class="display-sm">
+        {closest && closest.owned === closest.total ? "Completed binders" : "Closest binder"}
+      </h2>
+      {closest ? (
+        <div class="binder-list">
+          <a class="binder-lead" href={binderHref(closest.id)}>
+            {closest.logo_url && (
+              <img
+                src={closest.logo_url}
+                alt=""
+                width="64"
+                height="64"
+                decoding="async"
+                referrerpolicy="no-referrer"
+              />
+            )}
+            <div class="binder-copy">
+              <h3>{closest.name}</h3>
+              <p>
+                {subjectCount(closest.owned, closest.total)} ·{" "}
+                {closest.owned === closest.total
+                  ? "Complete"
+                  : `${num.format(closest.total - closest.owned)} to find`}
+              </p>
+              <progress
+                max={closest.total}
+                value={closest.owned}
+                aria-label={`${closest.name}: ${subjectCount(closest.owned, closest.total)}`}
+              ></progress>
+            </div>
+            <span class="binder-action">
+              Open binder{" "}
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path
+                  d="M3 8h10m-4-4 4 4-4 4"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </span>
+          </a>
+          {others.length > 0 && (
+            <ul class="binder-others" aria-label="Other started binders">
+              {others.map((binder) => (
+                <li>
+                  <a class="binder-copy" href={binderHref(binder.id)}>
+                    <span class="binder-name">{binder.name}</span>
+                    <span class="binder-count">
+                      {subjectCount(binder.owned, binder.total)}
+                      {binder.owned === binder.total ? " · Complete" : ""}
+                    </span>
+                    <progress
+                      max={binder.total}
+                      value={binder.owned}
+                      aria-label={`${binder.name}: ${subjectCount(binder.owned, binder.total)}`}
+                    ></progress>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : binders ? (
+        <div class="state">
+          <p>No binders started yet. Find a collection you’d like to build.</p>
+          <a class="btn btn-secondary" href="/play/collections">
+            Browse collections
+          </a>
+        </div>
+      ) : (
+        <div class="state">
+          <p>Binder progress unavailable.</p>
+          <a class="btn btn-secondary" href={retryHref}>
+            Retry binder progress
+          </a>
+        </div>
+      )}
+    </section>
+
+    <section class="activity-section" id="activity" aria-labelledby="activity-title">
+      <header class="activity-heading">
+        <div>
+          <h2 id="activity-title" class="display-sm">
+            Recent activity
+          </h2>
+          <p>
+            {shortDate.format(new Date(period.start))} –{" "}
+            {fullDate.format(new Date(Date.parse(period.end) - 1))} · UTC days
+          </p>
+        </div>
+        <nav class="range" aria-label="Activity range">
+          {[7, 30].map((days) => (
+            <a
+              class="btn btn-secondary"
+              href={`/play/progress?range=${days}`}
+              aria-current={days === period.days ? "true" : undefined}
+            >
+              {days} days
+            </a>
+          ))}
+        </nav>
+      </header>
+
+      {activity && total && selected ? (
+        <>
+          {period.days === 30 && (
+            <form class="day-picker" action="/play/progress#foil-activity" method="get">
+              <input type="hidden" name="range" value={period.days} />
+              <label for="activity-day">Choose a day</label>
+              <select class="input" id="activity-day" name="day">
+                {[...period.dates].reverse().map((day) => (
+                  <option value={day} selected={day === selected.day}>
+                    {shortDate.format(new Date(day))}
+                  </option>
+                ))}
+              </select>
+              <button class="btn btn-secondary" type="submit">
+                Show day
+              </button>
+            </form>
+          )}
+
+          <div class="activity-grid">
+            <section class="activity-panel" id="openings" aria-labelledby="openings-title">
+              <h3 id="openings-title" class="display-sm">
+                Capsules opened
+              </h3>
+              <p class="metric">
+                {num.format(total.openings)} <span>in {period.days} days</span>
+              </p>
+              <ProgressChart
+                kind="openings"
+                range={period.days}
+                buckets={activity.buckets}
+                selected={selected.day}
+              />
+              <p class="chart-note">
+                {total.openings === 0
+                  ? "No openings in this range."
+                  : "Each bar is one UTC day. Pick a day for its count."}
+              </p>
+              <a class="btn btn-secondary" href="/play/draw">
+                Open a capsule
+              </a>
+            </section>
+
+            <section
+              class="activity-panel"
+              id="foil-activity"
+              aria-labelledby="foil-activity-title"
+            >
+              <h3 id="foil-activity-title" class="display-sm">
+                Foil activity
+              </h3>
+              <p class="metric">
+                {num.format(activity.balance)} <span>Foil on hand</span>
+              </p>
+              <dl class="range-totals">
+                <div>
+                  <dt>In</dt>
+                  <dd>+{num.format(total.credited)}</dd>
+                </div>
+                <div>
+                  <dt>Out</dt>
+                  <dd>−{num.format(total.debited)}</dd>
+                </div>
+                <div>
+                  <dt>Net</dt>
+                  <dd>{signed(total.credited - total.debited)}</dd>
+                </div>
+              </dl>
+              <ProgressChart
+                kind="foil"
+                range={period.days}
+                buckets={activity.buckets}
+                selected={selected.day}
+              />
+              <p class="chart-note">
+                {total.credited || total.debited
+                  ? "Foil in above the line, Foil out below it."
+                  : "No Foil moved in this range."}
+              </p>
+
+              <div class="entries">
+                <h4>{fullDate.format(new Date(selected.day))}</h4>
+                {activity.entries.length ? (
+                  <>
+                    <p class="chart-note">Transactions · Times in UTC</p>
+                    {selected.count > activity.entries.length && (
+                      <p class="chart-note">
+                        Showing the latest {activity.entries.length} of {num.format(selected.count)}{" "}
+                        entries. Totals include all entries.
+                      </p>
+                    )}
+                    <ul>
+                      {activity.entries.map((entry) => (
+                        <li>
+                          <div>
+                            <p>
+                              {entry.href ? (
+                                <a class="text-link" href={entry.href}>
+                                  {entry.label}
+                                </a>
+                              ) : (
+                                entry.label
+                              )}
+                            </p>
+                            <time datetime={entry.time}>
+                              {clock.format(new Date(entry.time))} UTC
+                            </time>
+                          </div>
+                          <div class="entry-amount">
+                            <p
+                              class:list={[
+                                entry.amount > 0 ? "positive" : entry.amount < 0 ? "negative" : "",
+                              ]}
+                            >
+                              {signed(entry.amount)} Foil
+                            </p>
+                            <p>Balance after: {num.format(entry.balance)}</p>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : (
+                  <p class="chart-note">No Foil entries on this day.</p>
+                )}
+                <div class="entry-links">
+                  <a class="text-link" href="/play/rewards">
+                    Rewards
+                  </a>
+                  <a class="text-link" href="/play/missions">
+                    Missions
+                  </a>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <details class="data-view">
+            <summary>View data</summary>
+            <table>
+              <caption>Daily totals · UTC</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Date</th>
+                  <th scope="col">Opened</th>
+                  <th scope="col">Foil in</th>
+                  <th scope="col">Foil out</th>
+                  <th scope="col">Net</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...activity.buckets].reverse().map((day) => (
+                  <tr>
+                    <th scope="row">
+                      <a class="text-link" href={`${rangeHref}&day=${day.day}#foil-activity`}>
+                        {shortDate.format(new Date(day.day))}
+                      </a>
+                    </th>
+                    <td>{num.format(day.openings)}</td>
+                    <td>+{num.format(day.credited)}</td>
+                    <td>−{num.format(day.debited)}</td>
+                    <td>{signed(day.credited - day.debited)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </details>
+        </>
+      ) : (
+        <div class="state">
+          <p>Activity unavailable. Try again to see your openings and Foil.</p>
+          <a class="btn btn-secondary" href={retryHref}>
+            Retry activity
+          </a>
+        </div>
+      )}
+    </section>
+  </div>
+</PlayerLayout>
+
+<script>
+  // The browser can restore a private document from its back/forward cache.
+  // Revalidate admission and current Bot before displaying that snapshot again.
+  window.addEventListener("pagehide", (event) => {
+    if (event.persisted) document.documentElement.style.visibility = "hidden";
+  });
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) window.location.reload();
+  });
+</script>
+
+<style>
+  .progress-page {
+    max-width: 76rem;
+    margin-inline: auto;
+  }
+  .progress-heading {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.4rem 1rem;
+    padding-block: 0.15rem 1.15rem;
+  }
+  .progress-heading h1 {
+    margin-block: 0.45rem 0.35rem;
+  }
+  .activity-heading p,
+  .binder-copy p,
+  .binder-count,
+  .chart-note {
+    color: var(--muted);
+  }
+  .text-link {
+    color: var(--signal);
+    text-decoration: underline;
+    text-underline-offset: 0.19em;
+  }
+  .binder-section,
+  .activity-section {
+    border-top: 1px solid var(--line);
+    padding-top: 1.2rem;
+    margin-bottom: 1.8rem;
+  }
+  .binder-section h2,
+  .activity-heading h2 {
+    font-size: 1.75rem;
+    margin: 0 0 0.4rem;
+  }
+  .binder-list {
+    margin-top: 0.8rem;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    border-radius: 4px;
+  }
+  .binder-lead {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.9rem;
+    padding: 1rem;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .binder-lead img {
+    background: #fff;
+    padding: 0.25rem;
+    border-radius: 3px;
+    object-fit: contain;
+    flex: none;
+    width: 64px;
+    height: 64px;
+  }
+  .binder-copy {
+    display: grid;
+    gap: 0.2rem;
+    min-width: 0;
+    flex: 1;
+    overflow-wrap: anywhere;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .binder-copy h3,
+  .binder-name {
+    font-weight: 650;
+  }
+  .binder-copy h3 {
+    font-size: 1.125rem;
+  }
+  .binder-copy p,
+  .binder-count {
+    font-size: 0.875rem;
+  }
+  .binder-copy progress {
+    width: min(100%, 26rem);
+    height: 0.375rem;
+    margin-top: 0.35rem;
+    appearance: none;
+    border: 0;
+    background: var(--line);
+    color: var(--signal);
+  }
+  .binder-copy progress::-webkit-progress-bar {
+    background: var(--line);
+  }
+  .binder-copy progress::-webkit-progress-value {
+    background: var(--signal);
+  }
+  .binder-copy progress::-moz-progress-bar {
+    background: var(--signal);
+  }
+  .binder-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: var(--signal);
+    font-weight: 650;
+    font-size: 0.875rem;
+  }
+  .binder-lead:hover .binder-action,
+  .binder-others a:hover .binder-name {
+    text-decoration: underline;
+    text-underline-offset: 0.19em;
+  }
+  .binder-others {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .binder-others li {
+    min-width: 0;
+    border-top: 1px solid var(--line);
+  }
+  .binder-others a {
+    padding: 0.8rem 1rem;
+  }
+  .activity-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.85rem;
+    margin-bottom: 1rem;
+  }
+  .activity-heading p {
+    font-size: 0.875rem;
+  }
+  .range {
+    display: flex;
+    gap: 0.4rem;
+  }
+  .range .btn,
+  .day-picker :is(button, select),
+  .state .btn {
+    min-height: 44px;
+  }
+  .range [aria-current] {
+    background: var(--ink);
+    color: var(--paper);
+    border-color: var(--ink);
+  }
+  .activity-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+  .activity-panel {
+    min-width: 0;
+    align-self: start;
+    padding: 1rem;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    border-radius: 4px;
+    scroll-margin-top: 1rem;
+  }
+  .activity-panel h3 {
+    font-size: 1.4rem;
+  }
+  .metric {
+    font-size: 1.65rem;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+    line-height: 1.25;
+    margin-top: 0.35rem;
+  }
+  .metric span {
+    color: var(--muted);
+    font-size: 0.875rem;
+    font-weight: 450;
+  }
+  .range-totals {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 1rem;
+    font-size: 0.875rem;
+    margin-block: 0.6rem 0;
+  }
+  .range-totals div {
+    display: flex;
+    gap: 0.3rem;
+  }
+  .range-totals dt {
+    color: var(--muted);
+  }
+  .range-totals dd {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+  .chart-note {
+    font-size: 0.8125rem;
+    margin-block: 0.6rem;
+  }
+  .activity-panel > .btn {
+    margin-top: 0.25rem;
+    min-height: 44px;
+  }
+  .entries {
+    border-top: 1px solid var(--line);
+    padding-top: 0.85rem;
+    margin-top: 1rem;
+  }
+  .entries h4 {
+    font-size: 1rem;
+    font-weight: 650;
+  }
+  .entries ul {
+    margin: 0.5rem 0;
+    list-style: none;
+    padding: 0;
+  }
+  .entries li {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.6rem;
+    align-items: start;
+    border-bottom: 1px solid var(--line);
+    padding-block: 0.65rem;
+    font-size: 0.875rem;
+    overflow-wrap: anywhere;
+  }
+  .entries li time,
+  .entry-amount p + p {
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+  .entry-amount {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .entry-amount p:first-child {
+    font-weight: 650;
+  }
+  .positive {
+    color: var(--green);
+  }
+  .negative {
+    color: var(--oxblood);
+  }
+  .entry-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+  .entry-links a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    font-size: 0.875rem;
+  }
+  .day-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    align-items: center;
+    margin-bottom: 0.8rem;
+    font-size: 0.875rem;
+  }
+  .day-picker select {
+    width: auto;
+  }
+  .data-view {
+    margin-top: 0.7rem;
+  }
+  .data-view summary {
+    cursor: pointer;
+    min-height: 44px;
+    align-content: center;
+    width: fit-content;
+    font-weight: 600;
+  }
+  .data-view table {
+    width: 100%;
+    table-layout: fixed;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+  }
+  .data-view caption {
+    text-align: left;
+    padding-block: 0.4rem;
+    color: var(--muted);
+  }
+  .data-view th,
+  .data-view td {
+    padding: 0.45rem 0.2rem;
+    border-bottom: 1px solid var(--line);
+    overflow-wrap: anywhere;
+  }
+  .data-view th:first-child {
+    text-align: left;
+  }
+  .state {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    align-items: center;
+    min-height: 5rem;
+  }
+  @media (max-width: 760px) {
+    .activity-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .binder-action {
+      width: 100%;
+    }
+    .binder-others {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+</style>

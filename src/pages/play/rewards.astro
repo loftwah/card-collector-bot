@@ -125,7 +125,10 @@ const rewardSets = published.map((set) => ({
         <div class="mt-4"><ClaimButton client:load amount={economy.daily_reward} canClaim={canClaim} nextEligible={nextEligible ? formatDual(nextEligible) : null} /></div>
       </div>
       <div class="surface-flat p-5">
-        <p class="eyebrow">Your Foil history</p>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <p class="eyebrow">Your Foil history</p>
+          <a class="btn btn-secondary btn-sm min-h-11" href="/play/progress#foil-activity">See Foil activity</a>
+        </div>
         <div class="mt-3 grid gap-2">
           {ledger.ledger.slice(0, 8).map((entry) => (
             <div class="flex items-start justify-between gap-3 border-b border-[var(--line)] pb-2 last:border-0">
