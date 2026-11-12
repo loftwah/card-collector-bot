@@ -2,19 +2,19 @@
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import PublicVariantViewer from "../../components/PublicVariantViewer";
 import { pageContext } from "../../server/page";
-import { getCard, listCards } from "../../server/modules/catalogue";
+import { getCatalogueCard } from "../../server/modules/catalogue";
+import { ApiError } from "../../server/context";
 import { publicCard } from "../../server/api/public";
 
 const ctx = await pageContext(Astro.request);
 const slug = Astro.params.slug ?? "";
-let card;
+let published;
 try {
-  card = await getCard(ctx, slug);
-} catch {
-  return Astro.redirect("/cabinet");
+  published = await getCatalogueCard(ctx, slug, true);
+} catch (error) {
+  if (error instanceof ApiError && error.code === "card_not_found") return Astro.redirect("/cabinet");
+  throw error;
 }
-const published = (await listCards(ctx, { publicOnly: true, id: card!.id, limit: 1 }))[0];
-if (!published) return Astro.redirect("/cabinet");
 const clean = publicCard(published);
 const variants = clean.editions.flatMap((edition) =>
   edition.variants.map((variant) => ({ ...variant, edition_name: edition.name })),

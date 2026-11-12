@@ -237,11 +237,13 @@ export async function listCards(
     .filter((card) => card.editions.length > 0);
 }
 
-export async function getCard(
+type CardLookupOptions = { includeDrafts?: boolean; includeAi?: boolean; includeArchived?: boolean };
+
+async function resolveCardRow(
   ctx: Ctx,
   idOrSlug: string,
-  options?: { includeDrafts?: boolean; includeAi?: boolean; includeArchived?: boolean },
-): Promise<CardView> {
+  options?: CardLookupOptions,
+): Promise<{ row: CardRow; administrative: boolean }> {
   const access = await viewerAccess(ctx);
   const visibility = cardVisibilitySql(access);
   const administrative = Boolean(options?.includeDrafts || access.managesCurrentTenant);
@@ -266,14 +268,33 @@ export async function getCard(
       ctx.tenant.id,
       idOrSlug,
     );
-    if (alias) return getCard(ctx, alias.target_card_id, options);
+    if (alias) return resolveCardRow(ctx, alias.target_card_id, options);
     throw new ApiError(404, "card_not_found", "That card does not exist in this cabinet.");
   }
+  return { row, administrative };
+}
+
+export async function getCard(
+  ctx: Ctx,
+  idOrSlug: string,
+  options?: CardLookupOptions,
+): Promise<CardView> {
+  const { row, administrative } = await resolveCardRow(ctx, idOrSlug, options);
   return (await hydrateCards(
     ctx,
     [row],
     options?.includeAi ?? (administrative || (await botAllowsAiArt(ctx.db, ctx.tenant.id))),
   ))[0]!;
+}
+
+export async function getCatalogueCard(ctx: Ctx, idOrSlug: string, publicOnly = !ctx.user) {
+  const { row } = await resolveCardRow(ctx, idOrSlug);
+  if (row.status !== "published")
+    throw new ApiError(404, "card_not_found", "That card is not published.");
+  const [card] = await listCards(ctx, { id: row.id, limit: 1, publicOnly });
+  if (!card)
+    throw new ApiError(404, "card_not_found", "That card is not available in this album.");
+  return card;
 }
 
 async function hydrateCards(ctx: Ctx, rows: CardRow[], includeAi = true): Promise<CardView[]> {

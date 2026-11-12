@@ -314,8 +314,9 @@
       "roles": [],
       "schema": null,
       "calls": [
-        "listCards",
         "get",
+        "isSafeInteger",
+        "listCards",
         "map",
         "activeRelease"
       ],
@@ -330,9 +331,8 @@
       "roles": [],
       "schema": null,
       "calls": [
-        "getCard",
-        "listCards",
-        "publicCard"
+        "publicCard",
+        "getCatalogueCard"
       ],
       "studio_alias": false
     },

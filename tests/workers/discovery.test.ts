@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { bootstrap, ctxFor, fixturePool, runtime } from "./helpers";
 import { routeApi } from "../../src/server/api/router";
-import { listCards } from "../../src/server/modules/catalogue";
+import { listCards, publishCatalogue } from "../../src/server/modules/catalogue";
 import type { Ctx } from "../../src/server/context";
 import { ApiError } from "../../src/server/context";
 import { nowIso } from "../../src/server/db";
@@ -17,7 +17,8 @@ function anonymous(ctx: Ctx): Ctx {
 
 async function get(ctx: Ctx, path: string) {
   try {
-    const response = await routeApi(new Request(`http://localhost:5173${path}`), ctx, path.replace(/^\/api\/v1\//, ""));
+    const url = new URL(path, "http://localhost:5173");
+    const response = await routeApi(new Request(url), ctx, url.pathname.replace(/^\/api\/v1\//, ""));
     return { status: response.status, body: (await response.json()) as Record<string, unknown> };
   } catch (error) {
     if (error instanceof ApiError) return { status: error.status, body: { error: { code: error.code } } };
@@ -28,6 +29,20 @@ async function get(ctx: Ctx, path: string) {
 describe("discovery and direct lookup privacy", () => {
   beforeEach(async () => {
     await bootstrap();
+  });
+
+  it("rejects invalid catalogue limits before querying the catalogue", async () => {
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    await fixturePool(owner);
+    await publishCatalogue(owner);
+    const ctx = anonymous(owner);
+    for (const limit of ["abc", "1.5", "Infinity"]) {
+      expect(await get(ctx, `/api/v1/catalogue?limit=${limit}`)).toEqual({
+        status: 400,
+        body: { error: { code: "invalid_limit" } },
+      });
+    }
+    expect((await get(ctx, "/api/v1/catalogue?limit=1")).status).toBe(200);
   });
 
   it("does not enumerate pool metadata to an anonymous caller", async () => {
@@ -95,5 +110,9 @@ describe("discovery and direct lookup privacy", () => {
     const direct = await get(anon, "/api/v1/cards/crd_bulk_201");
     expect(direct.status).toBe(200);
     expect((direct.body.card as { name: string }).name).toBe("ZZ Card 201");
+    await runtime.DB.prepare(
+      "INSERT INTO fb_card_aliases VALUES (?, 'crd_legacy', 'crd_bulk_201', ?)",
+    ).bind(owner.tenant.id, now).run();
+    expect(await get(anon, "/api/v1/cards/crd_legacy")).toEqual(direct);
   });
 });
