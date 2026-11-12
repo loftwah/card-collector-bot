@@ -157,6 +157,14 @@ export async function uploadAsset(
           hash,
           input.kind,
         );
+  const recordedOrigin = input.origin ?? existing?.origin ?? origin;
+  if (input.official && (recordedOrigin === "ai_assisted" || recordedOrigin === "ai_generated")) {
+    throw new ApiError(
+      422,
+      "asset_ai_official_conflict",
+      "AI artwork cannot be marked as official.",
+    );
+  }
   if (existing) {
     if (input.origin && existing.origin !== "unknown" && existing.origin !== input.origin) {
       throw new ApiError(
@@ -169,7 +177,7 @@ export async function uploadAsset(
     // metadata may have been corrected. Keep the stable asset ID and R2 object,
     // and update the authoritative metadata instead of silently returning stale
     // values.
-    await ctx.db.batch([
+    const [updated] = await ctx.db.batch([
       ctx.db
         .prepare(
           `UPDATE fb_assets SET
@@ -177,7 +185,7 @@ export async function uploadAsset(
              review_status = ?, provenance_json = ?, source_repo = ?, source_path = ?,
              source_commit = ?, source_logical_id = ?, credit = ?,
              origin = COALESCE(?, origin), generation_json = COALESCE(?, generation_json)
-           WHERE id = ? AND tenant_id = ?`,
+           WHERE id = ? AND tenant_id = ? AND origin = ?`,
         )
         .bind(
           input.name.trim() || "Untitled asset",
@@ -197,13 +205,23 @@ export async function uploadAsset(
           generationJson,
           existing.id,
           ctx.tenant.id,
+          existing.origin,
         ),
-      auditStatementSafe(ctx, "asset.metadata_revised", existing.id, {
-        kind: input.kind,
-        sha256: hash,
-        origin: input.origin ?? existing.origin,
-      }),
+      auditStatementSafe(
+        ctx,
+        "asset.metadata_revised",
+        existing.id,
+        { kind: input.kind, sha256: hash, origin: recordedOrigin },
+        true,
+      ),
     ]);
+    if (!updated?.meta.changes) {
+      throw new ApiError(
+        409,
+        "asset_origin_conflict",
+        "Artwork origin changed. Reload before editing.",
+      );
+    }
     return (await first<AssetRow>(
       ctx.db,
       "SELECT * FROM fb_assets WHERE id = ? AND tenant_id = ?",
@@ -275,13 +293,15 @@ function auditStatementSafe(
   action: string,
   objectId: string,
   metadata: Record<string, unknown>,
+  onlyAfterChange = false,
 ) {
   return ctx.db
     .prepare(
       `INSERT INTO fb_audit_events
         (id, tenant_id, actor_type, actor_id, represented_user_id, action, object_type, object_id,
          metadata_json, request_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'asset', ?, ?, ?, ?)`,
+       SELECT ?, ?, ?, ?, ?, ?, 'asset', ?, ?, ?, ?
+       ${onlyAfterChange ? "WHERE changes() > 0" : ""}`,
     )
     .bind(
       newId("aud"),

@@ -6,11 +6,13 @@ import { displayFinish, printTitle as editionPrintTitle } from "@/lib/utils";
 import CardViewer from "./cards/CardViewer";
 import CardInspector from "./player/CardInspector";
 import { cn } from "@/lib/utils";
+import { artworkOriginLabel } from "@/lib/artwork-origin";
 
 interface Variant {
   id: string;
   name: string;
   edition_name?: string;
+  artwork_origin?: string;
   material_key: string;
   effect_key: string | null;
   render_url: string | null;
@@ -108,6 +110,7 @@ export default function PublicVariantViewer({
                       variation: printTitle,
                       collection: collection?.name,
                       finish: selectedFinish,
+                      provenance: artworkOriginLabel(variant.artwork_origin),
                       front: variant.render_url,
                       back: variant.back_render_url ?? fallbackBack,
                     },
@@ -220,6 +223,7 @@ export default function PublicVariantViewer({
         ) : null}
 
         <div className="mt-5 grid gap-2 border-t border-[var(--line)] pt-4 text-sm text-[var(--muted)]">
+          {variant?.artwork_origin ? <p>{artworkOriginLabel(variant.artwork_origin)}</p> : null}
           {sourceWork ? (
             <p>
               <span className="font-mono text-[0.6875rem] tracking-[0.12em] uppercase">Source</span>{" "}

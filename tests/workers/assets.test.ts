@@ -86,5 +86,8 @@ describe("asset storage keys", () => {
     await expect(uploadAsset(owner, { ...input, origin: "ai_generated" })).rejects.toMatchObject({
       code: "asset_generation_invalid",
     });
+    await expect(uploadAsset(owner, { ...input, official: true })).rejects.toMatchObject({
+      code: "asset_ai_official_conflict",
+    });
   });
 });

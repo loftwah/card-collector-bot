@@ -12,12 +12,17 @@ let published;
 try {
   published = await getCatalogueCard(ctx, slug, true);
 } catch (error) {
-  if (error instanceof ApiError && error.code === "card_not_found") return Astro.redirect("/cabinet");
+  if (error instanceof ApiError && error.code === "card_not_found")
+    return Astro.redirect("/cabinet");
   throw error;
 }
 const clean = publicCard(published);
 const variants = clean.editions.flatMap((edition) =>
-  edition.variants.map((variant) => ({ ...variant, edition_name: edition.name })),
+  edition.variants.map((variant) => ({
+    ...variant,
+    edition_name: edition.name,
+    artwork_origin: edition.artwork_origin,
+  })),
 );
 const setName = clean.sets[0]?.name ?? null;
 ---

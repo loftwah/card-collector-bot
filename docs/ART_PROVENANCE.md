@@ -24,7 +24,8 @@ field and, for AI artwork, a `generationJson` object with the actual provider
 and endpoint or operator method. Use `provenanceJson` for the source credit,
 rights, exact prompts and reference hashes. A browser-generated ImageGen asset
 can record `codex:imagegen` as the operator method and leave the resolved
-model unset. The catalogue API exposes the edition's `artwork_origin`.
+model unset. The catalogue API exposes the edition subject's `artwork_origin`,
+and the card inspector shows that classification.
 
 For sourced assets, distinguish creator-published art, fan art and other
 human-made art in the source record. `sourced` alone establishes where a file
@@ -63,6 +64,9 @@ change is audited as `bot.ai_art.updated`.
   is off, and include the preference in the distribution fingerprint.
 - Album rosters and card hydration omit AI-only editions; a subject with a
   non-AI edition remains visible.
+- The collecting filter currently reads the edition's subject classification.
+  A generated scene behind a sourced subject still requires a composition-level
+  classification before the toggle can cover that case.
 - Discord card detail and the web card detail show the origin; the tour's
   inspection stage states whether the album is sourced, AI-assisted or mixed.
 - The persistent demonstration uses the sourced Danganronpa references, not the

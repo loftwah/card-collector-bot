@@ -107,7 +107,7 @@ export interface CardView extends CardRow {
     view_audience: string;
   }>;
   card_back_url: string;
-  editions: Array<EditionRow & { variants: VariantRow[] }>;
+  editions: Array<EditionRow & { subject_origin: string; variants: VariantRow[] }>;
   sets: Array<{ id: string; slug: string; name: string; version: number }>;
 }
 
