@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Download, ThumbsDown, ThumbsUp, X } from "lucide-react";
 import { CARD_STYLE_LABEL } from "@/lib/card-styles";
 import { api, describeError } from "@/lib/client";
+import CopyImageButton from "../art/CopyImageButton";
 
 /**
  * The one card viewer used by the Art Lab, Print Studio, platform brand art,
@@ -267,8 +268,8 @@ export default function CardViewer() {
     ["Audience", item.audience ?? null],
   ];
   const visibleFacts = facts.filter((entry): entry is [string, string] => Boolean(entry[1]));
-  const downloadUrl =
-    item.downloadUrl ?? (side === "back" ? (item.back ?? item.front) : item.front);
+  const imageUrl = side === "back" && item.back ? item.back : item.front;
+  const downloadUrl = side === "back" ? imageUrl : (item.downloadUrl ?? imageUrl);
 
   return (
     <dialog
@@ -358,13 +359,18 @@ export default function CardViewer() {
             >
               <img
                 key={`${item.id}-${side}`}
-                src={side === "back" && item.back ? item.back : item.front}
+                src={imageUrl}
                 alt={`${item.name} ${side}${label ? `, ${label} style` : ""}`}
                 width={item.width ?? 750}
                 height={item.height ?? 1050}
               />
             </button>
             <div className="card-viewer__toolbar">
+              <CopyImageButton
+                key={`${item.id}-${side}-${imageUrl}`}
+                src={imageUrl}
+                name={`${item.name} ${side}`}
+              />
               <div className="card-viewer__sides" role="group" aria-label="Card face">
                 <button
                   type="button"
