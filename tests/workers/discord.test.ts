@@ -1606,6 +1606,41 @@ describe("Discord HTTP interactions", () => {
     expect(JSON.stringify(publicView.payload.data)).not.toContain("Discord Rival");
   });
 
+  it("browses the latest print and keeps an exact older version selectable", async () => {
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const fixture = await fixturePool(owner);
+    const print = await runtime.DB.prepare(
+      `INSERT INTO fb_artwork_editions
+       (id, tenant_id, card_id, name, subject_asset_id, recipe_id, status, created_at)
+       VALUES ('edt_test_new', ?, ?, 'Test One — Rain', ?, ?, 'published', ?)`,
+    ).bind(owner.tenant.id, fixture.cardId, fixture.subjectAsset, fixture.recipeId, "2099-01-01").run();
+    expect(print.success).toBe(true);
+    await runtime.DB.batch([
+      runtime.DB.prepare(
+        `INSERT INTO fb_variants
+         (id, tenant_id, card_id, edition_id, material_id, effect_id, name, status, created_at)
+         SELECT 'var_test_new', tenant_id, card_id, 'edt_test_new', material_id, effect_id, name, status, created_at
+           FROM fb_variants WHERE id = ?`,
+      ).bind(fixture.variantId),
+      runtime.DB.prepare(
+        `INSERT INTO fb_variant_renders
+         (id, tenant_id, variant_id, recipe_id, asset_id, public_url, width, height, sha256, status, created_at)
+         SELECT 'vr_test_new', tenant_id, 'var_test_new', recipe_id, asset_id, public_url, width, height, sha256, status, created_at
+           FROM fb_variant_renders WHERE variant_id = ?`,
+      ).bind(fixture.variantId),
+    ]);
+    const first = await send(interaction(command("card", [{ name: "query", type: 3, value: "Test One" }])));
+    expect(JSON.stringify(first.payload.data)).toContain('"name":"Print","value":"Rain"');
+    expect(JSON.stringify(first.payload.data)).toContain(`foilbury:card:${fixture.cardId}:var_test_new:back`);
+    const next = await send(interaction({
+      custom_id: `foilbury:card:${fixture.cardId}:${fixture.variantId}:front`,
+      component_type: 2,
+    }, { type: 3 }));
+    expect(JSON.stringify(next.payload.data)).toContain(`foilbury:card:${fixture.cardId}:${fixture.variantId}:back`);
+    expect(JSON.stringify(next.payload.data)).toContain(`foilbury:card:${fixture.cardId}:var_test_new:front`);
+    expect(next.payload.data?.flags).toBe(64);
+  });
+
   it("walks the guided tour from discovery through a genuine opening and private inspection", async () => {
     const player = await ctxFor("cabinet", "player@foilbury.local");
     await fixturePool(player);

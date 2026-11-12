@@ -1645,6 +1645,7 @@ export function cabinetSummaryMessage(input: CabinetSummaryInput): DiscordCallba
 
 export interface CardFaceInput {
   cardName: string;
+  printName?: string | null;
   variantName: string;
   materialKey: string;
   effectKey: string | null;
@@ -1657,6 +1658,7 @@ export interface CardFaceInput {
   render: RenderAssetInput;
   swapCustomId: string;
   detailsCustomId: string;
+  nextVersionCustomId?: string;
   albumUrl: string;
 }
 
@@ -1671,6 +1673,7 @@ export function cardFaceMessage(input: CardFaceInput): DiscordCallback {
     { name: "Finish", value: finish, inline: true },
   ];
   if (input.rarityName) fields.push({ name: "Rarity", value: input.rarityName, inline: true });
+  if (input.printName) fields.push({ name: "Print", value: input.printName, inline: true });
   if (input.serial) fields.push({ name: "Serial", value: `\`${input.serial}\``, inline: true });
   fields.push({ name: "Source", value: input.source, inline: false });
   return buildMessage({
@@ -1700,6 +1703,9 @@ export function cardFaceMessage(input: CardFaceInput): DiscordCallback {
           style: 2,
         },
         { label: "Details", customId: input.detailsCustomId, style: 2 },
+        ...(input.nextVersionCustomId
+          ? [{ label: "Next version", customId: input.nextVersionCustomId, style: 2 as const }]
+          : []),
         { label: "Open my album", url: input.albumUrl },
       ],
     ],
