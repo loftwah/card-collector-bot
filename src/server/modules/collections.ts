@@ -397,7 +397,7 @@ export async function createCollection(
     }
   }
   await auditCollection(ctx, "collection.created", id, { name, slug, scope: input.scope });
-  return (await getCollection(ctx, id)) as CollectionRow;
+  return (await getCollection(ctx, id, { includeAll: true })) as CollectionRow;
 }
 
 export async function updateCollection(

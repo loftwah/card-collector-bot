@@ -46,6 +46,47 @@ describe("exact API dispatch and least-privilege player scopes", () => {
     await bootstrap();
   });
 
+  it("returns a newly saved Studio draft without exposing it to members", async () => {
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const created = await sendJson(agentFor(owner, ["content:write"]), "/api/v1/studio/collections", "POST", {
+      name: "Lantern Detectives",
+      scope: "bot",
+    });
+    expect(created.response.status).toBe(201);
+    expect(created.json.collection).toMatchObject({ status: "draft", view_audience: "members" });
+    const collection = created.json.collection as { id: string };
+    const member = await sendJson(player, "/api/v1/collections/" + collection.id, "GET");
+    expect(member.response.status).toBe(404);
+  });
+
+  it("starts external Art Lab imports with a scoped grant outside the paid queue", async () => {
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const fixture = await fixturePool(owner);
+    const agent = agentFor(owner, ["content:read", "content:write"]);
+    const brief = await sendJson(agent, "/api/v1/studio/art/briefs", "POST", {
+      category: "cards",
+      title: "Native pair",
+      intent: "Import two finished reference-guided faces.",
+      collectionId: "col_test_public",
+      cardId: fixture.cardId,
+      targetVariantId: fixture.variantId,
+      methods: ["whole_card"],
+      candidateCount: 2,
+    });
+    expect(brief.response.status).toBe(201);
+    const { id } = (brief.json.brief as { brief: { id: string } }).brief;
+    const route = "/api/v1/studio/art/briefs/" + id + "/import";
+    expect((await sendJson(owner, route, "POST", {})).response.status).toBe(403);
+    const imported = await sendJson(agent, route, "POST", {});
+    expect(imported.response.status).toBe(202);
+    const [job] = imported.json.jobs as Array<{ id: string }>;
+    expect(job).toMatchObject({ status: "running", cost_estimate_cents: 0, claimed_by: agent.actor.id });
+    const claim = await sendJson(agent, "/api/v1/studio/art/jobs/claim", "POST", { jobId: job.id });
+    expect(claim.json.job).toBeNull();
+    expect((await sendJson(agent, route, "POST", {})).response.status).toBe(409);
+  });
+
   it("routes gift receipts, trade detail and peer discovery to their own handlers", async () => {
     const owner = await ctxFor("cabinet", "owner@foilbury.local");
     const player = await ctxFor("cabinet", "player@foilbury.local");

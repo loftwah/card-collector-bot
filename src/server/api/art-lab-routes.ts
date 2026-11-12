@@ -169,6 +169,11 @@ export async function routeArtLab(
   if (rest.length === 2 && rest[0] === "briefs" && rest[1] && method === "GET") {
     return json(await getArtBrief(ctx, pathId(rest[1])));
   }
+  if (rest.length === 3 && rest[0] === "briefs" && rest[1] && rest[2] === "import" && method === "POST") {
+    return json(await queueArtGeneration(ctx, pathId(rest[1]), {
+      candidateCount: 1, externalImport: true,
+    }), 202);
+  }
   if (
     rest.length === 3 &&
     rest[0] === "briefs" &&

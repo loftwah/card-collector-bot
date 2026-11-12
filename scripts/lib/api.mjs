@@ -44,7 +44,7 @@ export async function fetchWithRetry(url, options = {}, attempts = 4) {
 }
 
 export async function apiFetch(route, options = {}) {
-  await ensureServer();
+  if (options.startLocal !== false) await ensureServer();
   const headers = new Headers(options.headers ?? {});
   for (const [name, value] of Object.entries(accessHeaders())) headers.set(name, value);
   headers.set("authorization", `Bearer ${options.token ?? agentToken(options.agent ?? "owner")}`);

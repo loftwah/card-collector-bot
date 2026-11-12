@@ -1922,7 +1922,7 @@ export async function listArtOptions(ctx: Ctx): Promise<{
 export async function queueArtGeneration(
   ctx: Ctx,
   briefId: string,
-  input?: { methods?: string[]; candidateCount?: number },
+  input?: { methods?: string[]; candidateCount?: number; externalImport?: true },
 ): Promise<{ brief: ArtBriefDetail; jobs: ArtJobRow[] }> {
   const brief = await loadBriefRow(ctx, briefId);
   await requireBriefWrite(ctx, brief);
@@ -1948,6 +1948,16 @@ export async function queueArtGeneration(
   if (!Number.isInteger(count) || count < 1 || count > 8) {
     throw new ApiError(422, "art_candidate_count_invalid", "Choose between 1 and 8 candidates.");
   }
+  const externalImport = input?.externalImport === true;
+  if (externalImport) {
+    if (ctx.actor.type !== "agent") {
+      throw new ApiError(403, "art_agent_runner_required", "External imports require a scoped agent grant.");
+    }
+    requireScope(ctx, "content:write");
+    if (brief.category !== "cards" || methods.length !== 1 || methods[0] !== "whole_card" || count !== 1) {
+      throw new ApiError(422, "art_import_invalid", "Import one finished whole-card pair at a time.");
+    }
+  }
   const styleKeys =
     brief.category === "cards"
       ? normalizeCardStyleKeys(parseJson<string[]>(brief.style_keys_json, []))
@@ -1962,11 +1972,9 @@ export async function queueArtGeneration(
       }
     }
   }
-  const totalEstimate = distribution.reduce(
-    (total, entry) => total + entry.count * price.model.unitCents,
-    0,
-  );
-  await assertBudget(ctx, brief, totalEstimate);
+  const unitCents = externalImport ? 0 : price.model.unitCents;
+  const totalEstimate = distribution.reduce((total, entry) => total + entry.count * unitCents, 0);
+  if (!externalImport) await assertBudget(ctx, brief, totalEstimate);
   const card = brief.card_id
     ? await first<{ name: string; subtitle: string | null; rarity_name: string | null }>(
         ctx.db,
@@ -2014,8 +2022,12 @@ export async function queueArtGeneration(
         ctx.db,
         `INSERT INTO fb_art_jobs
           (id, tenant_id, brief_id, method, style_key, provider, model, prompt, count, size, status,
-           cost_estimate_cents, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?)`,
+           cost_estimate_cents, created_by, created_at, updated_at, claimed_by, claimed_at, started_at)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          WHERE ? = 0 OR NOT EXISTS (
+            SELECT 1 FROM fb_art_jobs
+             WHERE tenant_id = ? AND brief_id = ? AND status IN ('queued','running')
+          )`,
         id,
         ctx.tenant.id,
         brief.id,
@@ -2026,10 +2038,17 @@ export async function queueArtGeneration(
         prompt,
         entry.count,
         brief.category === "cards" ? "5:7" : brief.category,
-        entry.count * price.model.unitCents,
+        externalImport ? "running" : "queued",
+        entry.count * unitCents,
         ctx.user!.id,
         now,
         now,
+        externalImport ? ctx.actor.id : null,
+        externalImport ? now : null,
+        externalImport ? now : null,
+        externalImport ? 1 : 0,
+        ctx.tenant.id,
+        brief.id,
       ),
     );
   }
@@ -2041,7 +2060,7 @@ export async function queueArtGeneration(
       brief.id,
       ctx.tenant.id,
     ),
-    auditStatement(ctx, "art.job.queued", "art_brief", brief.id, {
+    auditStatement(ctx, externalImport ? "art.job.import_started" : "art.job.queued", "art_brief", brief.id, {
       jobs: created,
       methods: distribution,
       estimated_cents: totalEstimate,
@@ -2057,6 +2076,9 @@ export async function queueArtGeneration(
     brief.id,
     ...created,
   );
+  if (externalImport && jobs.length === 0) {
+    throw new ApiError(409, "art_job_in_progress", "An import is already running for this brief.");
+  }
   return { brief: await getArtBrief(ctx, brief.id), jobs };
 }
 

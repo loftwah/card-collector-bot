@@ -601,7 +601,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       segments.length === 5 &&
       segments[2] === "briefs" &&
       segments[3] &&
-      segments[4] === "generate" &&
+      (segments[4] === "generate" || segments[4] === "import") &&
       method === "POST"
     ) {
       return routeArtLab(request, ctx, segments, url, method);

@@ -46,13 +46,15 @@ The Foilbury admin page `/admin/collections` shows the global collections and th
 ## Card detail and card backs
 
 - Each card detail page shows the bio, an optional quote, rarity, collection, serial, provenance and ownership history.
-- The front is the layered composition from private source assets. The back is a real view using the Foilbury card-back artwork plus the collection mark and description.
+- Each new print has a saved, reviewed front and matching back. Previously composed prints and issued copies keep their saved artwork.
 - The public card page can show the published front render and a card-back view. On a narrow screen the card is still the primary object.
-- Discord receives one published image — the front render. Discord does not need a multi-layer composition. The web keeps the interactive flip and private layers.
+- Discord card lookup shows the saved front and offers the matching saved back and other available versions. The web also supports flipping the card.
 
 ## Layering and image generation
 
-The authored pipeline is background → subject → material → frame → effect → text. It is deterministic and does not require an image-generation provider. Existing artwork is sufficient; paid FAL/ElevenLabs generation is intentionally not run without a recorded ceiling and approval.
+Use the [new-collection artwork workflow](ARTWORK_PROMPTS.md#start-a-new-member-collection)
+to plan exact prompts, proof both faces and stage a whole roster for Studio review.
+Composed artwork remains available for existing prints and comparisons.
 
 If a creator wants a new collection logo or card artwork, they can upload a licensed asset through the Bot artwork editor or import a curated source through the existing import commands. A global collection logo should be an asset Dean has the right to publish.
 
