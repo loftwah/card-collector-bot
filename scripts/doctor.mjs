@@ -91,16 +91,23 @@ else add("unverified", "EmDash owner", "CMS setup/dev bypass not completed");
 const setup = fs.existsSync(path.join(ROOT, ".foilbury/setup.json")) ? JSON.parse(fs.readFileSync(path.join(ROOT, ".foilbury/setup.json"), "utf8")) : null;
 const url = process.env.FOILBURY_URL ?? setup?.url ?? "http://localhost:5173";
 try {
-  const response = await fetch(`${url}/api/v1/status`, { signal: AbortSignal.timeout(1500) });
+  const target = new URL(url);
+  if (!["localhost", "127.0.0.1", "[::1]"].includes(target.hostname) || !["http:", "https:"].includes(target.protocol)) {
+    throw new Error("Use the loopback origin printed by local setup.");
+  }
+  const response = await fetch(new URL("/api/v1/status", target), { redirect: "error", signal: AbortSignal.timeout(1500) });
   const status = await response.json();
-  add(response.ok ? "locallyVerified" : "missing", "Local server", `${url} · HTTP ${response.status} · configured=${status.configured}`);
+  if (!response.ok || status.environment !== "local" || status.local !== true) {
+    throw new Error(`${target.origin} did not report a local Foilbury runtime.`);
+  }
+  add("locallyVerified", "Local server", `${target.origin} · HTTP ${response.status} · configured=${status.configured}`);
   if (status.providers?.discordApplication) add("configured", "Discord application", "ID/public key retained; HTTP interactions implemented");
   if (status.providers?.discordBot) add("configured", "Discord bot token", "present; not needed by the interactions endpoint");
   add("unverified", "Discord delivery", "real delivery is recorded in docs/DISCORD_ACCEPTANCE.md; doctor does not contact Discord");
   add("unverified", "Email delivery", "local outbox only; no send performed");
   add("unverified", "Image generation", "no recorded ceiling; no billed job submitted");
-} catch {
-  add("missing", "Local server", `not reachable at ${url}; run pnpm dev`);
+} catch (error) {
+  add("missing", "Local server", `${error.message} Run pnpm dev or use the setup URL.`);
 }
 
 const result = {

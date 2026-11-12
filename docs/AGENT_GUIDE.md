@@ -60,15 +60,18 @@ Every command accepts `--json`. Player commands use `--as player`. The CLI never
 Use `Authorization: Bearer <agent token>` for headless calls. Cookie-authenticated mutations require `x-foilbury-csrf`. Money-like commands require `Idempotency-Key`.
 
 ```sh
-foilbury_local_url="${FOILBURY_URL:-http://localhost:5173}"
+# Use the loopback origin printed by your local setup.
+foilbury_local_url="http://localhost:5173"
 curl -s "$foilbury_local_url/api/v1/status" | jq
-curl -s "$foilbury_local_url/api/v1/pools/cabinet-draw" \
-  -H "authorization: Bearer $FOILBURY_AGENT_TOKEN" | jq
-curl -s -X POST "$foilbury_local_url/api/v1/draws" \
+preview=$(curl -fsS "$foilbury_local_url/api/v1/pools/cabinet-draw" \
+  -H "authorization: Bearer $FOILBURY_AGENT_TOKEN") || exit 1
+draw_body=$(printf '%s' "$preview" | jq -ec \
+  '{pool: .pool.slug, expectedRevision: .revision, expectedDistribution: .distribution_fingerprint}') || exit 1
+curl -fsS -X POST "$foilbury_local_url/api/v1/draws" \
   -H "authorization: Bearer $FOILBURY_AGENT_TOKEN" \
   -H "content-type: application/json" \
   -H "idempotency-key: draw-demo-001" \
-  -d '{"pool":"cabinet-draw","expectedRevision":1}' | jq
+  -d "$draw_body" | jq
 ```
 
 Errors are `{ "error": { "code", "message", "details" }, "request_id" }`. A stale revision returns `409 stale_pool_revision` before charging. An empty pool returns `409 empty_pool` and does not charge. Reusing an idempotency key with the same body returns the stored receipt; changing the body returns `409 idempotency_conflict`.
