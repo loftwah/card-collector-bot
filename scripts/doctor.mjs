@@ -89,7 +89,7 @@ if (emdash?.count > 0) add("locallyVerified", "EmDash owner", `${emdash.count} l
 else add("unverified", "EmDash owner", "CMS setup/dev bypass not completed");
 
 const setup = fs.existsSync(path.join(ROOT, ".foilbury/setup.json")) ? JSON.parse(fs.readFileSync(path.join(ROOT, ".foilbury/setup.json"), "utf8")) : null;
-const url = setup?.url ?? process.env.FOILBURY_URL ?? "http://localhost:5173";
+const url = process.env.FOILBURY_URL ?? setup?.url ?? "http://localhost:5173";
 try {
   const response = await fetch(`${url}/api/v1/status`, { signal: AbortSignal.timeout(1500) });
   const status = await response.json();
