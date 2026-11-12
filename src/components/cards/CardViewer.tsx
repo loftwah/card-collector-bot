@@ -239,6 +239,8 @@ export default function CardViewer() {
   }
 
   function onDialogClose() {
+    // The browser queues close events, so a prior close can arrive after a reopen.
+    if (dialogRef.current?.open) return;
     const restore = restoreRef.current;
     restoreRef.current = null;
     setItems([]);
