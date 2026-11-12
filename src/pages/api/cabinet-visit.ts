@@ -2,7 +2,10 @@ import type { APIRoute } from "astro";
 import { readConfig } from "../../server/config";
 import { ApiError, checkRateLimit, runtimeEnv, trustedClientKey } from "../../server/context";
 import { hmacHex } from "../../server/ids";
-import { recordCabinetVisit } from "../../server/modules/cabinet-analytics";
+import {
+  hasEmptyCabinetVisitBody,
+  recordCabinetVisit,
+} from "../../server/modules/cabinet-analytics";
 
 export const prerender = false;
 
@@ -17,10 +20,7 @@ export const POST: APIRoute = async ({ request, url }) => {
     env.FOILBURY_ENV !== "production" ||
     url.origin !== env.FOILBURY_PUBLIC_ORIGIN ||
     headers.get("origin") !== url.origin ||
-    (fetchSite && fetchSite !== "same-origin") ||
-    !headers.has("cf-connecting-ip") ||
-    url.search ||
-    request.body
+    (fetchSite && fetchSite !== "same-origin")
   )
     return reply(403);
   if (
@@ -29,6 +29,9 @@ export const POST: APIRoute = async ({ request, url }) => {
     /bot|crawler|spider|headless|playwright/i.test(headers.get("user-agent") ?? "")
   )
     return reply(204);
+
+  if (url.search || !(await hasEmptyCabinetVisitBody(request))) return reply(400);
+  if (!headers.has("cf-connecting-ip")) return reply(403);
 
   try {
     const config = readConfig(env);

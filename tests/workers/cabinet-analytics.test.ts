@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import { bootstrap, runtime } from "./helpers";
 import {
   cabinetReportingWindow,
+  hasEmptyCabinetVisitBody,
   publicCabinetAnalytics,
   recordCabinetVisit,
 } from "../../src/server/modules/cabinet-analytics";
@@ -50,4 +51,14 @@ it("preserves unknown coverage and counts only accepted visits on UTC days", asy
   ]) {
     expect(cabinetReportingWindow(new URLSearchParams(query), now)).toBeNull();
   }
+});
+
+it("accepts an empty streamed POST and rejects a supplied payload", async () => {
+  const url = "https://foilbury.example/api/cabinet-visit";
+  const streamed = new Request(url, { method: "POST", body: new Uint8Array() });
+  expect(streamed.body).not.toBeNull();
+  await expect(hasEmptyCabinetVisitBody(streamed)).resolves.toBe(true);
+  await expect(
+    hasEmptyCabinetVisitBody(new Request(url, { method: "POST", body: "unexpected" })),
+  ).resolves.toBe(false);
 });
