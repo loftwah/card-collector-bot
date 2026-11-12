@@ -2,6 +2,7 @@
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { playerPrimary, playerMore } from "../lib/player-navigation";
 
+Astro.response.headers.set("cache-control", "private, no-store");
 const user = Astro.locals.foilbury?.user;
 const botAdmin = ["owner", "editor", "economy_admin"].includes(user?.role ?? "");
 const platformAdmin = Boolean(user?.platformAdmin);
