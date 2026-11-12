@@ -1,12 +1,9 @@
 # Foilbury card layer system
 
-Status: **canonical owner direction (2026-11-11).** Layered card composition is
-the default card method. A flat whole-card AI image is a comparison output, not
-the default production object.
-
-This document exists so the layer model is not re-litigated in every brief.
-Read it before designing a card, writing an image prompt, adding a card type,
-or changing the Art Lab.
+Status: **historical composition and Studio comparison method**. As of
+2026-11-12, [the artwork prompts](ARTWORK_PROMPTS.md) are the default for new
+cards. Keep this contract when maintaining a layered candidate or an existing
+layered print. The stack rules below apply to that method.
 
 ## The rule
 
@@ -157,7 +154,7 @@ The frame layer is the main "hole" mechanism:
 
 ## Non-goals and anti-patterns
 
-- A single flat whole-card image as the default production method.
+- Presenting a single flat image as an inspectable layered candidate.
 - A CSS tint presented as a finish.
 - A special edition that is only a recolour of the same frame.
 - Model-authored name, rarity, finish, print code, serial or provenance.

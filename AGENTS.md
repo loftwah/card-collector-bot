@@ -94,26 +94,22 @@ character artwork. Do not ship SVG avatars, flat geometric portraits or
 procedural stand-ins. When the task calls for character or illustration work,
 use the configured image models, inspect the actual output and iterate.
 
-**Current card-art production decision (2026-11-11): cards are layered
-objects.** A card is composed from separate scene, subject, material, frame,
-effect, exact-type, seal and back layers. A flat whole-card AI image is a
-comparison/reference output, not the default production object. Card types
-(borders, Plain/Silver/Gold/Holographic, Wedding/Fairy/Neon and special
-editions) are layers or layer sets, not separate whole cards.
+**Current card-art production decision (2026-11-12): generate the whole
+card in Codex ImageGen.** Prompts and an owner-selected set reference keep
+cards consistent. Give ImageGen the real character art, actual collection mark
+and exact catalogue copy. Generate finished fronts and matching backs,
+including visibly distinct finishes and special editions. Use Studio for
+side-by-side comparisons, recorded selections and publication. Keep existing
+layered work as a comparison and for already published prints; it is no
+longer a requirement for new cards.
 
-Read `docs/CARD_LAYER_SYSTEM.md` before any card prompt, renderer or card-type
-change. Use **OpenAI GPT Image 2.6 Sunburst** for scene, subject variants,
-frame ornament and effect textures, or a top-tier FAL model when its aesthetic
-is the better fit. Use the real subject art, the supplied collection mark and
-the exact copy; the exact type is always code-set. The frame master has a true
-transparent art window (a hole for the scene/subject); the effect layer uses
-alpha, masks and recorded blend modes. `art/card-render.mjs` prepares
-reference sheets, publishing metadata and comparison; `art/compose.mjs` owns
-the layer order and composition. Do not present a flat whole-card image, a
-reference sheet or a renderer comparison as the delivered layered card.
+Read [the artwork prompts](docs/ARTWORK_PROMPTS.md) before starting a batch.
+Use the same reference-led approach for icons, covers, banners and brand art.
+The catalogue, exact copy, provenance, audience and issued-copy history still
+belong to Foilbury.
 
 - **Exact copy:** put the card name, role, collection, rarity, finish, print
-  code and provenance in the prompt/reference sheet word for word. Do not
+  code (when verified) and provenance in the prompt word for word. Do not
   invent other lettering, Japanese text, fake serials, watermarks or official
   marks. Inspect the actual output at 400, 214 and 128 px. A card with
   gibberish or invented text is a failed card; regenerate or fix the prompt.
@@ -121,9 +117,9 @@ reference sheet or a renderer comparison as the delivered layered card.
   mark. If the selected model cannot accept an image reference, say so and use
   the closest authorized method; do not silently degrade to a text-only card or
   a different provider.
-- **Models:** OpenAI GPT Image 2.6 Sunburst first for layout and copy
-  adherence; FAL FLUX Pro 1.1 Ultra / Seedream v4 for high-aesthetic scenes.
-  Cloudflare Workers AI Flux Klein is an explicit fallback only.
+- **Models:** Use native Codex ImageGen. Record the exact resolved model and
+  seed only if the tool reports them. Any separately billed API or alternate
+  provider requires its own recorded authority.
 - **Record provenance:** model, prompt, references, seed, dimensions, SHA-256,
   audience, `official:false`, status and cost. No silent provider fallback and
   no silent top-up.
@@ -152,7 +148,7 @@ reference sheet or a renderer comparison as the delivered layered card.
 - Foilbury owns cards, artwork editions, taxonomy, pools, awards and inventory; EmDash owns journal content/media. Respect `docs/EMDASH_BOUNDARY.md`; do not create two editable catalogues.
 - **Signal Fold is rejected under #26.** Historical selections, manifests and screenshots are not current owner approval. Agents choose, critique and ship routine Foilbury-owned design improvements without an owner aesthetic vote. Do not restore rejected branding to satisfy a stale test. Public-audience approval is separate from ordinary design decisions.
 - Use good existing artwork and preserve originals/issued copies. Generic procedural covers, monograms or rendered placeholders are not approved finished art. Code may compose actual artwork, typography and effects. Correct provenance is evidence-based; do not guess official/fan/AI origin from appearance.
-- Card contract: one 5:7 layered object. Reserve artwork and information bands, keep controls outside the card, use the real source reference and set the exact copy in code. Keep type readable at 214×300. Member surfaces display the saved front and back. See `docs/CARD_LAYER_SYSTEM.md` for composition and comparison methods.
+- Card contract: one 5:7 object with a saved front and back. Give the subject and printed information their own space, keep controls outside the card and check real copy at 214×300. Preserve the old render, print identity, serials and historical receipts when introducing new art.
 - Brand masters/exports remain under `public/brand/kit`; public-safe showcase media under `public/media/showcase`. Private replays, screenshots and launch manifests stay under `.foilbury/`. Keep prior assets as history, not as the current accepted design.
 
 ## Safe execution

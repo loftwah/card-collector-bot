@@ -1,8 +1,9 @@
 # Foilbury Art Lab
 
 The Art Lab is an operator-only surface on `/studio/art` and
-`/platform-admin/art`. Layered composition is the default for cards. Flat
-whole-card output is available for comparison. See [the card layer system](CARD_LAYER_SYSTEM.md).
+`/platform-admin/art`. Use [reference-guided whole cards](ARTWORK_PROMPTS.md)
+for new production candidates. Compare them with existing or composed candidates
+in Studio; see [the card layer system](CARD_LAYER_SYSTEM.md) for that method.
 
 ## Why this exists
 
@@ -29,22 +30,16 @@ public-route entry point.
 
 | Method             | What the provider generates                                                         | How the candidate is shown                                             |
 | ------------------ | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `whole_card`       | A flat 5:7 card from the reference sheet (comparison only)                          | The generated card, scaled to 750×1050 and reviewed at 750/400/214/128 |
+| `whole_card`       | A complete 5:7 card from actual references and exact copy                          | The generated card, scaled to 750×1050 and reviewed at 750/400/214/128 |
 | `composed_scene`   | Scene or key art                                                                    | Layered front and back with an inspectable stack                       |
 | `composed_texture` | Background or texture plate only                                                    | Comparison: composed card front/back through `art/card-render.mjs`     |
 | `raw_art`          | A standalone brand asset                                                            | Raw asset; type, layout and marks stay in code                         |
 
-`composed_scene` is the production default for Cards: the AI generates the
-scene, the real subject and the supplied mark are layers, `art/compose.mjs`
-stacks the material, frame and effect masters, and exact code-set type sits on
-top. A flat `whole_card` is a comparison method only. `composed_texture` is the
-same stack with an AI texture plate instead of a scene. GPT Image 2.6 Sunburst is the default model; FAL
-`fal-ai/bytedance/seedream/v4/edit` is the reference-guided FAL alternative. FLUX Pro 1.1 Ultra and Seedream v4 Text are
-available for scene/comparison methods. The runner prepares a **reference sheet** from the
-real subject art, the supplied collection mark, the current live card and the
-exact copy (name, role, collection, rarity, finish, print code and provenance).
-OpenAI receives it through `/v1/images/edits`; FAL receives it through its image
-reference field.
+For new work, generate whole faces in Codex ImageGen using the artwork
+prompts. Record the actual method separately from the Art Lab job's configured
+routing label. Keep `composed_scene` and `composed_texture` for comparison and
+maintenance. The existing API runner can still prepare a reference sheet and
+route through the configured provider when that path is explicitly authorised.
 
 A whole-card candidate is labelled **Whole-card AI · reference-guided**; a
 composed candidate is labelled **Composed card · not an AI image**. The review
@@ -447,8 +442,7 @@ release:
 
 ## Layered v3 production card and collection display (2026-11-11)
 
-The flat whole-card proof above is now the comparison, not the production
-method. The Tux Plain and Holographic variants were replaced with the layered
+On 11 November, the flat whole-card proof above became a comparison during the layered v3 release. The 12 November [artwork direction](ARTWORK_PROMPTS.md) supersedes that decision for new work. The Tux Plain and Holographic variants were replaced with the layered
 v3 object from `art/card-v3.mjs` and `docs/CARD_LAYER_SYSTEM.md`:
 
 - Front: AI Neon scene, AI Tux cutout with a real alpha edge and feet breaking
@@ -547,8 +541,7 @@ own layered pass.
   code type. It is in the Art Lab as a proof, not published: the legacy subject,
   frame and information band still look weaker than the whole-card comparison,
   so the layer masters need the same quality bar before layered replaces the
-  flat card in production. The default method and labels are now layered; the
-  next work is premium scene, subject, frame and effect masters.
+  flat card in production. At the time, layered was the default method and label.
 - The new production assets are served from `/art/icons/`,
   `/art/mascots/` and `/art/styles/`; the platform catalogue exposes seven
   distinct icon directions and four Keeper mascots, and `/studio/all-art` is
