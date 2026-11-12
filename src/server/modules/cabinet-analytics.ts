@@ -31,6 +31,24 @@ export function cabinetReportingWindow(query: URLSearchParams, now: Date) {
   return { from, to, days, complete: to < today };
 }
 
+export async function hasEmptyCabinetVisitBody(request: Request): Promise<boolean> {
+  const length = request.headers.get("content-length");
+  if (length !== null && length !== "0") return false;
+  if (!request.body) return true;
+
+  // A Cloudflare POST can carry a stream even when its body is empty.
+  // Read at most one chunk and never consume or store a supplied payload.
+  const reader = request.body.getReader();
+  try {
+    const first = await reader.read();
+    return first.done;
+  } catch {
+    return false;
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+}
+
 export function recordCabinetVisit(db: D1Database, now: Date) {
   return db
     .prepare(
