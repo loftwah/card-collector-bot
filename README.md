@@ -11,7 +11,7 @@ Foilbury is the identity and game authority. EmDash is the editorial CMS for jou
 ```sh
 pnpm install
 pnpm setup:local
-pnpm doctor
+pnpm run doctor
 pnpm dev
 ```
 
@@ -27,7 +27,7 @@ pnpm dev
 
 Use `pnpm setup:local --skip-sources` if you only want the accounts and schema. The source import needs the sibling checkouts; the running game does not.
 
-Open `http://127.0.0.1:4321`, sign in with the local accounts (or the explicit loopback development sign-in), and use the cabinet.
+Open the loopback URL printed by setup, normally `http://localhost:5173`, and sign in with a local account or the explicit development sign-in.
 
 ## Useful commands
 
@@ -50,7 +50,7 @@ pnpm content:requeue      # dry-run a bounded re-render queue for one collection
 pnpm test:e2e             # real Chrome E2E, screenshots into docs/evidence
 pnpm test:agent           # real stdio MCP client plus CLI against the running service
 pnpm test:persistence     # stop/start the local server and compare inventory/ledger state
-pnpm doctor               # missing/configured/locally verified/live verified/unverified
+pnpm run doctor           # missing/configured/locally verified/live verified/unverified
 pnpm db:migrate:local     # apply D1 migrations locally only
 pnpm sources:discover     # inspect sibling source commits/hashes
 pnpm sources:preview      # diff the curated manifest without writing

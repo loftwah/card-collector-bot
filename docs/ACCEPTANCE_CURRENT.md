@@ -1,8 +1,10 @@
 # Current acceptance view
 
-The current machine-readable matrix is `docs/release-acceptance.json`. It is
-bound to the exact source tree and is validated by `pnpm release:check`. Older
-hand-written reports remain historical and are not release authority:
+Current production releases use the guarded flow documented in
+[the release budget](TEST_RELEASE_BUDGET.md). Use the matching release receipt
+for source and Worker identity and the linked issue for the affected live journey.
+`docs/release-acceptance.json` is a historical source-bound matrix. The
+reports below also describe the revisions they recorded.
 
 - `docs/DISCORD_ACCEPTANCE.md` — archive of earlier deployed-pilot snapshots.
 - `docs/LOCAL_ACCEPTANCE.md`, `docs/acceptance-report.json` — original local gate.
@@ -21,9 +23,8 @@ hand-written reports remain historical and are not release authority:
 - **Client/audience pass** — the real desktop/mobile presentation was inspected,
   and an independent authorised spectator observed the same result.
 
-A lower layer never silently passes a higher one. `docs/release-acceptance.json`
-marks only the first three as current required evidence; authentic interaction
-and spectator observation remain explicitly `blocked` until performed.
+The historical matrix records domain, production-path and live API checks.
+Authentic interaction and spectator observation each require their own evidence.
 
 ## Current residuals
 
