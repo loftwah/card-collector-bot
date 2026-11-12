@@ -141,7 +141,13 @@ import {
   listRenderJobs,
   previewImport,
 } from "../modules/imports";
-import { getAsset, listAssets, uploadAsset, type AssetKind } from "../modules/assets";
+import {
+  ARTWORK_ORIGINS,
+  getAsset,
+  listAssets,
+  uploadAsset,
+  type AssetKind,
+} from "../modules/assets";
 import { getWalletSummary } from "../modules/wallet";
 import {
   adoptGeneration,
@@ -2413,8 +2419,28 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     if (!["subject", "background", "frame", "material", "effect", "brand"].includes(kind)) {
       throw new ApiError(422, "kind_invalid", "Unsupported asset kind.");
     }
+    const origin = z
+      .enum(ARTWORK_ORIGINS)
+      .optional()
+      .safeParse(form.get("origin") ?? undefined);
+    if (!origin.success) {
+      throw new ApiError(422, "asset_origin_invalid", "Choose a supported artwork origin.");
+    }
+    let generation: Record<string, unknown> | undefined;
+    const generationField = form.get("generationJson");
+    if (generationField !== null) {
+      try {
+        if (typeof generationField !== "string" || generationField.length > 16000)
+          throw new Error();
+        generation = z.record(z.string(), z.unknown()).parse(JSON.parse(generationField));
+      } catch {
+        throw new ApiError(422, "asset_generation_invalid", "Provide a valid generation record.");
+      }
+    }
     const asset = await uploadAsset(ctx, {
       kind,
+      origin: origin.data,
+      generation,
       name: String(form.get("name") ?? file.name ?? "Asset"),
       bytes: new Uint8Array(await file.arrayBuffer()),
       declaredMime: file.type || undefined,

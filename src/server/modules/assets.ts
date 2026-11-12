@@ -8,6 +8,16 @@ import { audit } from "../http";
 export type AssetKind =
   "subject" | "background" | "frame" | "material" | "effect" | "brand" | "render";
 
+export const ARTWORK_ORIGINS = [
+  "sourced",
+  "foilbury_original",
+  "ai_assisted",
+  "ai_generated",
+  "derived",
+  "unknown",
+] as const;
+export type ArtworkOrigin = (typeof ARTWORK_ORIGINS)[number];
+
 const MAX_BYTES = 8 * 1024 * 1024;
 const MAX_DIMENSION = 5000;
 const ALLOWED = new Set(["image/png", "image/jpeg", "image/webp"]);
@@ -31,6 +41,8 @@ export interface AssetRow {
   derivative_of_asset_id: string | null;
   dependencies_json: string;
   provenance_json: string;
+  origin: ArtworkOrigin;
+  generation_json: string | null;
   official: number;
   review_status: string;
   source_repo: string | null;
@@ -65,6 +77,8 @@ export async function uploadAsset(
     official?: boolean;
     reviewStatus?: "unreviewed" | "reviewed" | "approved" | "rejected" | "placeholder";
     provenance?: Record<string, unknown>;
+    origin?: ArtworkOrigin;
+    generation?: Record<string, unknown>;
     /**
      * Import-style callers reuse identical bytes. Art Lab candidates and brand
      * publications must not mutate an existing live asset's metadata, so they
@@ -115,6 +129,24 @@ export async function uploadAsset(
     );
   }
   const hash = await sha256Hex(input.bytes);
+  const ai = input.origin === "ai_assisted" || input.origin === "ai_generated";
+  const generation = input.generation;
+  if (
+    (generation && !ai) ||
+    (ai &&
+      (typeof generation?.provider !== "string" ||
+        !generation.provider.trim() ||
+        typeof generation.endpoint !== "string" ||
+        !generation.endpoint.trim()))
+  ) {
+    throw new ApiError(
+      422,
+      "asset_generation_invalid",
+      "AI artwork requires a provider and generation method.",
+    );
+  }
+  const generationJson = generation ? JSON.stringify(generation) : null;
+  const origin = input.origin ?? (input.kind === "render" ? "derived" : "unknown");
   const existing =
     input.dedupe === false
       ? null
@@ -125,19 +157,35 @@ export async function uploadAsset(
           hash,
           input.kind,
         );
+  const recordedOrigin = input.origin ?? existing?.origin ?? origin;
+  if (input.official && (recordedOrigin === "ai_assisted" || recordedOrigin === "ai_generated")) {
+    throw new ApiError(
+      422,
+      "asset_ai_official_conflict",
+      "AI artwork cannot be marked as official.",
+    );
+  }
   if (existing) {
+    if (input.origin && existing.origin !== "unknown" && existing.origin !== input.origin) {
+      throw new ApiError(
+        409,
+        "asset_origin_conflict",
+        "This artwork already has a different recorded origin.",
+      );
+    }
     // The bytes are unchanged, but provenance, credit, review status and access
     // metadata may have been corrected. Keep the stable asset ID and R2 object,
     // and update the authoritative metadata instead of silently returning stale
     // values.
-    await ctx.db.batch([
+    const [updated] = await ctx.db.batch([
       ctx.db
         .prepare(
           `UPDATE fb_assets SET
              name = ?, visibility = ?, access_classification = ?, role = ?, official = ?,
              review_status = ?, provenance_json = ?, source_repo = ?, source_path = ?,
-             source_commit = ?, source_logical_id = ?, credit = ?
-           WHERE id = ? AND tenant_id = ?`,
+             source_commit = ?, source_logical_id = ?, credit = ?,
+             origin = COALESCE(?, origin), generation_json = COALESCE(?, generation_json)
+           WHERE id = ? AND tenant_id = ? AND origin = ?`,
         )
         .bind(
           input.name.trim() || "Untitled asset",
@@ -153,14 +201,27 @@ export async function uploadAsset(
           input.source?.commit ?? null,
           input.source?.logicalId ?? null,
           input.source?.credit ?? null,
+          input.origin ?? null,
+          generationJson,
           existing.id,
           ctx.tenant.id,
+          existing.origin,
         ),
-      auditStatementSafe(ctx, "asset.metadata_revised", existing.id, {
-        kind: input.kind,
-        sha256: hash,
-      }),
+      auditStatementSafe(
+        ctx,
+        "asset.metadata_revised",
+        existing.id,
+        { kind: input.kind, sha256: hash, origin: recordedOrigin },
+        true,
+      ),
     ]);
+    if (!updated?.meta.changes) {
+      throw new ApiError(
+        409,
+        "asset_origin_conflict",
+        "Artwork origin changed. Reload before editing.",
+      );
+    }
     return (await first<AssetRow>(
       ctx.db,
       "SELECT * FROM fb_assets WHERE id = ? AND tenant_id = ?",
@@ -187,8 +248,9 @@ export async function uploadAsset(
         `INSERT INTO fb_assets
           (id, tenant_id, kind, name, mime, width, height, bytes, r2_key, sha256, visibility,
            access_classification, role, official, review_status, provenance_json,
-           source_repo, source_path, source_commit, source_logical_id, credit, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           source_repo, source_path, source_commit, source_logical_id, credit, created_at,
+           origin, generation_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         id,
@@ -213,11 +275,14 @@ export async function uploadAsset(
         input.source?.logicalId ?? null,
         input.source?.credit ?? null,
         nowIso(),
+        origin,
+        generationJson,
       ),
     auditStatementSafe(ctx, "asset.uploaded", id, {
       kind: input.kind,
       sha256: hash,
       bytes: input.bytes.length,
+      origin,
     }),
   ]);
   return (await first<AssetRow>(ctx.db, "SELECT * FROM fb_assets WHERE id = ?", id))!;
@@ -228,13 +293,15 @@ function auditStatementSafe(
   action: string,
   objectId: string,
   metadata: Record<string, unknown>,
+  onlyAfterChange = false,
 ) {
   return ctx.db
     .prepare(
       `INSERT INTO fb_audit_events
         (id, tenant_id, actor_type, actor_id, represented_user_id, action, object_type, object_id,
          metadata_json, request_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'asset', ?, ?, ?, ?)`,
+       SELECT ?, ?, ?, ?, ?, ?, 'asset', ?, ?, ?, ?
+       ${onlyAfterChange ? "WHERE changes() > 0" : ""}`,
     )
     .bind(
       newId("aud"),

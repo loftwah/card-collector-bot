@@ -39,6 +39,7 @@ export function publicCard(card: CardView) {
       .map((edition) => ({
         id: edition.id,
         name: edition.name,
+        artwork_origin: edition.subject_origin,
         variants: edition.variants
           .filter((variant) => variant.status === "published")
           .map((variant) => ({

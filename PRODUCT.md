@@ -45,6 +45,13 @@ Foilbury is a collectible-card cabinet. A player claims a free allowance, opens 
 - A card inherits the most restrictive audience of every collection it belongs to.
 - Disabling a collection prevents its cards from dropping in that Bot without deleting or changing already-owned copies or their access records.
 
+### Artwork and catalogue growth
+
+- Start with original or creator-published artwork whose source and use are documented. Prefer credited, permitted hand-made fan art or other human-made work next. Use AI-assisted or generated artwork for considered alternates, missing art and explicit experiments.
+- Record the source, creator, rights or permission, generation method, credit, and review state as separate facts. Preserve unknowns when evidence is missing. Show provenance on the card and keep the full source record in Studio.
+- Bot admins can opt into AI artwork for the collecting experience. AI artwork starts off for new Bots. Studio can review generated candidates while the Bot excludes them from new draws.
+- A collection should have a distinctive cover and visual language, a deep roster, and different print artwork worth owning. Curators should be able to import a large custom roster with a preview of duplicate identities, source gaps and affected editions before publishing.
+
 ## Trust boundaries
 
 - Bot A permissions do not grant Bot B authority.

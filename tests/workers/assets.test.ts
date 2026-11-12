@@ -68,4 +68,26 @@ describe("asset storage keys", () => {
     expect(rows?.count).toBe(1);
     expect(await runtime.MEDIA.get(first.r2_key)).toBeTruthy();
   });
+
+  it("retains explicit AI provenance when the artwork is uploaded again", async () => {
+    await bootstrap();
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const input = { kind: "subject" as const, name: "Print proof", bytes: bytes() };
+    const generation = { provider: "OpenAI", endpoint: "codex:imagegen" };
+    const asset = await uploadAsset(owner, { ...input, origin: "ai_assisted", generation });
+    const reused = await uploadAsset(owner, input);
+
+    expect(reused.id).toBe(asset.id);
+    expect(reused.origin).toBe("ai_assisted");
+    expect(JSON.parse(reused.generation_json!)).toEqual(generation);
+    await expect(uploadAsset(owner, { ...input, origin: "sourced" })).rejects.toMatchObject({
+      code: "asset_origin_conflict",
+    });
+    await expect(uploadAsset(owner, { ...input, origin: "ai_generated" })).rejects.toMatchObject({
+      code: "asset_generation_invalid",
+    });
+    await expect(uploadAsset(owner, { ...input, official: true })).rejects.toMatchObject({
+      code: "asset_ai_official_conflict",
+    });
+  });
 });
