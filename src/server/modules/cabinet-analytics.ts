@@ -59,6 +59,7 @@ export async function publicCabinetAnalytics(
       )
       .bind(period.from, period.to),
   ]);
+  if (!first?.success || !selected?.success) throw new Error("Cabinet counts are unavailable");
   const start = first.results[0];
   const counts = new Map(selected.results.map(({ day, visits }) => [day, visits]));
   const daily = [];
