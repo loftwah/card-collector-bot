@@ -538,7 +538,7 @@ function readingRoomBack(theme, material, data) {
     size: 22,
     maxWidth: 595,
     factor: 0.53,
-    maxLines: 4,
+    maxLines: 5,
   });
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   <defs>${metalDefs(material)}</defs>
@@ -557,8 +557,8 @@ function readingRoomBack(theme, material, data) {
   <text x="68" y="862" font-family=${MS} font-size="30" font-weight="750" fill="${theme.ink}">${esc(data.rarity)}</text>
   <g transform="translate(68 896)">${finishLabel(material, theme, 25)}</g>
   <text x="682" y="904" text-anchor="end" font-family=${PM} font-size="26" fill="#5b374c">${esc(data.serial)}</text>
-  <text x="68" y="938" font-family=${MS} font-size="22" fill="#5b374c">
-    ${credit.map((line, i) => `<tspan x="68" y="${938 + 25 * i}">${esc(line)}</tspan>`).join("")}
+  <text x="68" y="925" font-family=${MS} font-size="22" fill="#5b374c">
+    ${credit.map((line, i) => `<tspan x="68" y="${925 + 22 * i}">${esc(line)}</tspan>`).join("")}
   </text>
   ${edgeFrame(material, { width: 19 })}
 </svg>`;
