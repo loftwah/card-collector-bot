@@ -1608,6 +1608,38 @@ describe("Discord HTTP interactions", () => {
     expect(JSON.stringify(publicView.payload.data)).not.toContain("Discord Rival");
   });
 
+  it("prefers an exact card name over a description match in Discord", async () => {
+    const owner = await ctxFor("cabinet", "owner@foilbury.local");
+    const fixture = await fixturePool(owner);
+    await runtime.DB.batch([
+      runtime.DB.prepare(
+        `INSERT INTO fb_card_definitions
+           (id, tenant_id, logical_id, slug, name, description, status, created_at, updated_at)
+         SELECT 'crd_test_description_match', tenant_id, 'test:description-match',
+                'description-match', 'A Different Card', 'Mentions Test One.', status,
+                created_at, updated_at
+         FROM fb_card_definitions WHERE id = ?`,
+      ).bind(fixture.cardId),
+      runtime.DB.prepare(
+        `INSERT INTO fb_collection_cards (collection_id, card_id, tenant_id, added_by, added_at)
+         SELECT collection_id, 'crd_test_description_match', tenant_id, added_by, added_at
+         FROM fb_collection_cards WHERE card_id = ?`,
+      ).bind(fixture.cardId),
+      runtime.DB.prepare(
+        `INSERT INTO fb_artwork_editions
+           (id, tenant_id, card_id, name, subject_asset_id, recipe_id, status, created_at)
+         SELECT 'edt_test_description_match', tenant_id, 'crd_test_description_match',
+                name, subject_asset_id, recipe_id, status, created_at
+         FROM fb_artwork_editions WHERE id = ?`,
+      ).bind(fixture.editionId),
+    ]);
+
+    const result = await send(
+      interaction(command("card", [{ name: "query", type: 3, value: "TEST ONE" }])),
+    );
+    expect(result.payload.data?.embeds?.[0]?.title).toBe("Test One — Plain");
+  });
+
   it("browses the latest print and keeps an exact older version selectable", async () => {
     const owner = await ctxFor("cabinet", "owner@foilbury.local");
     const fixture = await fixturePool(owner);

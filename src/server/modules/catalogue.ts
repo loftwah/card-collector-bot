@@ -127,6 +127,7 @@ export async function listCards(
     id?: string;
     slug?: string;
     search?: string;
+    preferExactName?: boolean;
     category?: string;
     tag?: string;
     set?: string;
@@ -205,9 +206,14 @@ export async function listCards(
     );
     if (!release) return [];
   }
+  const exactName = options.preferExactName ? options.search : undefined;
+  const order = exactName
+    ? "(cd.name = ? COLLATE NOCASE) DESC, cd.name COLLATE NOCASE"
+    : "cd.name COLLATE NOCASE";
+  if (exactName) params.push(exactName);
   const rows = await all<CardRow>(
     ctx.db,
-    `${CARD_SELECT} WHERE ${where.join(" AND ")} ORDER BY cd.name COLLATE NOCASE LIMIT ?`,
+    `${CARD_SELECT} WHERE ${where.join(" AND ")} ORDER BY ${order} LIMIT ?`,
     ...params,
     limit,
   );
