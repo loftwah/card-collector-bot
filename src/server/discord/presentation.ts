@@ -1656,7 +1656,7 @@ export interface CardFaceInput {
   serial?: string | null;
   rarityName?: string | null;
   render: RenderAssetInput;
-  swapCustomId: string;
+  swapCustomId?: string;
   detailsCustomId: string;
   nextVersionCustomId?: string;
   albumUrl: string;
@@ -1697,11 +1697,11 @@ export function cardFaceMessage(input: CardFaceInput): DiscordCallback {
     },
     rows: [
       [
-        {
+        ...(input.swapCustomId ? [{
           label: input.side === "front" ? "View back" : "View front",
           customId: input.swapCustomId,
-          style: 2,
-        },
+          style: 2 as const,
+        }] : []),
         { label: "Details", customId: input.detailsCustomId, style: 2 },
         ...(input.nextVersionCustomId
           ? [{ label: "Next version", customId: input.nextVersionCustomId, style: 2 as const }]

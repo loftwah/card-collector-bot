@@ -847,7 +847,9 @@ async function card(
       width: render.width,
       height: render.height,
     },
-    swapCustomId: `foilbury:card:${found.id}:${imageVariant.id}:back`,
+    swapCustomId: imageVariant.back_render_url
+      ? `foilbury:card:${found.id}:${imageVariant.id}:back`
+      : undefined,
     detailsCustomId: `foilbury:card:${found.id}:${imageVariant.id}:details`,
     nextVersionCustomId: versions[1]
       ? `foilbury:card:${found.id}:${versions[1].variant.id}:front`
@@ -888,7 +890,12 @@ async function cardFace(
   const versions = renderedCardVersions(found);
   const index = variantId ? versions.findIndex((item) => item.variant.id === variantId) : 0;
   const version = versions[index];
-  if (!version) throw new ApiError(404, "render_missing", "That version is no longer available here. Run /foilbury card to browse available versions.");
+  if (!version)
+    throw new ApiError(
+      404,
+      "render_missing",
+      "That version is no longer available here. Run /foilbury card to browse available versions.",
+    );
   const { variant, printName } = version;
   const next = versions.length > 1 ? versions[(index + 1) % versions.length] : undefined;
   const render = await first<{ width: number; height: number; r2_key: string; mime: string }>(
@@ -926,7 +933,9 @@ async function cardFace(
       width: render.width,
       height: render.height,
     },
-    swapCustomId: `foilbury:card:${found.id}:${variant.id}:${side === "front" ? "back" : "front"}`,
+    swapCustomId: side === "back" || variant.back_render_url
+      ? `foilbury:card:${found.id}:${variant.id}:${side === "front" ? "back" : "front"}`
+      : undefined,
     detailsCustomId: `foilbury:card:${found.id}:${variant.id}:details`,
     nextVersionCustomId: next ? `foilbury:card:${found.id}:${next.variant.id}:front` : undefined,
     albumUrl: absoluteUrl(ctx.config.publicOrigin, "/play/collection")!,
