@@ -1,5 +1,7 @@
 {
   "doki-doki-literature-club": {
+    "layout": "reading-room",
+    "scene": "doki-doki-literature-club-morning",
     "theme": "archive",
     "family": "archive",
     "ground": "#241722",
@@ -18,8 +20,10 @@
     "setLine": "The clubroom, 2017",
     "setNote": "Four members, one after-school room, and a poem exchange that is not quite what it seems.",
     "backSurface": "paper",
-    "subjectHeight": 1000,
-    "subjectTop": 16
+    "subjectHeight": 1220,
+    "subjectTop": 46,
+    "subjectShadow": 0.23,
+    "subjectRim": 0.16
   },
   "project-sekai": {
     "theme": "stage",

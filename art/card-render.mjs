@@ -497,6 +497,73 @@ function archiveDeco(material, theme) {
   </g>`;
 }
 
+function readingRoomTypeSize(text, width, size) {
+  return Math.min(size, Math.floor(width / (text.length * 0.56)));
+}
+
+function readingRoomFront(theme, material, art, subject, data) {
+  const nameSize = readingRoomTypeSize(data.name, 630, 100);
+  const roleSize = readingRoomTypeSize(data.role, 650, 30);
+  const subjectX = (W - subject.width / S) / 2;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <defs>
+    ${metalDefs(material)}
+    <clipPath id="window"><rect x="22" y="22" width="706" height="740" rx="3"/></clipPath>
+    <linearGradient id="paper" x2="0" y2="1">
+      <stop stop-color="#fff9ef"/><stop offset="1" stop-color="#f1decd"/>
+    </linearGradient>
+  </defs>
+  <rect width="${W}" height="${H}" fill="url(#paper)"/>
+  <g clip-path="url(#window)">
+    <image href="${art.uri}" width="750" height="776"/>
+    <image href="${subject.uri}" x="${subjectX}" y="${data.subjectTop}" width="${subject.width / S}" height="${subject.height / S}"/>
+  </g>
+  ${markPlate(theme, { x: 44, y: 44, height: 108 })}
+  <path d="M22 762 H728" stroke="url(#metalFlat)" stroke-width="5"/>
+  <text x="46" y="866" font-family=${FD} font-size="${nameSize}" font-weight="700" fill="${theme.ink}">${esc(data.name)}</text>
+  <text x="48" y="913" font-family=${MS} font-size="${roleSize}" font-weight="600" fill="#5b374c">${esc(data.role)}</text>
+  <path d="M48 939 H702" stroke="#987080" stroke-opacity=".56" stroke-width="2"/>
+  <text x="48" y="984" font-family=${MS} font-size="34" font-weight="750" fill="${theme.ink}">${esc(data.rarity)}</text>
+  <g transform="translate(48 1010)">${finishLabel(material, theme, 25)}</g>
+  <text x="702" y="1019" text-anchor="end" font-family=${PM} font-size="26" fill="#5b374c">${esc(data.serial)}</text>
+  ${edgeFrame(material, { width: 19 })}
+</svg>`;
+}
+
+function readingRoomBack(theme, material, data) {
+  const nameSize = readingRoomTypeSize(data.name, 630, 89);
+  const roleSize = readingRoomTypeSize(data.role, 610, 30);
+  const bio = wrap(data.bio, { size: 35, maxWidth: 590, factor: 0.53, maxLines: 8 });
+  const credit = wrap(data.provenanceLong, {
+    size: 22,
+    maxWidth: 595,
+    factor: 0.53,
+    maxLines: 5,
+  });
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <defs>${metalDefs(material)}</defs>
+  <rect width="${W}" height="${H}" fill="#f6e4d6"/>
+  <rect x="26" y="26" width="698" height="998" rx="5" fill="#fff8ee" stroke="#b8899a" stroke-width="2"/>
+  ${markPlate(theme, { x: 66, y: 60, height: 118 })}
+  <text x="210" y="113" font-family=${MS} font-size="34" font-weight="750" fill="${theme.ink}">${esc(data.collection)}</text>
+  <text x="212" y="151" font-family=${PM} font-size="25" fill="#6f4059">${esc(data.era)}</text>
+  <path d="M66 204 H684" stroke="url(#metalFlat)" stroke-width="4"/>
+  <text x="65" y="310" font-family=${FD} font-size="${nameSize}" font-weight="700" fill="${theme.ink}">${esc(data.name)}</text>
+  <text x="68" y="362" font-family=${MS} font-size="${roleSize}" font-weight="600" fill="#5b374c">${esc(data.role)}</text>
+  <text x="68" y="448" font-family=${MS} font-size="35" fill="${theme.ink}">
+    ${bio.map((line, i) => `<tspan x="68" y="${448 + 46 * i}">${esc(line)}</tspan>`).join("")}
+  </text>
+  <path d="M68 817 H682" stroke="#987080" stroke-opacity=".64" stroke-width="2"/>
+  <text x="68" y="862" font-family=${MS} font-size="30" font-weight="750" fill="${theme.ink}">${esc(data.rarity)}</text>
+  <g transform="translate(68 896)">${finishLabel(material, theme, 25)}</g>
+  <text x="682" y="904" text-anchor="end" font-family=${PM} font-size="26" fill="#5b374c">${esc(data.serial)}</text>
+  <text x="68" y="925" font-family=${MS} font-size="22" fill="#5b374c">
+    ${credit.map((line, i) => `<tspan x="68" y="${925 + 22 * i}">${esc(line)}</tspan>`).join("")}
+  </text>
+  ${edgeFrame(material, { width: 19 })}
+</svg>`;
+}
+
 function frontSvg(theme, material, art, subject, data) {
   const m = MATERIALS[material];
   const family = theme.family;
@@ -750,7 +817,11 @@ export async function renderFront(input) {
   theme.markAspect = mark.aspect;
 
   const artBox = { x: 0, y: 0, w: 750, h: 776 };
-  const scenePath = path.join(root, "art/backgrounds", `${input.collectionSlug}.webp`);
+  const scenePath = path.join(
+    root,
+    "art/backgrounds",
+    `${theme.scene ?? input.collectionSlug}.webp`,
+  );
   const backgroundPath =
     input.backgroundOverride && input.backgroundPath
       ? input.backgroundPath
@@ -788,12 +859,15 @@ export async function renderFront(input) {
     (theme.family === "manga" ? 66 : theme.family === "stage" ? 40 : 16);
   const subject = await subjectLayer(sourceSubject, subjectHeight, {
     key: theme.key,
+    shadow: theme.subjectShadow,
+    rim: theme.subjectRim,
   });
   const artUri = { uri: dataUri(art.buffer) };
   const subjectUri = { ...subject, uri: dataUri(subject.buffer) };
   const data = serialiseData(input, theme);
   data.subjectTop = subjectTop;
-  const png = render(frontSvg(theme, material, artUri, subjectUri, data));
+  const front = theme.layout === "reading-room" ? readingRoomFront : frontSvg;
+  const png = render(front(theme, material, artUri, subjectUri, data));
   const grain = await grainBuffer();
   const finished = await sharp(png)
     .composite([{ input: grain, blend: "soft-light" }])
@@ -833,7 +907,8 @@ export async function renderBack(input) {
   theme.markUri = mark.uri;
   theme.markAspect = mark.aspect;
   const data = serialiseData(input, theme);
-  const png = render(backSvg(theme, material, data));
+  const back = theme.layout === "reading-room" ? readingRoomBack : backSvg;
+  const png = render(back(theme, material, data));
   const grain = await grainBuffer();
   const finished = await sharp(png)
     .composite([{ input: grain, blend: "soft-light" }])
