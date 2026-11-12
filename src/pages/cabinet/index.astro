@@ -243,3 +243,41 @@ const gallery = cards.map((card, index) => {
     </div>
   </section>
 </BaseLayout>
+
+<script>
+  const cabinet = document.querySelector("main#main");
+  const exclusions = ["qa", "test", "e2e", "playtest", "fixture", "_preview"];
+  const query = new URLSearchParams(location.search);
+  const privacy = navigator as Navigator & { globalPrivacyControl?: boolean };
+  if (
+    cabinet &&
+    location.hostname === "foilbury.loftwah.com" &&
+    !navigator.webdriver &&
+    navigator.doNotTrack !== "1" &&
+    !privacy.globalPrivacyControl &&
+    query.get("analytics") !== "off" &&
+    !exclusions.some((key) => query.has(key))
+  ) {
+    const storageKey = "foilbury.public-cabinet-last-report";
+    const report = (event: Event) => {
+      if (!event.isTrusted || document.visibilityState !== "visible") return;
+      const now = Date.now();
+      try {
+        const previous = Number(sessionStorage.getItem(storageKey) ?? 0);
+        if (previous && now - previous < 30 * 60 * 1000) return;
+        sessionStorage.setItem(storageKey, String(now));
+      } catch {
+        return;
+      }
+      void fetch("/api/cabinet-visit", {
+        method: "POST",
+        credentials: "omit",
+        referrerPolicy: "no-referrer",
+        keepalive: true,
+      }).catch(() => {});
+    };
+    for (const type of ["pointerdown", "keydown", "wheel"]) {
+      cabinet.addEventListener(type, report, { passive: true });
+    }
+  }
+</script>
