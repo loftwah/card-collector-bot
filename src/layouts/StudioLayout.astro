@@ -39,7 +39,9 @@ const groups = [
       ...(isBotAdmin || isGlobalCollectionAdmin || isPlatform
         ? [
             { href: "/studio/art", label: "Art Lab" },
-            { href: "/studio/all-art", label: "All art" },
+            ...(["owner", "editor"].includes(user?.role ?? "") || isGlobalCollectionAdmin || isPlatform
+              ? [{ href: "/studio/all-art", label: "Art review wall" }]
+              : []),
             { href: "/studio/resources", label: "Resources" },
           ]
         : []),

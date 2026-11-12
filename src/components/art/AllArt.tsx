@@ -1,283 +1,348 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, describeError } from "@/lib/client";
-import CardViewer, { openCardViewer, type CardViewerItem } from "../cards/CardViewer";
-import type { BrandAsset, BrandKind } from "@/lib/brand-catalogue";
+import {
+  ART_GRADES,
+  ART_TASTE_FILTERS,
+  type ArtTaste,
+  type ArtTasteKind,
+  type ArtTastePiece,
+} from "@/lib/art-taste";
+import CardViewer, { openCardViewer } from "../cards/CardViewer";
 
-interface ArtPin {
-  candidate_id: string;
-  brief_id: string;
-  brief_title: string;
-  category: string;
-  collection_name: string | null;
-  card_name: string | null;
-  label: string;
-  method: string;
-  style_key: string | null;
-  status: string;
-  width: number;
-  height: number;
-  audience: string;
-  image_url: string;
+const ENDPOINT = "/api/v1/studio/art/taste";
+const FILTERS = [
+  ["any", "Any grade"],
+  ["ungraded", "Ungraded"],
+  ["graded", "Graded"],
+  ["favourites", "Favourites"],
+] as const;
+
+function gradeMatches(piece: ArtTastePiece, filter: (typeof FILTERS)[number][0]) {
+  const grade = piece.taste?.grade;
+  if (filter === "ungraded") return grade == null;
+  if (filter === "graded") return grade != null;
+  if (filter === "favourites") return grade === 5;
+  return true;
 }
 
-interface Style {
-  key: string;
-  label: string;
-  note: string;
-  thumb: string;
-}
-
-type Filter =
-  | "all"
-  | "cards"
-  | "icons"
-  | "mascots"
-  | "logos"
-  | "og_images"
-  | "banners"
-  | "shareables"
-  | "styles"
-  | "other";
-
-const FILTERS: Array<{ key: Filter; label: string }> = [
-  { key: "all", label: "All" },
-  { key: "cards", label: "Cards" },
-  { key: "icons", label: "Icons" },
-  { key: "mascots", label: "Mascots" },
-  { key: "styles", label: "Styles" },
-  { key: "logos", label: "Logos" },
-  { key: "og_images", label: "OG" },
-  { key: "banners", label: "Banners" },
-  { key: "shareables", label: "Shareables" },
-  { key: "other", label: "Other" },
-];
-
-const KIND_LABEL: Record<string, string> = {
-  cards: "Card",
-  icons: "Icon",
-  mascots: "Mascot",
-  logos: "Logo",
-  og_images: "OG",
-  banners: "Banner",
-  shareables: "Shareable",
-  styles: "Style",
-  other: "Brand",
-};
-
-export default function AllArt({
-  assets,
-  styles,
-}: {
-  assets: BrandAsset[];
-  styles: readonly Style[];
-}) {
-  const [pins, setPins] = useState<ArtPin[]>([]);
-  const [filter, setFilter] = useState<Filter>("all");
+export default function AllArt() {
+  const [pieces, setPieces] = useState<ArtTastePiece[]>([]);
+  const [kind, setKind] = useState<ArtTasteKind | "all">("all");
+  const [grade, setGrade] = useState<(typeof FILTERS)[number][0]>("any");
+  const [collection, setCollection] = useState("");
+  const [attempt, setAttempt] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [activePiece, setActivePiece] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    let active = true;
-    api<{ pins: ArtPin[] }>("/api/v1/studio/art")
-      .then((data) => {
-        if (active) setPins(data.pins ?? []);
+    const controller = new AbortController();
+    api<{ pieces: ArtTastePiece[] }>(ENDPOINT, { signal: controller.signal })
+      .then(({ pieces }) => {
+        if (!controller.signal.aborted) setPieces(pieces);
       })
       .catch((cause) => {
-        if (active) setError(describeError(cause));
+        if (!controller.signal.aborted) setError(describeError(cause));
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       });
-    return () => {
-      active = false;
-    };
-  }, []);
+    return () => controller.abort();
+  }, [attempt]);
 
-  const brandAssets = useMemo(
-    () => assets.filter((asset) => asset.kind !== "card_styles"),
-    [assets],
+  const category = pieces.filter((piece) => kind === "all" || piece.kind === kind);
+  const collections = [
+    ...new Set(category.flatMap((piece) => (piece.collection ? [piece.collection] : []))),
+  ].sort((a, b) => a.localeCompare(b));
+  const visible = category.filter(
+    (piece) =>
+      (!collection || piece.collection === collection) &&
+      (piece.id === activePiece || gradeMatches(piece, grade)),
   );
 
-  const items = useMemo<CardViewerItem[]>(() => {
-    const cardItems: CardViewerItem[] = pins.map((pin) => ({
-      id: pin.candidate_id,
-      name: pin.card_name ?? pin.brief_title,
-      subtitle: pin.brief_title,
-      collection: pin.collection_name,
-      styleKey: pin.style_key,
-      method: pin.method === "whole_card" ? "Whole-card AI" : "Composed card",
-      status: pin.status,
-      width: pin.width,
-      height: pin.height,
-      audience: pin.audience,
-      front: pin.image_url,
-      reviewEndpoint: `/api/v1/studio/art/candidates/${pin.candidate_id}/feedback`,
-      canReview: true,
-      reviewLikes: 0,
-      reviewDislikes: 0,
-    }));
-    const brandItems: CardViewerItem[] = brandAssets.map((asset) => ({
-      id: asset.id,
-      name: asset.label,
-      subtitle: KIND_LABEL[asset.kind] ?? asset.kind,
-      collection: "Brand art",
-      method: asset.kind.replaceAll("_", " "),
-      status: asset.slot ? "Selectable" : "Brand file",
-      width: asset.width,
-      height: asset.height,
-      audience: "Brand",
-      provenance: asset.note,
-      front: asset.path,
-      downloadUrl: asset.path,
-    }));
-    const styleItems: CardViewerItem[] = styles.map((style) => ({
-      id: `style-${style.key}`,
-      name: style.label,
-      subtitle: "Card style",
-      collection: "Brand art",
-      styleKey: style.key,
-      styleLabel: style.label,
-      method: "Art direction",
-      status: "Available",
-      width: 480,
-      height: 480,
-      audience: "Brand",
-      provenance: style.note,
-      front: style.thumb,
-      downloadUrl: style.thumb,
-    }));
-    return [...cardItems, ...brandItems, ...styleItems];
-  }, [pins, brandAssets, styles]);
-
-  const visible = useMemo(() => {
-    if (filter === "all") return items;
-    if (filter === "cards") return items.slice(0, pins.length);
-    if (filter === "styles") return items.slice(items.length - styles.length);
-    const brandStart = pins.length;
-    const brandEnd = brandStart + brandAssets.length;
-    const brand = items.slice(brandStart, brandEnd);
-    // The catalogue order is stable, so the filtered slice preserves the
-    // existing order for arrow-key paging inside the viewer.
-    return brand.filter((item) => {
-      const asset = brandAssets.find((entry) => entry.id === item.id);
-      return asset ? asset.kind === (filter as BrandKind) : false;
-    });
-  }, [filter, items, pins.length, brandAssets, styles.length]);
-
   function openAt(index: number) {
-    openCardViewer(visible, index);
+    openCardViewer(
+      visible.map((piece) => ({
+        id: piece.id,
+        name: piece.name,
+        subtitle: piece.caption,
+        collection: piece.collection,
+        width: piece.width,
+        height: piece.height,
+        status: piece.status,
+        provenance: piece.provenance,
+        front: piece.image,
+        back: piece.back,
+        canReview: Boolean(piece.candidateReview),
+        reviewEndpoint: piece.candidateReview?.endpoint,
+        reviewLikes: piece.candidateReview?.likes,
+        reviewDislikes: piece.candidateReview?.dislikes,
+        reviewDecision: piece.candidateReview?.decision,
+        href: piece.brief ? `/studio/art?brief=${encodeURIComponent(piece.brief)}` : undefined,
+      })),
+      index,
+    );
   }
 
-  const countFor = (key: Filter) => {
-    if (key === "all") return items.length;
-    if (key === "cards") return pins.length;
-    if (key === "styles") return styles.length;
-    return brandAssets.filter((asset) => asset.kind === key).length;
-  };
+  async function save(pieceId: string, patch: Partial<ArtTaste>) {
+    const taste = await api<ArtTaste>(ENDPOINT, { body: { pieceId, ...patch } });
+    setPieces((current) =>
+      current.map((piece) => (piece.id === pieceId ? { ...piece, taste } : piece)),
+    );
+    if (patch.note !== undefined) {
+      setDrafts((current) => {
+        if (current[pieceId] !== patch.note) return current;
+        const next = { ...current };
+        delete next[pieceId];
+        return next;
+      });
+    }
+  }
 
   return (
     <div className="min-w-0">
       <CardViewer />
       <header className="all-art-bar">
         <div>
-          <h2>All art</h2>
-          <p>
-            {items.length} pieces · {pins.length} card{pins.length === 1 ? "" : "s"} ·{" "}
-            {styles.length} styles
+          <h1 className="review-wall-title">Art review wall</h1>
+          <p className="review-wall-intro">
+            Grade what catches your eye and note what you’d change. Your grades and notes are
+            private to you.
           </p>
         </div>
-        <a className="btn btn-secondary btn-sm" href="/studio/art">
+        <a className="btn btn-secondary min-h-11 shrink-0" href="/studio/art">
           Art Lab
         </a>
       </header>
 
-      <nav className="all-art-filters" aria-label="All art filters">
-        {FILTERS.map((entry) => (
+      <nav className="all-art-filters" aria-label="Artwork type">
+        {ART_TASTE_FILTERS.map(([key, label]) => (
           <button
-            key={entry.key}
+            key={key}
             type="button"
-            className="chip"
-            data-active={filter === entry.key}
-            aria-pressed={filter === entry.key}
-            onClick={() => setFilter(entry.key)}
+            className="chip min-h-11"
+            data-active={kind === key}
+            aria-pressed={kind === key}
+            onClick={() => {
+              setKind(key);
+              setCollection("");
+            }}
           >
-            {entry.label}
-            <span>{countFor(entry.key)}</span>
+            {label}
           </button>
         ))}
       </nav>
+      <div className="review-wall-controls">
+        <label>
+          <span className="sr-only">Filter by grade</span>
+          <select
+            className="select min-h-11"
+            value={grade}
+            onChange={(event) => setGrade(event.target.value as typeof grade)}
+          >
+            {FILTERS.map(([key, label]) => (
+              <option key={key} value={key}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {collections.length > 0 && (
+          <label className="review-wall-collection">
+            <span className="sr-only">Filter by collection</span>
+            <select
+              className="select min-h-11"
+              value={collection}
+              onChange={(event) => setCollection(event.target.value)}
+            >
+              <option value="">Any collection</option>
+              {collections.map((name) => (
+                <option key={name}>{name}</option>
+              ))}
+            </select>
+          </label>
+        )}
+        {!loading && !error && <span role="status">{visible.length} pieces</span>}
+      </div>
 
-      {error ? (
-        <p role="status" className="notice mt-3">
-          Card candidates could not load. Brand art is still available. {error}
+      {loading ? (
+        <p role="status" className="notice">
+          Loading artwork…
         </p>
-      ) : null}
-
-      {loading && filter === "cards" ? (
-        <div className="all-art-grid mt-3" aria-busy="true">
-          <div className="skeleton h-64 rounded-[3px]" />
-          <div className="skeleton h-64 rounded-[3px]" />
-          <div className="skeleton h-64 rounded-[3px]" />
+      ) : error ? (
+        <div className="notice" role="alert">
+          <p>Couldn’t load the review wall. {error}</p>
+          <button
+            className="btn btn-secondary min-h-11"
+            type="button"
+            onClick={() => {
+              setError("");
+              setLoading(true);
+              setAttempt(attempt + 1);
+            }}
+          >
+            Try again
+          </button>
         </div>
       ) : visible.length ? (
-        <div
-          className={`all-art-grid mt-3 ${
-            filter === "all"
-              ? "all-art-grid--mixed"
-              : filter === "og_images" || filter === "banners" || filter === "shareables"
-                ? "all-art-grid--wide"
-                : `all-art-grid--${filter}`
-          }`}
-        >
-          {visible.map((item, index) => {
-            const asset = brandAssets.find((entry) => entry.id === item.id);
-            const style = styles.find((entry) => `style-${entry.key}` === item.id);
-            const kindLabel = asset
-              ? (KIND_LABEL[asset.kind] ?? asset.kind)
-              : style
-                ? "Style"
-                : "Card";
-            return (
-              <button
-                key={item.id}
-                type="button"
-                className="all-art-tile"
-                onClick={() => openAt(index)}
-                aria-label={`Open ${item.name} full size`}
-              >
-                <span className="all-art-tile__object">
-                  <img
-                    src={item.front}
-                    alt=""
-                    width={item.width ?? undefined}
-                    height={item.height ?? undefined}
-                    loading={index < 6 ? "eager" : "lazy"}
-                  />
-                  <span className="all-art-tile__kind">{kindLabel}</span>
-                </span>
-                <span className="all-art-tile__name">{item.name}</span>
-                <span className="all-art-tile__meta">
-                  {[item.collection, item.styleLabel, item.finish].filter(Boolean).join(" · ") ||
-                    item.subtitle}
-                </span>
-              </button>
-            );
-          })}
+        <div className="review-wall">
+          {visible.map((piece, index) => (
+            <ReviewTile
+              key={piece.id}
+              piece={piece}
+              eager={index < 4}
+              open={() => openAt(index)}
+              save={save}
+              note={drafts[piece.id] ?? piece.taste?.note ?? ""}
+              editNote={(value) => setDrafts((current) => ({ ...current, [piece.id]: value }))}
+              setActive={setActivePiece}
+            />
+          ))}
         </div>
       ) : (
-        <div className="empty mt-3">
-          <div>
-            <p className="font-mono text-[0.62rem] tracking-[0.12em] uppercase">
-              No {FILTERS.find((entry) => entry.key === filter)?.label.toLowerCase()} yet
-            </p>
-            <p className="mt-2 text-sm text-[var(--muted)]">
-              Create a brief or select another shelf.
-            </p>
-          </div>
+        <div className="empty">
+          <p>No artwork matches these filters.</p>
         </div>
       )}
     </div>
+  );
+}
+
+function ReviewTile({
+  piece,
+  eager,
+  open,
+  save,
+  note,
+  editNote,
+  setActive,
+}: {
+  piece: ArtTastePiece;
+  eager: boolean;
+  open: () => void;
+  save: (pieceId: string, patch: Partial<ArtTaste>) => Promise<void>;
+  note: string;
+  editNote: (note: string) => void;
+  setActive: (id: string | null) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const saving = useRef(false);
+  const [message, setMessage] = useState("");
+  const [imageFailed, setImageFailed] = useState(false);
+  const name = `${piece.name} · ${piece.caption}`;
+
+  async function submit(patch: Partial<ArtTaste>) {
+    if (saving.current) return;
+    saving.current = true;
+    setBusy(true);
+    setMessage("");
+    try {
+      await save(piece.id, patch);
+      setMessage("Saved");
+    } catch (error) {
+      setMessage(describeError(error));
+    } finally {
+      saving.current = false;
+      setBusy(false);
+    }
+  }
+
+  return (
+    <article
+      className="review-tile"
+      data-kind={piece.kind}
+      data-mark={piece.caption === "Mark"}
+      onFocus={() => setActive(piece.id)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setActive(null);
+      }}
+    >
+      <button
+        type="button"
+        className="all-art-tile"
+        onClick={open}
+        disabled={imageFailed}
+        aria-label={`Open ${name} full size`}
+      >
+        <span className="all-art-tile__object">
+          {imageFailed ? (
+            <span className="review-tile-missing">Image unavailable</span>
+          ) : (
+            <img
+              src={piece.image}
+              alt=""
+              width={piece.width ?? undefined}
+              height={piece.height ?? undefined}
+              loading={eager ? "eager" : "lazy"}
+              onError={() => setImageFailed(true)}
+            />
+          )}
+        </span>
+        <strong>{piece.name}</strong>
+        <span className="review-tile-caption">
+          {piece.caption}
+          {piece.status ? ` · ${piece.status.replaceAll("_", " ")}` : ""}
+        </span>
+      </button>
+      <label className="review-tile-grade">
+        <span className="sr-only">Grade {name}</span>
+        <select
+          className="select min-h-11"
+          value={piece.taste?.grade ?? ""}
+          aria-disabled={busy}
+          onChange={(event) =>
+            void submit({ grade: event.target.value ? Number(event.target.value) : null })
+          }
+        >
+          <option value="">Ungraded</option>
+          {ART_GRADES.map(([value, label]) => (
+            <option value={value} key={value}>
+              {value} · {label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <details className="review-tile-note">
+        <summary>{piece.taste?.note ? "Your note" : "Add note"}</summary>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submit({ note });
+          }}
+        >
+          <label>
+            <span className="sr-only">Note on {name}</span>
+            <textarea
+              className="textarea"
+              rows={3}
+              maxLength={1000}
+              value={note}
+              onChange={(event) => editNote(event.target.value)}
+            />
+          </label>
+          <button
+            className="btn btn-secondary min-h-11"
+            type="submit"
+            disabled={busy || note.trim() === (piece.taste?.note ?? "")}
+          >
+            Save note
+          </button>
+        </form>
+      </details>
+      {piece.brief && (
+        <a
+          className="review-tile-brief"
+          href={`/studio/art?brief=${encodeURIComponent(piece.brief)}`}
+        >
+          Open brief
+        </a>
+      )}
+      <div className="review-tile-message" role="status">
+        {busy ? "Saving…" : message}
+      </div>
+    </article>
   );
 }

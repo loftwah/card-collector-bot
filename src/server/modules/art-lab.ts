@@ -428,6 +428,7 @@ export interface ArtPin {
   brief_id: string;
   brief_title: string;
   category: ArtCategory;
+  collection_id: string | null;
   collection_name: string | null;
   card_name: string | null;
   label: string;
@@ -439,6 +440,10 @@ export interface ArtPin {
   audience: string;
   created_at: string;
   image_url: string;
+  back_url: string | null;
+  review_likes: number;
+  review_dislikes: number;
+  review_decision: "like" | "dislike" | null;
 }
 
 export interface ArtBriefDetail {
@@ -1451,6 +1456,7 @@ export async function listArtBriefs(
     brief_id: string;
     brief_title: string;
     category: ArtCategory;
+    collection_id: string | null;
     collection_name: string | null;
     card_name: string | null;
     label: string;
@@ -1461,11 +1467,21 @@ export async function listArtBriefs(
     height: number;
     audience: string;
     created_at: string;
+    has_back: number;
+    review_likes: number;
+    review_dislikes: number;
+    review_decision: "like" | "dislike" | null;
   }>(
     ctx.db,
-    `SELECT k.id AS candidate_id, k.brief_id, b.title AS brief_title, b.category,
+    `SELECT k.id AS candidate_id, k.brief_id, b.title AS brief_title, b.category, b.collection_id,
             c.name AS collection_name, cd.name AS card_name, k.label, k.method, k.style_key, k.status,
-            k.width, k.height, k.audience, k.created_at
+            k.width, k.height, k.audience, k.created_at,
+            k.render_back_asset_id IS NOT NULL AS has_back,
+            (SELECT COUNT(*) FROM fb_art_feedback f WHERE f.candidate_id = k.id AND f.decision = 'like') AS review_likes,
+            (SELECT COUNT(*) FROM fb_art_feedback f WHERE f.candidate_id = k.id AND f.decision = 'dislike') AS review_dislikes,
+            (SELECT f.decision FROM fb_art_feedback f
+               WHERE f.candidate_id = k.id AND f.author_user_id = ? AND f.decision IN ('like', 'dislike')
+               ORDER BY f.created_at DESC, f.id DESC LIMIT 1) AS review_decision
        FROM fb_art_candidates k
        JOIN fb_art_briefs b ON b.id = k.brief_id
        LEFT JOIN fb_collections c ON c.id = b.collection_id
@@ -1473,12 +1489,13 @@ export async function listArtBriefs(
       WHERE ${where.join(" AND ")}
       ORDER BY k.created_at DESC
       LIMIT 120`,
+    ctx.user!.id,
     ...params.slice(0, -1),
   );
-  const pins: ArtPin[] = pinRows.map((row) => ({
-    ...row,
-    image_url: `${artFileBase(row.category)}/candidates/${row.candidate_id}/file?side=display`,
-  }));
+  const pins: ArtPin[] = pinRows.map(({ has_back, ...row }) => {
+    const file = `${artFileBase(row.category)}/candidates/${row.candidate_id}/file`;
+    return { ...row, image_url: `${file}?side=display`, back_url: has_back ? `${file}?side=back` : null };
+  });
   const categories = allowed.map((key) => {
     const matching = briefs.filter((brief) => brief.category === key);
     return {

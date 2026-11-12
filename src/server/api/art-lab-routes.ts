@@ -25,6 +25,16 @@ import {
   uploadCandidateRender,
 } from "../modules/art-lab";
 import { getBrandCatalogue, setBrandSelection } from "../modules/brand";
+import { listArtTaste, saveArtTaste } from "../modules/art-taste";
+
+const tasteSchema = z
+  .object({
+    pieceId: z.string().min(1).max(1500),
+    grade: z.number().int().min(1).max(5).nullable().optional(),
+    note: z.string().max(1000).optional(),
+  })
+  .strict()
+  .refine((patch) => patch.grade !== undefined || patch.note !== undefined);
 
 const briefSchema = z.object({
   category: z.enum(ART_CATEGORIES),
@@ -122,6 +132,13 @@ export async function routeArtLab(
   }
   if (rest.length === 1 && rest[0] === "options" && method === "GET") {
     return json(await listArtOptions(ctx));
+  }
+  if (rest.length === 1 && rest[0] === "taste" && method === "GET") {
+    return json(await listArtTaste(ctx));
+  }
+  if (rest.length === 1 && rest[0] === "taste" && method === "POST") {
+    const { pieceId, ...patch } = await readJson(request, tasteSchema);
+    return json(await saveArtTaste(ctx, pieceId, patch));
   }
   if (rest.length === 1 && rest[0] === "brand" && method === "GET") {
     return json(await getBrandCatalogue(ctx));
