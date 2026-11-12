@@ -66,7 +66,10 @@ const token = env.DISCORD_BOT_TOKEN;
 const applicationId = prints ? FOILBURY_BOT_ID : env.DISCORD_APPLICATION_ID;
 const guildId = prints ? TEST_GUILD_ID : (env.DISCORD_TEST_GUILD_ID ?? TEST_GUILD_ID);
 const channelId = prints ? TEST_CHANNEL_ID : (env.DISCORD_TEST_CHANNEL_ID ?? TEST_CHANNEL_ID);
-const origin = (env.FOILBURY_PUBLIC_ORIGIN ?? "https://foilbury.loftwah.com").replace(/\/$/, "");
+const productionOrigin = "https://foilbury.loftwah.com";
+const origin = (
+  prints ? productionOrigin : (env.FOILBURY_PUBLIC_ORIGIN ?? productionOrigin)
+).replace(/\/$/, "");
 
 if (!dryRun && !token) {
   console.error("DISCORD_BOT_TOKEN is not configured.");
@@ -245,7 +248,9 @@ if (channel.parsed?.guild_id !== guildId) {
 }
 
 const isPrintChapter = (item) =>
-  item?.author?.id === me.parsed.id && item.embeds?.[0]?.footer?.text === PRINT_FOOTER;
+  item?.author?.id === me.parsed.id &&
+  item.embeds?.[0]?.footer?.text === PRINT_FOOTER &&
+  item.message_reference?.message_id === ORIGINAL_DEMO_INDEX_ID;
 
 let previous = null;
 if (fs.existsSync(STATE_FILE)) {
@@ -344,7 +349,6 @@ if (prints) {
     !observed.ok ||
     !isPrintChapter(observed.parsed) ||
     observed.parsed.channel_id !== channelId ||
-    observed.parsed.message_reference?.message_id !== ORIGINAL_DEMO_INDEX_ID ||
     observed.parsed.embeds[0].title !== message.embeds[0].title ||
     observed.parsed.embeds[0].description !== message.embeds[0].description ||
     observed.parsed.attachments?.length !== 0 ||
