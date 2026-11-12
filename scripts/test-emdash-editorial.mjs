@@ -28,8 +28,9 @@ if (process.env.FOILBURY_ENV === "production") {
   process.exit(2);
 }
 
-const evidence = path.join("docs", "evidence");
-fs.mkdirSync(evidence, { recursive: true });
+const evidenceRoot = path.join(".foilbury", "evidence");
+fs.mkdirSync(evidenceRoot, { recursive: true });
+const evidence = fs.mkdtempSync(path.join(evidenceRoot, "emdash-editorial-"));
 const results = [];
 const pass = (name, detail = "") => { results.push({ name, status: "PASS", detail }); console.log(`PASS ${name}${detail ? ` · ${detail}` : ""}`); };
 const fail = (name, error) => { results.push({ name, status: "FAIL", detail: String(error?.message ?? error) }); console.error(`FAIL ${name} · ${error?.message ?? error}`); };
@@ -39,7 +40,7 @@ function d1(sql) {
 }
 
 function cli(args, token) {
-  const output = execFileSync("npx", ["emdash", ...args, "--url", baseURL, "--json"], {
+  const output = execFileSync("pnpm", ["exec", "emdash", ...args, "--url", baseURL, "--json"], {
     encoding: "utf8",
     env: { ...process.env, EMDASH_TOKEN: token },
     stdio: ["ignore", "pipe", "pipe"],
@@ -79,6 +80,20 @@ const content = [
 ];
 
 try {
+  const statusResponse = await fetch(new URL("/api/v1/status", baseURL));
+  const status = await statusResponse.json();
+  if (!statusResponse.ok || status.environment !== "local" || status.local !== true) {
+    throw new Error("Start a Foilbury local fixture before running the editorial test.");
+  }
+  const query = "SELECT COUNT(*) AS count FROM users";
+  const [users] = JSON.parse(d1(query));
+  if (!users.results[0]?.count) {
+    const setup = await fetch(new URL("/_emdash/api/setup/dev-bypass?redirect=/_emdash/admin&content=0", baseURL), { redirect: "manual" });
+    const [setupUsers] = JSON.parse(d1(query));
+    if ((!setup.ok && ![302, 303].includes(setup.status)) || !setupUsers.results[0]?.count) {
+      throw new Error("The local EmDash setup did not create a CMS owner.");
+    }
+  }
   d1(`INSERT INTO _emdash_api_tokens (id, name, token_hash, prefix, user_id, scopes, expires_at, created_at) VALUES ('${tokenId}', 'Foilbury EmDash acceptance', '${tokenHash}', 'ec_pat_acc', (SELECT id FROM users ORDER BY role DESC LIMIT 1), '["admin"]', NULL, datetime('now'));`);
   tokenCreated = true;
   const who = cli(["whoami"], rawToken);
@@ -98,8 +113,7 @@ try {
   const published = await fetch(`${baseURL}/journal/${slug}`);
   const html = await published.text();
   if (published.status !== 200) throw new Error(`Published entry returned ${published.status}`);
-  fs.mkdirSync(path.join(".foilbury", "evidence"), { recursive: true });
-  fs.writeFileSync(path.join(".foilbury", "evidence", "emdash-last.html"), html);
+  fs.writeFileSync(path.join(evidence, "published.html"), html);
   for (const [name, needle] of [
     ["heading", "<h2>Structure survives the round trip</h2>"],
     ["strong mark", "<strong>It must not be public yet.</strong>"],
@@ -123,8 +137,17 @@ try {
   await page.locator(".prose img").first().waitFor();
   const imageLoaded = await page.locator(".prose img").first().evaluate((image) => image.complete && image.naturalWidth > 0);
   if (!imageLoaded) throw new Error("Published editorial image did not decode");
+  for (const [list, marker] of [["ul", "disc"], ["ol", "decimal"], ["li ol", "decimal"]]) {
+    const rendered = await page.locator(`.journal-entry-content ${list}`).first().evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { marker: style.listStyleType, indent: Number.parseFloat(style.paddingInlineStart) };
+    });
+    if (rendered.marker !== marker || rendered.indent <= 0) {
+      throw new Error(`Published list ${list} is missing its marker or indentation.`);
+    }
+  }
   await page.screenshot({ path: path.join(evidence, "emdash-editorial-roundtrip.png"), fullPage: true });
-  pass("browser rendered and decoded the published media");
+  pass("browser rendered list markers and decoded the published media");
 
   const fetched = cli(["content", "get", "posts", createdId, "--raw"], rawToken);
   const revision = fetched?._rev ?? fetched?.data?._rev;
@@ -166,12 +189,12 @@ try {
   }
   if (scheduledId) { try { cli(["content", "delete", "posts", scheduledId], rawToken); } catch { /* already deleted */ } }
   if (tokenCreated) {
-    try { d1(`DELETE FROM _emdash_api_tokens WHERE id = '${tokenId}';`); } catch (error) { console.error(`Token cleanup failed: ${String(error)}`); }
+    try { d1(`DELETE FROM _emdash_api_tokens WHERE id = '${tokenId}';`); } catch (error) { fail("temporary local CMS token cleanup", error); }
   }
-  try { fs.unlinkSync(path.join(".foilbury", "emdash-test-token")); } catch { /* not present */ }
 }
 
 const report = { generated_at: new Date().toISOString(), base_url: baseURL, results };
 fs.writeFileSync(path.join(evidence, "emdash-editorial.json"), JSON.stringify(report, null, 2));
 console.log(JSON.stringify(report, null, 2));
+console.log(`Editorial evidence: ${evidence}`);
 if (results.some((result) => result.status === "FAIL")) process.exit(1);
