@@ -1,7 +1,11 @@
 # Multi-print catalogue, print studio and review
 
-Status: **implemented locally and visually reviewed; production publication is
-the remaining release step**. Source baseline `fc325f5`, 2026-11-04.
+The first print set is in production. On 2026-11-12, Studio showed the eight
+additive Tux, Gabe and Drop Bear editions with all 32 front/back pairs. The
+live Second Print capsule had zero eligible entries because its two collections
+were disabled for the cabinet Bot. AI artwork was also disabled.
+[#27](https://github.com/loftwah/card-collector-bot/issues/27)
+tracks collectible availability and the rollout.
 
 The original additive domain model (`migrations/0020_multi_print.sql` and
 `src/server/modules/prints.ts`) now has:
@@ -11,7 +15,7 @@ The original additive domain model (`migrations/0020_multi_print.sql` and
 - a scoped Studio review surface at `/studio/prints`;
 - one bounded original-IP proof with eight reviewed prints across Tux, Gabe and
   Drop Bear, each with four finish variants and saved front/back renders;
-- a dedicated `second-print-capsule` pool with real odds and a real local draw;
+- a dedicated `second-print-capsule` pool with live eligibility and odds;
 - an explicit agent-delegated review kind, recorded as `agent` rather than
   disguised as human approval (`migrations/0023_print_reviewer_kind.sql`);
 - a fal.ai-first generation runner with a hard budget cap, resumable jobs and a
@@ -100,6 +104,60 @@ the eventual edition/variant release, not to print identity.
 | Rename the same image                                                                                     | Rejected: duplicate artwork                                      |
 | Reuse an existing edition's artwork for another "print"                                                   | Rejected: duplicate of the existing edition                      |
 
+## Run a collection expansion
+
+Work on one collection at a time. Aim for two distinct prints per subject,
+with a third when the artwork warrants it. Start with a small release that a
+collector can browse and acquire, then extend the roster using the same checks.
+Record the collection, subjects, intended print roles, owners of the source
+art, and completion evidence in #27. Use #39 for collection and catalogue art
+repair and #122 for card composition and Discord legibility.
+
+1. **Check what collectors can see.** Read the current collection and its
+   published editions, open its album, and check the live capsule as an
+   eligible member. Confirm audience, collection switches and AI-art settings
+   for the intended Bot and Discord installation. Zero eligible entries means
+   the collector cannot acquire that print from the checked pool.
+2. **Choose a real reason to collect another copy.** Keep the best existing
+   prints. Pick an action, setting, expression or illustrative treatment
+   specific to the subject. Compare the proposed print to the source edition
+   at equal size. Record the stable print number before producing finishes.
+3. **Make the complete card.** Keep recoverable subject, scene, mark and
+   material layers. Generate new raster assets with the configured tools where
+   they improve the print. Record prompts, identity references, dimensions,
+   hashes, provenance and spend. Apply the collection mark and exact type in
+   code. Compose the reverse as part of the print. See
+   [the card layer system](CARD_LAYER_SYSTEM.md).
+4. **Review it in use.** In Studio, inspect front and back at 750, 400, 214
+   and 128 pixels. At collection size the subject and name should read
+   immediately. Check the reverse at reading size, clear differences between
+   finishes, clean cutout edges, accurate credits and a coherent cover and
+   roster. Reject any candidate that fails identity, readability or rights.
+5. **Release additively.** Back up production, create and link a distinct
+   reviewed edition, attach the approved renders, then add its finished
+   variants to the intended pool. Preserve issued editions, release snapshots
+   and existing Bot/installation settings. Respect the separate public
+   showcase approval. Keep the prior pool revision available for rollback.
+6. **Verify collectability.** Check the released print title, front and back,
+   saved artwork hashes, eligibility, odds and the affected album/opening
+   journey. A live member can see and acquire the print only after those
+   checks pass. Report web and native Discord evidence separately.
+
+### Render a print for review
+
+Run `node scripts/art/render-print.mjs .foilbury/<batch>/<print>.json` from
+the repository root. Use one private JSON manifest per print. Set `slug` and
+`finishes` (any combination of `plain`, `silver`, `gold` and `holographic`).
+Supply `collectionSlug`, `collectionName`, `name`, `subtitle`, `rarity`,
+`bio`, `printTitle`, `catalogueCode` and `provenanceLong` with the exact
+reviewed copy. Point `subjectPath`, `backgroundPath` and `markPath` to the
+layers relative to the manifest. Adjust `subjectHeight` and `subjectTop` for
+the crop at the 750-pixel card scale. The collection livery is used when
+configured. Bubbles previews can set `collectionTheme` to `storybook`.
+
+The command writes each finish's 750 × 1050 front/back, front master and 400
+and 128-pixel front previews next to the manifest. It makes no API calls.
+
 The current module supports a rejected proposal being revised in place and
 resubmitted. Existing editions already use `parent_edition_id` and
 `composition_json` for non-destructive artwork revisions; this layer does not
@@ -126,8 +184,9 @@ Authority:
 
 - Content managers (Bot Owner, editor, or an agent with `content:write`) may
   create, submit and revise proposals. Players cannot read the review workflow.
-- Only a human Bot Owner or platform administrator may approve/reject or link an
-  edition. Agents cannot be the reviewer of record.
+- A human Bot Owner, platform administrator, or a content agent explicitly
+  delegated `print:review` may approve/reject or link an edition. The recorded
+  reviewer kind distinguishes agent and human decisions.
 - Global Collection Admin scoping is not inferred by this foundation. The
   route/UI layer must map assigned collections before enabling review for a
   scoped curator; it must not treat shared-collection curation as platform root.
@@ -158,7 +217,7 @@ Implemented in `src/server/modules/prints.ts`; covered by
 | Reuse of an existing edition's artwork                | `409 print_duplicate`                                    |
 | Published/retired edition duplicates approved artwork | `409 print_duplicate`                                    |
 | Non-owner reviewer                                    | `403 print_review_forbidden`                             |
-| Agent reviewer                                        | `403 print_review_human_required`                        |
+| Agent without delegated review scope                  | `403 print_review_scope_required`                        |
 | Stale revision                                        | `409 stale_print_proposal_revision`                      |
 | Link before approval                                  | `409 print_not_approved`                                 |
 | Edition artwork differs from approved artwork         | `422 print_edition_artwork_mismatch`                     |
@@ -173,7 +232,7 @@ including a finish-only restrike.
 
 `linkApprovedEdition(ctx, proposalId, editionId)`:
 
-1. Requires an approved proposal and a human reviewer.
+1. Requires an approved proposal and an authorized reviewer.
 2. Requires a live edition for the same subject and the exact approved artwork
    asset.
 3. Sets only `fb_print_proposals.approved_edition_id` and increments the
@@ -356,11 +415,11 @@ artwork comparison, review notes and the printed-edition list all render.
 
 Eight prints, 32 finish variants, 32 saved fronts and 32 saved backs:
 
-| Subject | Prints |
-| --- | --- |
-| Tux | Rooftop Relay, Signal Watch, Voxel Expedition, Lantern Line |
-| Gabe | Coronation, Rehearsed; Autumn Market |
-| Drop Bear | Midnight Ambush; Hollow Lantern |
+| Subject   | Prints                                                      |
+| --------- | ----------------------------------------------------------- |
+| Tux       | Rooftop Relay, Signal Watch, Voxel Expedition, Lantern Line |
+| Gabe      | Coronation, Rehearsed; Autumn Market                        |
+| Drop Bear | Midnight Ambush; Hollow Lantern                             |
 
 The candidate contact sheet is `.foilbury/evidence/print-contact-sheet.jpg`.
 Selections and rejection notes are in `.foilbury/content/print-selections.json`.
@@ -372,9 +431,9 @@ blind-retried, and the second candidate was reviewed and used.
 
 ## What remains
 
-- **Production publication**: apply `0023`, upload the 80 R2 objects, apply the
-  additive SQL bundle, deploy the Worker revision, then read back the live
-  catalogue, pool odds and media. A local pass is not a deployed revision.
+- **Collector availability**: verify eligibility and the ordinary opening
+  journey in the intended Bot and installation before counting a print as
+  collectable. Preserve existing AI-art settings while expanding the library.
 - **Human review after the agent**: the proof records agent-delegated decisions.
   The owner can still reject, revise or replace any print; nothing claims human
   approval.

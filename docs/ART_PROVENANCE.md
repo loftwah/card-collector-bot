@@ -5,19 +5,31 @@ Status: implemented 2026/11/04. Schema `0027_ai_art_provenance_and_scope.sql`.
 Foilbury tracks **what an artwork is**, not just who supplied the file. The
 typed `fb_assets.origin` field is the authoritative answer for every asset:
 
-| Origin | Meaning | Example |
-| --- | --- | --- |
-| `sourced` | A publicly published reference image with a recorded source, rights note and review state. The card design and finishes remain Foilbury originals. | The 140 franchise subject references |
-| `foilbury_original` | Authored or owner-supplied Foilbury artwork with no external generation record. | Brand marks, owner-supplied original-IP characters |
-| `ai_assisted` | A real generated/edited image made with a reviewed provider and recorded generation metadata. Not official artwork. | The eight fal.ai print artworks |
-| `ai_generated` | A generated image with no human-authored source layer. Currently unused; reserved for a future reviewed route. | — |
-| `derived` | A deterministic render composed from source layers and a recipe. The render is not an independently generated original. | All 6,655 published card renders |
-| `unknown` | No structured provenance yet. This is an honest gap, never an inference of AI or human authorship. | Some owner-supplied original-IP backgrounds/subjects |
+| Origin              | Meaning                                                                                                                                            | Example                                              |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `sourced`           | A publicly published reference image with a recorded source, rights note and review state. The card design and finishes remain Foilbury originals. | The 140 franchise subject references                 |
+| `foilbury_original` | Authored or owner-supplied Foilbury artwork with no external generation record.                                                                    | Brand marks, owner-supplied original-IP characters   |
+| `ai_assisted`       | A real generated/edited image made with a reviewed provider and recorded generation metadata. Not official artwork.                                | The eight fal.ai print artworks                      |
+| `ai_generated`      | A generated image with no human-authored source layer.                                                                                             | A new subjectless scene from ImageGen                |
+| `derived`           | A deterministic render composed from source layers and a recipe. The render is not an independently generated original.                            | All 6,655 published card renders                     |
+| `unknown`           | No structured provenance yet. This is an honest gap, never an inference of AI or human authorship.                                                 | Some owner-supplied original-IP backgrounds/subjects |
 
 `fb_assets.generation_json` holds the structured generation record when the
 origin is AI-assisted: provider, endpoint, request id, prompt/reference hashes,
 cost, generation time, reviewer and review note. It is JSON-queryable. The
 migration repaired the earlier double-encoded print records.
+
+When uploading through Studio's assets API, include the multipart `origin`
+field and, for AI artwork, a `generationJson` object with the actual provider
+and endpoint or operator method. Use `provenanceJson` for the source credit,
+rights, exact prompts and reference hashes. A browser-generated ImageGen asset
+can record `codex:imagegen` as the operator method and leave the resolved
+model unset. The catalogue API exposes the edition's `artwork_origin`.
+
+For sourced assets, distinguish creator-published art, fan art and other
+human-made art in the source record. `sourced` alone establishes where a file
+came from. An origin classification does not grant a licence or approve a
+public release.
 
 ## Bot preference
 
