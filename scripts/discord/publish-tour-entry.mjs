@@ -159,6 +159,7 @@ const card = (label, cardId, variantId) => ({
   customId: `foilbury:card:${cardId}:${variantId}:front`,
   style: 2,
 });
+const printReply = { message_id: ORIGINAL_DEMO_INDEX_ID, fail_if_not_exists: true };
 const printMessage = {
   embeds: [
     buildEmbed({
@@ -204,6 +205,7 @@ assertDiscordMessage(message);
 async function discord(method, url, body) {
   const response = await fetch(`${API}${url}`, {
     method,
+    signal: AbortSignal.timeout(15_000),
     headers: {
       authorization: `Bot ${token}`,
       ...(body ? { "content-type": "application/json" } : {}),
@@ -221,9 +223,8 @@ async function discord(method, url, body) {
 }
 
 if (dryRun) {
-  console.log(
-    JSON.stringify({ channel_id: channelId, guild_id: guildId, payload: message }, null, 2),
-  );
+  const payload = prints ? { ...message, message_reference: printReply } : message;
+  console.log(JSON.stringify({ channel_id: channelId, guild_id: guildId, payload }, null, 2));
   process.exit(0);
 }
 
@@ -320,7 +321,7 @@ if (messageId) {
       .slice(0, 25);
     body = {
       ...message,
-      message_reference: { message_id: ORIGINAL_DEMO_INDEX_ID, fail_if_not_exists: true },
+      message_reference: printReply,
       nonce,
       enforce_nonce: true,
     };
@@ -330,6 +331,11 @@ if (messageId) {
 }
 
 if (!result.ok) {
+  // A definitive rejection did not create a message. Leave pending receipts
+  // intact for timeouts, server errors and other ambiguous outcomes.
+  if (prints && action === "created" && [400, 401, 403, 404, 429].includes(result.status)) {
+    fs.unlinkSync(STATE_FILE);
+  }
   console.error(
     `Discord message ${action === "updated" ? "update" : "post"} failed: HTTP ${result.status}`,
   );
