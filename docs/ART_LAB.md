@@ -550,3 +550,23 @@ own layered pass.
   distinct icon directions and four Keeper mascots, and `/studio/all-art` is
   live with 51 pieces (4 card candidates, 7 icons, 4 mascots, 12 styles, 5
   logos, 5 OG, 4 banners, 4 shareables, 6 other).
+
+## Studio art resources
+
+From Art Lab, open **Resources** to browse credited museum reference prints, find sources on GitHub and Hugging Face, or copy the scene brief into Codex. The resource page and its bundled image responses use the ordinary Studio role gate. Copy image writes a PNG of the selected image or card face. Download remains available alongside it.
+
+| Reference | Institutional record | File source |
+| --- | --- | --- |
+| Under the Wave off Kanagawa, Katsushika Hokusai, 1830/33 | [Art Institute of Chicago, 24645](https://www.artic.edu/artworks/24645) | [CC0 scan](https://commons.wikimedia.org/wiki/File:The_Great_Wave_off_Kanagawa.png) |
+| Water Lilies, Claude Monet, c. 1922 | Toledo Museum of Art | [Public-domain reproduction](https://commons.wikimedia.org/wiki/File:Claude_Monet_-_Water_Lilies_-_Google_Art_Project.jpg) |
+| The Child's Bath, Mary Cassatt, 1893 | [Art Institute of Chicago, 111442](https://www.artic.edu/artworks/111442) | [Public-domain reproduction](https://commons.wikimedia.org/wiki/File:Mary_Cassatt_-_The_Child%27s_Bath_-_Google_Art_Project.jpg) |
+
+### After the Tide
+
+- Created 2026-11-12 with the native Codex ImageGen tool. The tool did not expose the exact model version or seed. One native invocation, no separately billed provider API call, no per-image cost reported.
+- Reference: the CC0 Hokusai scan above. Reference PNG SHA-256 `47d533bf3b8be3e7d8f11c2aae23fb8089fb2002676e9f6bad6a9829df48b34b`.
+- 1536×1024 PNG master, SHA-256 `f619ff52276f6fcffff8d63ad853c652965f6d2d87ce6ea1b283ee33533b2be4`. Studio WebP SHA-256 `6ac5e8532b76e4c7c62c393ae10937ea3614e1efd608cf52882c7a01d224a4c5`.
+- Audience: scoped Studio. `official:false`. Status: reference study for a scene layer, outside the published card catalogue.
+- Exact generation prompt:
+
+> Generate one original landscape environment plate for Foilbury Studio, title in our catalogue is After the Tide (do not draw the title). Use the supplied Katsushika Hokusai public-domain woodblock scan only as a reference for indigo ink, paper grain, and asymmetrical silhouette. An empty remote basalt coast at first light: steep dark ink cliffs anchor the left edge, successive tidal terraces sweep diagonally to the lower right, and a tiny copper dawn opens above still water in the upper right. Open low-contrast midground across the centre for a separately composited character. Striking strong masses, actual woodblock ink registration, restrained midnight navy, oxidised slate and warm paper highlights. Atmospheric original composition. No large breaking wave, no Fuji, no boats, no people, no frame or card mockup, no border, no lettering, no characters, no signature, no seal. Wide landscape 3:2, edge-to-edge. Scene layer only.

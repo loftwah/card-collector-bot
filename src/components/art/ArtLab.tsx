@@ -1053,6 +1053,9 @@ export default function ArtLab({ surface }: { surface: Surface }) {
           </p>
         </div>
         <div className="artlab-bar__actions">
+          <a className="btn btn-secondary btn-sm" href="/studio/resources">
+            Resources
+          </a>
           <a className="btn btn-secondary btn-sm" href="/studio/all-art">
             All art
           </a>

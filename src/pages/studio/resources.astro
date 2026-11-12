@@ -1,0 +1,418 @@
+---
+import StudioLayout from "../../layouts/StudioLayout.astro";
+import CopyImageButton from "../../components/art/CopyImageButton";
+
+const imageBase = "/studio/resource-images";
+const references = [
+  {
+    title: "Under the Wave off Kanagawa",
+    credit: "Katsushika Hokusai · 1830/33",
+    use: "Silhouette, ink and negative space.",
+    file: "great-wave.webp",
+    width: 1200,
+    height: 628,
+    url: "https://www.artic.edu/artworks/24645",
+    rights: "Art Institute of Chicago · CC0",
+  },
+  {
+    title: "Water Lilies",
+    credit: "Claude Monet · c. 1922",
+    use: "Reflected light and atmosphere.",
+    file: "water-lilies.webp",
+    width: 1050,
+    height: 987,
+    url: "https://commons.wikimedia.org/wiki/File:Claude_Monet_-_Water_Lilies_-_Google_Art_Project.jpg",
+    rights: "Toledo Museum of Art · public domain",
+  },
+  {
+    title: "The Child’s Bath",
+    credit: "Mary Cassatt · 1893",
+    use: "An overhead viewpoint, patterned fabric and quiet colour.",
+    file: "childs-bath.webp",
+    width: 787,
+    height: 1200,
+    url: "https://commons.wikimedia.org/wiki/File:Mary_Cassatt_-_The_Child%27s_Bath_-_Google_Art_Project.jpg",
+    rights: "Art Institute of Chicago · public domain",
+  },
+];
+
+const sources = [
+  {
+    name: "Met Open Access",
+    href: "https://huggingface.co/datasets/metmuseum/openaccess",
+    host: "Hugging Face",
+    use: "Browse objects and images by medium, place or period. Keep the original object ID.",
+    rights: "CC0 for Open Access records and eligible images",
+    rightsHref: "https://www.metmuseum.org/about-the-met/policies-and-documents/open-access",
+  },
+  {
+    name: "Met collection CSV",
+    href: "https://github.com/metmuseum/openaccess",
+    host: "GitHub",
+    use: "Filter catalogue metadata and identify public-domain objects for a reference board.",
+    rights: "CC0 metadata",
+    rightsHref: "https://github.com/metmuseum/openaccess#readme",
+  },
+  {
+    name: "Smithsonian Open Access",
+    href: "https://github.com/Smithsonian/OpenAccess",
+    host: "GitHub",
+    use: "Find botanical illustrations, natural-history specimens and historical design objects.",
+    rights: "Use records marked CC0",
+    rightsHref: "https://www.si.edu/openaccess/faq",
+  },
+  {
+    name: "Art Institute of Chicago",
+    href: "https://github.com/art-institute-of-chicago/api-data",
+    host: "GitHub",
+    use: "Find source paintings and prints, then follow the object record to its high-resolution image.",
+    rights: "Check the public-domain flag before using an image",
+    rightsHref: "https://api.artic.edu/docs/#iiif-image-api",
+  },
+  {
+    name: "Art Museums PD 440K",
+    href: "https://huggingface.co/datasets/Mitsua/art-museums-pd-440k",
+    host: "Hugging Face",
+    use: "Discover related artwork across institutions. Trace a promising image to its museum record.",
+    rights: "Dataset card lists CC BY 4.0. Verify original rights per item.",
+    rightsHref: "https://huggingface.co/datasets/Mitsua/art-museums-pd-440k#license",
+  },
+  {
+    name: "Poly Haven",
+    href: "https://polyhaven.com/textures",
+    host: "Materials",
+    use: "Find paper, metal and surface textures for material tests, plus lighting for 3D proofs.",
+    rights: "CC0 assets",
+    rightsHref: "https://polyhaven.com/license",
+  },
+  {
+    name: "Khronos glTF Sample Assets",
+    href: "https://github.com/KhronosGroup/glTF-Sample-Assets",
+    host: "GitHub",
+    use: "Check 3D material behaviour and test glTF viewers with documented samples.",
+    rights: "Licence varies by sample",
+    rightsHref: "https://github.com/KhronosGroup/glTF-Sample-Assets#lists",
+  },
+  {
+    name: "Google Fonts",
+    href: "https://github.com/google/fonts",
+    host: "GitHub",
+    use: "Choose type for exact card lettering and save the licence with the font files.",
+    rights: "Check the licence and reserved names for each family",
+    rightsHref: "https://github.com/google/fonts#license",
+  },
+  {
+    name: "Lucide",
+    href: "https://github.com/lucide-icons/lucide",
+    host: "GitHub",
+    use: "Find interface icons that match the Studio controls.",
+    rights: "ISC and MIT notices",
+    rightsHref: "https://github.com/lucide-icons/lucide/blob/main/LICENSE",
+  },
+];
+
+const prompt =
+  "Use the attached source only for its ink palette, print texture and balance of negative space. Create one wide landscape scene layer for Foilbury. Depict an empty basalt coast at dawn. Place steep indigo cliffs on the left, tidal terraces across the lower right and a trace of copper light over still water. Leave the centre low contrast for a separate subject layer. Keep the composition original and edge-to-edge. Omit lettering, signatures, logos, borders, people and card geometry.";
+const study = `${imageBase}/after-the-tide.webp`;
+---
+
+<StudioLayout compact>
+  <div class="resources">
+    <header class="resources-intro">
+      <div>
+        <h1>Art resources</h1>
+        <p>Find source art, gather references and take a layer brief into Codex ImageGen.</p>
+        <nav aria-label="On this page">
+          <a href="#references">Reference prints</a>
+          <a href="#generation">Codex ImageGen</a>
+          <a href="#sources">Source directory</a>
+        </nav>
+      </div>
+      <a class="btn btn-secondary min-h-11" href="/studio/art">
+        Back to Art Lab
+      </a>
+    </header>
+
+    <section aria-labelledby="references">
+      <h2 id="references">Reference prints</h2>
+      <div class="reference-grid">
+        {references.map((reference) => {
+          const src = `${imageBase}/${reference.file}`;
+          return (
+            <article>
+              <a href={src} aria-label={`Open ${reference.title}`} class="reference-image">
+                <img
+                  src={src}
+                  alt={reference.title}
+                  width={reference.width}
+                  height={reference.height}
+                />
+              </a>
+              <h3>{reference.title}</h3>
+              <p>{reference.credit}</p>
+              <p>{reference.use}</p>
+              <a href={reference.url} class="rights">
+                {reference.rights}
+              </a>
+              <div class="image-actions">
+                <CopyImageButton client:load src={src} name={reference.title} />
+                <a class="btn btn-secondary min-h-11" href={src} download>
+                  Download
+                </a>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+
+    <section aria-labelledby="generation">
+      <h2 id="generation">Codex ImageGen</h2>
+      <div class="study">
+        <figure>
+          <a href={study} aria-label="Open After the Tide">
+            <img
+              src={study}
+              alt="Indigo basalt cliffs and tidal terraces at dawn"
+              width="1536"
+              height="1024"
+              loading="lazy"
+            />
+          </a>
+        </figure>
+        <div>
+          <h3>After the Tide</h3>
+          <p>Codex ImageGen · scene-layer study</p>
+          <p>
+            Attach{" "}
+            <a class="rights" href={`${imageBase}/great-wave.webp`} download>
+              the Hokusai reference
+            </a>{" "}
+            in Codex and paste the brief below. Keep the source credit when you bring the scene back
+            to Art Lab.
+          </p>
+          <div class="image-actions">
+            <CopyImageButton client:load src={study} name="After the Tide" />
+            <a class="btn btn-secondary min-h-11" href={study} download>
+              Download
+            </a>
+          </div>
+        </div>
+      </div>
+      <details class="brief">
+        <summary>Scene brief · After the Tide</summary>
+        <label class="sr-only" for="scene-brief">
+          Scene prompt
+        </label>
+        <textarea class="textarea" id="scene-brief" readonly rows="6">{prompt}</textarea>
+        <button type="button" id="copy-brief" class="btn btn-secondary min-h-11" hidden>
+          Copy brief
+        </button>
+        <span id="brief-status" role="status"></span>
+      </details>
+    </section>
+
+    <section aria-labelledby="sources">
+      <h2 id="sources">Source directory</h2>
+      <ul class="source-list">
+        {sources.map((source) => (
+          <li>
+            <div>
+              <a class="source-title" href={source.href}>
+                {source.name}
+              </a>
+              <span class="source-host">{source.host}</span>
+            </div>
+            <div>
+              <p>{source.use}</p>
+              <a class="rights" href={source.rightsHref}>
+                {source.rights}
+              </a>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  </div>
+</StudioLayout>
+
+<script>
+  const button = document.querySelector<HTMLButtonElement>("#copy-brief")!;
+  const prompt = document.querySelector<HTMLTextAreaElement>("#scene-brief")!;
+  const status = document.querySelector<HTMLSpanElement>("#brief-status")!;
+  button.hidden = false;
+  button.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(prompt.value);
+      status.textContent = "Brief copied";
+    } catch {
+      prompt.select();
+      prompt.focus();
+      status.textContent = "Use your device’s Copy command to copy the selected brief.";
+    }
+  });
+</script>
+
+<style>
+  .resources {
+    display: grid;
+    gap: 2.75rem;
+    padding-bottom: 2rem;
+  }
+  .resources-intro {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .resources-intro nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 1rem;
+    margin-top: 0.45rem;
+    font-size: 0.875rem;
+  }
+  .resources-intro nav a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+  h1,
+  h2,
+  h3 {
+    font-weight: 650;
+    line-height: 1.12;
+  }
+  h1 {
+    font-size: clamp(2rem, 4vw, 3rem);
+    letter-spacing: -0.035em;
+  }
+  h2 {
+    font-size: 1.4rem;
+    letter-spacing: -0.025em;
+    margin-bottom: 0.85rem;
+  }
+  h3 {
+    margin-top: 0.85rem;
+  }
+  p,
+  .rights,
+  .source-host {
+    color: var(--muted);
+    font-size: 0.875rem;
+    line-height: 1.55;
+  }
+  p {
+    max-width: 68ch;
+    margin-top: 0.3rem;
+  }
+  .rights {
+    display: inline-block;
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+  .reference-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.2rem;
+  }
+  .reference-image {
+    display: grid;
+    place-items: center;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    aspect-ratio: 5 / 4;
+    padding: 0.5rem;
+  }
+  .reference-image img {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    object-fit: contain;
+  }
+  .image-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: start;
+    gap: 0.4rem;
+    margin-top: 0.7rem;
+  }
+  .study {
+    display: grid;
+    grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr);
+    gap: 1.2rem;
+    align-items: start;
+  }
+  .study h3 {
+    margin-top: 0;
+  }
+  .study img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  .brief {
+    border-block: 1px solid var(--line);
+    margin-top: 0.85rem;
+    padding-bottom: 0.2rem;
+  }
+  .brief summary {
+    font-weight: 600;
+    padding-block: 0.85rem;
+    cursor: pointer;
+  }
+  .brief textarea {
+    display: block;
+    width: 100%;
+    margin-bottom: 0.6rem;
+  }
+  .brief span {
+    font-size: 0.875rem;
+    color: var(--muted);
+    margin-inline-start: 0.5rem;
+  }
+  .brief button[hidden] {
+    display: none;
+  }
+  .brief[open] {
+    padding-bottom: 0.85rem;
+  }
+  .source-list {
+    list-style: none;
+    padding: 0;
+    border-top: 1px solid var(--line);
+  }
+  .source-list li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr);
+    gap: 0.4rem 1.4rem;
+    padding-block: 0.95rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .source-title {
+    font-weight: 650;
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+  .source-host {
+    display: block;
+  }
+  .source-list p {
+    margin-top: 0;
+  }
+  @media (max-width: 43rem) {
+    .reference-grid,
+    .source-list li,
+    .study {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .reference-grid {
+      gap: 1.65rem;
+    }
+  }
+</style>
