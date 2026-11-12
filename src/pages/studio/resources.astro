@@ -2,39 +2,11 @@
 import StudioLayout from "../../layouts/StudioLayout.astro";
 import CopyImageButton from "../../components/art/CopyImageButton";
 
-const imageBase = "/studio/resource-images";
-const references = [
-  {
-    title: "Under the Wave off Kanagawa",
-    credit: "Katsushika Hokusai · 1830/33",
-    use: "Silhouette, ink and negative space.",
-    file: "great-wave.webp",
-    width: 1200,
-    height: 628,
-    url: "https://www.artic.edu/artworks/24645",
-    rights: "Art Institute of Chicago · CC0",
-  },
-  {
-    title: "Water Lilies",
-    credit: "Claude Monet · c. 1922",
-    use: "Reflected light and atmosphere.",
-    file: "water-lilies.webp",
-    width: 1050,
-    height: 987,
-    url: "https://commons.wikimedia.org/wiki/File:Claude_Monet_-_Water_Lilies_-_Google_Art_Project.jpg",
-    rights: "Toledo Museum of Art · public domain",
-  },
-  {
-    title: "The Child’s Bath",
-    credit: "Mary Cassatt · 1893",
-    use: "An overhead viewpoint, patterned fabric and quiet colour.",
-    file: "childs-bath.webp",
-    width: 787,
-    height: 1200,
-    url: "https://commons.wikimedia.org/wiki/File:Mary_Cassatt_-_The_Child%27s_Bath_-_Google_Art_Project.jpg",
-    rights: "Art Institute of Chicago · public domain",
-  },
-];
+import {
+  STUDIO_IMAGE_BASE as imageBase,
+  REFERENCE_PRINTS as references,
+  STUDIO_STUDIES,
+} from "../../lib/studio-resources";
 
 const sources = [
   {
@@ -123,6 +95,7 @@ const study = `${imageBase}/after-the-tide.webp`;
         <h1>Art resources</h1>
         <p>Find source art, gather references and take a layer brief into Codex ImageGen.</p>
         <nav aria-label="On this page">
+          <a href="#studies">Studio studies</a>
           <a href="#references">Reference prints</a>
           <a href="#generation">Codex ImageGen</a>
           <a href="#sources">Source directory</a>
@@ -132,6 +105,60 @@ const study = `${imageBase}/after-the-tide.webp`;
         Back to Art Lab
       </a>
     </header>
+
+    <section aria-labelledby="studies">
+      <div class="study-heading">
+        <h2 id="studies">Studio studies</h2>
+        <a class="btn btn-secondary min-h-11" href="/studio/all-art?kind=studies">
+          Rate the studies
+        </a>
+      </div>
+      <div class="reference-grid">
+        {STUDIO_STUDIES.map((item) => {
+          const src = `${imageBase}/${item.file}`;
+          return (
+            <article id={item.slug}>
+              <a class="reference-image" href={src} aria-label={`Open ${item.title}`}>
+                <img
+                  src={src}
+                  alt={item.title}
+                  width={item.width}
+                  height={item.height}
+                  loading="lazy"
+                />
+              </a>
+              <h3>{item.title}</h3>
+              <p>{item.kind} · Codex ImageGen</p>
+              <p>{item.use}</p>
+              <div class="image-actions">
+                <CopyImageButton client:load src={src} name={item.title} />
+                <a class="btn btn-secondary min-h-11" href={src} download>
+                  Download
+                </a>
+              </div>
+              <details class="brief">
+                <summary>
+                  {item.slug === "ember-moth" ? "Initial generation prompt" : "Generation prompt"}
+                </summary>
+                <label class="sr-only" for={`prompt-${item.slug}`}>
+                  Prompt for {item.title}
+                </label>
+                <textarea
+                  class="textarea"
+                  id={`prompt-${item.slug}`}
+                  readonly
+                  rows="6"
+                >{item.prompt}</textarea>
+                <button type="button" data-copy-brief class="btn btn-secondary min-h-11" hidden>
+                  Copy prompt
+                </button>
+                <span role="status"></span>
+              </details>
+            </article>
+          );
+        })}
+      </div>
+    </section>
 
     <section aria-labelledby="references">
       <h2 id="references">Reference prints</h2>
@@ -205,7 +232,13 @@ const study = `${imageBase}/after-the-tide.webp`;
           Scene prompt
         </label>
         <textarea class="textarea" id="scene-brief" readonly rows="6">{prompt}</textarea>
-        <button type="button" id="copy-brief" class="btn btn-secondary min-h-11" hidden>
+        <button
+          type="button"
+          id="copy-brief"
+          data-copy-brief
+          class="btn btn-secondary min-h-11"
+          hidden
+        >
           Copy brief
         </button>
         <span id="brief-status" role="status"></span>
@@ -237,20 +270,23 @@ const study = `${imageBase}/after-the-tide.webp`;
 </StudioLayout>
 
 <script>
-  const button = document.querySelector<HTMLButtonElement>("#copy-brief")!;
-  const prompt = document.querySelector<HTMLTextAreaElement>("#scene-brief")!;
-  const status = document.querySelector<HTMLSpanElement>("#brief-status")!;
-  button.hidden = false;
-  button.addEventListener("click", async () => {
-    try {
-      await navigator.clipboard.writeText(prompt.value);
-      status.textContent = "Brief copied";
-    } catch {
-      prompt.select();
-      prompt.focus();
-      status.textContent = "Use your device’s Copy command to copy the selected brief.";
-    }
-  });
+  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-copy-brief]")) {
+    const details = button.closest("details");
+    const prompt = details?.querySelector("textarea");
+    const status = details?.querySelector('[role="status"]');
+    if (!prompt || !status) continue;
+    button.hidden = false;
+    button.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(prompt.value);
+        status.textContent = button.id === "copy-brief" ? "Brief copied" : "Prompt copied";
+      } catch {
+        prompt.focus();
+        prompt.select();
+        status.textContent = "Use your device’s Copy command to copy the selected text.";
+      }
+    });
+  }
 </script>
 
 <style>
@@ -320,6 +356,17 @@ const study = `${imageBase}/after-the-tide.webp`;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 1.2rem;
+  }
+  .study-heading {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem 1rem;
+    margin-bottom: 0.85rem;
+  }
+  .study-heading h2 {
+    margin-bottom: 0;
   }
   .reference-image {
     display: grid;

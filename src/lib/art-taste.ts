@@ -1,5 +1,6 @@
 export const ART_TASTE_FILTERS = [
   ["all", "All art"],
+  ["studies", "Studio studies"],
   ["candidates", "Card candidates"],
   ["collections", "Collection art"],
   ["icons", "Icons"],
