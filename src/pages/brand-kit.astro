@@ -50,29 +50,33 @@ const wordmark = asset("wordmark-png") ?? "/brand/wordmark.png";
 const wordmarkReverse = asset("wordmark-reverse") ?? "/brand/wordmark-reverse.png";
 const og = asset("social-og-png") ?? "/brand/kit/social/og-1200x630.png";
 const banner = asset("banner-1920") ?? "/brand/kit/banners/foil-standard-1920x1080.png";
+const bannerSmall = asset("banner-960") ?? "/brand/kit/banners/foil-standard-960x540.png";
 const avatar = asset("discord-avatar") ?? "/brand/discord-avatar.png";
 const cardBack = asset("card-back") ?? "/brand/card-back.webp";
 ---
 
 <BaseLayout
-  title="Brand kit · Foilbury"
-  description="The Foil Standard: Foilbury's monochrome identity, Geist type, foil-blue signal, app icon, Discord assets and social previews."
+  title="Media kit · Foilbury"
+  description="Download Foilbury logos, icons, Discord assets, social images and videos."
   shareImage={og}
 >
   <section class="brand-hero">
     <div class="container brand-hero__grid">
       <div class="brand-hero__copy">
-        <h1 class="brand-hero__title">The Foil Standard.</h1>
+        <h1 class="brand-hero__title">Media kit</h1>
         <p class="brand-hero__lede">
-          A monochrome archive with one electric foil edge. Geist Serif gives the cabinet its voice;
-          Geist Sans and Mono keep the odds, serials and controls exact.
+          Download Foilbury’s logos, Discord assets and link previews, or pick an image or video for
+          your next post.
         </p>
         <div class="brand-hero__actions">
           <a class="btn btn-invert" href="#downloads">
-            Download the kit
+            Logos &amp; icons
           </a>
-          <a class="btn btn-invert-outline" href="/">
-            See it live
+          <a class="btn btn-invert-outline" href="/showcase">
+            Social images &amp; videos
+          </a>
+          <a class="btn btn-invert-outline" href="#surfaces">
+            Discord &amp; link previews
           </a>
         </div>
         <dl class="brand-hero__facts">
@@ -112,7 +116,7 @@ const cardBack = asset("card-back") ?? "/brand/card-back.webp";
   <section class="brand-section" id="mark">
     <div class="container">
       <div class="brand-section__head">
-        <h2>The mark.</h2>
+        <h2>Logos &amp; icons</h2>
         <p>
           Two card planes, one fold. The paper F sits over a foil-blue plane and the top-right
           corner is chamfered like a turned card. It reads as an F at 16px and as a stacked card at
@@ -185,20 +189,26 @@ const cardBack = asset("card-back") ?? "/brand/card-back.webp";
             to the mark.
           </p>
         </div>
-        <div id="downloads">
-          <h3>Download</h3>
+        <div id="downloads" class="scroll-mt-24">
+          <h3>Download logos &amp; icons</h3>
           <p class="brand-links">
             <a href={mark} download>
-              PNG
+              App icon PNG
+            </a>
+            <a href={markTransparent} download>
+              Transparent icon PNG
+            </a>
+            <a href={wordmark} download>
+              Wordmark PNG
+            </a>
+            <a href={wordmarkReverse} download>
+              Light wordmark PNG
             </a>
             <a href="/brand/kit/foil-standard/mark.svg" download>
-              SVG
+              Logo SVG
             </a>
             <a href="/brand/kit/foil-standard/glyph.svg" download>
-              Glyph
-            </a>
-            <a href="/brand/kit/manifest.json" download>
-              Manifest
+              Glyph SVG
             </a>
           </p>
         </div>
@@ -288,10 +298,10 @@ const cardBack = asset("card-back") ?? "/brand/card-back.webp";
     </div>
   </section>
 
-  <section class="brand-section brand-section--paper" id="surfaces">
+  <section class="brand-section brand-section--paper scroll-mt-24" id="surfaces">
     <div class="container">
       <div class="brand-section__head">
-        <h2>The surfaces.</h2>
+        <h2>Discord &amp; link previews</h2>
         <p>
           Social previews, the Discord application, the server banner and the card back all use the
           same ink field, the same mark and the same foil edge.
@@ -349,16 +359,16 @@ const cardBack = asset("card-back") ?? "/brand/card-back.webp";
         <figure class="brand-surface brand-surface--downloads">
           <div>
             <h3>Ready-to-ship files</h3>
-            <p>
-              Every asset is deterministic, local and generated from the same masters. No paid
-              generation and no stock imagery.
-            </p>
+            <p>Use the size that fits where you’re posting.</p>
             <p class="brand-links">
               <a href={og} download>
                 Open Graph
               </a>
               <a href={banner} download>
-                Banner
+                Banner (1920 × 1080)
+              </a>
+              <a href={bannerSmall} download>
+                Banner (960 × 540)
               </a>
               <a href={avatar} download>
                 Avatar

@@ -44,32 +44,14 @@
       "bytes": 2424619
     },
     {
-      "file": "public/media/showcase/manifest.json",
-      "sha256": "cd17fe8c33a37537b50e18573428d3afd3fa35bba6fddc54335c07edc4c15ef8",
-      "bytes": 2878
-    },
-    {
       "file": "public/media/showcase/og-1200x630.png",
       "sha256": "1ae4885e0288a9f8fa6df453c7ca8072e10b64287080bde962e447f4d839eef6",
       "bytes": 525463
     }
   ],
-  "private_demo": {
-    "draw_id": "drw_mw0ovw274f5kvb2r5h546e37",
-    "instance_id": "ins_mw0ovw27j8pg2md0fwgg4h6d",
-    "receipt_created_at": "2026-11-03T12:54:03.536Z",
-    "card": "Album Proof 1793710428730",
-    "variant": "Gold",
-    "serial": "FB-1-JU-54BFCC",
-    "pool_revision": 1,
-    "audience": "local-demo-private",
-    "image_note": "Persisted local draw receipt; the recorded render is no longer available, so this poster shows the receipt facts without substitute card art.",
-    "output": ".foilbury/exports/opening-replay-9x16.mp4"
-  },
   "regeneration": "node scripts/export-showcase.mjs",
   "notes": [
     "Stills and public trailer use only approved public showcase renders.",
-    "The opening replay is a real persisted local draw receipt, kept private and labelled local demo.",
     "Video is silent by design; no music or voice rights are implied.",
     "The export action never draws, spends, grants or mutates gameplay."
   ]
