@@ -27,9 +27,9 @@ function gradeMatches(piece: ArtTastePiece, filter: (typeof FILTERS)[number][0])
   return true;
 }
 
-export default function AllArt() {
+export default function AllArt({ initialKind }: { initialKind: "all" | "studies" }) {
   const [pieces, setPieces] = useState<ArtTastePiece[]>([]);
-  const [kind, setKind] = useState<ArtTasteKind | "all">("all");
+  const [kind, setKind] = useState<ArtTasteKind | "all">(initialKind);
   const [grade, setGrade] = useState<(typeof FILTERS)[number][0]>("any");
   const [collection, setCollection] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -166,6 +166,11 @@ export default function AllArt() {
           </label>
         )}
         {!loading && !error && <span role="status">{visible.length} pieces</span>}
+        {kind === "studies" && (
+          <a className="review-tile-brief" href="/studio/resources#studies">
+            Prompts and downloads
+          </a>
+        )}
       </div>
 
       {loading ? (

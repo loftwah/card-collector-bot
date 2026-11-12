@@ -1,8 +1,9 @@
 ---
 import StudioLayout from "../../layouts/StudioLayout.astro";
 import AllArt from "../../components/art/AllArt";
+const initialKind = Astro.url.searchParams.get("kind") === "studies" ? "studies" : "all";
 ---
 
 <StudioLayout compact>
-  <AllArt client:load />
+  <AllArt client:load initialKind={initialKind} />
 </StudioLayout>

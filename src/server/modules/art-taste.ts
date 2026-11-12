@@ -1,6 +1,12 @@
 import { BRAND_ASSETS } from "../../lib/brand-catalogue";
 import { CARD_STYLES } from "../../lib/card-styles";
 import type { ArtTaste, ArtTastePiece } from "../../lib/art-taste";
+import {
+  AFTER_THE_TIDE,
+  REFERENCE_PRINTS,
+  STUDIO_IMAGE_BASE,
+  STUDIO_STUDIES,
+} from "../../lib/studio-resources";
 import { ApiError, requireUser, type Ctx } from "../context";
 import { all, first, nowIso } from "../db";
 import { listArtBriefs } from "./art-lab";
@@ -22,6 +28,28 @@ function requireTasteOperator(ctx: Ctx) {
 }
 
 const duplicateExports = new Set(["og-master", "banner-standard-960", "share-banner"]);
+const studioPieces: ArtTastePiece[] = [
+  ...[...STUDIO_STUDIES, AFTER_THE_TIDE].map((study): ArtTastePiece => ({
+    id: `studio:${study.file}`,
+    kind: "studies",
+    name: study.title,
+    caption: study.kind,
+    image: `${STUDIO_IMAGE_BASE}/${study.file}`,
+    width: study.width,
+    height: study.height,
+    provenance: `Codex ImageGen. ${study.use}`,
+  })),
+  ...REFERENCE_PRINTS.map((print): ArtTastePiece => ({
+    id: `studio:${print.file}`,
+    kind: "studies",
+    name: print.title,
+    caption: "Reference print",
+    image: `${STUDIO_IMAGE_BASE}/${print.file}`,
+    width: print.width,
+    height: print.height,
+    provenance: `${print.credit}. ${print.rights}. ${print.use}`,
+  })),
+];
 const brandPieces: ArtTastePiece[] = [
   ...BRAND_ASSETS.filter(
     (asset) => asset.kind !== "card_styles" && !duplicateExports.has(asset.id),
@@ -123,10 +151,12 @@ export async function listArtTaste(ctx: Ctx): Promise<{ pieces: ArtTastePiece[] 
   const candidates = candidatePieces(briefs, new Set(collections.map(({ id }) => id)));
   const tastes = new Map(saved.map(({ piece_id, grade, note }) => [piece_id, { grade, note }]));
   return {
-    pieces: [...candidates, ...collectionPieces(collections), ...brandPieces].map((piece) => ({
-      ...piece,
-      taste: tastes.get(piece.id),
-    })),
+    pieces: [...studioPieces, ...candidates, ...collectionPieces(collections), ...brandPieces].map(
+      (piece) => ({
+        ...piece,
+        taste: tastes.get(piece.id),
+      }),
+    ),
   };
 }
 
@@ -146,7 +176,7 @@ export async function saveArtTaste(
       ? candidatePieces(briefs, new Set(collections.map(({ id }) => id)))
       : collections
         ? collectionPieces(collections)
-        : brandPieces;
+        : [...studioPieces, ...brandPieces];
   if (!pieces.some((piece) => piece.id === pieceId)) {
     throw new ApiError(
       404,

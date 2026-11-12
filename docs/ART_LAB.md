@@ -574,3 +574,30 @@ From Art Lab, open **Resources** to browse credited museum reference prints, fin
 - Exact generation prompt:
 
 > Generate one original landscape environment plate for Foilbury Studio, title in our catalogue is After the Tide (do not draw the title). Use the supplied Katsushika Hokusai public-domain woodblock scan only as a reference for indigo ink, paper grain, and asymmetrical silhouette. An empty remote basalt coast at first light: steep dark ink cliffs anchor the left edge, successive tidal terraces sweep diagonally to the lower right, and a tiny copper dawn opens above still water in the upper right. Open low-contrast midground across the centre for a separately composited character. Striking strong masses, actual woodblock ink registration, restrained midnight navy, oxidised slate and warm paper highlights. Atmospheric original composition. No large breaking wave, no Fuji, no boats, no people, no frame or card mockup, no border, no lettering, no characters, no signature, no seal. Wide landscape 3:2, edge-to-edge. Scene layer only.
+
+### Studio studies · 2026-11-12
+
+[Studio studies](/studio/all-art?kind=studies) brings together the five studies
+below, After the Tide and the three credited museum prints. The Resources page
+shows the intended use, provides the exact generation prompts, and offers copy
+and download actions. The review wall uses the existing private grades and notes.
+
+These are scoped Studio studies, each `official:false`, created with native
+Codex ImageGen. The tool did not report its exact model, seed or per-image cost.
+No separately billed provider API was called. The briefs used no external
+reference images. Ember Moth was edited from its first native output to recover
+the wing tips and give the subject a clear transparent margin.
+
+| Study | Use | Dimensions | PNG master SHA-256 | Studio WebP SHA-256 |
+| --- | --- | --- | --- | --- |
+| Clubroom After Hours | Scene behind a separately composited character | 1536×1024 | `2dade7810eb5c524dda79de4a6a23191a816a4157587c2d2cac7435d097627bc` | `356b15a788dab36f62a1c02e3505e6f5f7c631ef39bf000db1a805e529d2e1bd` |
+| Bell Before the Bout | Fighter banner background study | 1536×1024 | `74f94b94a60012d9bf3e8496e1a0daa4672a0cc83fe8c732934c009dfdcf4fb6` | `9caeb593f731b040dfda9d2fb35e435b36406e1231e7fe25cba4d3d7406ef3fa` |
+| Rolled Silver | Masked material texture, try overlay or soft-light | 1254×1254 | `4211982e3c4b1b9d729bfac78bbaef99ef7cd31bf50e4b6f80d2001bf6eb0bd0` | `75a6cec4f26361da98ecc14ee8047f36664b6592a2b69d6f71b1b742e817ed46` |
+| Fern Corner | Frame ornament with transparent art window area | 1254×1254 RGBA | `e6a727656bb066f4a4e6d07f5786b48354ab7456572ccca9d2e016e46a5de90d` | `bc4c6060ee3906b94be7c18ff9b55395d39e5efb20c33d326c333dc72221d539` |
+| Ember Moth | Original transparent subject for composition tests | 1374×1145 RGBA | `5daff618afe98d63f14cb53e5daf09b1b5002651dacce7f4b3d95a5071272692` | `bb61fa8efd486148ca2312f7e37d2436cd7d428cb333aa46582ac86668def8fa` |
+
+The exact initial prompts live in `src/lib/studio-resources.ts`. The Ember Moth
+edit reference PNG has SHA-256 `b383fac30aa9e919ad123b485a810c79769c37ce7d509209c8a8aae28733ec9c`.
+Its edit prompt was:
+
+> Edit this exact Ember Moth subject cutout. Preserve the face, four-wing silhouette, rust-orange eyespots and natural-history painting. Zoom out enough to give the subject at least 12% empty, transparent padding on all four sides. Reconstruct the upper and left wing tips where they touch the original boundary, completing the same curves. Make the hair and wing fringes a clean natural alpha edge without any neon-yellow or red background pixels. Keep true transparent RGBA, no checkerboard, backdrop, type or other objects.
