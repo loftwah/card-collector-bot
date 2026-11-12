@@ -21,8 +21,11 @@ function requireTasteOperator(ctx: Ctx) {
   return user;
 }
 
+const duplicateExports = new Set(["og-master", "banner-standard-960", "share-banner"]);
 const brandPieces: ArtTastePiece[] = [
-  ...BRAND_ASSETS.filter((asset) => asset.kind !== "card_styles").map((asset): ArtTastePiece => ({
+  ...BRAND_ASSETS.filter(
+    (asset) => asset.kind !== "card_styles" && !duplicateExports.has(asset.id),
+  ).map((asset): ArtTastePiece => ({
     id: `brand:${asset.id}:${asset.path}`,
     kind: asset.kind === "icons" || asset.kind === "mascots" ? asset.kind : "brand",
     name: asset.label,

@@ -11249,6 +11249,12 @@ html[data-motion="reduced"] .layered-card__effect {
   border-bottom: 1px solid var(--line);
 }
 
+.all-art-filters .chip {
+  flex: none;
+  min-height: 44px;
+  white-space: nowrap;
+}
+
 .review-wall-controls {
   display: flex;
   flex-wrap: wrap;
@@ -11264,6 +11270,10 @@ html[data-motion="reduced"] .layered-card__effect {
 
 .review-wall-controls select {
   max-width: 100%;
+}
+
+.review-wall-collection select {
+  width: min(55vw, 20rem);
 }
 
 .review-wall-controls > span,
@@ -11314,6 +11324,15 @@ html[data-motion="reduced"] .layered-card__effect {
   width: 100%;
   height: auto;
   object-fit: contain;
+}
+
+.review-tile-missing {
+  display: grid;
+  min-height: 6rem;
+  place-items: center;
+  padding: 0.65rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
 }
 
 .review-tile[data-kind="icons"] img,

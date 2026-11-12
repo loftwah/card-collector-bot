@@ -151,7 +151,7 @@ export default function AllArt() {
           </select>
         </label>
         {collections.length > 0 && (
-          <label>
+          <label className="review-wall-collection">
             <span className="sr-only">Filter by collection</span>
             <select
               className="select min-h-11"
@@ -231,6 +231,7 @@ function ReviewTile({
   const [busy, setBusy] = useState(false);
   const saving = useRef(false);
   const [message, setMessage] = useState("");
+  const [imageFailed, setImageFailed] = useState(false);
   const name = `${piece.name} · ${piece.caption}`;
 
   async function submit(patch: Partial<ArtTaste>) {
@@ -263,16 +264,22 @@ function ReviewTile({
         type="button"
         className="all-art-tile"
         onClick={open}
+        disabled={imageFailed}
         aria-label={`Open ${name} full size`}
       >
         <span className="all-art-tile__object">
-          <img
-            src={piece.image}
-            alt=""
-            width={piece.width ?? undefined}
-            height={piece.height ?? undefined}
-            loading={eager ? "eager" : "lazy"}
-          />
+          {imageFailed ? (
+            <span className="review-tile-missing">Image unavailable</span>
+          ) : (
+            <img
+              src={piece.image}
+              alt=""
+              width={piece.width ?? undefined}
+              height={piece.height ?? undefined}
+              loading={eager ? "eager" : "lazy"}
+              onError={() => setImageFailed(true)}
+            />
+          )}
         </span>
         <strong>{piece.name}</strong>
         <span className="review-tile-caption">
