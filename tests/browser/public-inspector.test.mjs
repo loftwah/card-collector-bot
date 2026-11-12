@@ -121,6 +121,14 @@ test(
             ?.getAttribute("alt");
         });
         assert.equal(hit, "Fixture subject back, Plain finish", `${label}: card back is obscured`);
+        const expand = page.getByRole("button", { name: "Expand", exact: true });
+        await expand.click({ timeout: 2500 });
+        const viewer = page.getByRole("dialog", { name: "Fixture subject" });
+        await viewer.getByRole("link", { name: "Download Fixture subject back" }).waitFor();
+        await page.keyboard.press("Escape");
+        await viewer.waitFor({ state: "hidden" });
+        assert.equal(await stage.getAttribute("data-flipped"), "true");
+        assert.equal(await expand.evaluate((button) => button === document.activeElement), true);
         await page.screenshot({ path: path.join(dir, `${label}-interactive.png`), fullPage: true });
         await stage.focus();
         await page.keyboard.press("f");

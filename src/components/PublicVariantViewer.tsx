@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Box, RotateCcw, Sparkles } from "lucide-react";
 import { displayFinish, printTitle as editionPrintTitle } from "@/lib/utils";
+import CardViewer from "./cards/CardViewer";
 import CardInspector from "./player/CardInspector";
 import { cn } from "@/lib/utils";
 
@@ -78,6 +79,7 @@ export default function PublicVariantViewer({
     ? displayFinish(variant.name, variant.material_key, variant.effect_key)
     : null;
   const printTitle = printTitleOf(variant);
+  const fallbackBack = cardBackUrl ?? "/brand/card-back.webp";
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-start">
       <div className="min-w-0">
@@ -85,7 +87,7 @@ export default function PublicVariantViewer({
           <CardInspector
             frontUrl={variant?.render_url ?? null}
             backUrl={variant?.back_render_url ?? null}
-            fallbackUrl={cardBackUrl}
+            fallbackUrl={fallbackBack}
             name={name}
             subtitle={subtitle}
             finish={selectedFinish ?? ""}
@@ -93,6 +95,21 @@ export default function PublicVariantViewer({
             initialEnabled
             initialFlipped={showBack}
             framed
+            viewerItems={
+              variant?.render_url
+                ? [
+                    {
+                      id: variant.id,
+                      name,
+                      variation: printTitle,
+                      collection: collection?.name,
+                      finish: selectedFinish,
+                      front: variant.render_url,
+                      back: variant.back_render_url ?? fallbackBack,
+                    },
+                  ]
+                : []
+            }
           />
         ) : (
           <div className="card-rail p-3">
@@ -100,7 +117,7 @@ export default function PublicVariantViewer({
               {showBack ? (
                 <div className="relative h-full w-full bg-[var(--ink)]">
                   <img
-                    src={variant?.back_render_url ?? cardBackUrl ?? "/brand/card-back.webp"}
+                    src={variant?.back_render_url ?? fallbackBack}
                     alt={`Back of ${name}`}
                     className="h-full w-full object-cover"
                   />
@@ -268,6 +285,7 @@ export default function PublicVariantViewer({
           </a>
         </div>
       </div>
+      {inspect ? <CardViewer /> : null}
     </div>
   );
 }

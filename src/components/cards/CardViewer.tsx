@@ -50,15 +50,20 @@ export interface CardViewerItem {
 export interface CardViewerRequest {
   items: CardViewerItem[];
   index?: number;
+  side?: "front" | "back";
 }
 
 const OPEN_EVENT = "foilbury:card-viewer";
 
-export function openCardViewer(items: CardViewerItem[], index = 0): void {
+export function openCardViewer(
+  items: CardViewerItem[],
+  index = 0,
+  side: "front" | "back" = "front",
+): void {
   if (!items.length || typeof window === "undefined") return;
   window.dispatchEvent(
     new CustomEvent<CardViewerRequest>(OPEN_EVENT, {
-      detail: { items, index: Math.max(0, Math.min(items.length - 1, index)) },
+      detail: { items, index: Math.max(0, Math.min(items.length - 1, index)), side },
     }),
   );
 }
@@ -117,10 +122,11 @@ export default function CardViewer() {
     function onOpen(event: Event) {
       const detail = (event as CustomEvent<CardViewerRequest>).detail;
       if (!detail?.items?.length) return;
+      const index = Math.max(0, Math.min(detail.items.length - 1, detail.index ?? 0));
       restoreRef.current = document.activeElement as HTMLElement | null;
       setItems(detail.items);
-      setIndex(Math.max(0, Math.min(detail.items.length - 1, detail.index ?? 0)));
-      setSide("front");
+      setIndex(index);
+      setSide(detail.side === "back" && detail.items[index]?.back ? "back" : "front");
       setReviewComment("");
       setReviewNotice("");
       const dialog = dialogRef.current;

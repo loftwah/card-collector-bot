@@ -2,7 +2,7 @@
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { pageContext } from "../../server/page";
 import { getTaxonomy, listCards } from "../../server/modules/catalogue";
-import { getCollection, listPublicCollections } from "../../server/modules/collections";
+import { listPublicCollections } from "../../server/modules/collections";
 
 const ctx = await pageContext(Astro.request);
 const search = Astro.url.searchParams.get("search") ?? "";
