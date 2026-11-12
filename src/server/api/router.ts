@@ -601,7 +601,7 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
       segments.length === 5 &&
       segments[2] === "briefs" &&
       segments[3] &&
-      segments[4] === "generate" &&
+      (segments[4] === "generate" || segments[4] === "import") &&
       method === "POST"
     ) {
       return routeArtLab(request, ctx, segments, url, method);
@@ -3123,9 +3123,14 @@ export async function routeApi(request: Request, ctx: Ctx, path: string): Promis
     method === "GET"
   ) {
     ensureCollectionsRead(ctx);
+    const managed = await getCollection(ctx, segments[2], { includeAll: true }).catch((error: unknown) => {
+      if (error instanceof ApiError && error.code === "collection_not_found") return null;
+      throw error;
+    });
+    const collection = managed?.manageable ? managed : await getCollection(ctx, segments[2]);
     return json({
-      collection: await getCollection(ctx, segments[2]),
-      cards: await listCollectionCards(ctx, segments[2]),
+      collection,
+      cards: await listCollectionCards(ctx, collection.id, { includeDrafts: managed?.manageable }),
     });
   }
   if (

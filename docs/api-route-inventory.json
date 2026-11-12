@@ -1,5 +1,5 @@
 {
-  "route_count": 205,
+  "route_count": 206,
   "direct_route_count": 21,
   "routes": [
     {
@@ -135,6 +135,19 @@
     {
       "method": "POST",
       "path": "/api/v1/admin/art/briefs/:param/generate",
+      "guards": [],
+      "auth_only": [],
+      "scopes": [],
+      "roles": [],
+      "schema": null,
+      "calls": [
+        "routeArtLab"
+      ],
+      "studio_alias": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/art/briefs/:param/import",
       "guards": [],
       "auth_only": [],
       "scopes": [],
@@ -3202,6 +3215,7 @@
       "roles": [],
       "schema": null,
       "calls": [
+        "catch",
         "getCollection",
         "listCollectionCards"
       ],

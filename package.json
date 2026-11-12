@@ -38,6 +38,7 @@
     "cards:render": "node scripts/render-cards.mjs",
     "jobs:run": "node scripts/render-cards.mjs",
     "art:run": "node scripts/art-lab-runner.mjs",
+    "art:collection": "node scripts/art/collection-art.mjs",
     "art:dry": "node scripts/art-lab-runner.mjs --dry-run",
     "backup": "node scripts/backup.mjs",
     "restore": "node scripts/restore.mjs",

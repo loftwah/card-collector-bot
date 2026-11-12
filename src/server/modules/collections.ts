@@ -269,15 +269,16 @@ export async function listCollectionCards(
        JOIN fb_card_definitions cd ON cd.id = cc.card_id
        LEFT JOIN fb_categories cat ON cat.id = cd.category_id
       WHERE cc.collection_id = ? AND cd.archived_at IS NULL ${statusClause}
-        AND EXISTS (
+        AND (? = 1 OR EXISTS (
           SELECT 1 FROM fb_artwork_editions ae
           JOIN fb_assets asa ON asa.id = ae.subject_asset_id AND asa.tenant_id = ae.tenant_id
           WHERE ae.card_id = cd.id AND ae.status = 'published' AND ae.archived_at IS NULL
             AND (? = 1 OR asa.origin NOT IN ('ai_assisted','ai_generated'))
-        )
+        ))
       ORDER BY cc.sort, cd.name`,
     includeAi ? 1 : 0,
     collection.id,
+    options?.includeDrafts ? 1 : 0,
     includeAi ? 1 : 0,
   );
 }
@@ -397,7 +398,7 @@ export async function createCollection(
     }
   }
   await auditCollection(ctx, "collection.created", id, { name, slug, scope: input.scope });
-  return (await getCollection(ctx, id)) as CollectionRow;
+  return (await getCollection(ctx, id, { includeAll: true })) as CollectionRow;
 }
 
 export async function updateCollection(
@@ -553,7 +554,9 @@ export async function addCollectionCards(
   id: string,
   cardIds: string[],
 ): Promise<{ added: number }> {
-  const collection = await getCollection(ctx, id);
+  const collection = await getCollection(ctx, id, { includeAll: true });
+  if (collection.status === "archived")
+    throw new ApiError(404, "collection_not_found", "That collection is archived.");
   assertManage(ctx, collection);
   const unique = [...new Set(cardIds)].slice(0, 300);
   if (!unique.length) throw new ApiError(422, "cards_required", "Choose at least one card.");
@@ -591,7 +594,9 @@ export async function addCollectionCards(
 }
 
 export async function removeCollectionCard(ctx: Ctx, id: string, cardId: string): Promise<void> {
-  const collection = await getCollection(ctx, id);
+  const collection = await getCollection(ctx, id, { includeAll: true });
+  if (collection.status === "archived")
+    throw new ApiError(404, "collection_not_found", "That collection is archived.");
   assertManage(ctx, collection);
   await ctx.db
     .prepare("DELETE FROM fb_collection_cards WHERE collection_id = ? AND card_id = ?")

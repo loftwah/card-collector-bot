@@ -69,6 +69,67 @@ the face and type clear across the family.
 
 ## Work in batches and verify the live card
 
+### Start a new member collection
+
+In Studio, create the collection and roster as member drafts. Upload the
+collection mark and banner, then add one Plain artwork edition per draft card.
+Studio creates the edition and finish as published targets. The draft
+collection and cards stay out of member browsing while you prepare the faces.
+In an ignored directory such as
+`.foilbury/content/<collection-slug>/`, save the art brief as `art.json`.
+Paths are relative to that file. The IDs are optional for planning and come
+from the existing Studio collection, card and target variant before staging.
+
+```json
+{
+  "collection": {
+    "name": "Lantern Detectives",
+    "mark": "mark.png",
+    "direction": "Warm newsprint, engraved brass rails, bold cream type"
+  },
+  "cards": [
+    {
+      "key": "signal-keeper-plain",
+      "name": "Signal Keeper",
+      "role": "Night shift detective",
+      "rarity": "Rare",
+      "description": "Tracks broken lanterns after dark.",
+      "credit": "Character art by the collection creator.",
+      "scene": "A foggy signal box with a single warm window",
+      "motif": "An engraved green lantern",
+      "source": "signal-keeper-source.png",
+      "front": "signal-keeper-front.png",
+      "back": "signal-keeper-back.png"
+    }
+  ]
+}
+```
+
+1. Run `pnpm art:collection plan <path-to-art.json>`. The result lists exact
+   copy, prompts, ordered reference paths and output filenames. Generate the
+   anchor first, then add its selected front as `collection.anchor` and rerun
+   the plan for the rest of the roster. Run independent fronts in parallel
+   and use each selected front as the matching back's first reference.
+2. Run `pnpm art:collection proof <path-to-art.json>`. Both faces must be
+   single PNG, WebP or JPEG images at an exact 5:7 ratio and at least 750 px
+   wide. Inspect the proofs at 400, 214 and 128 px for copy, likeness, logo,
+   finish and cropping. The command records file hashes so the operator can
+   identify the exact selection.
+3. Add `collection.id` and each card's `cardId` and `variantId`, then run
+   `pnpm art:collection stage <path-to-art.json>`. It uses the existing Studio
+   agent credentials and defaults to localhost. It attaches both faces as one
+   member-only Art Lab candidate per row and prints the brief and candidate IDs.
+   The import runs outside the paid generation queue. Repeating the command
+   for the same selection resumes the existing job or reuses the saved candidate.
+   For production, take the normal D1 backup and use the existing scoped
+   production-agent setup. Keep the manifest, exact prompts, proofs, staging
+   receipts and masters with the collection's private source files.
+4. In **Studio → Art Lab**, review and publish each pair to its target.
+   Publish the cards and collection, then configure the Bot's collection and pool when it
+   is ready to play. Check a member's odds, an actual front/back flip and
+   signed-out media denial. Preserve issued versions when refreshing a live
+   collection. Follow the existing release and rollback workflow for a capsule.
+
 Build the queue from the live catalogue, grouped by collection, subject and
 published print/finish. Catalogue and brand assets have separate inventory.
 Generate independent subjects in parallel after the anchor is selected.
