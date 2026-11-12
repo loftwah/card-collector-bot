@@ -61,6 +61,7 @@ export default function CardInspector({
 
   const front = frontUrl ?? fallbackUrl;
   const back = backUrl ?? fallbackUrl;
+  const canExpand = viewerItems.length > 0;
 
   useEffect(() => {
     setHydrated(true);
@@ -81,7 +82,7 @@ export default function CardInspector({
   useEffect(() => {
     if (!enabled) return;
     const onEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.defaultPrevented) return;
       setTilt({ x: 0, y: 0 });
       setFlipped(false);
       setEnabled(false);
@@ -163,8 +164,8 @@ export default function CardInspector({
   }
 
   function expand() {
-    if (!viewerItems.length) return;
-    openCardViewer(viewerItems, 0);
+    if (!canExpand) return;
+    openCardViewer(viewerItems, 0, flipped ? "back" : "front");
   }
 
   async function recordInspection() {
@@ -212,7 +213,7 @@ export default function CardInspector({
     } else if (event.key.toLowerCase() === "f") {
       event.preventDefault();
       flipCard();
-    } else if (event.key === "Enter" && viewerItems.length) {
+    } else if (event.key === "Enter" && canExpand) {
       event.preventDefault();
       expand();
     } else if (event.key === "Escape") {
@@ -246,7 +247,7 @@ export default function CardInspector({
           onKeyDown={onKeyDown}
           tabIndex={0}
           role="group"
-          aria-label={`${name} card inspector. Click or press Enter to open full size. Use left and right arrows to tilt, F to flip, Escape to reset.`}
+          aria-label={`${name} card inspector.${canExpand ? " Click or press Enter to open full size." : ""} Use left and right arrows to tilt, F to flip, Escape to reset.`}
           data-active={active ? "true" : "false"}
           data-flipped={flipped ? "true" : "false"}
           data-mode={enabled ? (canTilt ? "interactive" : "static") : "flat"}
@@ -307,14 +308,11 @@ export default function CardInspector({
         >
           <Box size={14} /> {enabled ? "Exit 3D" : "Inspect in 3D"}
         </button>
-        <button
-          type="button"
-          className="btn btn-secondary btn-sm"
-          onClick={expand}
-          disabled={!viewerItems.length}
-        >
-          <Maximize2 size={14} /> Expand
-        </button>
+        {canExpand ? (
+          <button type="button" className="btn btn-secondary btn-sm" onClick={expand}>
+            <Maximize2 size={14} /> Expand
+          </button>
+        ) : null}
         {enabled ? (
           <button
             type="button"
@@ -329,11 +327,12 @@ export default function CardInspector({
         ) : null}
       </div>
       <p className="mt-2 font-mono text-[0.6875rem] tracking-[0.1em] text-[var(--muted)] uppercase">
+        {canExpand ? "Click to open full size · " : ""}
         {reduced
           ? "Static inspection · reduced motion is on"
           : enabled
-            ? "Click to open full size · drag or arrow keys to tilt · F flips"
-            : `Click to open full size · ${collection ?? "Cabinet"}${serial ? ` · ${serial}` : ""}`}
+            ? "Drag or arrow keys to tilt · F flips"
+            : `${collection ?? "Cabinet"}${serial ? ` · ${serial}` : ""}`}
       </p>
       {inspectionInstanceId ? (
         <div className="mt-2 min-h-5 text-xs text-[var(--muted)]" role="status" aria-live="polite">
