@@ -7,55 +7,52 @@ const session = Astro.locals.foilbury;
 const user = session?.user ?? null;
 const avatar = user ? accountAvatarViewFor(user) : null;
 const path = Astro.url.pathname;
+const isActive = (href: string) => path === href || path.startsWith(href + "/");
 const links = [
-  { href: "/cabinet", label: "Browse originals" },
-  { href: "/#how-it-works", label: "How it works" },
+  { href: "/cabinet", label: "Browse originals", primary: true },
+  { href: "/brand-kit", label: "Media kit", primary: true },
+  { href: "/find", label: "Find a page", primary: true },
+  ...(user ? [{ href: "/play", label: "My library", primary: true }] : []),
+  { href: "/tour", label: "Guided tour" },
   { href: "/journal", label: "Journal" },
+  ...(user ? [{ href: "/account/security", label: "Account security" }] : []),
 ];
-if (user) links.push({ href: "/play", label: "My library" });
-const canStudio = Boolean(
-  user &&
-  (user.platformAdmin ||
-    user.globalCollectionScope ||
-    ["owner", "editor", "economy_admin"].includes(user.role)),
-);
-if (canStudio) links.push({ href: "/studio", label: "Studio" });
-if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform" });
+if (
+  user?.platformAdmin ||
+  user?.globalCollectionScope ||
+  ["owner", "editor", "economy_admin"].includes(user?.role ?? "")
+) {
+  links.push({ href: "/studio", label: "Studio" });
+}
+if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform administration" });
 ---
 
 <header class="site-header">
   <div class="container site-header__inner flex min-h-[68px] flex-wrap items-center justify-between gap-2 py-3 sm:gap-4">
-    <a
-      href="/"
-      class="flex shrink-0 items-center gap-2.5 no-underline"
-      aria-label="Foilbury home"
-    >
+    <a href="/" class="flex shrink-0 items-center gap-2.5 no-underline" aria-label="Foilbury home">
       <BrandMark size={26} class="text-[var(--ink)]" />
       <span class="hidden font-display text-[1.35rem] font-medium tracking-[-0.025em] min-[420px]:inline">
         Foilbury
       </span>
     </a>
 
-    <nav class="hidden items-center gap-1 md:flex" aria-label="Primary">
-      {links.map((link) => (
-        <a
-          href={link.href}
-          class:list={[
-            "border-b px-3 py-2 font-sans text-[0.84rem] font-medium no-underline transition-colors",
-            (
-              link.href === "/play/draw"
-                ? path.startsWith("/play/draw")
-                : link.href === "/play"
-                  ? path.startsWith("/play") && !path.startsWith("/play/draw")
-                  : path === link.href || path.startsWith(link.href + "/")
-            )
-              ? "border-[var(--ink)] text-[var(--ink)]"
-              : "border-transparent text-[var(--muted)] hover:text-[var(--ink)]",
-          ]}
-        >
-          {link.label}
-        </a>
-      ))}
+    <nav class="hidden items-center gap-1 lg:flex" aria-label="Primary">
+      {links
+        .filter((link) => link.primary)
+        .map((link) => (
+          <a
+            href={link.href}
+            aria-current={isActive(link.href) ? "page" : undefined}
+            class:list={[
+              "border-b px-3 py-2 font-sans text-[0.84rem] font-medium no-underline transition-colors",
+              isActive(link.href)
+                ? "border-[var(--ink)] text-[var(--ink)]"
+                : "border-transparent text-[var(--muted)] hover:text-[var(--ink)]",
+            ]}
+          >
+            {link.label}
+          </a>
+        ))}
     </nav>
 
     <div class="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-0 min-[360px]:gap-1.5">
@@ -66,7 +63,12 @@ if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform"
             class="hidden min-h-[32px] items-center gap-1.5 rounded-full border border-[var(--line)] bg-[var(--panel)] px-2.5 py-1 font-sans text-[0.74rem] font-semibold no-underline sm:flex"
             title="Your Foil balance"
           >
-            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" class="h-[15px] w-[15px] text-[var(--signal)]">
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              aria-hidden="true"
+              class="h-[15px] w-[15px] text-[var(--signal)]"
+            >
               <circle cx="10" cy="10" r="7.25" stroke="currentColor" stroke-width="1.5"></circle>
               <path
                 d="M10 5.8v8.4M12.6 7.4c-.55-.8-1.45-1.2-2.55-1.2-1.35 0-2.3.7-2.3 1.8 0 1 .8 1.5 2.3 1.8 1.55.3 2.4.8 2.4 1.95 0 1.15-1 1.85-2.4 1.85-1.15 0-2.1-.45-2.65-1.25"
@@ -111,31 +113,31 @@ if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform"
         </a>
       )}
       <ThemeToggle client:load />
-      <details class="relative md:hidden">
+      <details class="relative">
         <summary
           class="btn btn-ghost btn-sm min-h-[44px] cursor-pointer list-none px-2"
           aria-label="Menu"
         >
           Menu
         </summary>
-        <div class="site-header__menu absolute right-0 top-11 z-30 border border-[var(--line-strong)] bg-[var(--paper)] p-2 shadow-xl">
+        <nav
+          aria-label="Site menu"
+          class="site-header__menu absolute right-0 top-11 z-30 border border-[var(--line-strong)] bg-[var(--paper)] p-2 shadow-xl"
+        >
           {links.map((link) => (
             <a
-              class="block px-3 py-2 font-sans text-[0.9rem] text-[var(--muted)] no-underline hover:bg-[var(--ink)]/5 hover:text-[var(--ink)]"
+              class:list={[
+                "flex min-h-11 items-center px-3 py-2 text-sm no-underline hover:bg-[var(--panel-3)]",
+                link.primary && "lg:hidden",
+                isActive(link.href) ? "font-semibold text-[var(--ink)]" : "text-[var(--muted)]",
+              ]}
               href={link.href}
+              aria-current={isActive(link.href) ? "page" : undefined}
             >
               {link.label}
             </a>
           ))}
-          {user ? (
-            <a
-              class="block px-3 py-2 font-sans text-[0.9rem] text-[var(--muted)] no-underline hover:bg-[var(--ink)]/5 hover:text-[var(--ink)]"
-              href="/account/security"
-            >
-              Account security
-            </a>
-          ) : null}
-        </div>
+        </nav>
       </details>
     </div>
   </div>
@@ -143,16 +145,20 @@ if (user?.platformAdmin) links.push({ href: "/platform-admin", label: "Platform"
 <script>
   document.addEventListener("click", (event) => {
     if (!(event.target instanceof Node)) return;
-    document.querySelectorAll<HTMLDetailsElement>(".site-header details[open]").forEach((details) => {
-      if (!details.contains(event.target as Node)) details.open = false;
-    });
+    document
+      .querySelectorAll<HTMLDetailsElement>(".site-header details[open]")
+      .forEach((details) => {
+        if (!details.contains(event.target as Node)) details.open = false;
+      });
   });
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
-    document.querySelectorAll<HTMLDetailsElement>(".site-header details[open]").forEach((details) => {
-      const returnFocus = details.contains(document.activeElement);
-      details.open = false;
-      if (returnFocus) details.querySelector<HTMLElement>("summary")?.focus();
-    });
+    document
+      .querySelectorAll<HTMLDetailsElement>(".site-header details[open]")
+      .forEach((details) => {
+        const returnFocus = details.contains(document.activeElement);
+        details.open = false;
+        if (returnFocus) details.querySelector<HTMLElement>("summary")?.focus();
+      });
   });
 </script>

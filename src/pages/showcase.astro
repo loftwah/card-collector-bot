@@ -1,164 +1,162 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
+import { BRAND_ASSETS } from "../lib/brand-catalogue";
 import manifest from "../../public/media/showcase/manifest.json";
 
-const stills = manifest.outputs.filter((item) => item.file.endsWith(".png"));
-const videos = manifest.outputs.filter((item) => item.file.endsWith(".mp4"));
+const media = (file: string) => `/media/showcase/${file}`;
+const publicBrandShareIds = ["share-square", "share-portrait", "share-story", "share-banner"];
+const brandImages = BRAND_ASSETS.filter((item) => publicBrandShareIds.includes(item.id));
+const cardImages = [
+  { file: "card-1x1-1080.png", title: "Square post", width: 1080, height: 1080 },
+  { file: "card-4x5-1080.png", title: "Portrait post", width: 1080, height: 1350 },
+  { file: "card-9x16-1080.png", title: "Story image", width: 1080, height: 1920 },
+  { file: "card-16x9-1920.png", title: "Landscape post", width: 1920, height: 1080 },
+  { file: "og-1200x630.png", title: "Link preview", width: 1200, height: 630 },
+  { file: "finish-mastery-16x9-1920.png", title: "Card finishes", width: 1920, height: 1080 },
+].map((item) => ({ ...item, path: media(item.file) }));
+const videos = [
+  {
+    file: "foilbury-teaser-9x16.mp4",
+    title: "Vertical teaser",
+    poster: "card-9x16-1080.png",
+    details: "1080 × 1920 · 8 seconds",
+  },
+  {
+    file: "foilbury-trailer-16x9.mp4",
+    title: "Landscape trailer",
+    poster: "card-16x9-1920.png",
+    details: "1920 × 1080 · 18 seconds",
+  },
+];
 ---
 
 <BaseLayout
-  title="Foilbury showcase · real cards, stills and video"
-  description="Public-safe Foilbury showcase assets: real card stills, front/back presentations, finish mastery, a playable 18-second trailer and a silent 9:16 teaser."
-  shareImage="/media/showcase/og-1200x630.png"
+  title="Social images & videos · Foilbury"
+  description="Download public Foilbury card images for posts and stories, plus the vertical teaser and landscape trailer."
+  shareImage="/brand/kit/social/og-1200x630.png"
 >
-  <section class="signal-rule" aria-hidden="true"></section>
-  <section class="container py-12 md:py-16">
-    <div class="grid gap-8 lg:grid-cols-[1fr_1fr] lg:items-end">
-      <div>
-        <p class="studio-kicker">Showcase · public-safe</p>
-        <h1 class="display mt-3 text-[clamp(3rem,8vw,7rem)] uppercase">
-          Real cards. Real exports.
-        </h1>
-        <p class="mt-5 max-w-2xl text-lg leading-relaxed text-[var(--muted)]">
-          These are generated from the real public renderer and real persisted state, not stock art
-          or a mock-up. The public trailer uses only approved original-IP showcase cards. Member
-          artwork and private receipts stay private.
-        </p>
-      </div>
-      <div class="border border-[var(--line)] bg-[var(--paper-2)]/45 p-5">
-        <p class="studio-stat__label">Export manifest</p>
-        <p class="mt-2 text-sm text-[var(--muted)]">
-          Source commit{" "}
-          <span class="font-mono text-[0.62rem]">{manifest.source_commit.slice(0, 12)}</span> ·
-          generated{" "}
-          {new Date(manifest.generated_at).toLocaleString("en-AU", {
-            timeZone: "Australia/Melbourne",
-          })}
-          .
-        </p>
-        <p class="mt-2 text-sm text-[var(--muted)]">
-          Every output records a SHA-256. The export action never draws, spends, grants or mutates
-          gameplay.
-        </p>
-        <div class="mt-4 flex flex-wrap gap-2">
-          <a class="btn btn-signal btn-sm" href="/media/showcase/manifest.json" download>
-            Download manifest
-          </a>
-          <a class="btn btn-secondary btn-sm" href="/brand-kit">
-            Brand kit
-          </a>
-        </div>
-      </div>
-    </div>
+  <div class="container py-10 md:py-16">
+    <a class="text-link" href="/brand-kit">
+      Media kit
+    </a>
+    <h1 class="display-sm mt-3 text-4xl md:text-6xl">Social images &amp; videos</h1>
+    <p class="mt-3 text-[var(--muted)]">
+      Download Foilbury graphics for posts and stories, or share a clip from the original-card
+      showcase.
+    </p>
+    <nav class="mt-5 flex flex-wrap gap-2" aria-label="Social downloads">
+      <a class="btn btn-secondary" href="#images">
+        Brand graphics
+      </a>
+      <a class="btn btn-secondary" href="#card-images">
+        Card images
+      </a>
+      <a class="btn btn-secondary" href="#videos">
+        Videos
+      </a>
+    </nav>
 
-    <section class="mt-10 grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
-      <article class="border border-[var(--line)] bg-[var(--paper)] p-3">
-        <video
-          class="w-full border border-[var(--line)]"
-          controls
-          preload="none"
-          poster="/media/showcase/card-16x9-1920.png"
-          playsinline
-        >
-          <source src="/media/showcase/foilbury-trailer-16x9.mp4" type="video/mp4" />
-          Your browser cannot play this MP4.{" "}
-          <a href="/media/showcase/foilbury-trailer-16x9.mp4">Download it instead.</a>
-        </video>
-        <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <p class="font-semibold">Public product trailer · 18 seconds</p>
-            <p class="font-mono text-[0.56rem] uppercase tracking-[0.1em] text-[var(--muted)]">
-              1920×1080 · H.264 · silent · real public renders
-            </p>
-          </div>
-          <a
-            class="btn btn-secondary btn-sm"
-            href="/media/showcase/foilbury-trailer-16x9.mp4"
-            download
-          >
-            Download MP4
-          </a>
-        </div>
-      </article>
-      <article class="border border-[var(--line)] bg-[var(--paper)] p-3">
-        <video
-          class="mx-auto w-full max-w-[360px] border border-[var(--line)]"
-          controls
-          preload="none"
-          poster="/media/showcase/card-9x16-1080.png"
-          playsinline
-        >
-          <source src="/media/showcase/foilbury-teaser-9x16.mp4" type="video/mp4" />
-          Your browser cannot play this MP4.{" "}
-          <a href="/media/showcase/foilbury-teaser-9x16.mp4">Download it instead.</a>
-        </video>
-        <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <p class="font-semibold">Silent social teaser · 8 seconds</p>
-            <p class="font-mono text-[0.56rem] uppercase tracking-[0.1em] text-[var(--muted)]">
-              1080×1920 · H.264 · silent
-            </p>
-          </div>
-          <a
-            class="btn btn-secondary btn-sm"
-            href="/media/showcase/foilbury-teaser-9x16.mp4"
-            download
-          >
-            Download 9:16
-          </a>
-        </div>
-      </article>
-    </section>
+    {[
+      {
+        id: "images",
+        title: "Brand graphics",
+        images: brandImages.map((item) => ({
+          path: item.path,
+          title: item.label,
+          width: item.width,
+          height: item.height,
+        })),
+      },
+      { id: "card-images", title: "Original-card showcase images", images: cardImages },
+    ].map((group) => (
+      <section id={group.id} class="mt-10 scroll-mt-24 border-t border-[var(--line)] pt-5">
+        <h2 class="text-2xl font-semibold">{group.title}</h2>
+        <ul class="mt-4 grid gap-x-5 gap-y-7 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {group.images.map((item) => (
+            <li class="min-w-0">
+              <a
+                href={item.path}
+                class="block"
+                aria-label={`View ${item.title.toLowerCase()} at full size`}
+              >
+                <img
+                  src={item.path}
+                  alt=""
+                  width={item.width}
+                  height={item.height}
+                  loading="lazy"
+                  class="aspect-[4/3] w-full border border-[var(--line)] bg-[var(--panel)] object-contain"
+                />
+              </a>
+              <div class="flex flex-wrap items-center justify-between gap-x-2 pt-2">
+                <div>
+                  <h3 class="font-semibold">{item.title}</h3>
+                  <p class="text-sm text-[var(--muted)]">
+                    {item.width} × {item.height}
+                  </p>
+                </div>
+                <a
+                  class="btn btn-secondary btn-sm min-h-11"
+                  href={item.path}
+                  aria-label={`Download ${item.title.toLowerCase()} PNG`}
+                  download
+                >
+                  Download PNG
+                </a>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+    ))}
 
-    <section class="mt-12">
-      <div class="flex flex-wrap items-end justify-between gap-3 border-b-2 border-[var(--ink)] pb-3">
-        <h2 class="display-sm text-3xl uppercase">Stills and crops</h2>
-        <p class="font-mono text-[0.6rem] uppercase tracking-[0.12em] text-[var(--muted)]">
-          1:1 · 4:5 · 9:16 · 16:9 · 1200×630
-        </p>
-      </div>
-      <div class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {stills.map((item) => (
-          <article class="border border-[var(--line)] bg-[var(--paper)] p-3">
-            <img
-              src={`/${item.file}`}
-              alt="Foilbury showcase still"
-              loading="lazy"
-              class="w-full border border-[var(--line)]"
-            />
-            <div class="mt-2 flex items-center justify-between gap-2">
-              <p class="font-mono text-[0.56rem] uppercase tracking-[0.08em] text-[var(--muted)]">
-                {item.file.split("/").pop()} · {(item.bytes / 1024).toFixed(0)} KB
-              </p>
-              <a class="btn btn-ghost btn-sm" href={`/${item.file}`} download>
-                Download
+    <section id="videos" class="mt-10 scroll-mt-24 border-t border-[var(--line)] pt-5">
+      <h2 class="text-2xl font-semibold">Videos</h2>
+      <ul class="mt-4 grid gap-6 sm:grid-cols-2">
+        {videos.map((item) => (
+          <li>
+            <video
+              class="block aspect-[4/3] w-full border border-[var(--line)] bg-black object-contain"
+              controls
+              preload="none"
+              poster={media(item.poster)}
+              aria-label={item.title}
+              playsinline
+            >
+              <source src={media(item.file)} type="video/mp4" />
+              <a href={media(item.file)} download>
+                Download the video
+              </a>
+            </video>
+            <div class="flex flex-wrap items-center justify-between gap-x-2 pt-2">
+              <div>
+                <h3 class="font-semibold">{item.title}</h3>
+                <p class="text-sm text-[var(--muted)]">{item.details} · silent</p>
+              </div>
+              <a
+                class="btn btn-secondary btn-sm min-h-11"
+                href={media(item.file)}
+                aria-label={`Download ${item.title.toLowerCase()} MP4`}
+                download
+              >
+                Download MP4
               </a>
             </div>
-          </article>
+          </li>
         ))}
-      </div>
+      </ul>
     </section>
 
-    <section class="mt-10 grid gap-5 md:grid-cols-2">
-      <div class="border border-[var(--line)] p-5">
-        <h2 class="display-sm text-2xl uppercase">What is safe to share</h2>
-        <ul class="mt-3 grid gap-2 text-sm text-[var(--muted)]">
-          <li>The four approved original-IP worlds and these public renders.</li>
-          <li>The brand kit marks, avatars, wordmarks and banners.</li>
-          <li>Your own member share link, with a preview before you publish it.</li>
-        </ul>
-      </div>
-      <div class="border border-[var(--line)] p-5">
-        <h2 class="display-sm text-2xl uppercase">What is not</h2>
-        <ul class="mt-3 grid gap-2 text-sm text-[var(--muted)]">
-          <li>Member-only franchise art, rosters, bios or badge names in a public post.</li>
-          <li>Another member's inventory, wallet, serials or private receipt.</li>
-          <li>
-            The private opening replay under <code>.foilbury/exports</code>; it is a local demo, not
-            marketing.
-          </li>
-        </ul>
-      </div>
-    </section>
-  </section>
+    <p class="mt-10 border-t border-[var(--line)] pt-4 text-sm text-[var(--muted)]">
+      Exported{" "}
+      {new Date(manifest.generated_at).toLocaleDateString("en-AU", {
+        dateStyle: "medium",
+        timeZone: "Australia/Melbourne",
+      })}{" "}
+      ·{" "}
+      <a class="text-link" href={media("manifest.json")} download>
+        Download export details
+      </a>
+    </p>
+  </div>
 </BaseLayout>

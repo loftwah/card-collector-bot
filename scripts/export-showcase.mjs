@@ -193,6 +193,7 @@ await browser.close();
 const hash = (file) => crypto.createHash("sha256").update(fs.readFileSync(path.join(root, file))).digest("hex");
 const rendered = [];
 for (const name of fs.readdirSync(publicOut).sort()) {
+  if (!/\.(png|mp4)$/.test(name)) continue;
   rendered.push({ file: `public/media/showcase/${name}`, sha256: hash(`public/media/showcase/${name}`), bytes: fs.statSync(path.join(publicOut, name)).size });
 }
 const manifest = {
@@ -201,14 +202,19 @@ const manifest = {
   audience: "public-safe Foilbury originals",
   public_card: { name: hero.name, collection: hero.collection_name, render: hero.render_url },
   outputs: rendered,
-  private_demo: replayManifest,
   regeneration: "node scripts/export-showcase.mjs",
   notes: [
     "Stills and public trailer use only approved public showcase renders.",
-    "The opening replay is a real persisted local draw receipt, kept private and labelled local demo.",
     "Video is silent by design; no music or voice rights are implied.",
     "The export action never draws, spends, grants or mutates gameplay.",
   ],
 };
 fs.writeFileSync(path.join(publicOut, "manifest.json"), JSON.stringify(manifest, null, 2));
+if (replayManifest) {
+  fs.writeFileSync(
+    path.join(privateOut, "opening-replay.json"),
+    JSON.stringify(replayManifest, null, 2),
+    { mode: 0o600 },
+  );
+}
 console.log(JSON.stringify({ ok: true, publicOutputs: rendered.length, trailer: "public/media/showcase/foilbury-trailer-16x9.mp4", teaser: "public/media/showcase/foilbury-teaser-9x16.mp4", replay: replayManifest?.output ?? null }, null, 2));

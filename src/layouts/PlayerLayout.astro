@@ -1,6 +1,7 @@
 ---
 import BaseLayout from "./BaseLayout.astro";
 import ThemeToggle from "../components/ThemeToggle";
+import { playerPrimary, playerMore } from "../lib/player-navigation";
 import CardViewer from "../components/cards/CardViewer";
 import { accountAvatarViewFor } from "../server/modules/account-avatar";
 
@@ -14,28 +15,9 @@ interface Props {
 }
 const { title, description } = Astro.props;
 
-const primary = [
-  { href: "/play", label: "Home" },
-  { href: "/play/collections", label: "Collections" },
-  { href: "/play/cabinet", label: "Cabinet" },
-  { href: "/play/draw", label: "Open" },
-  { href: "/play/trades", label: "Trades" },
-  { href: "/play/profile", label: "Profile" },
-];
-
 const more = [
-  { href: "/play/collection", label: "All copies" },
-  { href: "/play/wishlist", label: "Wishlist" },
-  { href: "/play/missions", label: "Missions" },
-  { href: "/play/achievements", label: "Achievements" },
-  { href: "/play/gifts", label: "Gifts" },
-  { href: "/play/rewards", label: "Rewards" },
-  { href: "/play/rivals", label: "NPC collectors" },
-  { href: "/play/preferences", label: "Preferences" },
-  { href: "/tour", label: "Guided tour" },
-  { href: "/account/avatar", label: "Account avatar" },
-  { href: "/account/security", label: "Account security" },
-  { href: "/cabinet", label: "Public catalogue" },
+  { href: "/find", label: "Find a page" },
+  ...playerMore,
   { href: "/logout", label: "Sign out" },
 ];
 
@@ -121,7 +103,7 @@ const avatar = user ? accountAvatarViewFor(user) : null;
 
       <div class="container">
         <nav class="player-nav" aria-label="Player">
-          {primary.map((link) => (
+          {playerPrimary.map((link) => (
             <a
               href={link.href}
               aria-current={primaryActive(link.href) ? "page" : undefined}

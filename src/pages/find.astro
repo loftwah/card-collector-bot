@@ -1,0 +1,114 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { playerPrimary, playerMore } from "../lib/player-navigation";
+
+Astro.response.headers.set("cache-control", "private, no-store");
+const user = Astro.locals.foilbury?.user;
+const botAdmin = ["owner", "editor", "economy_admin"].includes(user?.role ?? "");
+const platformAdmin = Boolean(user?.platformAdmin);
+const canStudio = botAdmin || platformAdmin || Boolean(user?.globalCollectionScope);
+
+const groups = [
+  {
+    title: "Explore Foilbury",
+    links: [
+      { href: "/cabinet", label: "Browse original cards" },
+      { href: "/tour", label: "Take the guided tour" },
+      { href: "/journal", label: "Read the journal" },
+    ],
+  },
+  {
+    title: "Branding & social media",
+    links: [
+      { href: "/brand-kit#downloads", label: "Download logos and icons" },
+      { href: "/brand-kit#surfaces", label: "Download Discord assets and link previews" },
+      { href: "/showcase", label: "Download social images and videos" },
+    ],
+  },
+  ...(user
+    ? [
+        {
+          title: "Your library",
+          links: [
+            ...playerPrimary.map((link) =>
+              link.href === "/play" ? { ...link, label: "Library home" } : link,
+            ),
+            ...playerMore.filter((link) => !["/tour", "/cabinet"].includes(link.href)),
+          ],
+        },
+      ]
+    : [
+        {
+          title: "Start collecting",
+          links: [
+            { href: "/play", label: "Sign in to your library" },
+            { href: "/play/draw", label: "Sign in to open a capsule" },
+          ],
+        },
+      ]),
+  {
+    title: "Bots & developers",
+    links: [
+      { href: "/create-bot", label: "Create a Bot" },
+      { href: "/docs/agent-guide", label: "Agent and API guide" },
+      { href: "/openapi.json", label: "OpenAPI reference" },
+    ],
+  },
+  ...(canStudio
+    ? [
+        {
+          title: "Manage Foilbury",
+          links: [
+            { href: "/studio", label: "Studio" },
+            ...(botAdmin ? [{ href: "/admin", label: "Bot administration" }] : []),
+            ...(platformAdmin
+              ? [
+                  { href: "/platform-admin", label: "Platform administration" },
+                  { href: "/platform-admin/art", label: "Brand Art Lab" },
+                ]
+              : []),
+          ],
+        },
+      ]
+    : []),
+];
+---
+
+<BaseLayout
+  title="Find a page · Foilbury"
+  description="Find your library, public cards, branding, social downloads and Foilbury tools."
+  noIndex
+>
+  <section class="container max-w-5xl py-10 md:py-16">
+    <h1 class="display-sm mb-8 text-5xl md:text-6xl">Find a page</h1>
+    <nav aria-label="Foilbury pages" class="grid gap-x-12 gap-y-8 md:grid-cols-2">
+      {groups.map((group) => (
+        <section
+          class:list={[
+            "border-t border-[var(--line)] pt-4",
+            group.title === "Your library" && "md:col-span-2",
+          ]}
+        >
+          <h2 class="text-lg font-semibold">{group.title}</h2>
+          <ul
+            class:list={[
+              "mt-2",
+              group.title === "Your library" && "sm:grid sm:grid-cols-2 md:grid-cols-3",
+            ]}
+          >
+            {group.links.map((link) => (
+              <li>
+                <a
+                  class="inline-flex min-h-11 items-center underline decoration-[var(--line-strong)] underline-offset-4 hover:decoration-current focus-visible:decoration-current"
+                  href={link.href}
+                >
+                  {link.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </nav>
+  </section>
+</BaseLayout>

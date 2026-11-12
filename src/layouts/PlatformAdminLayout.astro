@@ -9,7 +9,7 @@ const links = [
   { href: "/platform-admin/bots", label: "Bots" },
   { href: "/platform-admin/installations", label: "Installations" },
   { href: "/platform-admin/collections", label: "Global collections" },
-  { href: "/platform-admin/art", label: "Art Lab" },
+  { href: "/platform-admin/art", label: "Brand Art Lab" },
   { href: "/platform-admin/audit", label: "Audit" },
 ];
 const { compact = false } = Astro.props;
@@ -26,6 +26,9 @@ const { compact = false } = Astro.props;
         <p class="eyebrow eyebrow-bright">Platform administration · Super Admin</p>
         <a class="btn btn-signal btn-sm" href="/studio">
           Studio
+        </a>
+        <a class="btn btn-secondary btn-sm" href="/brand-kit">
+          Media kit
         </a>
       </div>
     </section>
