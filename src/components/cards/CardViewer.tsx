@@ -55,6 +55,7 @@ export interface CardViewerRequest {
 
 const OPEN_EVENT = "foilbury:card-viewer";
 type ReviewDraft = { comment?: string; notice?: string };
+type ReviewResult = { decision: "like" | "dislike"; likes: number; dislikes: number };
 
 export function openCardViewer(
   items: CardViewerItem[],
@@ -93,6 +94,7 @@ export default function CardViewer() {
   const [index, setIndex] = useState(0);
   const [side, setSide] = useState<"front" | "back">("front");
   const [reviews, setReviews] = useState<Record<string, ReviewDraft>>({});
+  const [confirmedReviews, setConfirmedReviews] = useState<Record<string, ReviewResult>>({});
   const [pendingReviews, setPendingReviews] = useState<ReadonlySet<string>>(new Set());
   const reviewInFlight = useRef(new Set<string>());
 
@@ -100,6 +102,7 @@ export default function CardViewer() {
   const hasBack = Boolean(item?.back);
   const reviewEndpoint = item?.reviewEndpoint;
   const review = reviewEndpoint ? reviews[reviewEndpoint] : undefined;
+  const confirmedReview = reviewEndpoint ? confirmedReviews[reviewEndpoint] : undefined;
   const reviewBusy = Boolean(reviewEndpoint && pendingReviews.has(reviewEndpoint));
 
   const close = useCallback(() => {
@@ -190,18 +193,7 @@ export default function CardViewer() {
       const feedback = result.candidate.feedback ?? [];
       const likes = feedback.filter((entry) => entry.decision === "like").length;
       const dislikes = feedback.filter((entry) => entry.decision === "dislike").length;
-      setItems((current) =>
-        current.map((entry) =>
-          entry.reviewEndpoint === endpoint
-            ? {
-                ...entry,
-                reviewDecision: decision,
-                reviewLikes: likes,
-                reviewDislikes: dislikes,
-              }
-            : entry,
-        ),
-      );
+      setConfirmedReviews((current) => ({ ...current, [endpoint]: { decision, likes, dislikes } }));
       updateReview(endpoint, { notice: decision === "like" ? "Saved: keep" : "Saved: not this" });
     } catch (cause) {
       updateReview(endpoint, { notice: describeError(cause) });
@@ -395,25 +387,33 @@ export default function CardViewer() {
                 <div className="card-viewer__votes">
                   <button
                     type="button"
-                    data-active={item.reviewDecision === "like" ? "true" : "false"}
+                    data-active={
+                      (confirmedReview?.decision ?? item.reviewDecision) === "like"
+                        ? "true"
+                        : "false"
+                    }
                     disabled={!item.canReview || reviewBusy}
                     onClick={() => void sendReview("like")}
                     aria-label={`Keep ${item.name}`}
                   >
                     <ThumbsUp size={16} aria-hidden="true" />
                     <span>Keep</span>
-                    <b>{item.reviewLikes ?? 0}</b>
+                    <b>{confirmedReview?.likes ?? item.reviewLikes ?? 0}</b>
                   </button>
                   <button
                     type="button"
-                    data-active={item.reviewDecision === "dislike" ? "true" : "false"}
+                    data-active={
+                      (confirmedReview?.decision ?? item.reviewDecision) === "dislike"
+                        ? "true"
+                        : "false"
+                    }
                     disabled={!item.canReview || reviewBusy}
                     onClick={() => void sendReview("dislike")}
                     aria-label={`Mark ${item.name} as not this`}
                   >
                     <ThumbsDown size={16} aria-hidden="true" />
                     <span>Not this</span>
-                    <b>{item.reviewDislikes ?? 0}</b>
+                    <b>{confirmedReview?.dislikes ?? item.reviewDislikes ?? 0}</b>
                   </button>
                 </div>
                 <textarea

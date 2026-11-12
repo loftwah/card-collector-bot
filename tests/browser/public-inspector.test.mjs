@@ -62,9 +62,15 @@ test(
     try {
       const reviewPage = await browser.newPage();
       let finishReview;
+      let finishClosedReview;
       const reviewResponse = new Promise((resolve) => { finishReview = resolve; });
+      const closedReviewResponse = new Promise((resolve) => { finishClosedReview = resolve; });
       await reviewPage.route("**/api/review/First", async (route) => {
         await reviewResponse;
+        await route.fulfill({ json: { candidate: { feedback: [{ decision: "like" }] } } });
+      });
+      await reviewPage.route("**/api/review/Second", async (route) => {
+        await closedReviewResponse;
         await route.fulfill({ json: { candidate: { feedback: [{ decision: "like" }] } } });
       });
       try {
@@ -88,8 +94,19 @@ test(
         assert.equal(await comment.inputValue(), "First candidate only");
         await reviewPage.getByRole("button", { name: "Next card" }).click();
         assert.equal(await reviewPage.getByRole("status").innerText(), "");
+        const secondVote = reviewPage.waitForRequest("**/api/review/Second");
+        await reviewPage.getByRole("button", { name: "Keep Second" }).click();
+        await secondVote;
+        await reviewPage.getByRole("button", { name: "Close card viewer" }).click();
+        const closedResponse = reviewPage.waitForResponse("**/api/review/Second");
+        finishClosedReview();
+        await closedResponse;
+        await reviewPage.getByRole("button", { name: "Review candidates" }).click();
+        await reviewPage.getByRole("button", { name: "Next card" }).click();
+        await reviewPage.locator('button[aria-label="Keep Second"][data-active="true"]').waitFor();
       } finally {
         finishReview();
+        finishClosedReview();
         await reviewPage.close();
       }
       for (const [label, width, height, motion] of [

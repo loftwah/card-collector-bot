@@ -1,10 +1,8 @@
 # Foilbury Art Lab
 
-Status: implemented as an operator-only surface on `/studio/art` and
-`/platform-admin/art`. Current owner decision (2026-11-10): **whole-card AI is a
-first-class card method and the default.** The earlier "never generate a whole
-card" rule is superseded for this lab. The shared card renderer is retained as a
-comparison method, not as a mandatory gate.
+The Art Lab is an operator-only surface on `/studio/art` and
+`/platform-admin/art`. Layered composition is the default for cards. Flat
+whole-card output is available for comparison. See [the card layer system](CARD_LAYER_SYSTEM.md).
 
 ## Why this exists
 
@@ -31,9 +29,8 @@ public-route entry point.
 
 | Method             | What the provider generates                                                         | How the candidate is shown                                             |
 | ------------------ | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `layered_card`     | Separate scene, subject, frame and effect layers; code composes and sets exact type | The composed card with an inspectable layer stack                      |
 | `whole_card`       | A flat 5:7 card from the reference sheet (comparison only)                          | The generated card, scaled to 750×1050 and reviewed at 750/400/214/128 |
-| `composed_scene`   | Scene or key art only                                                               | Comparison: composed card front/back through `art/card-render.mjs`     |
+| `composed_scene`   | Scene or key art                                                                    | Layered front and back with an inspectable stack                       |
 | `composed_texture` | Background or texture plate only                                                    | Comparison: composed card front/back through `art/card-render.mjs`     |
 | `raw_art`          | A standalone brand asset                                                            | Raw asset; type, layout and marks stay in code                         |
 
