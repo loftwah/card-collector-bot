@@ -477,6 +477,7 @@ export interface ArtBriefDetail {
   target_variant: {
     id: string;
     name: string;
+    finish_label: string;
     material_key: string;
     effect_key: string | null;
     edition_id: string;
@@ -1065,7 +1066,8 @@ function finishLabel(
   if (
     material === "diamond" ||
     material === "holographic" ||
-    variant?.effect_key === "holographic"
+    variant?.effect_key === "holographic" ||
+    variant?.effect_key === "holo"
   ) {
     return "HOLOGRAPHIC";
   }
@@ -1849,7 +1851,7 @@ export async function getArtBrief(ctx: Ctx, briefId: string): Promise<ArtBriefDe
         }
       : null,
     card: card ? { ...card, collection_name: collection?.name ?? null } : null,
-    target_variant: targetVariant,
+    target_variant: targetVariant ? { ...targetVariant, finish_label: finishLabel(targetVariant) } : null,
     jobs,
     candidates,
     current_render: currentRender,

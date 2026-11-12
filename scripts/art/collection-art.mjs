@@ -138,7 +138,7 @@ async function stage(api, briefs, job, origin) {
   "Studio brief scope differs for " + card.key);
   assert(detail.collection?.name === collection.name && detail.collection.view_audience === "members" &&
     detail.card?.name === card.name, "Studio member collection or card differs for " + card.key);
-  assert.equal(detail.target_variant?.name.toLowerCase(), card.finish.toLowerCase(),
+  assert.equal(detail.target_variant?.finish_label.toLowerCase(), card.finish.toLowerCase(),
     "Studio target finish differs for " + card.key);
   const jobRow = detail.jobs[0] ?? (await api(route + "/import", { method: "POST" })).jobs[0];
   assert(jobRow && detail.jobs.length <= 1, "Reconcile Studio jobs for " + card.key);
