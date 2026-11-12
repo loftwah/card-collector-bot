@@ -12,10 +12,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import { Resvg } from "@resvg/resvg-js";
+import { generatedCardProofs } from "./proof-paths.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const evidence = path.join(root, ".foilbury/evidence/card-v3");
-const outDir = path.join(root, "public/art/proofs");
+const outDir = generatedCardProofs(root);
 const FINISH = (process.env.V3_FINISH ?? "holographic").toLowerCase();
 const PLAIN = FINISH === "plain";
 const HOLO = FINISH === "holographic";

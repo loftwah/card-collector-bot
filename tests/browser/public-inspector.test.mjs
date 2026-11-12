@@ -17,13 +17,16 @@ test(
     const source = path.join(cwd, "src/components/PublicVariantViewer.tsx");
     const styles = path.join(cwd, "src/styles/global.css");
     const inspector = path.join(cwd, "src/components/player/CardInspector.tsx");
+    const cardViewer = path.join(cwd, "src/components/cards/CardViewer.tsx");
     await writeFile(
       path.join(dir, "index.html"),
       '<!doctype html><html lang="en"><head><title>Isolated inspector test</title><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><main class="container" id="root"></main><script type="module" src="./main.tsx"></script></body></html>',
     );
     await writeFile(
       path.join(dir, "main.tsx"),
-      `import React from 'react';import {createRoot} from 'react-dom/client';import PublicVariantViewer from ${JSON.stringify(source)};import CardInspector from ${JSON.stringify(inspector)};import ${JSON.stringify(styles)};createRoot(document.getElementById('root')!).render(location.search ? <CardInspector name="Fixture subject" finish="Plain" frontUrl="/brand/card-back.webp" backUrl="/brand/card-back.webp" /> : <PublicVariantViewer name="Fixture subject" subtitle="Fixture" description="A synthetic inspector fixture." rarity="Common" setName={null} tags={[]} variants={[{id:'one',name:'Plain',material_key:'plain',effect_key:null,render_url:'/brand/card-back.webp',back_render_url:'/brand/card-back.webp'}]} />);`,
+      `import React from 'react';import {createRoot} from 'react-dom/client';import PublicVariantViewer from ${JSON.stringify(source)};import CardInspector from ${JSON.stringify(inspector)};import CardViewer, {openCardViewer} from ${JSON.stringify(cardViewer)};import ${JSON.stringify(styles)};
+      const candidates = ['First', 'Second'].map(name => ({id:name,name,front:'/brand/card-back.webp',reviewEndpoint:'/api/review/'+name,canReview:true}));
+      createRoot(document.getElementById('root')!).render(location.search === '?review' ? <><button onClick={() => openCardViewer(candidates)}>Review candidates</button><CardViewer /></> : location.search ? <CardInspector name="Fixture subject" finish="Plain" frontUrl="/brand/card-back.webp" backUrl="/brand/card-back.webp" /> : <PublicVariantViewer name="Fixture subject" subtitle="Fixture" description="A synthetic inspector fixture." rarity="Common" setName={null} tags={[]} variants={[{id:'one',name:'Plain',material_key:'plain',effect_key:null,render_url:'/brand/card-back.webp',back_render_url:'/brand/card-back.webp'}]} />);`,
     );
     await writeFile(
       path.join(dir, "vite.config.mjs"),
@@ -57,6 +60,38 @@ test(
     });
     const browser = await chromium.launch();
     try {
+      const reviewPage = await browser.newPage();
+      let finishReview;
+      const reviewResponse = new Promise((resolve) => { finishReview = resolve; });
+      await reviewPage.route("**/api/review/First", async (route) => {
+        await reviewResponse;
+        await route.fulfill({ json: { candidate: { feedback: [{ decision: "like" }] } } });
+      });
+      try {
+        await reviewPage.goto(new URL(path.relative(cwd, dir) + "/index.html?review", url).href);
+        await reviewPage.getByRole("button", { name: "Review candidates" }).click();
+        const comment = reviewPage.getByRole("textbox");
+        await comment.fill("First candidate only");
+        await comment.press("ArrowRight");
+        await reviewPage.getByRole("dialog", { name: "First" }).waitFor();
+        const vote = reviewPage.waitForRequest("**/api/review/First");
+        await reviewPage.getByRole("button", { name: "Keep First" }).click();
+        assert.deepEqual((await vote).postDataJSON(), { decision: "like", body: "First candidate only" });
+        await reviewPage.getByRole("button", { name: "Next card" }).click();
+        assert.equal(await comment.inputValue(), "");
+        const response = reviewPage.waitForResponse("**/api/review/First");
+        finishReview();
+        await response;
+        assert.equal(await reviewPage.getByRole("status").innerText(), "");
+        await reviewPage.getByRole("button", { name: "Previous card" }).click();
+        await reviewPage.getByText("Saved: keep", { exact: true }).waitFor();
+        assert.equal(await comment.inputValue(), "First candidate only");
+        await reviewPage.getByRole("button", { name: "Next card" }).click();
+        assert.equal(await reviewPage.getByRole("status").innerText(), "");
+      } finally {
+        finishReview();
+        await reviewPage.close();
+      }
       for (const [label, width, height, motion] of [
         ["phone", 390, 844, "no-preference"],
         ["short", 320, 568, "no-preference"],

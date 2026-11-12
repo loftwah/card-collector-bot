@@ -54,6 +54,7 @@ export interface CardViewerRequest {
 }
 
 const OPEN_EVENT = "foilbury:card-viewer";
+type ReviewDraft = { comment?: string; notice?: string };
 
 export function openCardViewer(
   items: CardViewerItem[],
@@ -91,12 +92,15 @@ export default function CardViewer() {
   const [items, setItems] = useState<CardViewerItem[]>([]);
   const [index, setIndex] = useState(0);
   const [side, setSide] = useState<"front" | "back">("front");
-  const [reviewComment, setReviewComment] = useState("");
-  const [reviewNotice, setReviewNotice] = useState("");
-  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviews, setReviews] = useState<Record<string, ReviewDraft>>({});
+  const [pendingReviews, setPendingReviews] = useState<ReadonlySet<string>>(new Set());
+  const reviewInFlight = useRef(new Set<string>());
 
   const item = items[index] ?? null;
   const hasBack = Boolean(item?.back);
+  const reviewEndpoint = item?.reviewEndpoint;
+  const review = reviewEndpoint ? reviews[reviewEndpoint] : undefined;
+  const reviewBusy = Boolean(reviewEndpoint && pendingReviews.has(reviewEndpoint));
 
   const close = useCallback(() => {
     const dialog = dialogRef.current;
@@ -105,12 +109,8 @@ export default function CardViewer() {
 
   const move = useCallback(
     (delta: number) => {
-      setItems((current) => {
-        if (current.length < 2) return current;
-        return current;
-      });
+      if (items.length < 2) return;
       setIndex((current) => {
-        if (!items.length) return current;
         return (current + delta + items.length) % items.length;
       });
       setSide("front");
@@ -127,8 +127,7 @@ export default function CardViewer() {
       setItems(detail.items);
       setIndex(index);
       setSide(detail.side === "back" && detail.items[index]?.back ? "back" : "front");
-      setReviewComment("");
-      setReviewNotice("");
+      setReviews({});
       const dialog = dialogRef.current;
       if (dialog && !dialog.open) dialog.showModal();
       requestAnimationFrame(() => closeButtonRef.current?.focus({ preventScroll: true }));
@@ -147,6 +146,12 @@ export default function CardViewer() {
     function onKey(event: KeyboardEvent) {
       const dialog = dialogRef.current;
       if (!dialog?.open) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.matches("input, textarea, select") || target.isContentEditable)
+      )
+        return;
       if (event.key === "ArrowLeft") {
         event.preventDefault();
         move(-1);
@@ -165,23 +170,29 @@ export default function CardViewer() {
     return () => window.removeEventListener("keydown", onKey);
   }, [move, hasBack]);
 
+  function updateReview(endpoint: string, patch: ReviewDraft) {
+    setReviews((current) => ({ ...current, [endpoint]: { ...current[endpoint], ...patch } }));
+  }
+
   async function sendReview(decision: "like" | "dislike") {
-    if (!item?.reviewEndpoint || reviewBusy) return;
-    setReviewBusy(true);
-    setReviewNotice("");
+    const endpoint = reviewEndpoint;
+    if (!endpoint || !item?.canReview || reviewInFlight.current.has(endpoint)) return;
+    reviewInFlight.current.add(endpoint);
+    setPendingReviews(new Set(reviewInFlight.current));
+    updateReview(endpoint, { notice: "" });
     try {
       const result = await api<{
         candidate: { feedback: Array<{ decision: string }> };
-      }>(item.reviewEndpoint, {
+      }>(endpoint, {
         method: "POST",
-        body: { decision, body: reviewComment.trim() || null },
+        body: { decision, body: review?.comment?.trim() || null },
       });
       const feedback = result.candidate.feedback ?? [];
       const likes = feedback.filter((entry) => entry.decision === "like").length;
       const dislikes = feedback.filter((entry) => entry.decision === "dislike").length;
       setItems((current) =>
-        current.map((entry, entryIndex) =>
-          entryIndex === index
+        current.map((entry) =>
+          entry.reviewEndpoint === endpoint
             ? {
                 ...entry,
                 reviewDecision: decision,
@@ -191,11 +202,12 @@ export default function CardViewer() {
             : entry,
         ),
       );
-      setReviewNotice(decision === "like" ? "Saved: keep" : "Saved: not this");
+      updateReview(endpoint, { notice: decision === "like" ? "Saved: keep" : "Saved: not this" });
     } catch (cause) {
-      setReviewNotice(describeError(cause));
+      updateReview(endpoint, { notice: describeError(cause) });
     } finally {
-      setReviewBusy(false);
+      reviewInFlight.current.delete(endpoint);
+      setPendingReviews(new Set(reviewInFlight.current));
     }
   }
 
@@ -406,8 +418,12 @@ export default function CardViewer() {
                 </div>
                 <textarea
                   className="card-viewer__comment"
-                  value={reviewComment}
-                  onChange={(event) => setReviewComment(event.target.value)}
+                  aria-label={`Review comment for ${item.name}`}
+                  value={review?.comment ?? ""}
+                  onChange={(event) => {
+                    if (reviewEndpoint)
+                      updateReview(reviewEndpoint, { comment: event.target.value });
+                  }}
                   placeholder="Optional comment: what works, what is wrong, what to keep."
                   disabled={!item.canReview || reviewBusy}
                   rows={2}
@@ -418,7 +434,7 @@ export default function CardViewer() {
                     : "This direction can no longer be re-reviewed. Roll it back first."}
                 </p>
                 <p className="card-viewer__review-notice" role="status" aria-live="polite">
-                  {reviewNotice}
+                  {review?.notice}
                 </p>
               </section>
             ) : null}

@@ -8,12 +8,12 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { cardProofPath } from "../art/proof-paths.mjs";
 
 const BASE_URL = process.env.FOILBURY_URL ?? "https://foilbury.loftwah.com";
 const root = process.cwd();
 const evidence = path.join(root, ".foilbury/evidence/card-v3");
 const variety = path.join(evidence, "variety/assets");
-const proofs = path.join(root, "public/art/proofs");
 const TITLE = "Tux · Three real directions (review)";
 const COLLECTION_ID = "col_cat_mvyy304zzwa1059kz0fk5r47";
 const CARD_ID = "crd_mvyy31qsehckx6he4ahjajn7";
@@ -134,9 +134,9 @@ const directions = [
     label: "Direction 1 · Neon noir · Holographic",
     base: "tux-v3",
     scene: path.join(evidence, "tux-v3-scene.png"),
-    front: path.join(proofs, "tux-v3-front.webp"),
-    back: path.join(proofs, "tux-v3-back.webp"),
-    master: path.join(proofs, "tux-v3-front-master.png"),
+    front: cardProofPath(root, "tux-v3-front.webp"),
+    back: cardProofPath(root, "tux-v3-back.webp"),
+    master: cardProofPath(root, "tux-v3-front-master.png"),
     preview: path.join(evidence, "tux-v3-front-400.webp"),
     thumb: path.join(evidence, "tux-v3-front-128.png"),
     layers: layers.neon,
@@ -147,9 +147,9 @@ const directions = [
     label: "Direction 2 · Rooftop relay · Gold",
     base: "tux-rooftop",
     scene: path.join(variety, "rooftop-scene.png"),
-    front: path.join(proofs, "tux-rooftop-front.webp"),
-    back: path.join(proofs, "tux-rooftop-back.webp"),
-    master: path.join(proofs, "tux-rooftop-front-master.png"),
+    front: cardProofPath(root, "tux-rooftop-front.webp"),
+    back: cardProofPath(root, "tux-rooftop-back.webp"),
+    master: cardProofPath(root, "tux-rooftop-front-master.png"),
     preview: path.join(evidence, "tux-rooftop-front-400.webp"),
     thumb: path.join(evidence, "tux-rooftop-front-128.png"),
     layers: layers.rooftop,
@@ -160,9 +160,9 @@ const directions = [
     label: "Direction 3 · Terminal run · Silver",
     base: "tux-terminal",
     scene: path.join(variety, "server-scene.png"),
-    front: path.join(proofs, "tux-terminal-front.webp"),
-    back: path.join(proofs, "tux-terminal-back.webp"),
-    master: path.join(proofs, "tux-terminal-front-master.png"),
+    front: cardProofPath(root, "tux-terminal-front.webp"),
+    back: cardProofPath(root, "tux-terminal-back.webp"),
+    master: cardProofPath(root, "tux-terminal-front-master.png"),
     preview: path.join(evidence, "tux-terminal-front-400.webp"),
     thumb: path.join(evidence, "tux-terminal-front-128.png"),
     layers: layers.terminal,

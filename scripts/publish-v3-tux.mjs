@@ -11,6 +11,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { cardProofPath } from "../art/proof-paths.mjs";
 
 const BASE_URL = process.env.FOILBURY_URL ?? "https://foilbury.loftwah.com";
 const FINISH = (process.env.V3_FINISH ?? "holographic").toLowerCase();
@@ -30,9 +31,6 @@ const evidence = path.join(root, ".foilbury/evidence/card-v3");
 function readJson(file) {
   return JSON.parse(fs.readFileSync(path.join(root, file), "utf8"));
 }
-
-const agent = readJson(".foilbury/production-agent.json");
-const access = readJson(".foilbury/access-service-token.json");
 
 async function api(route, { method = "GET", body, form } = {}) {
   const headers = new Headers();
@@ -62,9 +60,14 @@ async function api(route, { method = "GET", body, form } = {}) {
   return parsed;
 }
 
+function uploadPath(name) {
+  return [path.join(evidence, name), cardProofPath(root, name)].find((candidate) =>
+    fs.existsSync(candidate),
+  );
+}
+
 function file(name, type = "application/octet-stream") {
-  const candidates = [path.join(evidence, name), path.join(root, "public/art/proofs", name)];
-  const found = candidates.find((candidate) => fs.existsSync(candidate));
+  const found = uploadPath(name);
   if (!found) throw new Error(`Missing upload file: ${name}`);
   return new File([fs.readFileSync(found)], name, { type });
 }
@@ -116,6 +119,33 @@ const layers = [
 
 const label = `Candidate · Layered v3 breakout${PLAIN ? " · Plain" : ""}`;
 
+if (DRY_RUN) {
+  const files = [
+    `tux-v3${suffix}-front.webp`,
+    `tux-v3${suffix}-back.webp`,
+    `tux-v3${suffix}-front-master.png`,
+  ];
+  console.log(
+    JSON.stringify(
+      {
+        BASE_URL,
+        BRIEF_ID,
+        VARIANT_ID,
+        createBrief: CREATE_BRIEF,
+        refresh: REFRESH,
+        files: files.map((name) => ({ name, available: Boolean(uploadPath(name)) })),
+        layers,
+      },
+      null,
+      2,
+    ),
+  );
+  process.exit(0);
+}
+
+const agent = readJson(".foilbury/production-agent.json");
+const access = readJson(".foilbury/access-service-token.json");
+
 if (CREATE_BRIEF) {
   const created = await api("/api/v1/admin/art/briefs", {
     method: "POST",
@@ -139,17 +169,6 @@ if (CREATE_BRIEF) {
   BRIEF_ID = created.brief?.brief?.id ?? created.brief?.id ?? created.id;
   if (!BRIEF_ID) throw new Error(`Brief creation failed: ${JSON.stringify(created).slice(0, 400)}`);
   console.log("brief", BRIEF_ID);
-}
-
-if (DRY_RUN) {
-  console.log(
-    JSON.stringify(
-      { BASE_URL, BRIEF_ID, VARIANT_ID, files: fs.readdirSync(evidence), layers },
-      null,
-      2,
-    ),
-  );
-  process.exit(0);
 }
 
 const resumeArg = process.argv.find((arg) => arg.startsWith("--job="));
