@@ -296,3 +296,19 @@ Bot still enables that collection.
 
 Independent second-account spectator observation and a physical mobile Discord
 client remain BLOCKED and are not claimed by this closure.
+
+## Print Room
+
+The Print Room is a retained reply to the existing demo index in
+`#card-collector-test`. It gives Homura Akemi's original Plain card and all
+four Mitakihara Rain finishes their own buttons. Ryuk's Rain over Kira,
+Pochita's After Hours and Mizi's Centre Stage open their published Plain prints.
+The signed Discord card handler serves each saved front, back and version to
+the invoking member after checking the current catalogue and channel scope.
+
+Preview the chapter with `pnpm discord:tour:entry --prints --dry-run`. Publish
+from the Foilbury checkout with `pnpm discord:tour:entry --prints --publish`.
+The publisher uses the existing Foilbury bot and test channel, links back to
+the original index as a reply, and reads back the retained message. If a send
+is interrupted, it reconciles the recent chapter before attempting any new
+send. The local receipt is `.foilbury/discord-print-demo.json`.

@@ -12,15 +12,18 @@
  * The payload is built and validated by the production presentation module, so
  * an invalid custom id, embed length or URL fails before Discord is called.
  *
- *   node scripts/discord/publish-tour-entry.mjs --dry-run
- *   node scripts/discord/publish-tour-entry.mjs
- *   node scripts/discord/publish-tour-entry.mjs --message 1567185366014763079
+ *   pnpm discord:tour:entry --dry-run
+ *   pnpm discord:tour:entry --prints --dry-run
+ *   pnpm discord:tour:entry --prints --publish
+ *   pnpm discord:tour:entry
+ *   pnpm discord:tour:entry --message 1567185366014763079
  *
  * By default the last message id is reused from
  * `.foilbury/discord-tour-entry.json`; if none exists the message is posted
  * once and the id is recorded. It never deletes another member's message and
  * needs only View Channel, Send Messages, Embed Links and Read Message History.
  */
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { ROOT } from "../lib/local.mjs";
@@ -28,17 +31,25 @@ import {
   assertDiscordMessage,
   buildActionRows,
   buildEmbed,
+  DISCORD_PALETTE,
 } from "../../src/server/discord/presentation.ts";
 
 const API = "https://discord.com/api/v10";
-const STATE_FILE = path.join(ROOT, ".foilbury", "discord-tour-entry.json");
 const EVIDENCE_DIR = path.join(ROOT, ".foilbury", "evidence");
 const args = process.argv.slice(2);
+const prints = args.includes("--prints");
+const entry = prints ? "discord-print-demo" : "discord-tour-entry";
+const STATE_FILE = path.join(ROOT, ".foilbury", `${entry}.json`);
+const TEST_GUILD_ID = "997734945206313041";
+const TEST_CHANNEL_ID = "1566700752385081355";
+const ORIGINAL_DEMO_INDEX_ID = "1568794099039998004";
+const FOILBURY_BOT_ID = "1566702936615026769";
+const PRINT_FOOTER = "Foilbury · Print room · November 2026";
 const option = (name) => {
   const index = args.indexOf(name);
   return index >= 0 ? args[index + 1] : undefined;
 };
-const dryRun = args.includes("--dry-run");
+const dryRun = args.includes("--dry-run") || (prints && !args.includes("--publish"));
 
 function readEnv(file) {
   const values = {};
@@ -52,12 +63,12 @@ function readEnv(file) {
 
 const env = { ...readEnv(path.join(ROOT, ".env")), ...process.env };
 const token = env.DISCORD_BOT_TOKEN;
-const applicationId = env.DISCORD_APPLICATION_ID;
-const guildId = env.DISCORD_TEST_GUILD_ID ?? "997734945206313041";
-const channelId = env.DISCORD_TEST_CHANNEL_ID ?? "1566700752385081355";
+const applicationId = prints ? FOILBURY_BOT_ID : env.DISCORD_APPLICATION_ID;
+const guildId = prints ? TEST_GUILD_ID : (env.DISCORD_TEST_GUILD_ID ?? TEST_GUILD_ID);
+const channelId = prints ? TEST_CHANNEL_ID : (env.DISCORD_TEST_CHANNEL_ID ?? TEST_CHANNEL_ID);
 const origin = (env.FOILBURY_PUBLIC_ORIGIN ?? "https://foilbury.loftwah.com").replace(/\/$/, "");
 
-if (!token) {
+if (!dryRun && !token) {
   console.error("DISCORD_BOT_TOKEN is not configured.");
   process.exit(1);
 }
@@ -68,7 +79,7 @@ const publicLinks = {
   showcase: `${origin}/showcase`,
 };
 
-const message = {
+const tourMessage = {
   content:
     "**Start the Foilbury tour** — a real collecting journey, not a command list. Nothing is charged until you choose an action.",
   embeds: [
@@ -76,7 +87,7 @@ const message = {
       title: "Foilbury · start the tour",
       description:
         "A collectible-card cabinet with a real wallet, real odds and a permanent album. This entry starts the guided Discord tour. It is private to you, skippable and resumable, and it never spends Foil until you deliberately choose an action.",
-      accent: 0x044e4a,
+      accent: DISCORD_PALETTE.action,
       fields: [
         {
           name: "The route",
@@ -114,7 +125,11 @@ const message = {
           value: `[Web tour](${publicLinks.tour}) · [Cabinet](${publicLinks.cabinet}) · [Public showcase](${publicLinks.showcase})\n3D card inspection is a labelled website feature; Discord does not claim native 3D.`,
         },
       ],
-      image: { url: `${origin}/brand/kit/banners/foil-standard-960x540.png`, width: 960, height: 540 },
+      image: {
+        url: `${origin}/brand/kit/banners/foil-standard-960x540.png`,
+        width: 960,
+        height: 540,
+      },
       footer: "Foilbury · Signal Fold · free play, no wagering · 2026/11/04",
     }),
   ],
@@ -132,6 +147,55 @@ const message = {
   ]),
   allowed_mentions: { parse: [], users: [], roles: [] },
 };
+// Exact published catalogue versions, so the comparison keeps its meaning when a
+// newer print arrives. The interaction handler checks membership, Bot scope and
+// the current render before returning artwork in a private Discord reply.
+const homura = "crd_mvzcynj7z5p212zw9ffcwwwn";
+const card = (label, cardId, variantId) => ({
+  label,
+  customId: `foilbury:card:${cardId}:${variantId}:front`,
+  style: 2,
+});
+const printMessage = {
+  embeds: [
+    buildEmbed({
+      title: "Foilbury Print Room",
+      accent: DISCORD_PALETTE.action,
+      description:
+        "Start with **Homura Akemi** in *Mitakihara Rain*. Compare her original Plain print with the rainy edition, then see how that edition looks in Silver, Gold and Holographic.",
+      fields: [
+        {
+          name: "Three more collections",
+          value:
+            "**Ryuk** · Rain over Kira · Death Note\n**Pochita** · After Hours · Chainsaw Man\n**Mizi** · Centre Stage · Alien Stage",
+        },
+        {
+          name: "Inspect a print",
+          value:
+            "Choose a card below, then use **View back** and **Next version** in your private reply. These are catalogue previews. Browsing is free.",
+        },
+      ],
+      footer: PRINT_FOOTER,
+    }),
+  ],
+  components: buildActionRows([
+    [
+      card("Original Plain", homura, "var_mvzcynl93pg16t0h3hv6ervt"),
+      card("Rain Plain", homura, "var_mwdhtaq22bfn9a51r48shtk6"),
+      card("Silver", homura, "var_mwdhtaq2zb09tqybkjv55swm"),
+      card("Gold", homura, "var_mwdhtaq2v7mz4qp7ngbdd2cf"),
+      card("Holographic", homura, "var_mwdhtaq2gq6xqn4tn0yxh575"),
+    ],
+    [
+      card("Ryuk", "crd_mvzcxnu4msq53vz6evg6fbkw", "var_mwdiijokmqbn6pjczhqnnk7z"),
+      card("Pochita", "crd_mvzcwoomr5j2q1rfk1tk9n7x", "var_mwdjlj6c7mcw9xtxyhf8p0wr"),
+      card("Mizi", "crd_mvzcw77pb52f07rpq90qg4cb", "var_mwdiiozzvzmm7r1yzbsha5m7"),
+    ],
+    [{ label: "Open web cabinet", url: publicLinks.cabinet }],
+  ]),
+  allowed_mentions: { parse: [], users: [], roles: [], replied_user: false },
+};
+const message = prints ? printMessage : tourMessage;
 assertDiscordMessage(message);
 
 async function discord(method, url, body) {
@@ -154,7 +218,9 @@ async function discord(method, url, body) {
 }
 
 if (dryRun) {
-  console.log(JSON.stringify({ channel_id: channelId, guild_id: guildId, payload: message }, null, 2));
+  console.log(
+    JSON.stringify({ channel_id: channelId, guild_id: guildId, payload: message }, null, 2),
+  );
   process.exit(0);
 }
 
@@ -178,15 +244,31 @@ if (channel.parsed?.guild_id !== guildId) {
   process.exit(1);
 }
 
+const isPrintChapter = (item) =>
+  item?.author?.id === me.parsed.id && item.embeds?.[0]?.footer?.text === PRINT_FOOTER;
+
 let previous = null;
 if (fs.existsSync(STATE_FILE)) {
   try {
     previous = JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
-  } catch {
-    previous = null;
+  } catch (error) {
+    if (prints) throw new Error("The Print Room receipt could not be read.", { cause: error });
   }
 }
-const messageId = option("--message") ?? previous?.message_id ?? null;
+if (prints && previous && (previous.guild_id !== guildId || previous.channel_id !== channelId)) {
+  throw new Error("The Print Room receipt points to a different Discord destination.");
+}
+let messageId = option("--message") ?? previous?.message_id ?? null;
+if (prints && !messageId) {
+  const recent = await discord("GET", `/channels/${channelId}/messages?limit=100`);
+  if (!recent.ok) throw new Error(`Could not check recent channel history: HTTP ${recent.status}.`);
+  messageId = recent.parsed.find(isPrintChapter)?.id ?? null;
+  if (!messageId && previous?.status === "pending") {
+    throw new Error(
+      "A previous publish is unresolved. Check the channel and pass --message with the retained chapter ID.",
+    );
+  }
+}
 
 let result;
 let action;
@@ -194,7 +276,10 @@ if (messageId) {
   // Only edit a message this same bot authored. Discord enforces this too, but
   // the read-back keeps the failure message truthful and avoids touching a
   // human's message if a stale id is supplied.
-  const existing = await discord("GET", `/channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}`);
+  const existing = await discord(
+    "GET",
+    `/channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}`,
+  );
   if (!existing.ok) {
     console.error(`Existing entry read failed: HTTP ${existing.status}. Nothing was changed.`);
     process.exit(1);
@@ -203,6 +288,9 @@ if (messageId) {
     console.error("The recorded entry id belongs to another author. Nothing was changed.");
     process.exit(1);
   }
+  if (prints && !isPrintChapter(existing.parsed)) {
+    throw new Error("The supplied message is not the retained Print Room chapter.");
+  }
   result = await discord(
     "PATCH",
     `/channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}`,
@@ -210,18 +298,63 @@ if (messageId) {
   );
   action = "updated";
 } else {
-  result = await discord("POST", `/channels/${encodeURIComponent(channelId)}/messages`, message);
+  let body = message;
+  if (prints) {
+    fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
+    fs.writeFileSync(
+      STATE_FILE,
+      JSON.stringify({ guild_id: guildId, channel_id: channelId, status: "pending" }),
+      {
+        flag: "wx",
+        mode: 0o600,
+      },
+    );
+    const nonce = createHash("sha256")
+      .update(`${channelId}:${PRINT_FOOTER}`)
+      .digest("hex")
+      .slice(0, 25);
+    body = {
+      ...message,
+      message_reference: { message_id: ORIGINAL_DEMO_INDEX_ID, fail_if_not_exists: true },
+      nonce,
+      enforce_nonce: true,
+    };
+  }
+  result = await discord("POST", `/channels/${encodeURIComponent(channelId)}/messages`, body);
   action = "created";
 }
 
 if (!result.ok) {
-  console.error(`Discord message ${action === "updated" ? "update" : "post"} failed: HTTP ${result.status}`);
+  console.error(
+    `Discord message ${action === "updated" ? "update" : "post"} failed: HTTP ${result.status}`,
+  );
   if (result.text) console.error(result.text.slice(0, 500));
   process.exit(1);
 }
 
 const savedMessageId = result.parsed?.id ?? messageId;
 const link = `https://discord.com/channels/${guildId}/${channelId}/${savedMessageId}`;
+if (prints) {
+  const observed = await discord("GET", `/channels/${channelId}/messages/${savedMessageId}`);
+  const buttons = (item) =>
+    item.components.flatMap((row) =>
+      row.components.map(({ label, style, custom_id, url }) => [label, style, custom_id, url]),
+    );
+  if (
+    !observed.ok ||
+    !isPrintChapter(observed.parsed) ||
+    observed.parsed.channel_id !== channelId ||
+    observed.parsed.message_reference?.message_id !== ORIGINAL_DEMO_INDEX_ID ||
+    observed.parsed.embeds[0].title !== message.embeds[0].title ||
+    observed.parsed.embeds[0].description !== message.embeds[0].description ||
+    observed.parsed.attachments?.length !== 0 ||
+    JSON.stringify(buttons(observed.parsed)) !== JSON.stringify(buttons(message))
+  ) {
+    throw new Error(
+      `Print Room read-back failed. Reconcile the retained message before retrying: ${link}`,
+    );
+  }
+}
 fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
 fs.mkdirSync(EVIDENCE_DIR, { recursive: true });
 const state = {
@@ -232,12 +365,12 @@ const state = {
   application_id: me.parsed?.id ?? applicationId ?? null,
   action,
   published_at: new Date().toISOString(),
-  entry_revision: "2026-11-04.1",
+  entry_revision: prints ? "2026-11-13.1" : "2026-11-04.1",
 };
 fs.writeFileSync(STATE_FILE, `${JSON.stringify(state, null, 2)}\n`);
 const evidenceFile = path.join(
   EVIDENCE_DIR,
-  `discord-tour-entry-${new Date().toISOString().replaceAll(":", "-")}.json`,
+  `${entry}-${new Date().toISOString().replaceAll(":", "-")}.json`,
 );
 fs.writeFileSync(
   evidenceFile,
@@ -270,6 +403,6 @@ fs.writeFileSync(
   )}\n`,
 );
 
-console.log(`Tour entry ${action}.`);
+console.log(`${prints ? "Print Room" : "Tour entry"} ${action}.`);
 console.log(link);
 console.log(`Evidence: ${path.relative(ROOT, evidenceFile)}`);
