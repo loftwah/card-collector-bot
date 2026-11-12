@@ -42,7 +42,8 @@ const [items, totalItems, sets, collections] = await Promise.all([
 ]);
 const publishedSets = sets.filter((set) => set.status === "published");
 const selected = initialCollection
-  ? (collections.find((collection) => collection.slug === initialCollection) ?? null)
+  ? (collections.find((collection) => collection.id === initialCollection) ??
+    collections.find((collection) => collection.slug === initialCollection) ?? null)
   : null;
 const selectedBanner = collectionBanner(selected);
 const selectedMark = collectionMark(selected);
@@ -624,9 +625,9 @@ const bannerStyle = presentation?.bannerPosition
           initialSet={initialSet}
           sets={publishedSets.map((set) => ({ slug: set.slug, name: set.name }))}
           collections={collections
-            .filter((collection) => collection.enabled)
+            .filter((collection) => collection.enabled || collection.id === selected?.id)
             .map((collection) => ({
-              slug: collection.slug,
+              slug: collection.id === initialCollection ? collection.id : collection.slug,
               name: collection.name,
               logo_url: collection.logo_url,
             }))}

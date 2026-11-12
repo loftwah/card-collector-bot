@@ -3,6 +3,7 @@ import { all, first, nowIso } from "../db";
 import { newId } from "../ids";
 import { audit, auditStatement } from "../http";
 import { normalizeCardName } from "./card-name-aliases";
+import { cardVisibilitySql, collectionVisibilitySql, viewerAccess } from "./visibility";
 
 export interface InventoryRow {
   id: string;
@@ -105,7 +106,7 @@ interface InventoryQuery {
  * used as a total: "12 cards kept" must mean the collection, not the rows that
  * happened to fit in the first request.
  */
-function inventoryFilter(ctx: Ctx, options: InventoryQuery) {
+async function inventoryFilter(ctx: Ctx, options: InventoryQuery) {
   const user = ctx.user;
   if (!user) throw new ApiError(401, "authentication_required", "Sign in to see your collection.");
   const where = ["ci.tenant_id = ?", "ci.user_id = ?", "ci.status IN ('owned','reserved')"];
@@ -129,10 +130,15 @@ function inventoryFilter(ctx: Ctx, options: InventoryQuery) {
     params.push(options.setSlug);
   }
   if (options.collection) {
+    const access = await viewerAccess(ctx);
+    const collection = collectionVisibilitySql(access);
+    const card = cardVisibilitySql(access);
     where.push(
-      "EXISTS (SELECT 1 FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id WHERE cc.card_id = ci.card_id AND c.slug = ? AND c.archived_at IS NULL)",
+      `EXISTS (SELECT 1 FROM fb_collection_cards cc JOIN fb_collections c ON c.id = cc.collection_id
+        WHERE cc.card_id = ci.card_id AND (c.id = ? OR c.slug = ?) AND (${collection.sql}))
+       AND cd.status = 'published' AND cd.archived_at IS NULL AND (${card.sql})`,
     );
-    params.push(options.collection);
+    params.push(options.collection, options.collection, ...collection.params, ...card.params);
   }
   if (options.finish) {
     if (options.finish === "holographic") {
@@ -152,7 +158,7 @@ function inventoryFilter(ctx: Ctx, options: InventoryQuery) {
 }
 
 export async function countInventory(ctx: Ctx, options: InventoryQuery = {}): Promise<number> {
-  const { where, params } = inventoryFilter(ctx, options);
+  const { where, params } = await inventoryFilter(ctx, options);
   const row = await first<{ count: number }>(
     ctx.db,
     `SELECT COUNT(*) AS count
@@ -171,7 +177,7 @@ export async function getInventory(
   ctx: Ctx,
   options: InventoryQuery = {},
 ): Promise<InventoryRow[]> {
-  const { where, params } = inventoryFilter(ctx, options);
+  const { where, params } = await inventoryFilter(ctx, options);
   const limit = Math.min(500, Math.max(1, options.limit ?? 200));
   const offset = Math.max(0, Math.floor(options.offset ?? 0));
   const order =
