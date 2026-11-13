@@ -171,7 +171,7 @@ const printMessage = {
         {
           name: "Featured prints",
           value:
-            "**Ryuk** · Rain over Kira · Death Note\n**Pochita** · After Hours · Chainsaw Man\n**Mizi** · Centre Stage · Alien Stage",
+            "**Ryuk** · Rain over Kira · Death Note\n**Pochita** · After Hours · Chainsaw Man\n**Mizi** · Centre Stage · Alien Stage\n**Gucci Morty** · Unofficial fan print · Rick and Morty",
         },
         {
           name: "NBA · Opening Night",
@@ -199,6 +199,7 @@ const printMessage = {
       card("Ryuk", "crd_mvzcxnu4msq53vz6evg6fbkw", "var_mwdiijokmqbn6pjczhqnnk7z"),
       card("Pochita", "crd_mvzcwoomr5j2q1rfk1tk9n7x", "var_mwdjlj6c7mcw9xtxyhf8p0wr"),
       card("Mizi", "crd_mvzcw77pb52f07rpq90qg4cb", "var_mwdiiozzvzmm7r1yzbsha5m7"),
+      card("Gucci Morty", "crd_mvzd0yynwqmt1yh2nszsqtn3", "var_mwedieow33m2kzgyn3fmh83k"),
     ],
     [
       card("Wembanyama", "crd_mvzczq0gnyqtfqbm8y9p13tp", "var_mvzczq2t95d985h7xaymh5br"),
