@@ -120,9 +120,11 @@ share page and Discord profile card all use the same chosen avatar. See
 
 ## Surfaces
 
-- Public shelf: the cards lead. The landing page is an editorial spread with a
-  card fan, a hairline collection index and black feature bands; it is not a
-  dashboard and not a wall of equal cards.
+- Public shelf: the landing page leads with a selected Foilbury illustration
+  from Woodhouse Share. The cabinet and character pages use credited character
+  artwork alongside the actual collectible prints. Library empty states can
+  use the same public artwork. Preserve original aspect ratios and set source
+  credits in `src/lib/editorial-art.ts`.
 - Player: progress is legible without turning the album into a dashboard.
   Binder slots make missing subjects obvious; finish bars name the next target.
   Page, panel, raised and card-object surfaces are distinct in both themes.
@@ -131,9 +133,10 @@ share page and Discord profile card all use the same chosen avatar. See
 - Platform Administration: quiet, dense, high-contrast tables. It remains a
   separate Access-protected surface.
 - EmDash: editorial only. Foilbury links to it; it does not imitate it.
-- Sharing: the default Open Graph image is the Foil Standard card; public card
-  shares use the saved card render with its real dimensions. Member/private
-  shares fall back to the brand image, never a private render.
+- Sharing: the public homepage, unfiltered cabinet and social downloads use
+  Rhea at the bench, a Woodhouse / Codex ImageGen illustration. Its original is
+  in the Woodhouse Share Build Notes. Public card shares use the saved card
+  render with its real dimensions. Member/private shares use the brand image.
 
 ## Motion and sound
 
@@ -141,9 +144,6 @@ One authored reveal per opening: committed receipt, anticipation, material
 reveal, result. Skip and reduced-motion are always available. Replaying is free
 and cannot redraw. Sound is opt-in and off by default. No continuous album
 renderer, autoplay audio or compulsory cinematic.
-
-The public landing uses one quiet entrance: the hero cards rise once with a
-staggered fade. Hover lifts the card object; it does not spin or glow.
 
 ## Components and state
 
