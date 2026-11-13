@@ -169,9 +169,14 @@ const printMessage = {
         "Start with **Homura Akemi** in *Mitakihara Rain*. Compare her original Plain print with the rainy edition, then see how that edition looks in Silver, Gold and Holographic.",
       fields: [
         {
-          name: "Three more collections",
+          name: "Featured prints",
           value:
             "**Ryuk** · Rain over Kira · Death Note\n**Pochita** · After Hours · Chainsaw Man\n**Mizi** · Centre Stage · Alien Stage",
+        },
+        {
+          name: "NBA · Opening Night",
+          value:
+            "Open the Gold cards for **Victor Wembanyama**, **Shai Gilgeous-Alexander** and **Nikola Jokić**.",
         },
         {
           name: "Inspect a print",
@@ -194,6 +199,11 @@ const printMessage = {
       card("Ryuk", "crd_mvzcxnu4msq53vz6evg6fbkw", "var_mwdiijokmqbn6pjczhqnnk7z"),
       card("Pochita", "crd_mvzcwoomr5j2q1rfk1tk9n7x", "var_mwdjlj6c7mcw9xtxyhf8p0wr"),
       card("Mizi", "crd_mvzcw77pb52f07rpq90qg4cb", "var_mwdiiozzvzmm7r1yzbsha5m7"),
+    ],
+    [
+      card("Wembanyama", "crd_mvzczq0gnyqtfqbm8y9p13tp", "var_mvzczq2t95d985h7xaymh5br"),
+      card("Gilgeous-Alexander", "crd_mvzczn8lncyb2j7k6wvgvj5r", "var_mvzcznaiq7k7h1cz729jd811"),
+      card("Jokić", "crd_mvzczpqe2va2sz4bvgccmgkn", "var_mvzczpst6j09q5cxs40p0m2k"),
     ],
     [{ label: "Open web cabinet", url: publicLinks.cabinet }],
   ]),
@@ -375,7 +385,7 @@ const state = {
   application_id: me.parsed?.id ?? applicationId ?? null,
   action,
   published_at: new Date().toISOString(),
-  entry_revision: prints ? "2026-11-13.1" : "2026-11-04.1",
+  entry_revision: prints ? "2026-11-13.2" : "2026-11-04.1",
 };
 fs.writeFileSync(STATE_FILE, `${JSON.stringify(state, null, 2)}\n`);
 const evidenceFile = path.join(
