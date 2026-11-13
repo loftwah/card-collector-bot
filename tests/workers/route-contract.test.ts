@@ -243,7 +243,11 @@ describe("exact API dispatch and least-privilege player scopes", () => {
   it("exposes the exact approved distribution and accepts that fingerprint", async () => {
     const owner = await ctxFor("cabinet", "owner@foilbury.local");
     const player = await ctxFor("cabinet", "player@foilbury.local");
-    await fixturePool(owner);
+    const fixture = await fixturePool(owner);
+    const archived = await makeInstance(player, player.user!.id, fixture);
+    await runtime.DB.prepare("UPDATE fb_card_instances SET status = 'surrendered' WHERE id = ?")
+      .bind(archived)
+      .run();
     const preview = await sendJson(player, "/api/v1/pools/test-pool", "GET");
     expect(preview.response.status).toBe(200);
     expect(typeof preview.json.distribution_fingerprint).toBe("string");
@@ -256,6 +260,8 @@ describe("exact API dispatch and least-privilege player scopes", () => {
     });
     expect(draw.response.status).toBe(200);
     expect(draw.json.card_name).toBe("Test One");
+    expect(draw.json.new_subject).toBe(true);
+    expect(draw.json.new_finish).toBe(true);
     expect(draw.json.distribution_fingerprint).toBe(preview.json.distribution_fingerprint);
   });
 
