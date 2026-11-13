@@ -1956,8 +1956,14 @@ export async function queueArtGeneration(
       throw new ApiError(403, "art_agent_runner_required", "External imports require a scoped agent grant.");
     }
     requireScope(ctx, "content:write");
-    if (brief.category !== "cards" || methods.length !== 1 || methods[0] !== "whole_card" || count !== 1) {
-      throw new ApiError(422, "art_import_invalid", "Import one finished whole-card pair at a time.");
+    const method = methods[0];
+    if (
+      brief.category !== "cards" ||
+      methods.length !== 1 ||
+      (method !== "whole_card" && method !== "composed_scene") ||
+      count !== 1
+    ) {
+      throw new ApiError(422, "art_import_invalid", "Import one finished card at a time.");
     }
   }
   const styleKeys =

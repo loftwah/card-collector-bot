@@ -565,13 +565,19 @@ function readingRoomBack(theme, material, data, scene) {
   const panelText = theme.panelText ?? "#5b374c";
   const panelRule = theme.panelText ?? "#987080";
   const record = data.printTitle ?? data.era;
+  const markHeight = 118;
+  const roundMark = theme.badge === "round" || (theme.markAspect > 0.92 && theme.markAspect < 1.08);
+  const markWidth = roundMark
+    ? markHeight
+    : Math.min(250, Math.max(markHeight, markHeight * theme.markAspect));
+  const recordX = 66 + markWidth + 26;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   <defs>${metalDefs(material)}</defs>
   <rect width="${W}" height="${H}" fill="${theme.backPaper ? theme.paper2 : "#f6e4d6"}"/>
   <rect x="26" y="26" width="698" height="998" rx="5" fill="${theme.backPaper ?? "#fff8ee"}" stroke="${theme.panelText ?? "#b8899a"}" stroke-width="2"/>
-  ${markPlate(theme, { x: 66, y: 60, height: 118 })}
-  <text x="210" y="113" font-family=${MS} font-size="34" font-weight="750" fill="${theme.ink}">${esc(data.collection)}</text>
-  <text x="212" y="151" font-family=${PM} font-size="25" fill="${theme.panelText ?? "#6f4059"}">${esc(record)}</text>
+  ${markPlate(theme, { x: 66, y: 60, height: markHeight })}
+  <text x="${recordX}" y="113" font-family=${MS} font-size="34" font-weight="750" fill="${theme.ink}">${esc(data.collection)}</text>
+  <text x="${recordX + 2}" y="151" font-family=${PM} font-size="25" fill="${theme.panelText ?? "#6f4059"}">${esc(record)}</text>
   <path d="M66 204 H684" stroke="url(#metalFlat)" stroke-width="4"/>
   <text x="65" y="310" font-family=${FD} font-size="${nameSize}" font-weight="700" fill="${theme.ink}">${esc(data.name)}</text>
   <text x="68" y="362" font-family=${MS} font-size="${roleSize}" font-weight="600" fill="${panelText}">${esc(data.role)}</text>

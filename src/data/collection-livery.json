@@ -90,5 +90,22 @@
     "backSurface": "dark",
     "subjectHeight": 720,
     "subjectTop": 42
+  },
+  "nba-arcade-orbit": {
+    "layout": "reading-room",
+    "theme": "broadcast",
+    "family": "broadcast",
+    "paper": "#21143d",
+    "paper2": "#160d2a",
+    "ink": "#fff7e7",
+    "accent": "#ffd369",
+    "panelText": "#f7d992",
+    "backPaper": "#21143d",
+    "backScene": true,
+    "collectionName": "NBA · Opening Night",
+    "era": "2025/26",
+    "subjectHeight": 650,
+    "subjectTop": 62,
+    "subjectShadow": 0.2
   }
 }

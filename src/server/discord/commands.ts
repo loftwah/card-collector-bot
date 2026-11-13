@@ -1128,7 +1128,6 @@ async function packs(
     currencySymbol: wallet.currencySymbol,
     balance: wallet.balance,
     capsules,
-    packsCustomId: "foilbury:packs",
     browseUrl: absoluteUrl(ctx.config.publicOrigin, "/play/draw"),
   });
 }
