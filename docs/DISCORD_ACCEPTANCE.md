@@ -303,6 +303,9 @@ The Print Room is a retained reply to the existing demo index in
 `#card-collector-test`. It gives Homura Akemi's original Plain card and all
 four Mitakihara Rain finishes their own buttons. Ryuk's Rain over Kira,
 Pochita's After Hours and Mizi's Centre Stage open their published Plain prints.
+Gucci Morty opens the unofficial member fan print of Morty Smith.
+The NBA Opening Night row opens the Gold prints of Victor Wembanyama, Shai
+Gilgeous-Alexander and Nikola Jokić.
 The signed Discord card handler serves each saved front, back and version to
 the invoking member after checking the current catalogue and channel scope.
 
