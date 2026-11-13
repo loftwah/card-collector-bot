@@ -43,10 +43,12 @@ try {
 
   await page.goto(`${baseURL}/`, { waitUntil: "networkidle" });
   await page.getByRole("heading", { name: "Characters worth keeping." }).waitFor();
-  assert.ok((await page.locator(".card-face img").count()) >= 3, "hero should use real published renders");
+  const editorialHero = page.getByRole("img", { name: /candlelit cabinet/i });
+  await editorialHero.evaluate((image) => image.decode());
+  assert.equal(await page.locator(".home-stage, .home-hero img[src^='/media/render/']").count(), 0);
   await noOverflow(page, "desktop home");
   await shot(page, "home-desktop.png");
-  pass("Public landing", "real card renders, responsive layout, no horizontal overflow");
+  pass("Public landing", "editorial artwork decodes, responsive layout, no horizontal overflow");
 
   const manifest = await page.evaluate(async () => (await fetch("/site.webmanifest")).status);
   assert.equal(manifest, 200);

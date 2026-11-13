@@ -1,36 +1,14 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { pageContext } from "../server/page";
-import { listCards } from "../server/modules/catalogue";
 import { listPublicCollections } from "../server/modules/collections";
 import { collectionBanner, collectionMark } from "../lib/collection-art";
+import { cabinetArtwork, editorialShareImage } from "../lib/editorial-art";
 
 const ctx = await pageContext(Astro.request);
 const session = Astro.locals.foilbury;
 const user = session?.user ?? null;
 const collections = await listPublicCollections(ctx);
-const featuredCollection = collections[0] ?? null;
-const featuredCards = featuredCollection
-  ? await listCards(ctx, {
-      publicOnly: true,
-      collection: featuredCollection.slug,
-      limit: 4,
-    })
-  : [];
-
-type FeaturedCard = (typeof featuredCards)[number];
-type FeaturedVariant = FeaturedCard["editions"][number]["variants"][number];
-const heroEntries = featuredCards
-  .map((card) => {
-    const variant = card.editions
-      .flatMap((edition) => edition.variants)
-      .find((item) => item.render_url);
-    return variant ? { card, variant } : null;
-  })
-  .filter((entry): entry is { card: FeaturedCard; variant: FeaturedVariant } => entry !== null)
-  .slice(0, 3);
-const heroMain = heroEntries[0] ?? null;
-const heroBacks = heroEntries.slice(1, 3);
 const primaryHref = user ? "/play" : "/login?next=%2Fplay";
 const browseHref = user ? "/play" : "/cabinet";
 const shelfCollections = collections.slice(0, 6);
@@ -57,6 +35,7 @@ const albumFeatures = [
 <BaseLayout
   title="Foilbury — characters worth keeping"
   description="A free collectible-card cabinet for original worlds. Browse the public shelf, open a capsule and keep the copy you pull."
+  shareImage={editorialShareImage}
 >
   <script
     type="application/ld+json"
@@ -74,7 +53,6 @@ const albumFeatures = [
       },
     })}
   />
-
   <section class="home-hero">
     <div class="container home-hero__grid">
       <div class="home-hero__copy">
@@ -90,68 +68,29 @@ const albumFeatures = [
           <a class="btn btn-primary" href={browseHref}>
             {user ? "Open my library" : "Browse originals"}
           </a>
-          <a class="btn btn-secondary" href="#how-it-works">See how it works</a>
+          <a class="btn btn-secondary" href="#how-it-works">
+            See how it works
+          </a>
         </div>
         <p class="home-hero__note">Free to play · no purchase · earned Foil only</p>
       </div>
 
-      <div class="home-stage" aria-label="Selected cards from the public shelf">
-        <div class="home-stage__panel" aria-hidden="true"></div>
-        {
-          heroBacks.map((entry, index) => (
-            <a
-              class:list={[
-                "home-card",
-                index === 0 ? "home-card--back-left" : "home-card--back-right",
-              ]}
-              href={`/cabinet/${entry.card.slug}`}
-              aria-label={`${entry.card.name}, ${entry.variant.material_name}`}
-            >
-              <span class="home-card__object">
-                <img
-                  src={entry.variant.render_url!}
-                  alt=""
-                  width="750"
-                  height="1050"
-                  loading="eager"
-                  decoding="async"
-                />
-              </span>
-            </a>
-          ))
-        }
-        {
-          heroMain ? (
-            <a
-              class="home-card home-card--main"
-              href={`/cabinet/${heroMain.card.slug}`}
-              aria-label={`${heroMain.card.name}, ${heroMain.variant.material_name}`}
-            >
-              <span class="home-card__object">
-                <img
-                  src={heroMain.variant.render_url!}
-                  alt={`${heroMain.card.name} card in ${heroMain.variant.material_name} finish`}
-                  width="750"
-                  height="1050"
-                  loading="eager"
-                  fetchpriority="high"
-                  decoding="async"
-                />
-              </span>
-            </a>
-          ) : (
-            <div class="home-card home-card--main home-card--empty">
-              <span class="home-card__object">
-                <span class="home-card__fallback">F</span>
-              </span>
-            </div>
-          )
-        }
-        <p class="home-stage__caption">
-          <span>Public shelf</span>
-          <span>{featuredCollection?.name ?? "Approved originals"}</span>
-        </p>
-      </div>
+      <figure class="home-artwork">
+        <img
+          src={cabinetArtwork.src}
+          srcset={cabinetArtwork.srcset}
+          sizes="(min-width: 960px) 44vw, (min-width: 600px) 540px, calc(100vw - 2.5rem)"
+          alt={cabinetArtwork.alt}
+          width={cabinetArtwork.width}
+          height={cabinetArtwork.height}
+          fetchpriority="high"
+          decoding="async"
+        />
+        <figcaption>
+          <span>{cabinetArtwork.title}</span>
+          <a href="/cabinet#character-artwork">Explore the artwork</a>
+        </figcaption>
+      </figure>
     </div>
   </section>
 

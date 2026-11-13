@@ -3,6 +3,7 @@ import BaseLayout from "../../layouts/BaseLayout.astro";
 import { pageContext } from "../../server/page";
 import { getTaxonomy, listCards } from "../../server/modules/catalogue";
 import { listPublicCollections } from "../../server/modules/collections";
+import { characterArtwork, editorialShareImage } from "../../lib/editorial-art";
 
 const ctx = await pageContext(Astro.request);
 const search = Astro.url.searchParams.get("search") ?? "";
@@ -59,6 +60,9 @@ const gallery = cards.map((card, index) => {
       .join(" · "),
   };
 });
+const publicArtwork = characterArtwork.filter((art) =>
+  cards.some((card) => card.slug === art.slug),
+);
 ---
 
 <BaseLayout
@@ -66,6 +70,7 @@ const gallery = cards.map((card, index) => {
     selectedCollection ? `${selectedCollection.name} · Foilbury` : "The public showcase · Foilbury"
   }
   description="Explore the approved public showcase of original Foilbury worlds, characters and finishes."
+  shareImage={selectedCollection ? undefined : editorialShareImage}
 >
   <section class="gallery-intro border-b border-[var(--line)]">
     <div class="gallery-shell">
@@ -190,6 +195,33 @@ const gallery = cards.map((card, index) => {
       </div>
     </div>
   </section>
+
+  <div id="character-artwork" class="scroll-mt-20">
+    {!filtered && publicArtwork.length > 0 && (
+      <section class="gallery-shell editorial-art" aria-labelledby="artwork-heading">
+        <h2 id="artwork-heading" class="display-sm mb-4 text-3xl">
+          Character artwork
+        </h2>
+        <div class="editorial-art__grid">
+          {publicArtwork.map((art) => (
+            <figure>
+              <a href={`/cabinet/${art.slug}`} aria-label={`Browse cards for ${art.name}`}>
+                <img
+                  src={art.src}
+                  alt={art.alt}
+                  width={art.width}
+                  height={art.height}
+                  loading="lazy"
+                  decoding="async"
+                />
+              </a>
+              <figcaption>{art.title}</figcaption>
+            </figure>
+          ))}
+        </div>
+      </section>
+    )}
+  </div>
 
   <section
     class="gallery"

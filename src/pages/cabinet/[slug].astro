@@ -5,6 +5,7 @@ import { pageContext } from "../../server/page";
 import { getCatalogueCard } from "../../server/modules/catalogue";
 import { ApiError } from "../../server/context";
 import { publicCard } from "../../server/api/public";
+import { characterArtwork } from "../../lib/editorial-art";
 
 const ctx = await pageContext(Astro.request);
 const slug = Astro.params.slug ?? "";
@@ -24,6 +25,7 @@ const variants = clean.editions.flatMap((edition) =>
     artwork_origin: edition.artwork_origin,
   })),
 );
+const artwork = characterArtwork.find((art) => art.slug === clean.slug);
 const setName = clean.sets[0]?.name ?? null;
 ---
 
@@ -115,6 +117,29 @@ const setName = clean.sets[0]?.name ?? null;
       reviewStatus={clean.review_status}
       variants={variants}
     />
+    {artwork && (
+      <section
+        class="editorial-art border-t border-[var(--line)] pt-8"
+        aria-labelledby="character-art-heading"
+      >
+        <h2 id="character-art-heading" class="display-sm mb-4 text-3xl">
+          {artwork.title}
+        </h2>
+        <figure class="editorial-art__feature">
+          <img
+            src={artwork.src}
+            alt={artwork.alt}
+            width={artwork.width}
+            height={artwork.height}
+            loading="lazy"
+            decoding="async"
+          />
+          <figcaption>
+            <a href={artwork.source}>Original artwork</a> · Woodhouse / Codex ImageGen
+          </figcaption>
+        </figure>
+      </section>
+    )}
     <div class="mt-14 grid gap-4 border-t border-[var(--line)] pt-8 md:grid-cols-3">
       <div>
         <p class="eyebrow">Identity</p>

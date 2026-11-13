@@ -13,6 +13,7 @@ import { listAchievements } from "../../server/modules/achievements";
 import { first } from "../../server/db";
 import { formatDual, printTitle as editionPrintTitle } from "../../lib/utils";
 import { cabinetNextStep } from "../../lib/cabinet-next-step";
+import { cabinetArtwork } from "../../lib/editorial-art";
 
 const ctx = await pageContext(Astro.request);
 const user = ctx.user!;
@@ -180,12 +181,21 @@ const activeRemaining = Math.max(0, activeTotal - activeOwned);
               name={featured.card_name}
               serial={featured.serial}
             />
+          ) : featured ? (
+            <p class="empty min-h-40">Artwork unavailable. You can still open the card record.</p>
           ) : (
-            <div class="empty min-h-[280px]">
-              <div>
-                <p class="display-sm text-2xl">The first card is waiting.</p>
-                <p class="mt-2 text-sm">Your first card will appear here after you open a capsule.</p>
-              </div>
+            <div class="library-first-card">
+              <img
+                src={cabinetArtwork.src}
+                srcset={cabinetArtwork.srcset}
+                sizes="(min-width: 640px) 300px, 160px"
+                alt=""
+                width={cabinetArtwork.width}
+                height={cabinetArtwork.height}
+                loading="lazy"
+                decoding="async"
+              />
+              <p class="text-sm">Open a capsule to add your first card.</p>
             </div>
           )}
         </div>
