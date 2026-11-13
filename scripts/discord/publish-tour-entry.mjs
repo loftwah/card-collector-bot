@@ -166,8 +166,18 @@ const printMessage = {
       title: "Foilbury Print Room",
       accent: DISCORD_PALETTE.action,
       description:
-        "Start with **Homura Akemi** in *Mitakihara Rain*. Compare her original Plain print with the rainy edition, then see how that edition looks in Silver, Gold and Holographic.",
+        "New to Foilbury? **Start guided tour** walks you through your first session in a private reply. The card buttons below let you browse for free.",
       fields: [
+        {
+          name: "Your first session",
+          value:
+            "1. Start the tour and check how much free Foil you can claim.\n2. Open **Browse capsules** to see the choices, prices and odds. Press **Open** on a capsule to spend its listed price for one card, then press **Reveal** to see what you got.\n3. Open **My collection** to see the copy you own. Use **View back** or **Next version** to explore a card.",
+        },
+        {
+          name: "After your first card",
+          value:
+            "`/foilbury missions` for daily goals · `/foilbury achievements` for milestones · `/foilbury profile` for your collector look · `/foilbury npc` to find a trade partner. Use the original demo chapters above to see saved examples.",
+        },
         {
           name: "Featured prints",
           value:
@@ -188,6 +198,11 @@ const printMessage = {
     }),
   ],
   components: buildActionRows([
+    [
+      { label: "Start guided tour", customId: "foilbury:tour:welcome", style: 1 },
+      { label: "Browse capsules", customId: "foilbury:packs", style: 2 },
+      { label: "My collection", customId: "foilbury:collection", style: 2 },
+    ],
     [
       card("Original Plain", homura, "var_mvzcynl93pg16t0h3hv6ervt"),
       card("Rain Plain", homura, "var_mwdhtaq22bfn9a51r48shtk6"),
