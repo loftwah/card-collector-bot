@@ -422,10 +422,10 @@ export async function executeDraw(
   const prior = await first<{ copies: number; finishes: number }>(
     ctx.db,
     `SELECT COUNT(*) AS copies,
-            (SELECT COUNT(*) FROM fb_card_instances ci2 WHERE ci2.tenant_id = ? AND ci2.user_id = ? AND ci2.variant_id = ?) AS finishes
-       FROM fb_card_instances ci WHERE ci.tenant_id = ? AND ci.user_id = ? AND ci.card_id = ?`,
-    ctx.tenant.id,
-    user.id,
+            COUNT(CASE WHEN ci.variant_id = ? THEN 1 END) AS finishes
+       FROM fb_card_instances ci
+      WHERE ci.tenant_id = ? AND ci.user_id = ? AND ci.card_id = ?
+        AND ci.status IN ('owned', 'reserved')`,
     selected.variant_id,
     ctx.tenant.id,
     user.id,
