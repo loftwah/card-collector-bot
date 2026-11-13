@@ -304,8 +304,10 @@ The Print Room is a retained reply to the existing demo index in
 four Mitakihara Rain finishes their own buttons. Ryuk's Rain over Kira,
 Pochita's After Hours and Mizi's Centre Stage open their published Plain prints.
 Gucci Morty opens the unofficial member fan print of Morty Smith.
-The NBA Opening Night row opens the Gold prints of Victor Wembanyama, Shai
-Gilgeous-Alexander and Nikola Jokić.
+The first row opens the guided tour, capsule picker and personal collection.
+The NBA Arcade Orbit row opens the Gold prints of Victor Wembanyama, Shai
+Gilgeous-Alexander and Nikola Jokić. They share the moon-court scene and Gold
+frame, with a separate player illustration and code-set copy for each print.
 The signed Discord card handler serves each saved front, back and version to
 the invoking member after checking the current catalogue and channel scope.
 
