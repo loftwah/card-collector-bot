@@ -1,18 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="750" height="1050" viewBox="0 0 750 1050"><rect x="7" y="7" width="736" height="1036" rx="22" fill="none" stroke="#14352B" stroke-width="24"/>
-    <rect x="26" y="26" width="698" height="998" rx="14" fill="none" stroke="#8A9399" stroke-width="2.4"/>
-    <rect x="34" y="34" width="682" height="982" rx="9" fill="none" stroke="#DDE7EC" stroke-width="1" opacity=".85"/>
-    <g fill="#FFFFFF">
-      <circle cx="48" cy="48" r="4"/><circle cx="702" cy="48" r="4"/>
-      <circle cx="48" cy="1002" r="4"/><circle cx="702" cy="1002" r="4"/>
-    </g>
-    <g fill="none" stroke="#8A9399" stroke-width="1.2" opacity=".8">
-      <path d="M64 92 H190"/><path d="M560 92 H686"/>
-      <path d="M64 958 H190"/><path d="M560 958 H686"/>
-    </g>
-    <g fill="#8A9399" opacity=".9">
-      <circle cx="214" cy="92" r="2.2"/><circle cx="226" cy="92" r="2.2"/>
-      <circle cx="524" cy="92" r="2.2"/><circle cx="536" cy="92" r="2.2"/>
-      <circle cx="214" cy="958" r="2.2"/><circle cx="226" cy="958" r="2.2"/>
-      <circle cx="524" cy="958" r="2.2"/><circle cx="536" cy="958" r="2.2"/>
-    </g>
-    <path d="M64 966 H686" stroke="#8A9399" stroke-width="1.2" opacity=".6"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="750" height="1050" viewBox="0 0 750 1050"><rect width="736" height="1036" x="7" y="7" fill="none" stroke="#14352B" stroke-width="24" rx="22"/><rect width="698" height="998" x="26" y="26" fill="none" stroke="#8A9399" stroke-width="2.4" rx="14"/><rect width="682" height="982" x="34" y="34" fill="none" stroke="#DDE7EC" stroke-width="1" opacity=".85" rx="9"/><g fill="#FFF"><circle cx="48" cy="48" r="4"/><circle cx="702" cy="48" r="4"/><circle cx="48" cy="1002" r="4"/><circle cx="702" cy="1002" r="4"/></g><g fill="none" stroke="#8A9399" stroke-width="1.2" opacity=".8"><path d="M64 92 H190"/><path d="M560 92 H686"/><path d="M64 958 H190"/><path d="M560 958 H686"/></g><g fill="#8A9399" opacity=".9"><circle cx="214" cy="92" r="2.2"/><circle cx="226" cy="92" r="2.2"/><circle cx="524" cy="92" r="2.2"/><circle cx="536" cy="92" r="2.2"/><circle cx="214" cy="958" r="2.2"/><circle cx="226" cy="958" r="2.2"/><circle cx="524" cy="958" r="2.2"/><circle cx="536" cy="958" r="2.2"/></g><path stroke="#8A9399" stroke-width="1.2" d="M64 966 H686" opacity=".6"/></svg>

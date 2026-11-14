@@ -1,8 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" role="img" aria-label="Foilbury lockup">
-    
-    <g transform="translate(48 52) scale(0.82)">
-      <path d="M56 48h108l12 12v28H96v28h64v40H96v60H56z" transform="translate(12 12)" fill="#1F5EFF"/>
-      <path d="M56 48h108l12 12v28H96v28h64v40H96v60H56z" fill="#0A0A0A"/>
-    </g>
-    <text x="330" y="228" font-family="Geist Serif" font-weight="500" font-size="168" letter-spacing="-6" fill="#0A0A0A">Foilbury</text>
-  </svg>
+<svg xmlns="http://www.w3.org/2000/svg" aria-label="Foilbury lockup" role="img" viewBox="0 0 1200 360"><g><path fill="#1F5EFF" d="M56 48h108l12 12v28H96v28h64v40H96v60H56z" transform="translate(48 52) scale(0.82) translate(12 12)"/><path fill="#0A0A0A" d="M56 48h108l12 12v28H96v28h64v40H96v60H56z" transform="translate(48 52) scale(0.82)"/></g><text x="330" y="228" fill="#0A0A0A" font-family="Geist Serif" font-size="168" font-weight="500" letter-spacing="-6">Foilbury</text></svg>
