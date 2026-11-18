@@ -10,18 +10,34 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { ROOT } from "./lib/local.mjs";
 import { sourceState, sha256File, workingTreeHash } from "./lib/source-identity.mjs";
 import { artifactManifest } from "./lib/release-artifact.mjs";
 
-function run(command, args) {
-  const result = spawnSync(command, args, { cwd: ROOT, stdio: "inherit" });
-  if (result.status !== 0) process.exit(result.status ?? 1);
-}
-
 const contentBefore = workingTreeHash();
-run("pnpm", ["exec", "astro", "build"]);
+const isolatedGroup = process.platform !== "win32";
+const build = spawn("pnpm", ["exec", "astro", "build"], {
+  cwd: ROOT,
+  stdio: "inherit",
+  detached: isolatedGroup,
+});
+function stopBuild() {
+  // Astro can launch its own workers. Cancel the build group with the release.
+  try {
+    if (isolatedGroup && build.pid) process.kill(-build.pid, "SIGKILL");
+    else build.kill("SIGKILL");
+  } catch (error) {
+    if (error.code !== "ESRCH") throw error;
+  }
+}
+process.once("SIGTERM", stopBuild);
+process.once("SIGINT", stopBuild);
+const [status] = await once(build, "close");
+process.removeListener("SIGTERM", stopBuild);
+process.removeListener("SIGINT", stopBuild);
+if (status !== 0) process.exit(status ?? 1);
 
 const server = path.join(ROOT, "dist", "server", "entry.mjs");
 if (!fs.existsSync(server)) {
