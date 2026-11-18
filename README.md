@@ -35,7 +35,7 @@ Open the loopback URL printed by setup, normally `http://localhost:5173`, and si
 pnpm dev                  # start Astro/Workers local server (daemonised by Astro 7)
 pnpm exec astro dev status
 pnpm exec astro dev logs
-pnpm check                # Astro/TypeScript check plus unit and Workers integration tests
+pnpm check                # Focused release and Access tooling checks
 pnpm demo                 # repeatable guided walkthrough + private storyboard
 pnpm demo:show            # headed walkthrough; opens the storyboard
 pnpm demo:album           # dry-run the local 7/8 -> 8/8 album demonstration
@@ -181,7 +181,7 @@ Foilbury is not affiliated with or endorsed by the source game projects. Launch 
 ### Commands
 
 ```sh
-pnpm check                 # unit + Workers
+pnpm check                 # focused release and Access tooling checks
 node scripts/test-album-e2e.mjs
 node scripts/test-privacy.mjs
 node scripts/test-seo.mjs
