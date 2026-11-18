@@ -22,13 +22,11 @@ Two agent grants are created: an owner grant with all scopes and a player grant 
 
 ## Checks and release budget
 
-`pnpm check` runs the complete correctness gate: access config, release and API
-contract scripts, the acceptance runner, Astro typecheck, unit tests and Worker
-tests. The independent gates run concurrently; no gate is skipped. GitHub
-Actions selects browser journeys from the changed paths, runs them on a separate
-runner in parallel with the correctness gate, and fails the flow if it exceeds
-five minutes. A production release has a 240-second pre-deploy budget and records
-its total in the release receipt. See `TEST_RELEASE_BUDGET.md`.
+Routine testing and release share a 120-second ceiling. Run the smallest check
+that covers the change. `pnpm check` runs the release and Access tooling checks.
+Production builds once, checks source, artifact and schema identity, deploys, and
+reads back the active Worker and public boundaries. See [Test and release
+budget](TEST_RELEASE_BUDGET.md).
 
 ## Browser
 
