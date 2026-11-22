@@ -22,11 +22,16 @@ change another.
 - **Private** — the owner scope's administrators plus explicit rows in
   `fb_collection_viewers`. Everything else is denied.
 
-An account and a membership are separate records. Magic-link sign-in and a
-verified Discord interaction establish ordinary main-album membership through
-the normal onboarding path; an operator does not need to edit SQL. Suspending or
-revoking membership revokes active sessions for that album and denies further
-catalogue and media access.
+An account and a membership are separate records. During the invitation-only
+preview, sign-in requires an approved account and collecting requires an active
+Foilbury membership. Discord sign-in uses the identity scope. Discord server
+membership alone carries no Foilbury approval or catalogue entitlement.
+
+The public access request form sends the supplied contact email to the
+verified Super Admin inbox. The form creates no account, session, membership,
+Discord invitation or collection entitlement. Dean approves access separately.
+Suspending or revoking membership revokes active sessions for that album and
+denies further catalogue and media access.
 
 ## Effective card access
 

@@ -21,7 +21,10 @@ const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/play"
       {invitationOnly ? (
         <>
           <p class="mt-5 max-w-lg text-lg leading-relaxed text-[var(--muted)]">Dean is approving access while Foilbury is in preview. Everyone is welcome to explore the public cabinet.</p>
-          <a class="btn btn-secondary mt-6" href="/cabinet">Browse originals</a>
+          <div class="mt-6 flex flex-wrap gap-3">
+            <a class="btn btn-primary" href="/request-access">Request access</a>
+            <a class="btn btn-secondary" href="/cabinet">Browse originals</a>
+          </div>
         </>
       ) : (
         <>
