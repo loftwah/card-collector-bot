@@ -39,6 +39,8 @@
   ],
   "vars": {
     "FOILBURY_ENV": "production",
+    "FOILBURY_PREVIEW_USER_IDS": "usr_prod_owner,usr_mvzm5yiky28tmcyedbg20wdx",
+    "FOILBURY_PREVIEW_SERVICE_USER_IDS": "usr_demo_discord",
     "FOILBURY_PUBLIC_ORIGIN": "https://foilbury.loftwah.com",
     "FOILBURY_TENANT_SLUG": "cabinet",
     "EMDASH_SITE_URL": "https://foilbury.loftwah.com",

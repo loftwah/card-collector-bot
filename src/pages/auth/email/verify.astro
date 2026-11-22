@@ -3,6 +3,7 @@ import BaseLayout from "../../../layouts/BaseLayout.astro";
 import { buildContext } from "../../../server/context";
 import { confirmEmailChange, findMagicLink, redeemMagicLink } from "../../../server/modules/magic-links";
 import { ApiError } from "../../../server/context";
+import { hasPreviewAccess } from "../../../server/config";
 
 export const prerender = false;
 
@@ -54,6 +55,10 @@ if (Astro.request.method === "POST") {
       });
       return Astro.redirect(result.redirectPath);
     } catch (cause) {
+      if (cause instanceof ApiError && cause.code === "preview_access_required") {
+        Astro.cookies.delete("fb_magic_csrf", { path: "/auth/email" });
+        return Astro.redirect("/login?error=preview_access_required", 303);
+      }
       error = cause instanceof ApiError ? cause.message : "This link could not be used.";
     }
   }
@@ -64,6 +69,8 @@ if (Astro.request.method === "GET" && rawToken) {
     const link = await findMagicLink(ctx, rawToken);
     if (!link || link.used_at || new Date(link.expires_at) <= new Date()) {
       error = "This link is invalid, used or expired. Request a fresh one.";
+    } else if (link.purpose !== "link_email" && !hasPreviewAccess(ctx.config, link.user_id ?? undefined)) {
+      return Astro.redirect("/login?error=preview_access_required");
     } else {
       email = link.email;
       ready = true;

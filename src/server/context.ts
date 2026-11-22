@@ -1,6 +1,6 @@
 import type { D1Database, R2Bucket } from "@cloudflare/workers-types";
 import { env } from "cloudflare:workers";
-import { readConfig, type RawEnv, type RuntimeConfig, type Role } from "./config";
+import { hasPreviewAccess, PREVIEW_ACCESS_REQUIRED, readConfig, type RawEnv, type RuntimeConfig, type Role } from "./config";
 
 export type { Role } from "./config";
 export { assertTrustedLocal } from "./config";
@@ -17,6 +17,7 @@ import {
   resolveAccessIdentityProvider,
   verifyAccessToken,
   type AccessIdentity,
+  type AccessResolution,
 } from "./access";
 
 export interface Tenant {
@@ -83,8 +84,7 @@ export interface Ctx {
   sessionAssurance: string | null;
   sessionAuthTime: string | null;
   accessIdentity: AccessIdentity | null;
-  accessStatus:
-    "linked" | "unlinked" | "email_mismatch" | "disabled" | "not_member" | "not_required" | null;
+  accessStatus: AccessResolution["status"] | "not_required" | null;
 }
 
 export class ApiError extends Error {
@@ -145,13 +145,16 @@ export async function buildContext(
   const bearer = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (bearer?.startsWith("fba_")) {
     const resolved = await resolveAgent(db, config, bearer);
+    if (!path.startsWith("/api/") && !hasPreviewAccess(config, resolved.user.id)) {
+      throw new ApiError(403, "preview_access_required", PREVIEW_ACCESS_REQUIRED);
+    }
     tenant = resolved.tenant;
     user = resolved.user;
     actor = resolved.actor;
     scopes = resolved.scopes;
     agentTokenId = resolved.tokenId;
   } else if (sessionToken) {
-    const resolved = await resolveSession(db, sessionToken);
+    const resolved = await resolveSession(db, sessionToken, config);
     if (resolved) {
       tenant = resolved.tenant;
       user = resolved.user;
@@ -336,6 +339,7 @@ export async function trustedClientKey(
 export async function resolveSession(
   db: D1Database,
   token: string,
+  config: RuntimeConfig,
 ): Promise<{
   user: CurrentUser;
   sessionId: string;
@@ -386,6 +390,7 @@ export async function resolveSession(
   );
   if (!row || row.revoked_at || row.disabled_at || new Date(row.expires_at) <= new Date())
     return null;
+  if (!hasPreviewAccess(config, row.user_id)) return null;
   await db
     .prepare("UPDATE fb_sessions SET last_seen_at = ? WHERE id = ?")
     .bind(nowIso(), row.id)
@@ -493,6 +498,10 @@ export async function resolveAgent(
       capabilities = parsed.filter((item): item is string => typeof item === "string");
   } catch {
     capabilities = [];
+  }
+  if (!hasPreviewAccess(config, row.represented_user_id) &&
+      !config.previewServiceUserIds?.includes(row.represented_user_id)) {
+    throw new ApiError(403, "preview_access_required", PREVIEW_ACCESS_REQUIRED);
   }
   const scopes = JSON.parse(row.scopes_json) as string[];
   await db

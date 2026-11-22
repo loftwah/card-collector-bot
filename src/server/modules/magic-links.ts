@@ -1,3 +1,4 @@
+import { hasPreviewAccess, PREVIEW_ACCESS_REQUIRED } from "../config";
 import type { D1Database } from "@cloudflare/workers-types";
 import { ApiError, checkRateLimit, requireRecentStrongAuth, requireUser, type Ctx, type CurrentUser } from "../context";
 import { first, nowIso } from "../db";
@@ -29,11 +30,16 @@ export async function requestMagicLink(
   // network identity, never from the request correlation ID.
   await checkRateLimit(ctx.db, `magic:email:${await sha256Hex(email)}`, 5, 900);
   await checkRateLimit(ctx.db, `magic:client:${ctx.clientKey}`, 20, 900);
-  await checkRateLimit(ctx.db, "magic:service", 120, 900);
 
   const account = await findUserByEmail(ctx.db, email);
   // Synthetic game actors have no mailbox and no human sign-in path.
   if (account?.disabled_at || account?.is_synthetic) return { ok: true };
+  // Use the same response for eligible and ineligible addresses.
+  if (input.purpose === "signin" && (
+    !hasPreviewAccess(ctx.config, account?.id) ||
+    (ctx.config.previewUserIds && email.endsWith(".invalid"))
+  )) return { ok: true };
+  await checkRateLimit(ctx.db, "magic:service", 120, 900);
 
   const raw = token("fbm");
   const id = newId("ml");
@@ -212,6 +218,10 @@ export async function redeemMagicLink(
   const account = await findUserByEmail(ctx.db, row.email);
   if (account?.disabled_at) throw new ApiError(403, "account_disabled", "This account is disabled.");
   if (account?.is_synthetic) throw new ApiError(403, "account_disabled", "Synthetic collectors cannot sign in.");
+  if (!hasPreviewAccess(ctx.config, account?.id) ||
+      (ctx.config.previewUserIds && row.user_id !== account?.id)) {
+    throw new ApiError(403, "preview_access_required", PREVIEW_ACCESS_REQUIRED);
+  }
   const user = account
     ? { id: account.id, email: account.email, displayName: account.display_name }
     : await createEmailUser(ctx.db, { email: row.email });
@@ -236,10 +246,10 @@ export async function redeemMagicLink(
     );
   }
   if (!membership) {
-    // Approved admission for this installation: a brand-new verified-email
-    // account explicitly joins the public album. Deferred registration here is
-    // indistinguishable from the explicit /me/join path and never restores an
-    // existing row.
+    if (ctx.config.previewUserIds) {
+      throw new ApiError(403, "preview_access_required", PREVIEW_ACCESS_REQUIRED);
+    }
+    // Open local/test fixtures can create their initial membership.
     await addPlayerMembershipIfAbsent(ctx.db, ctx.tenant.id, user.id, now);
   }
 

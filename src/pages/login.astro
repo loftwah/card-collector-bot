@@ -5,38 +5,53 @@ import { pageContext } from "../server/page";
 
 const ctx = await pageContext(Astro.request);
 if (ctx.user) return Astro.redirect("/play");
+const invitationOnly = Boolean(ctx.config.previewUserIds);
+const signInError = Astro.url.searchParams.get("error");
 const next = Astro.url.searchParams.get("next") ?? "/play";
 const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/play";
 ---
 <BaseLayout title="Sign in · Foilbury" description="Sign in to your Foilbury cabinet with Discord, email or a passkey." noIndex>
   <section class="signin-page container grid min-h-[calc(100vh-68px)] items-center gap-10 py-10 lg:grid-cols-[1.05fr_0.95fr] lg:py-16">
-    <div class="order-2 lg:order-1">
+    <div class:list={[invitationOnly ? "order-1" : "order-2", "lg:order-1"]}>
       <a href="/" class="inline-flex items-center gap-2.5 no-underline" aria-label="Foilbury home">
         <img src="/brand/mark.png" alt="" width="34" height="34" class="h-[34px] w-[34px]" />
         <span class="font-display text-2xl tracking-[-0.03em]">Foilbury</span>
       </a>
-      <h1 class="display mt-8 text-[clamp(3.2rem,7vw,6.4rem)]">The cabinet is open.</h1>
-      <p class="mt-5 max-w-lg text-lg leading-relaxed text-[var(--muted)]">Your cards, serials and Foil live on one Foilbury identity. Come back with Discord, a one-use email link or a passkey. Administration has its own Cloudflare door.</p>
-      <div class="mt-8 grid max-w-lg gap-3 border-t border-[var(--line)] pt-5 sm:grid-cols-3">
-        <div><p class="font-mono text-[0.58rem] uppercase tracking-[0.14em] text-[var(--brass)]">One identity</p><p class="mt-1 text-sm text-[var(--muted)]">Discord and email resolve the same account.</p></div>
-        <div><p class="font-mono text-[0.58rem] uppercase tracking-[0.14em] text-[var(--brass)]">One collection</p><p class="mt-1 text-sm text-[var(--muted)]">Cards travel with the Bot that awarded them.</p></div>
-        <div><p class="font-mono text-[0.58rem] uppercase tracking-[0.14em] text-[var(--brass)]">One-use links</p><p class="mt-1 text-sm text-[var(--muted)]">Email links expire in fifteen minutes.</p></div>
-      </div>
+      <h1 class="display mt-8 text-[clamp(2.6rem,7vw,5.8rem)]">{invitationOnly ? "Foilbury is invitation-only." : "The cabinet is open."}</h1>
+      {invitationOnly ? (
+        <>
+          <p class="mt-5 max-w-lg text-lg leading-relaxed text-[var(--muted)]">Dean is approving access while Foilbury is in preview. Everyone is welcome to explore the public cabinet.</p>
+          <a class="btn btn-secondary mt-6" href="/cabinet">Browse originals</a>
+        </>
+      ) : (
+        <>
+          <p class="mt-5 max-w-lg text-lg leading-relaxed text-[var(--muted)]">Your cards, serials and Foil live on one Foilbury identity. Come back with Discord, a one-use email link or a passkey. Administration has its own Cloudflare door.</p>
+          <div class="mt-8 grid max-w-lg gap-3 border-t border-[var(--line)] pt-5 sm:grid-cols-3">
+            <div><p class="font-mono text-[0.58rem] uppercase tracking-[0.14em] text-[var(--brass)]">One identity</p><p class="mt-1 text-sm text-[var(--muted)]">Discord and email resolve the same account.</p></div>
+            <div><p class="font-mono text-[0.58rem] uppercase tracking-[0.14em] text-[var(--brass)]">One collection</p><p class="mt-1 text-sm text-[var(--muted)]">Cards travel with the Bot that awarded them.</p></div>
+            <div><p class="font-mono text-[0.58rem] uppercase tracking-[0.14em] text-[var(--brass)]">One-use links</p><p class="mt-1 text-sm text-[var(--muted)]">Email links expire in fifteen minutes.</p></div>
+          </div>
+        </>
+      )}
     </div>
 
-    <div class="order-1 lg:order-2">
+    <div class:list={[invitationOnly ? "order-2" : "order-1", "lg:order-2"]}>
       <div class="signin-panel surface p-6 sm:p-8">
         <div class="signin-panel__heading mb-6 flex items-start justify-between gap-4">
           <div>
             <h2 class="display-sm text-3xl">Sign in</h2>
-            <p class="mt-1 text-sm text-[var(--muted)]">Choose the door that suits this device.</p>
+            <p class="mt-1 text-sm text-[var(--muted)]">{invitationOnly ? "Use the Discord account, email or passkey linked to your approved account." : "Choose how to sign in."}</p>
           </div>
           <img src="/brand/mark-mono.png" alt="" width="26" height="26" class="mt-1 h-[26px] w-[26px] opacity-70" />
         </div>
-        {Astro.url.searchParams.get("error") ? (
-          <div class="error-box mb-4" role="alert">That sign-in attempt could not be completed. Try again, or use another method.</div>
+        {signInError ? (
+          <div class="error-box mb-4" role="alert">
+            {signInError === "preview_access_required"
+              ? "This sign-in needs an approved Foilbury account. If you already have access, try the sign-in method linked to your account."
+              : "That sign-in attempt could not be completed. Try again, or use another method."}
+          </div>
         ) : null}
-        <LoginForm client:load next={safeNext} devLoginEnabled={ctx.config.devLogin} discordOAuth={ctx.config.providers.discordOAuth} />
+        <LoginForm client:load next={safeNext} devLoginEnabled={ctx.config.devLogin} discordOAuth={ctx.config.providers.discordOAuth} invitationOnly={invitationOnly} />
       </div>
       {ctx.config.localMode ? (
         <div class="notice mt-4">

@@ -1,3 +1,4 @@
+import { hasPreviewAccess, PREVIEW_ACCESS_REQUIRED } from "../config";
 import type { D1Database } from "@cloudflare/workers-types";
 import {
   generateAuthenticationOptions,
@@ -216,6 +217,9 @@ export async function loginWithPasskey(
     },
   });
   if (!verified.verified) throw new ApiError(401, "passkey_verification_failed", "The passkey could not be verified.");
+  if (!hasPreviewAccess(ctx.config, row.user_id)) {
+    throw new ApiError(403, "preview_access_required", PREVIEW_ACCESS_REQUIRED);
+  }
   await ctx.db
     .prepare("UPDATE fb_webauthn_credentials SET counter = ?, last_used_at = ? WHERE id = ?")
     .bind(verified.authenticationInfo.newCounter, nowIso(), row.id)

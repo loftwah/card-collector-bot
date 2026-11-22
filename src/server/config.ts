@@ -17,6 +17,9 @@ export interface RuntimeConfig {
   tenantSlug: string;
   localMode: boolean;
   devLogin: boolean;
+  /** Undefined only for open local/test fixtures. Production defaults to a closed list. */
+  previewUserIds?: readonly string[];
+  previewServiceUserIds?: readonly string[];
   sessionSecret: string;
   csrfSecret: string;
   agentPepper: string;
@@ -41,6 +44,8 @@ export interface RawEnv {
   FOILBURY_TENANT_SLUG?: string;
   FOILBURY_LOCAL_MODE?: string;
   FOILBURY_DEV_LOGIN?: string;
+  FOILBURY_PREVIEW_USER_IDS?: string;
+  FOILBURY_PREVIEW_SERVICE_USER_IDS?: string;
   FOILBURY_SESSION_SECRET?: string;
   FOILBURY_CSRF_SECRET?: string;
   FOILBURY_AGENT_TOKEN_PEPPER?: string;
@@ -72,6 +77,13 @@ export interface RawEnv {
 }
 
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
+
+export const PREVIEW_ACCESS_REQUIRED = "Foilbury is currently invitation-only. You can still browse the public cabinet.";
+
+export function hasPreviewAccess(config: RuntimeConfig, userId?: string): boolean {
+  if (!config.previewUserIds && config.environment !== "production") return true;
+  return Boolean(userId && config.previewUserIds?.includes(userId));
+}
 
 export function readConfig(raw: RawEnv): RuntimeConfig {
   const environment = raw.FOILBURY_ENV === "production" ? "production" : raw.FOILBURY_ENV === "test" ? "test" : "local";
@@ -109,6 +121,11 @@ export function readConfig(raw: RawEnv): RuntimeConfig {
     tenantSlug: raw.FOILBURY_TENANT_SLUG ?? "cabinet",
     localMode,
     devLogin: localMode && raw.FOILBURY_DEV_LOGIN === "true",
+    previewUserIds:
+      environment === "production" || raw.FOILBURY_PREVIEW_USER_IDS !== undefined
+        ? (raw.FOILBURY_PREVIEW_USER_IDS ?? "").split(/[,\s]+/).filter(Boolean)
+        : undefined,
+    previewServiceUserIds: raw.FOILBURY_PREVIEW_SERVICE_USER_IDS?.split(/[,\s]+/).filter(Boolean),
     sessionSecret,
     csrfSecret,
     agentPepper,

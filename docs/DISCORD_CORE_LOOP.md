@@ -4,8 +4,8 @@
 
 - Invocation: `/foilbury open` (nested subcommand). `pool` is optional and
   defaults to `cabinet-draw`.
-- No website registration is required. A first Discord interaction creates the
-  Bot member, wallet and starter allowance through the existing domain services.
+- During the production preview, approved accounts sign in with their linked Discord identities.
+  Open local/test fixtures still provision a Bot member, wallet and starter allowance on first use.
 - One intentional opening produces one committed draw, one serial, one ledger
   debit at the quoted price and a retrievable receipt. Retries and repeated
   button presses reuse the interaction/domain idempotency key.

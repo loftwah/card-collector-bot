@@ -48,7 +48,7 @@ describe("scoped Admin Foil grants", () => {
     });
     const admin = await ctxFor("cabinet", "player@foilbury.local");
     const strong = await createSession(admin.db, admin.tenant, admin.user!, { authMethod: "mfa", assurance: "mfa" });
-    admin.sessionId = (await resolveSession(admin.db, strong.token))!.sessionId;
+    admin.sessionId = (await resolveSession(admin.db, strong.token, admin.config))!.sessionId;
     const result = await adjustWallet(admin, {
       userId: admin.user!.id,
       amount: 100,
