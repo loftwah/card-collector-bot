@@ -13,6 +13,11 @@ let email = "";
 let error = "";
 
 if (Astro.request.method === "POST") {
+  if (Astro.request.headers.get("origin") !== Astro.url.origin) {
+    return new Response("Open the Foilbury access request form to send a request.", {
+      status: 403,
+    });
+  }
   const contentType = Astro.request.headers.get("content-type")?.split(";")[0];
   const size = Number(Astro.request.headers.get("content-length"));
   if (contentType !== "application/x-www-form-urlencoded" || size > 4096) {
