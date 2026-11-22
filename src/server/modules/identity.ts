@@ -1,4 +1,5 @@
 import type { D1Database } from "@cloudflare/workers-types";
+import { hasPreviewAccess, PREVIEW_ACCESS_REQUIRED, type RuntimeConfig } from "../config";
 import { first, nowIso, statement, all } from "../db";
 import { newId, sha256Hex, token } from "../ids";
 import { hashPassword, verifyPassword } from "../password";
@@ -278,6 +279,7 @@ export async function login(
   tenant: Tenant,
   email: string,
   password: string,
+  config: RuntimeConfig,
 ): Promise<{ token: string; csrf: string; expiresAt: string; user: CurrentUser }> {
   const row = await first<{
     id: string;
@@ -302,6 +304,9 @@ export async function login(
     throw new ApiError(401, "invalid_credentials", "Email or password is incorrect.");
   const valid = await verifyPassword(password, row.password_hash);
   if (!valid) throw new ApiError(401, "invalid_credentials", "Email or password is incorrect.");
+  if (!hasPreviewAccess(config, row.id)) {
+    throw new ApiError(403, "preview_access_required", PREVIEW_ACCESS_REQUIRED);
+  }
   return createSession(db, tenant, {
     id: row.id,
     email: row.email,

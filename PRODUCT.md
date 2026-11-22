@@ -5,7 +5,7 @@ Foilbury is a collectible-card cabinet. A player claims a free allowance, opens 
 ## Actors
 
 - **Account** — one persistent Foilbury identity, resolved by Discord, a one-use email link, a passkey, or a verified Cloudflare Access identity for administration.
-- **User** — an ordinary player. A verified Discord interaction creates a lightweight player without a website registration step.
+- **User** — an approved player during the invitation-only preview. Their existing Discord, email or passkey sign-in resolves the same account.
 - **Bot Owner** — the account that owns a Foilbury Bot. This is not platform administration.
 - **Bot Admin** — an account explicitly authorised for a named Bot, with a capability set, expiring invitation and revocation path.
 - **Global Collection Admin** — an audited, scoped platform role for shared collection curation. It is not platform root and cannot approve public showcase content.
@@ -15,6 +15,7 @@ Foilbury is a collectible-card cabinet. A player claims a free allowance, opens 
 ## Current product surface
 
 - Public showcase landing page and catalogue for approved Loftwah-owned project content only.
+- Collecting is invitation-only in production. An operator acting on Dean’s approval provisions the person’s account and active membership, then adds their stable account ID to `FOILBURY_PREVIEW_USER_IDS` in `wrangler.production.jsonc` through the normal release. A Bot team invitation grants only Bot-scoped permissions to an approved account. The existing demo service identity uses a named, scoped API credential.
 - Explicit viewing audiences: public showcase, members, private. Global, published and public are separate dimensions.
 - Member album with collection browsing, front/back and on-demand 3D card inspection.
 - Versioned achievements shared by web, Discord and the reward ledger.

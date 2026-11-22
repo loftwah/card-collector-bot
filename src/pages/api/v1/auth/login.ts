@@ -19,7 +19,7 @@ export const POST: APIRoute = async ({ request }) => {
     const input = await readJson(request, schema);
     const ctx = await buildContext(request);
     await checkRateLimit(ctx.db, `login:${input.email.toLowerCase()}`, 8, 300);
-    const result = await login(ctx.db, ctx.tenant, input.email, input.password);
+    const result = await login(ctx.db, ctx.tenant, input.email, input.password, ctx.config);
     return json(
       { user: result.user, tenant: ctx.tenant, csrf_token: result.csrf, expires_at: result.expiresAt },
       200,

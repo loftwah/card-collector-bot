@@ -3,7 +3,7 @@ import { createRemoteJWKSet, jwtVerify, type JWTPayload, type JWTVerifyGetKey } 
 import { ApiError, type CurrentUser, type Role, type Tenant } from "./context";
 import { first, nowIso } from "./db";
 import { newId } from "./ids";
-import type { RuntimeConfig } from "./config";
+import { hasPreviewAccess, type RuntimeConfig } from "./config";
 
 export interface AccessIdentity {
   subject: string;
@@ -15,7 +15,7 @@ export interface AccessIdentity {
 export interface AccessResolution {
   identity: AccessIdentity;
   user: CurrentUser | null;
-  status: "linked" | "unlinked" | "email_mismatch" | "disabled" | "not_member";
+  status: "linked" | "unlinked" | "email_mismatch" | "disabled" | "not_member" | "preview_access_required";
 }
 
 const jwksCache = new Map<string, JWTVerifyGetKey>();
@@ -244,6 +244,7 @@ export async function resolveAccessIdentity(
     identity.subject,
   );
   if (linked) {
+    if (!hasPreviewAccess(config, linked.user_id)) return { identity, user: null, status: "preview_access_required" };
     const user = await loadMember(db, tenant.id, linked.user_id);
     if (!user) return { identity, user: null, status: "disabled" };
     if (user.email.trim().toLowerCase() !== identity.email) {
@@ -277,6 +278,7 @@ export async function resolveAccessIdentity(
     return { identity, user: null, status: "email_mismatch" };
   }
   if (account.disabled_at) return { identity, user: null, status: "disabled" };
+  if (!hasPreviewAccess(config, account.id)) return { identity, user: null, status: "preview_access_required" };
   if (!account.email_verified_at) return { identity, user: null, status: "email_mismatch" };
 
   const user = await loadMember(db, tenant.id, account.id);

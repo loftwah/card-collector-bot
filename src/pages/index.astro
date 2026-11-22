@@ -8,6 +8,7 @@ import { cabinetArtwork, editorialShareImage } from "../lib/editorial-art";
 const ctx = await pageContext(Astro.request);
 const session = Astro.locals.foilbury;
 const user = session?.user ?? null;
+const privatePreview = Boolean(ctx.config.previewUserIds) && !user;
 const collections = await listPublicCollections(ctx);
 const primaryHref = user ? "/play" : "/login?next=%2Fplay";
 const browseHref = user ? "/play" : "/cabinet";
@@ -190,14 +191,13 @@ const albumFeatures = [
       <div class="home-album__intro">
         <h2>The members' album.</h2>
         <p>
-          Sign in with Discord, a one-use email link or a passkey. Your album holds the collections
-          you are entitled to, with full profiles, spoiler controls, duplicates and provenance.
+          {privatePreview
+            ? "Collecting is invitation-only during the preview. You can browse the public cabinet anytime."
+            : "Sign in with Discord, a one-use email link or a passkey. Your album holds your collections, with full profiles, spoiler controls, duplicates and provenance."}
         </p>
         <div class="home-album__actions">
-          <a class="btn btn-primary" href="/login?next=%2Fplay">Join the album</a>
-          <a class="btn btn-secondary" href="/login?next=%2Fplay%2Fcollection">
-            I already have an account
-          </a>
+          <a class="btn btn-primary" href={primaryHref}>{user ? "Open my library" : "Sign in"}</a>
+          <a class="btn btn-secondary" href="/cabinet">Browse originals</a>
         </div>
       </div>
       <div class="home-features">
@@ -219,10 +219,10 @@ const albumFeatures = [
   <section class="home-close">
     <div class="container home-close__inner">
       <h2>Start with one card.</h2>
-      <p>A room of your own, built one pull at a time. The public shelf is open; the album is one click away.</p>
+      <p>{privatePreview ? "Explore the originals on the public shelf. Members can sign in to keep collecting." : "A room of your own, built one pull at a time."}</p>
       <div class="home-close__actions">
         <a class="btn btn-invert" href={primaryHref}>
-          {user ? "Open my library" : "Sign in to collect"}
+          {user ? "Open my library" : "Sign in"}
         </a>
         <a class="btn btn-invert-outline" href="/cabinet">Browse the public shelf</a>
       </div>

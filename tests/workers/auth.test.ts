@@ -8,6 +8,7 @@ import { createBot, createBotInvitation, acceptBotInvitation, revokeBotAdmin } f
 import { createCollection, addCollectionCards, enableCollection } from "../../src/server/modules/collections";
 import { createPool, executeDraw, getPoolPreview, publishPool } from "../../src/server/modules/pools";
 import { nowIso } from "../../src/server/db";
+import { ensureDiscordPlayer, linkDiscordIdentity } from "../../src/server/discord/context";
 import { sha256Hex } from "../../src/server/ids";
 import { ApiError, requireRecentStrongAuth, resolveSession } from "../../src/server/context";
 
@@ -26,6 +27,37 @@ describe("passwordless identity, Access linking, bots and collections", () => {
     const account = await findUserByEmail(runtime.DB, "new.player@example.com");
     expect(account?.email_verified_at).toBeTruthy();
     await expect(redeemMagicLink(ctx, requested.devToken!)).rejects.toMatchObject({ code: "magic_link_invalid" });
+  });
+
+  it("admits only approved accounts during the preview", async () => {
+    const ctx = await ctxFor("cabinet", "owner@foilbury.local");
+    const player = await ctxFor("cabinet", "player@foilbury.local");
+    const approvedId = ctx.user!.id;
+    const preview = { ...ctx, config: { ...ctx.config, previewUserIds: [approvedId] } };
+    const strangerEmail = "preview-visitor@example.com";
+    const oldLink = await requestMagicLink(ctx, { email: strangerEmail, purpose: "signin" });
+    expect(await requestMagicLink(preview, { email: strangerEmail, purpose: "signin" })).toEqual({ ok: true });
+    expect(await requestMagicLink(preview, { email: player.user!.email, purpose: "signin" })).toEqual({ ok: true });
+    await expect(redeemMagicLink(preview, oldLink.devToken!)).rejects.toMatchObject({ code: "preview_access_required" });
+    expect(await findUserByEmail(runtime.DB, strangerEmail)).toBeNull();
+
+    const existingSession = await createSession(runtime.DB, player.tenant, player.user!);
+    expect(await resolveSession(runtime.DB, existingSession.token, preview.config)).toBeNull();
+
+    const approvedLink = await requestMagicLink(preview, { email: ctx.user!.email, purpose: "signin" });
+    const approvedSession = await redeemMagicLink(preview, approvedLink.devToken!);
+    expect((await resolveSession(runtime.DB, approvedSession.token, preview.config))?.user.id).toBe(approvedId);
+
+    const discord = { id: "100000000000000001", username: "approved" };
+    const visitor = { id: "100000000000000002", username: "visitor" };
+    await linkDiscordIdentity(runtime, ctx.tenant, ctx.user!, discord);
+    const discordEnv = { ...runtime, DB: runtime.DB, MEDIA: runtime.MEDIA, FOILBURY_PREVIEW_USER_IDS: approvedId };
+    expect((await ensureDiscordPlayer(discordEnv, ctx.tenant, discord)).user.id).toBe(approvedId);
+    await expect(ensureDiscordPlayer(discordEnv, ctx.tenant, visitor)).rejects.toMatchObject({ code: "preview_access_required" });
+    expect(await findUserByEmail(runtime.DB, `discord.${visitor.id}@players.foilbury.invalid`)).toBeNull();
+
+    const differentAlbum = await tenant("harbour");
+    await expect(joinMainAlbum({ ...preview, tenant: differentAlbum })).rejects.toMatchObject({ code: "preview_access_required" });
   });
 
   it("never restores a revoked or suspended membership through a magic link", async () => {
@@ -269,15 +301,15 @@ describe("passwordless identity, Access linking, bots and collections", () => {
     const ctx = await ctxFor("cabinet", "owner@foilbury.local");
     const player = await ctxFor("cabinet", "player@foilbury.local");
     const session = await createSession(runtime.DB, player.tenant, player.user!, { authMethod: "magic_link", assurance: "email" });
-    expect(await resolveSession(runtime.DB, session.token)).not.toBeNull();
+    expect(await resolveSession(runtime.DB, session.token, ctx.config)).not.toBeNull();
     await runtime.DB.prepare("UPDATE fb_memberships SET revoked_at = ? WHERE tenant_id = ? AND user_id = ?")
       .bind(nowIso(), player.tenant.id, player.user!.id).run();
-    expect(await resolveSession(runtime.DB, session.token)).toBeNull();
+    expect(await resolveSession(runtime.DB, session.token, ctx.config)).toBeNull();
     await runtime.DB
       .prepare("UPDATE fb_memberships SET status = 'revoked', revoked_at = ? WHERE tenant_id = ? AND user_id = ?")
       .bind(nowIso(), player.tenant.id, player.user!.id)
       .run();
-    expect(await resolveSession(runtime.DB, session.token)).toBeNull();
+    expect(await resolveSession(runtime.DB, session.token, ctx.config)).toBeNull();
     await runtime.DB
       .prepare("UPDATE fb_memberships SET status = 'active', revoked_at = NULL WHERE tenant_id = ? AND user_id = ?")
       .bind(player.tenant.id, player.user!.id)

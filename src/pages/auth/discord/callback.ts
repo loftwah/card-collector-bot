@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
-import { buildContext, runtimeEnv } from "../../../server/context";
+import { ApiError, buildContext, runtimeEnv } from "../../../server/context";
+import { hasPreviewAccess, PREVIEW_ACCESS_REQUIRED } from "../../../server/config";
 import { createSession } from "../../../server/modules/identity";
 import { ensureDiscordPlayer, linkDiscordIdentity } from "../../../server/discord/context";
 import { syncDiscordAvatar } from "../../../server/modules/account-avatar";
@@ -79,6 +80,9 @@ export const GET: APIRoute = async ({ request, cookies }) => {
     const ctx = await buildContext(request);
     let user = ctx.user;
     if (user) {
+      if (!hasPreviewAccess(ctx.config, user.id)) {
+        throw new ApiError(403, "preview_access_required", PREVIEW_ACCESS_REQUIRED);
+      }
       await linkDiscordIdentity(raw, ctx.tenant, user, discordUser);
     } else {
       const player = await ensureDiscordPlayer(raw, ctx.tenant, discordUser);
@@ -95,7 +99,9 @@ export const GET: APIRoute = async ({ request, cookies }) => {
       headers.append("set-cookie", cookie);
     }
     return new Response(null, { status: 302, headers });
-  } catch {
-    return fail("discord_link");
+  } catch (error) {
+    return fail(error instanceof ApiError && error.code === "preview_access_required"
+      ? error.code
+      : "discord_link");
   }
 };

@@ -62,6 +62,7 @@ beforeEach(() => {
   };
   Object.assign(state.bindings, {
     DB: db, MEDIA: {}, FOILBURY_ENV: "production", FOILBURY_TENANT_SLUG: "cabinet",
+    FOILBURY_PREVIEW_USER_IDS: `${owner.id},another-person`,
     FOILBURY_SESSION_SECRET: "s".repeat(32), FOILBURY_CSRF_SECRET: "c".repeat(32), FOILBURY_AGENT_TOKEN_PEPPER: "a".repeat(32),
     FOILBURY_ACCESS_TEAM_DOMAIN: "test.cloudflareaccess.com",
     FOILBURY_ACCESS_PLATFORM_AUD: "platform-page", FOILBURY_ACCESS_PLATFORM_API_AUD: "platform-api",

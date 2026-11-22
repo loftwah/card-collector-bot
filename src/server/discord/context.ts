@@ -1,5 +1,5 @@
 import { ApiError, type Ctx, type CurrentUser, type Tenant } from "../context";
-import { readConfig } from "../config";
+import { hasPreviewAccess, PREVIEW_ACCESS_REQUIRED, readConfig } from "../config";
 import { first, nowIso } from "../db";
 import { newId } from "../ids";
 import { addMembership, ensureWallet } from "../modules/identity";
@@ -144,6 +144,7 @@ export async function ensureDiscordPlayer(
   tenant: Tenant,
   discordUser: DiscordUser,
 ): Promise<ResolvedPlayer> {
+  const config = readConfig(env);
   const displayName = safeDisplayName(discordUser);
   const existing = await first<
     DiscordIdentity & {
@@ -178,6 +179,9 @@ export async function ensureDiscordPlayer(
     tenant.id,
     discordUser.id,
   );
+  if (!hasPreviewAccess(config, existing?.user_id)) {
+    throw new ApiError(403, "preview_access_required", PREVIEW_ACCESS_REQUIRED);
+  }
   if (existing) {
     // A verified Discord identity never restores a revoked membership. The
     // membership and the identity's revocation state are checked on every

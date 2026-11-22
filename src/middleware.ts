@@ -201,6 +201,10 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
 function accessGateHtml(input: { status: string; email?: string; path: string }): string {
   const copy: Record<string, { title: string; body: string }> = {
+    preview_access_required: {
+      title: "Foilbury is invitation-only.",
+      body: "Administration is available to approved Foilbury accounts during the preview.",
+    },
     unlinked: {
       title: "This Cloudflare identity is not linked yet.",
       body: "Cloudflare verified the address, but it is not explicitly linked to a Foilbury account. Sign in with Discord or a magic link first, link this address from Account security, then return here.",

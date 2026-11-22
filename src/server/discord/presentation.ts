@@ -2520,6 +2520,12 @@ export const SAFE_ERROR_COPY: Record<string, SafeErrorCopy> = {
     message: "Foilbury only works in a server where this Bot is installed.",
     nextStep: "Return to the configured play channel.",
   },
+  preview_access_required: {
+    kind: "denied",
+    title: "Foilbury is invitation-only",
+    message: "Collecting is available to approved accounts during the preview.",
+    nextStep: "You can still [browse the public cabinet](https://foilbury.loftwah.com/cabinet).",
+  },
   membership_revoked: {
     kind: "denied",
     title: "Membership is not active",

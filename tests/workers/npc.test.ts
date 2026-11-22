@@ -54,7 +54,7 @@ describe("persistent NPC collectors", () => {
       .first<{ is_synthetic: number; synthetic_kind: string; email: string; status: string; balance: number }>();
     expect(row).toMatchObject({ is_synthetic: 1, synthetic_kind: "npc", status: "active", balance: 350 });
     expect(row?.email).toContain("@synthetic.invalid");
-    await expect(login(owner.db, owner.tenant, row!.email, "anything")).rejects.toMatchObject({ code: "invalid_credentials" });
+    await expect(login(owner.db, owner.tenant, row!.email, "anything", owner.config)).rejects.toMatchObject({ code: "invalid_credentials" });
     const magic = await requestMagicLink(owner, { email: row!.email, purpose: "signin" });
     expect(magic.devToken).toBeUndefined();
   });

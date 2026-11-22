@@ -11,10 +11,12 @@ export default function LoginForm({
   next,
   devLoginEnabled = false,
   discordOAuth = false,
+  invitationOnly = false,
 }: {
   next: string;
   devLoginEnabled?: boolean;
   discordOAuth?: boolean;
+  invitationOnly?: boolean;
 }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -48,7 +50,9 @@ export default function LoginForm({
         method: "POST",
         body: { email, redirectPath: destination },
       });
-      setSent("If that address can use Foilbury, a one-use sign-in link is on its way. It expires in 15 minutes.");
+      setSent(invitationOnly
+        ? "If this email is linked to an approved account, check your inbox. The link expires in 15 minutes. If you usually sign in with Discord, use Discord instead."
+        : "If that address can use Foilbury, a one-use sign-in link is on its way. It expires in 15 minutes.");
       if (result.dev_token) setDevLink(`/auth/email/verify?token=${encodeURIComponent(result.dev_token)}`);
     } catch (cause) {
       setError(describeError(cause));
@@ -91,7 +95,7 @@ export default function LoginForm({
     <div className="grid gap-4">
       {error ? <div className="error-box" role="alert">{error}</div> : null}
       {sent ? (
-        <div className="success-box" role="status">
+        <div className={invitationOnly ? "notice" : "success-box"} role="status">
           <p>{sent}</p>
           {devLink ? <a className="mt-2 inline-block font-semibold underline" href={devLink}>Local development: open the sign-in link</a> : null}
         </div>

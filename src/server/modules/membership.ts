@@ -1,4 +1,5 @@
 import { ApiError, hasCapability, requireRecentStrongAuth, type Ctx } from "../context";
+import { PREVIEW_ACCESS_REQUIRED } from "../config";
 import { all, first, nowIso } from "../db";
 import { newId } from "../ids";
 import { auditStatement } from "../http";
@@ -89,6 +90,9 @@ export async function joinMainAlbum(ctx: Ctx): Promise<{ joined: boolean; member
       "membership_inactive",
       "This album membership is suspended, revoked or still awaiting approval. An administrator must restore it deliberately; signing in cannot do so.",
     );
+  }
+  if (ctx.config.previewUserIds) {
+    throw new ApiError(403, "preview_access_required", PREVIEW_ACCESS_REQUIRED);
   }
   const joined = await addPlayerMembershipIfAbsent(ctx.db, ctx.tenant.id, user.id);
   const current = await first<{ status: string; revoked_at: string | null }>(ctx.db,
