@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { startAuthentication } from "@simplewebauthn/browser";
 import { ArrowRight, Fingerprint, KeyRound, Loader2, Mail, ShieldCheck } from "lucide-react";
 import { api, describeError } from "@/lib/client";
@@ -18,12 +18,16 @@ export default function LoginForm({
   discordOAuth?: boolean;
   invitationOnly?: boolean;
 }) {
+  const [ready, setReady] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [sent, setSent] = useState("");
   const [devLink, setDevLink] = useState("");
   const [busy, setBusy] = useState("");
+
+  // Prevent keystrokes before React can handle them.
+  useEffect(() => setReady(true), []);
 
   const destination = next.startsWith("/") && !next.startsWith("//") ? next : "/play";
 
@@ -111,7 +115,7 @@ export default function LoginForm({
 
       <form onSubmit={sendLink} className="grid gap-3">
         <Field label="Email me a sign-in link" hint="A one-use link, valid for 15 minutes. No password to remember.">
-          <Input type="email" autoComplete="email" inputMode="email" placeholder="you@example.com" value={email} onChange={(event) => setEmail(event.target.value)} required />
+          <Input type="email" autoComplete="email" inputMode="email" placeholder={ready ? "you@example.com" : "Loading sign-in form…"} disabled={!ready} value={email} onChange={(event) => setEmail(event.target.value)} required />
         </Field>
         <Button type="submit" variant="secondary" className="w-full" disabled={Boolean(busy) || !email}>
           {busy === "email" ? <><Loader2 className="animate-spin" size={16} /> Sending…</> : <><Mail size={16} className="signin-action-icon" aria-hidden="true" /> Email me a sign-in link</>}
@@ -124,7 +128,7 @@ export default function LoginForm({
         <span className="h-px flex-1 bg-[var(--line)]" />
       </div>
 
-      <Button type="button" variant="secondary" className="w-full" onClick={passkey} disabled={Boolean(busy)}>
+      <Button type="button" variant="secondary" className="w-full" onClick={passkey} disabled={!ready || Boolean(busy)}>
         {busy === "passkey" ? <><Loader2 className="animate-spin" size={16} /> Waiting for your passkey…</> : <><Fingerprint size={16} className="signin-action-icon" aria-hidden="true" /> Sign in with a passkey</>}
       </Button>
       <p className="text-center text-xs leading-relaxed text-[var(--muted)]">
@@ -140,9 +144,9 @@ export default function LoginForm({
         <summary className="cursor-pointer font-mono text-[0.62rem] uppercase tracking-[0.12em] text-[var(--muted)]">Legacy password fallback</summary>
         <form onSubmit={passwordLogin} className="mt-3 grid gap-3">
           <p className="text-xs leading-relaxed text-[var(--muted)]">Retained only for the existing bootstrap owner while the replacement access and recovery paths are verified. It is not the normal sign-in journey.</p>
-          <Field label="Email"><Input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} /></Field>
-          <Field label="Password"><Input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></Field>
-          <Button type="submit" variant="ghost" size="sm" disabled={busy === "password"}>{busy === "password" ? <><Loader2 className="animate-spin" size={14} /> Opening…</> : <><KeyRound size={14} className="signin-action-icon" aria-hidden="true" /> Use legacy password</>}</Button>
+          <Field label="Email"><Input type="email" autoComplete="username" disabled={!ready} value={email} onChange={(event) => setEmail(event.target.value)} /></Field>
+          <Field label="Password"><Input type="password" autoComplete="current-password" disabled={!ready} value={password} onChange={(event) => setPassword(event.target.value)} /></Field>
+          <Button type="submit" variant="ghost" size="sm" disabled={!ready || busy === "password"}>{busy === "password" ? <><Loader2 className="animate-spin" size={14} /> Opening…</> : <><KeyRound size={14} className="signin-action-icon" aria-hidden="true" /> Use legacy password</>}</Button>
         </form>
       </details>
 
