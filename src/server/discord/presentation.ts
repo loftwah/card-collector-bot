@@ -2524,7 +2524,7 @@ export const SAFE_ERROR_COPY: Record<string, SafeErrorCopy> = {
     kind: "denied",
     title: "Foilbury is invitation-only",
     message: "Collecting is available to approved accounts during the preview.",
-    nextStep: "You can still [browse the public cabinet](https://foilbury.loftwah.com/cabinet).",
+    nextStep: "You can [request access](https://foilbury.loftwah.com/request-access) or [browse the public cabinet](https://foilbury.loftwah.com/cabinet).",
   },
   membership_revoked: {
     kind: "denied",

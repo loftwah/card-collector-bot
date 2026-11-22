@@ -1,0 +1,100 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { ApiError } from "../server/context";
+import { requestPreviewAccess } from "../server/modules/preview-access-request";
+import { pageContext } from "../server/page";
+
+const ctx = await pageContext(Astro.request);
+if (!ctx.config.previewUserIds) return Astro.redirect("/login");
+Astro.response.headers.set("cache-control", "no-store");
+
+const sent = Astro.url.searchParams.get("sent") === "1";
+let email = "";
+let error = "";
+
+if (Astro.request.method === "POST") {
+  const contentType = Astro.request.headers.get("content-type")?.split(";")[0];
+  const size = Number(Astro.request.headers.get("content-length"));
+  if (contentType !== "application/x-www-form-urlencoded" || size > 4096) {
+    return new Response("Use the Foilbury access request form.", { status: 400 });
+  }
+  try {
+    const form = await Astro.request.formData();
+    const value = form.get("email");
+    email = typeof value === "string" ? value.trim().slice(0, 254) : "";
+    await requestPreviewAccess(ctx, value);
+    return Astro.redirect("/request-access?sent=1", 303);
+  } catch (cause) {
+    Astro.response.status = cause instanceof ApiError ? cause.status : 503;
+    error =
+      cause instanceof ApiError && cause.status === 429
+        ? "Too many requests for now. Please try again later."
+        : cause instanceof ApiError
+          ? cause.message
+          : "We couldn't send your request just now. Please try again in a little while.";
+  }
+}
+---
+
+<BaseLayout
+  title="Request access · Foilbury"
+  description="Ask Dean for access to the Foilbury preview."
+  noIndex
+>
+  <section class="container grid min-h-[calc(100vh-68px)] place-items-start justify-center py-12 sm:place-items-center sm:py-16">
+    <div class="surface w-full max-w-lg p-6 sm:p-10">
+      {sent && !error ? (
+        <>
+          <h1 class="display-sm text-4xl">Request sent</h1>
+          <p class="mt-4 leading-relaxed text-[var(--muted)]">
+            Dean will review your request and can reply to the address you provided. In the
+            meantime, you're welcome to browse the public cabinet.
+          </p>
+          <a href="/cabinet" class="btn btn-primary mt-6">
+            Browse originals
+          </a>
+        </>
+      ) : (
+        <>
+          <a href="/login" class="text-sm underline underline-offset-4">
+            Back to sign in
+          </a>
+          <h1 class="display-sm mt-5 text-4xl">Request preview access</h1>
+          <p class="mt-4 leading-relaxed text-[var(--muted)]">
+            Foilbury is invitation-only. Send Dean your email address so he can get back to you.
+          </p>
+          {error ? (
+            <p class="error-box mt-5" id="preview-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <form method="post" action="/request-access" class="mt-6 grid gap-4">
+            <div class="grid gap-2">
+              <label for="preview-email" class="text-sm font-semibold">
+                Your email address
+              </label>
+              <input
+                id="preview-email"
+                name="email"
+                class="input w-full text-base"
+                type="email"
+                autocomplete="email"
+                inputmode="email"
+                maxlength="254"
+                value={email}
+                required
+                aria-describedby={error ? "preview-error" : undefined}
+              />
+            </div>
+            <button class="btn btn-primary w-full" type="submit">
+              Send request
+            </button>
+          </form>
+          <a href="/cabinet" class="mt-6 inline-block text-sm underline underline-offset-4">
+            Browse originals
+          </a>
+        </>
+      )}
+    </div>
+  </section>
+</BaseLayout>

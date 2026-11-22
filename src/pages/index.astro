@@ -196,8 +196,17 @@ const albumFeatures = [
             : "Sign in with Discord, a one-use email link or a passkey. Your album holds your collections, with full profiles, spoiler controls, duplicates and provenance."}
         </p>
         <div class="home-album__actions">
-          <a class="btn btn-primary" href={primaryHref}>{user ? "Open my library" : "Sign in"}</a>
-          <a class="btn btn-secondary" href="/cabinet">Browse originals</a>
+          {privatePreview ? (
+            <>
+              <a class="btn btn-primary" href="/request-access">Request access</a>
+              <a class="btn btn-secondary" href={primaryHref}>Sign in</a>
+            </>
+          ) : (
+            <>
+              <a class="btn btn-primary" href={primaryHref}>{user ? "Open my library" : "Sign in"}</a>
+              <a class="btn btn-secondary" href="/cabinet">Browse originals</a>
+            </>
+          )}
         </div>
       </div>
       <div class="home-features">
