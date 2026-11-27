@@ -1,5 +1,15 @@
 # Foilbury agent workflow
 
+## Portfolio design direction · 28 November 2026
+
+Read the [portfolio design bar](https://github.com/loftwah/app-composer/blob/main/docs/visual-direction.md#portfolio-design-bar)
+and [owner direction](https://github.com/loftwah/app-composer/issues/1422) for work
+a user sees, reads or touches. Start from an ambitious direction grounded in
+successful outside products and the actual journey. Compare distinct ideas
+before settling on a direction. Preserve this product's identity and explicit
+holds. Inspect the rendered experience at the sizes people use and carry the
+evidence into #92.
+
 ## Delivery showcase
 
 The owner's Discord showcase is the running record of delivered project work.
